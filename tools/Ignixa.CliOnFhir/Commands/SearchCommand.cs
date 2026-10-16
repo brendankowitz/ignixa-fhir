@@ -60,6 +60,7 @@ internal static class SearchCommand
             Description = "With --check, also run the search and return its results beside the plan",
         };
 
+        Option<int?> maxBytesOption = CommonOptions.CreateMaxBytesOption();
         Option<string?> cacheDirOption = CommonOptions.CreateCacheDirOption();
         Option<bool> noCacheOption = CommonOptions.CreateNoCacheOption();
         Option<bool> prettyOption = CommonOptions.CreatePrettyOption();
@@ -77,6 +78,7 @@ internal static class SearchCommand
         command.Options.Add(compartmentOption);
         command.Options.Add(checkOption);
         command.Options.Add(executeOption);
+        command.Options.Add(maxBytesOption);
         command.Options.Add(prettyOption);
         command.Validators.Add(result =>
         {
@@ -99,7 +101,8 @@ internal static class SearchCommand
                 parseResult.GetValue(summaryOption),
                 parseResult.GetValue(elementsOption),
                 parseResult.GetValue(lenientOption),
-                parseResult.GetValue(compartmentOption));
+                parseResult.GetValue(compartmentOption),
+                parseResult.GetValue(maxBytesOption));
 
             bool pretty = parseResult.GetValue(prettyOption);
             return Task.FromResult(parseResult.GetValue(checkOption)

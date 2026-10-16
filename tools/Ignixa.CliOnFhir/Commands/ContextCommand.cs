@@ -29,6 +29,7 @@ internal static class ContextCommand
         var countOption = new Option<int?>("--count") { Description = $"With --node: items per page (default {ResourceSearcher.DefaultCount}, maximum {ResourceSearcher.MaxCount})" };
         var offsetOption = new Option<int>("--offset") { Description = "With --node: items to skip" };
         var elementsOption = new Option<string?>("--elements") { Description = "With --node: comma-separated top-level elements to keep in the returned resources" };
+        Option<int?> maxBytesOption = CommonOptions.CreateMaxBytesOption();
         Option<string?> cacheDirOption = CommonOptions.CreateCacheDirOption();
         Option<bool> noCacheOption = CommonOptions.CreateNoCacheOption();
         Option<bool> prettyOption = CommonOptions.CreatePrettyOption();
@@ -41,14 +42,15 @@ internal static class ContextCommand
         command.Options.Add(countOption);
         command.Options.Add(offsetOption);
         command.Options.Add(elementsOption);
+        command.Options.Add(maxBytesOption);
         command.Options.Add(prettyOption);
         CommonOptions.AddCacheOptions(command, cacheDirOption, noCacheOption);
         command.Validators.Add(result =>
         {
-            bool paged = result.GetValue(countOption) is not null || result.GetValue(offsetOption) != 0 || result.GetValue(elementsOption) is not null;
+            bool paged = result.GetValue(countOption) is not null || result.GetValue(offsetOption) != 0 || result.GetValue(elementsOption) is not null || result.GetValue(maxBytesOption) is not null;
             if (paged && result.GetValue(nodeOption) is null)
             {
-                result.AddError("--count, --offset and --elements apply only with --node; the root digest is not paged.");
+                result.AddError("--count, --offset, --elements and --max-bytes apply only with --node; the root digest is not paged.");
             }
         });
 
@@ -59,7 +61,7 @@ internal static class ContextCommand
             string patientId = parseResult.GetValue(patientArgument)!;
             bool pretty = parseResult.GetValue(prettyOption);
             int exitCode = parseResult.GetValue(nodeOption) is { } nodeKey
-                ? EnvelopeOutput.Write(ContextExpander.Expand(session, patientId, nodeKey, parseResult.GetValue(countOption), parseResult.GetValue(offsetOption), parseResult.GetValue(elementsOption), cancellationToken), pretty)
+                ? EnvelopeOutput.Write(ContextExpander.Expand(session, patientId, nodeKey, parseResult.GetValue(countOption), parseResult.GetValue(offsetOption), parseResult.GetValue(elementsOption), parseResult.GetValue(maxBytesOption), cancellationToken), pretty)
                 : EnvelopeOutput.Write(ContextRoot.Get(session, patientId, cancellationToken), pretty);
             return Task.FromResult(exitCode);
         });

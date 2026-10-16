@@ -160,7 +160,7 @@ public class ResourceReadTests
             "p.ndjson",
             string.Join('\n', Enumerable.Range(0, 4).Select(i => "{\"resourceType\":\"Patient\",\"id\":\"p" + i + "\",\"text\":{\"status\":\"generated\",\"div\":\"" + padding + "\"}}")));
 
-        ToolEnvelope<ReadFacts?> envelope = ResourceFetcher.Read(Open(folder), ["Patient/p0", "Patient/p1", "Patient/p2", "Patient/p3"]);
+        ToolEnvelope<ReadFacts?> envelope = ResourceFetcher.Read(Open(folder), ["Patient/p0", "Patient/p1", "Patient/p2", "Patient/p3"], maxBytes: EnvelopeJson.MaxBytes);
 
         envelope.Facts.ShouldNotBeNull().Resources.Count.ShouldBe(2);
         OmittedItem omitted = envelope.Omitted.ShouldHaveSingleItem();

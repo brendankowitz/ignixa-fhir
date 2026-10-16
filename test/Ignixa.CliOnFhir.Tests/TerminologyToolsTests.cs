@@ -128,7 +128,7 @@ public class TerminologyToolsTests
         ((string)result["facts"]!["display"]!).ShouldBe("Cardiac disorder (local)");
         result["facts"]!["source"]!["package"].ShouldBeNull();
         ((string)result["facts"]!["source"]!["file"]!).ShouldBe("terminology/body.json");
-        ((string)result["evidence"]![0]!["file"]!).ShouldBe("terminology/body.json");
+        EvidenceFile(result, 0).ShouldBe("terminology/body.json");
         JsonNode conflict = result["issues"]!.AsArray().First(issue => (string)issue!["code"]! == CanonicalConflict.Code)!;
         ((string)conflict["diagnostics"]!).ShouldContain("folder (terminology/body.json)");
         ((string)conflict["diagnostics"]!).ShouldContain($"{PackageId}@{PackageVersion} ({PackageId}#{PackageVersion}/package/CodeSystem-body.json)");
@@ -157,7 +157,7 @@ public class TerminologyToolsTests
         JsonNode result = Json(await TermExpand.ExpandAsync(OpenWithPackage(folder, store), ValueSetBase + "local", null, null, 0, CancellationToken.None));
 
         result["facts"]!["codes"]!.AsArray().Select(code => (string)code!["code"]!).ShouldBe(["mi"]);
-        ((string)result["evidence"]![0]!["reference"]!).ShouldMatch("^ValueSet/~[0-9a-f]{16}$");
+        EvidenceReferences(result)[0].ShouldMatch("^ValueSet/~[0-9a-f]{16}$");
         result.ToJsonString().ShouldNotContain("not an id!");
     }
 

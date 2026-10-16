@@ -434,7 +434,7 @@ public class ResourceSearchTests
     {
         using TestFolder folder = Patients(count: 5, paddingBytes: 20_000);
 
-        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Patient"));
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Patient", MaxBytes: EnvelopeJson.MaxBytes));
 
         envelope.Facts.ShouldNotBeNull().Total.ShouldBe(5);
         Ids(envelope).ShouldBe(["p0", "p1"]);

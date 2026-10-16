@@ -16,8 +16,18 @@ namespace Ignixa.CliOnFhir.Contracts;
 /// </summary>
 public static class EnvelopeJson
 {
-    /// <summary>The hard cap on a serialized MCP response (50 KB, see tool-design.md).</summary>
+    /// <summary>The hard cap on a serialized MCP response (50 KB, see tool-design.md); a caller can raise a call's budget up to it.</summary>
     public const int MaxBytes = 50 * 1024;
+
+    /// <summary>
+    /// The default budget of a response that returns resources. It sits below the point where common agent clients move a
+    /// tool result out of the model's context (about 14 to 26 KB), so the server cuts a page honestly, with the call that
+    /// continues or narrows it, before the client would hide it.
+    /// </summary>
+    public const int DefaultBudget = 12 * 1024;
+
+    /// <summary>The smallest budget a caller may ask for; below it the envelope's own members would not fit.</summary>
+    public const int MinBudget = 2 * 1024;
 
     /// <summary>Compact output.</summary>
     public static JsonSerializerOptions Compact { get; } = Create(indented: false);

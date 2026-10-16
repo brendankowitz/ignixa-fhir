@@ -53,7 +53,7 @@ internal static class McpCommand
                 cacheOptions,
                 terminology: terminologyOptions));
             builder.Services
-                .AddMcpServer(options => options.ServerInfo = new() { Name = "cli-on-fhir", Version = typeof(McpCommand).Assembly.GetName().Version?.ToString() ?? "0.0.0" })
+                .AddMcpServer(options => McpServerSetup.Configure(options))
                 .WithStdioServerTransport()
                 .WithTools<FolderTools>()
                 .WithTools<ResourceTools>()

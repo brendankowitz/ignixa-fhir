@@ -12,7 +12,7 @@ using Ignixa.CliOnFhir.Session;
 
 namespace Ignixa.CliOnFhir.Patients;
 
-/// <summary><c>patient_list</c>: the folder's patients with what each one's context holds, so an agent can choose one.</summary>
+/// <summary><c>patient_list</c>: the folder's patients with what each one's context holds, optionally only those matching a query.</summary>
 public static class PatientLister
 {
     /// <summary>By name (case-insensitively, patients without one last), then id.</summary>
@@ -21,11 +21,15 @@ public static class PatientLister
     /// <summary>By latest clinical date, most recent first (patients without one last), then id.</summary>
     public const string ByLatest = "latest";
 
+    /// <summary>Longest <c>query</c> accepted.</summary>
+    public const int MaxQueryLength = 256;
+
     /// <summary>
-    /// A page of the folder's Patient resources, each with its compartment's size, date span and domains. A request that cannot
-    /// be answered (unreadable folder, bad paging, unknown sort) yields null facts and an <c>error</c> issue.
+    /// A page of the folder's Patient resources, each with its compartment's size, date span and domains. With
+    /// <paramref name="query"/>, only the patients matching it (see <see cref="PatientMatch"/>). A request that cannot
+    /// be answered (unreadable folder, bad paging, unknown sort, blank query) yields null facts and an <c>error</c> issue.
     /// </summary>
-    public static ToolEnvelope<PatientListFacts?> List(FolderSession session, int? count = null, int offset = 0, string? sort = null, CancellationToken cancellationToken = default)
+    public static ToolEnvelope<PatientListFacts?> List(FolderSession session, int? count = null, int offset = 0, string? sort = null, string? query = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(session);
 
@@ -36,7 +40,7 @@ public static class PatientLister
 
         try
         {
-            return Execute(session, count, offset, sort ?? ByName, cancellationToken);
+            return Execute(session, count, offset, sort ?? ByName, query, cancellationToken);
         }
         catch (ToolRequestException ex)
         {
@@ -44,7 +48,7 @@ public static class PatientLister
         }
     }
 
-    private static ToolEnvelope<PatientListFacts?> Execute(FolderSession session, int? count, int offset, string sort, CancellationToken cancellationToken)
+    private static ToolEnvelope<PatientListFacts?> Execute(FolderSession session, int? count, int offset, string sort, string? query, CancellationToken cancellationToken)
     {
         List<IssueItem> issues = [];
         int pageSize = Paging.Resolve(count, offset, issues);
@@ -53,15 +57,19 @@ public static class PatientLister
             throw ToolRequestException.Error("invalid-parameter", $"'sort' must be '{ByName}' or '{ByLatest}', not '{sort}'.");
         }
 
+        PatientMatch? match = query is null ? null : PatientMatch.Parse(query);
         ClinicalRules.Precompile();
         var folder = new FolderSearchSource(session);
         // Names and dates read no references, so the Bundle references need not be resolved.
         var elements = new ResourceElements(session, resolveReferences: false);
-        IReadOnlyList<IndexedResource> patients = session.HoldsType("Patient") ? folder.Resources("Patient") : [];
-        Dictionary<string, string?> names = patients.ToDictionary(
+        IReadOnlyList<IndexedResource> everyone = session.HoldsType("Patient") ? folder.Resources("Patient") : [];
+        Dictionary<string, string?> names = everyone.ToDictionary(
             patient => patient.Key.Id,
             patient => elements.Get(patient.Entry) is { } element ? ClinicalValues.PatientName(element) : null,
             StringComparer.Ordinal);
+        IReadOnlyList<IndexedResource> patients = match is null
+            ? everyone
+            : [.. everyone.Where(patient => elements.Get(patient.Entry) is { } element && match.Matches(patient.Key.Id, names[patient.Key.Id], element))];
         var shapes = new ValueShapes(session.Schema.Version, BindingMembership.IfLoaded(session));
         var summaries = new Summaries(folder, elements, names, shapes, cancellationToken);
 
@@ -86,7 +94,13 @@ public static class PatientLister
         if (offset + page.Count < patients.Count)
         {
             omitted.Add(new OmittedItem($"{patients.Count - offset - page.Count} more patients (offset={offset + page.Count})", "limit"));
-            next.Add(new NextCall("patient_list", new Dictionary<string, object>(StringComparer.Ordinal) { ["offset"] = offset + page.Count, ["sort"] = sort }));
+            var nextPage = new Dictionary<string, object>(StringComparer.Ordinal) { ["offset"] = offset + page.Count, ["sort"] = sort };
+            if (query is not null)
+            {
+                nextPage["query"] = query;
+            }
+
+            next.Add(new NextCall("patient_list", nextPage));
         }
 
         next.AddRange(page.Take(1).Select(patient => new NextCall("context_get_root", new Dictionary<string, object>(StringComparer.Ordinal) { ["patientId"] = FhirIds.Safe(patient.Key.Id) })));
@@ -102,14 +116,21 @@ public static class PatientLister
         ResourceSearcher.AddDiagnostics(session, folder, issues, omitted);
 
         List<AbsentItem> absent = patients.Count == 0
-            ? [new AbsentItem("Patient", $"catalog of {session.RootPath}: 0 Patient resources in {session.Catalog.FilesScanned} files", session.Catalog.BuiltAt)]
+            ? [new AbsentItem(
+                query is null ? "Patient" : $"Patient matching '{query}'",
+                query is null
+                    ? $"catalog of {session.RootPath}: 0 Patient resources in {session.Catalog.FilesScanned} files"
+                    : $"{everyone.Count} Patient resources in {session.Catalog.FilesScanned} files: id, name, identifier values and birthDate",
+                session.Catalog.BuiltAt)]
             : [];
-        Dictionary<string, string> dateRule = ClinicalRules.MainDate
-            .Where(rule => session.HoldsType(rule.Key))
-            .OrderBy(rule => rule.Key, StringComparer.Ordinal)
-            .ToDictionary(rule => rule.Key, rule => string.Join(", else ", rule.Value), StringComparer.Ordinal);
+        Dictionary<string, string>? dateRule = sort == ByLatest
+            ? ClinicalRules.MainDate
+                .Where(rule => session.HoldsType(rule.Key))
+                .OrderBy(rule => rule.Key, StringComparer.Ordinal)
+                .ToDictionary(rule => rule.Key, rule => string.Join(", else ", rule.Value), StringComparer.Ordinal)
+            : null;
 
-        var facts = new PatientListFacts(patients.Count, offset, rows.Count, sort, dateRule, rows, shapes.Membership);
+        var facts = new PatientListFacts(patients.Count, offset, rows.Count, sort, rows, shapes.Membership, query, dateRule);
         DateTimeOffset builtAt = folder.IndexesRead.Count > 0 ? folder.IndexesRead.Max(index => index.BuiltAt) : session.Catalog.BuiltAt;
         return EnvelopeAssembler.Create<PatientListFacts?>(session, facts, builtAt, ContextRoot.Evidence(page.Select(patient => patient.Entry)), omitted, absent, issues, cancellationToken) with { Next = next };
     }

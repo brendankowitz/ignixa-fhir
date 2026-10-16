@@ -34,7 +34,7 @@ public class PatientListTests
             new PatientSummary("p3", null, "other", null, 1, null, null, ["demographics"]),
         ], ignoreOrder: false, comparer: new SummaryComparer());
         facts.Sort.ShouldBe("name");
-        facts.DateRule["Encounter"].ShouldBe("period.start");
+        facts.DateRule.ShouldBeNull();
         envelope.Evidence.Select(item => item.Reference).ShouldBe(["Patient/p1", "Patient/p2", "Patient/p3"]);
         envelope.Issues.ShouldBeEmpty();
     }

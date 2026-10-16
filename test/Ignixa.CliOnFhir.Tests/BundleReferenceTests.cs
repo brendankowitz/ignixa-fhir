@@ -345,7 +345,7 @@ public class BundleReferenceTests
             "{\"resourceType\":\"Bundle\",\"type\":\"collection\",\"entry\":[{\"fullUrl\":\"urn:uuid:p\",\"resource\":{\"resourceType\":\"Patient\",\"id\":\"p\"}},"
             + "{\"fullUrl\":\"urn:uuid:org\",\"resource\":{\"resourceType\":\"Organization\",\"id\":\"org\"}}," + string.Join(',', encounters) + "]}");
 
-        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Encounter", Count: 50));
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Encounter", Count: 50, MaxBytes: EnvelopeJson.MaxBytes));
 
         envelope.Facts.ShouldNotBeNull().Returned.ShouldBe(50);
         Resolved(envelope).Length.ShouldBe(100);
@@ -391,7 +391,7 @@ public class BundleReferenceTests
             "{\"resourceType\":\"Bundle\",\"type\":\"collection\",\"entry\":[{\"fullUrl\":\"urn:uuid:p\",\"resource\":{\"resourceType\":\"Patient\",\"id\":\"p\"}},"
             + "{\"fullUrl\":\"urn:uuid:org\",\"resource\":{\"resourceType\":\"Organization\",\"id\":\"org\"}}," + string.Join(',', encounters) + "]}");
 
-        ToolEnvelope<Reading.ReadFacts?> envelope = Reading.ResourceFetcher.Read(Open(folder), [.. Enumerable.Range(1, 50).Select(i => $"Encounter/e{i}")]);
+        ToolEnvelope<Reading.ReadFacts?> envelope = Reading.ResourceFetcher.Read(Open(folder), [.. Enumerable.Range(1, 50).Select(i => $"Encounter/e{i}")], maxBytes: EnvelopeJson.MaxBytes);
 
         envelope.Facts.ShouldNotBeNull().ResolvedReferences.ShouldNotBeNull().Values.Sum(references => references.Count).ShouldBe(100);
         envelope.Omitted.ShouldContain(item => item.What == "50 more resolved Bundle references in the returned resources (resolvedReferences lists at most 100)" && item.Why == "limit");

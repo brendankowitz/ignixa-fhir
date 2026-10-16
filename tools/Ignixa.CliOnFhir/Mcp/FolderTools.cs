@@ -20,7 +20,8 @@ public sealed class FolderTools(FolderSession session)
     [Description("""
         Overview of the folder of FHIR data this server was started on: resource types and counts,
         number of patients, files read, and problems found (invalid JSON, duplicate ids, unknown types).
-        Call this first to orient yourself. Problems beyond the issue limit are counted in 'omitted'.
+        Useful once to see which resource types and code systems exist; not needed when you already know the patient id and
+        the resource type to search. Problems beyond the issue limit are counted in 'omitted'.
         'facts.codeSystems' lists the ten most used coding systems with names and distinct-code counts; folder_code_systems
         has the full inventory.
         'facts.terminology' reports, per code system the folder's codes use, how many distinct codes resolve, are inactive or

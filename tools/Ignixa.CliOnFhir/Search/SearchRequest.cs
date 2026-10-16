@@ -20,6 +20,10 @@ namespace Ignixa.CliOnFhir.Search;
 /// A compartment such as <c>Patient/123</c> to search within, as <c>Patient/123/Observation?query</c> does; null searches
 /// the whole folder.
 /// </param>
+/// <param name="MaxBytes">
+/// The most the whole serialized response may take; null means <see cref="Ignixa.CliOnFhir.Contracts.EnvelopeJson.DefaultBudget"/>,
+/// and more than <see cref="Ignixa.CliOnFhir.Contracts.EnvelopeJson.MaxBytes"/> is clamped to it.
+/// </param>
 public sealed record SearchRequest(
     string ResourceType,
     string? Query = null,
@@ -28,4 +32,5 @@ public sealed record SearchRequest(
     string? Summary = null,
     string? Elements = null,
     bool Lenient = false,
-    string? Compartment = null);
+    string? Compartment = null,
+    int? MaxBytes = null);

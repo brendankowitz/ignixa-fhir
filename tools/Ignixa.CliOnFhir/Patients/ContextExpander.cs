@@ -28,6 +28,7 @@ public static class ContextExpander
         int? count = null,
         int offset = 0,
         string? elements = null,
+        int? maxBytes = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(session);
@@ -52,6 +53,8 @@ public static class ContextExpander
                 offset,
                 pageSize,
                 projection,
+                elements,
+                maxBytes,
                 node.WithResources,
                 contents => new NodeFacts(context.PatientReference, nodeKey, context.AsOf, node.Entries.Count, offset, contents.Items.Count, contents.Items, context.Shapes.Membership, node.Rule, node.Window, contents.Resources, contents.ResolvedReferences),
                 resume => ContextRoot.Expand(context, nodeKey, resume),

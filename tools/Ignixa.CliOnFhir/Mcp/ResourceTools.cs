@@ -19,7 +19,10 @@ public sealed class ResourceTools(FolderSession session)
 {
     [McpServerTool(Name = "search_fhir_resources", ReadOnly = true, Idempotent = true)]
     [Description("""
-        FHIR search over the folder: finds resources of one type that match a standard FHIR search query.
+        FHIR search over the folder: finds resources of one type that match a standard FHIR search query. Cheapest paths: scope
+        to one patient with compartment=Patient/<id> (needs only the patient's id, no lookup first); pass
+        'elements' to keep only the fields you need; summary=count answers "how many" with no resources; _sort=-date with
+        count=1 gives the latest; _include follows references, conditional ones ('Type?identifier=system|value') included.
         The query uses FHIR search syntax, for example 'family=Smith', 'birthdate=gt1980', 'subject=Patient/p1',
         'code=http://loinc.org|8867-4' or '_id=a,b'; parameters are ANDed, comma-separated values ORed.
         Also supported: chains ('subject:Patient.name=Smith', or 'subject.gender=female' when only one target type has
@@ -31,18 +34,20 @@ public sealed class ResourceTools(FolderSession session)
         Bundle references (urn:uuid fullUrls) are matched as the Type/id they name; returned resources keep the urn, and
         'facts.resolvedReferences' maps each one shown to its Type/id.
         Returns the total number of matches, one page of resources (in _sort order, else catalog order) and the file
-        location of each as evidence. Pages hold 'count' resources (default 10, maximum 50): when more exist, 'omitted'
-        says how many and which 'offset' to use next. Included resources come back whole in 'included' (at most 50; more
-        are listed in 'omitted'), are not counted in 'total' or 'returned', and have evidence too. The whole response (the decoded
-        tool-result text) is capped at 50 KB; if resources do not fit, fewer are returned and 'omitted' says so (a resource
-        too large to ever fit is named there), so pass 'elements' to shrink them.
+        location of each as evidence (a table of files, each resource naming its file by index). Pages hold 'count' resources
+        (default 10, maximum 50): when more exist, 'omitted' says how many and which 'offset' to use next. Included resources
+        come back whole in 'included' (at most 50; more are listed in 'omitted'), are not counted in 'total' or 'returned', and
+        have evidence too. The whole response (the decoded tool-result text) is held to a budget of 12 KB by default; if
+        resources do not fit, fewer are returned, 'omitted' says how many were left out (a resource too large to ever fit is
+        named there) and 'next' has the exact call for the rest plus narrowing calls (add 'elements', a date range, or
+        summary=count). 'maxBytes' raises the budget, to at most 50 KB; narrowing is usually better.
         Parameter names are case-sensitive: an unknown name fails with 'unknown-search-parameter' and a suggestion, unless
         'lenient' is true. Check 'issues' every time: a 'parameter-ignored' warning means that parameter did NOT apply; an
         'error' issue (null facts) means the query was not answered, for example 'search-not-supported' for _text or _filter.
         A resource whose id is not a FHIR id is named by its digest ('Type/~' and 16 hex digits) in evidence and issues, and
         '_id' and 'compartment' accept that digest; the returned JSON keeps the id as written.
-        Call folder_inspect first to see which resource types exist, and plan_fhir_search to check a query (and see which
-        codes the folder holds) before running it.
+        folder_inspect lists which resource types exist; plan_fhir_search checks a query (and shows which codes the folder
+        holds) before running it.
         """)]
     public CallToolResult SearchFhirResources(
         [Description("Resource type to search, for example 'Observation'.")] string resourceType,
@@ -50,11 +55,12 @@ public sealed class ResourceTools(FolderSession session)
         [Description("Resources per page. Default 10, maximum 50. Overrides '_count' in the query.")] int? count = null,
         [Description("Number of matches to skip, in result order. Default 0. Use the offset given in 'omitted' to read the next page.")] int offset = 0,
         [Description("Pass 'count' to get only the total number of matches and no resources.")] string? summary = null,
-        [Description("Comma-separated top-level elements to keep, for example 'code,valueQuantity'. resourceType, id and meta are always kept and trimmed resources are tagged SUBSETTED. Use the JSON property name (valueQuantity, not value[x]). Included resources are not trimmed.")] string? elements = null,
+        [Description("Comma-separated top-level elements to keep, for example 'code,valueQuantity'. resourceType, id and meta are always kept and trimmed resources are tagged SUBSETTED. Use the JSON property name (valueQuantity, not value[x]). Resources trimmed this way also lose meta.profile. Included resources are not trimmed.")] string? elements = null,
         [Description("True to ignore parameter names the search does not recognise (each reported as a 'parameter-ignored' warning) instead of failing. This can widen the results. Default false.")] bool lenient = false,
         [Description("Compartment to search within, 'Type/id', for example 'Patient/123'. Compartment types: Patient, Encounter, Practitioner, RelatedPerson, Device. A type that is never in such a compartment matches nothing, with a 'compartment-excludes-type' warning.")] string? compartment = null,
+        [Description("Response budget in bytes. Default 12288, maximum 51200. Prefer 'elements', a date range or summary=count over raising it.")] int? maxBytes = null,
         CancellationToken cancellationToken = default) =>
-        ToolResults.From(ResourceSearcher.Search(session, new SearchRequest(resourceType, query, count, offset, summary, elements, lenient, compartment), cancellationToken));
+        ToolResults.From(ResourceSearcher.Search(session, new SearchRequest(resourceType, query, count, offset, summary, elements, lenient, compartment, maxBytes), cancellationToken));
 
     [McpServerTool(Name = "plan_fhir_search", ReadOnly = true, Idempotent = true)]
     [Description("""
@@ -92,11 +98,13 @@ public sealed class ResourceTools(FolderSession session)
         location (file, line, byte offset) as evidence. A reference the folder does not hold is listed in 'absent'
         with what was checked. Resources keep their Bundle references as written (urn:uuid:...); 'facts.resolvedReferences'
         maps each one shown to the Type/id it names. Pass 'elements' to return only some top-level elements and keep responses small
-        (the whole response, i.e. the decoded tool-result text, is capped at 50 KB and 'omitted' lists anything left out). Reads at most 50 references per call.
+        (the whole response, i.e. the decoded tool-result text, is held to a budget of 12 KB by default; 'maxBytes' raises it to
+        at most 50 KB; 'omitted' lists anything left out and 'next' has the call for it). Reads at most 50 references per call.
         """)]
     public CallToolResult ReadResources(
         [Description("References to read, each 'ResourceType/id', for example ['Patient/123', 'Observation/931'].")] string[] references,
-        [Description("Comma-separated top-level elements to keep, for example 'code,valueQuantity'. resourceType, id and meta are always kept and trimmed resources are tagged SUBSETTED.")] string? elements = null,
+        [Description("Comma-separated top-level elements to keep, for example 'code,valueQuantity'. resourceType, id and meta are always kept (without meta.profile) and trimmed resources are tagged SUBSETTED.")] string? elements = null,
+        [Description("Response budget in bytes. Default 12288, maximum 51200. Prefer 'elements' over raising it.")] int? maxBytes = null,
         CancellationToken cancellationToken = default) =>
-        ToolResults.From(ResourceFetcher.Read(session, references, elements, cancellationToken));
+        ToolResults.From(ResourceFetcher.Read(session, references, elements, maxBytes, cancellationToken));
 }

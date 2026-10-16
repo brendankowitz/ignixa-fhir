@@ -29,6 +29,7 @@ public static class ContextFinder
         int? count = null,
         int offset = 0,
         string? elements = null,
+        int? maxBytes = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(session);
@@ -53,6 +54,8 @@ public static class ContextFinder
                 offset,
                 pageSize,
                 projection,
+                elements,
+                maxBytes,
                 withResources: true,
                 contents => new FindFacts(
                     context.PatientReference,

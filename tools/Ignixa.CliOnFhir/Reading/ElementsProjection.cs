@@ -11,7 +11,7 @@ namespace Ignixa.CliOnFhir.Reading;
 
 /// <summary>
 /// The <c>_elements</c> trim: keeps <c>resourceType</c>, <c>id</c>, <c>meta</c> and the named top-level elements,
-/// and marks the result <c>SUBSETTED</c> as FHIR requires. Response shaping on the raw JSON, not resource navigation.
+/// (without <c>meta.profile</c>, which repeats on every resource) and marks the result <c>SUBSETTED</c> as FHIR requires. Response shaping on the raw JSON, not resource navigation.
 /// </summary>
 public sealed class ElementsProjection
 {
@@ -96,6 +96,7 @@ public sealed class ElementsProjection
             }
         }
 
+        DropProfiles(trimmed);
         MarkSubsetted(trimmed);
         return trimmed;
     }
@@ -137,6 +138,18 @@ public sealed class ElementsProjection
 
         public bool Selects(string name) =>
             _elements.Contains(name) || ChoiceElements.Any(choice => IsTypedForm(name, choice));
+    }
+
+    /// <summary>
+    /// <c>meta.profile</c> is the same long list on every resource of a type and is not something the caller asked for, so a
+    /// trimmed resource leaves it out; the rest of <c>meta</c> (version, last update, tags) stays.
+    /// </summary>
+    private static void DropProfiles(JsonObject resource)
+    {
+        if (resource["meta"] is JsonObject meta)
+        {
+            meta.Remove("profile");
+        }
     }
 
     private static void MarkSubsetted(JsonObject resource)

@@ -100,7 +100,7 @@ public class SearchAndGetCommandTests
 
         exitCode.ShouldBe(0);
         ((string)output["absent"]![0]!["what"]!).ShouldBe("Patient/none");
-        ((string)output["evidence"]![0]!["file"]!).ShouldBe(PatientsFile);
+        ((string)output["evidence"]!["files"]![(int)output["evidence"]!["items"]![0]!["file"]!]!).ShouldBe(PatientsFile);
     }
 
     [Fact]

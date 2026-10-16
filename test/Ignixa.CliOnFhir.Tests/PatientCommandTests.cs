@@ -69,7 +69,7 @@ public class PatientCommandTests
 
         ParseResult parsed = root.Parse(["context", folder.Path, "p1", "--count", "3", "--no-cache"]);
 
-        parsed.Errors.ShouldHaveSingleItem().Message.ShouldBe("--count, --offset and --elements apply only with --node; the root digest is not paged.");
+        parsed.Errors.ShouldHaveSingleItem().Message.ShouldBe("--count, --offset, --elements and --max-bytes apply only with --node; the root digest is not paged.");
     }
 
     /// <summary>The facts without the call's <c>asOf</c>, which follows each session's clock.</summary>

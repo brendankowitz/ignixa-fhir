@@ -40,6 +40,10 @@ internal static class ClinicalValues
         return parts.Count == 0 ? null : string.Join(' ', parts);
     }
 
+    /// <summary>Every string value <paramref name="expression"/> yields, for example the values of all of a Patient's identifiers.</summary>
+    public static IEnumerable<string> Strings(IElement resource, string expression) =>
+        resource.Select(expression).Select(element => element.Value).OfType<string>();
+
     /// <summary>A primitive's value as its FHIR literal (a date's literal, a code), or null.</summary>
     public static string? Literal(IElement resource, string expression) =>
         resource.Select(expression).Select(element => element.Value switch
