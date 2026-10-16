@@ -254,7 +254,18 @@ internal static class TxAnswers
 
             return TermNext.Call("search", args);
         })];
-        return new TerminologyAnswer<TermSearchFacts>(facts, [], expanded.Omitted, [], expanded.Issues) { Next = next };
+        // $expand has no standard parameter that limits it to one system, so a ValueSet spanning several is narrowed here; the
+        // total and the offsets in next stay the server's, and the codes dropped from this page are reported.
+        List<OmittedItem> omitted = [.. expanded.Omitted];
+        int otherSystems = expanded.Facts.Codes.Count - matches.Count;
+        if (otherSystems > 0)
+        {
+            omitted.Add(new OmittedItem(
+                $"{otherSystems} of the {expanded.Facts.Codes.Count} codes on this page of the server's expansion are not from {system}; 'total' and the offsets in 'next' count the server's codes of every system",
+                "system-filter"));
+        }
+
+        return new TerminologyAnswer<TermSearchFacts>(facts, [], omitted, [], expanded.Issues) { Next = next };
     }
 
     /// <summary>

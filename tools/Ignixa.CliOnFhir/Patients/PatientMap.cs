@@ -19,7 +19,7 @@ namespace Ignixa.CliOnFhir.Patients;
 /// </summary>
 public static class PatientMap
 {
-    // Each line costs about 110 bytes with its resource reference, so these hold a typical record's map near 3 KB.
+    // Each line costs about 110 bytes with its resource reference, so these hold a typical record's map near 4 KB.
 
     /// <summary>Most active problems listed.</summary>
     public const int TopProblems = 4;
@@ -262,7 +262,7 @@ public static class PatientMap
         [
             ("AllergyIntolerance", context.Allergies.Count),
             ("Condition", context.Problems.Count),
-            ("MedicationRequest", context.Compartment.OfType("MedicationRequest").Count + context.Compartment.OfType("MedicationStatement").Count),
+            ("MedicationRequest or MedicationStatement", context.Compartment.OfType("MedicationRequest").Count + context.Compartment.OfType("MedicationStatement").Count),
             ("Encounter", context.Compartment.OfType("Encounter").Count),
             ("Observation", context.Compartment.OfType("Observation").Count),
             ("Immunization", context.Immunizations.Count),

@@ -6,9 +6,12 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ignixa.CliOnFhir.Contracts;
+using Ignixa.CliOnFhir.Mcp;
 using Ignixa.CliOnFhir.Patients;
 using Ignixa.CliOnFhir.Reading;
 using Ignixa.CliOnFhir.Search;
+using Ignixa.CliOnFhir.Session;
+using ModelContextProtocol.Protocol;
 using Shouldly;
 using static Ignixa.CliOnFhir.Tests.SearchFixture;
 
@@ -82,6 +85,30 @@ public class ResponseBudgetTests
         count.Args["summary"].ShouldBe("count");
         count.Args["compartment"].ShouldBe("Patient/p1");
         envelope.Next.Single(call => call.Args.ContainsKey("maxBytes")).Args["maxBytes"].ShouldBe(EnvelopeJson.MaxBytes);
+    }
+
+    // Regression: at 596c9c3d the fhirpath and columns calls in next copied the query unchanged, and the tool refuses them
+    // beside _count, _include, _revinclude and _elements.
+    [Theory]
+    [InlineData("subject=Patient/p1&_count=20&_include=Observation:subject")]
+    [InlineData("_count=20&_include:iterate=Observation:subject&_revinclude=Provenance:target&_elements=status,note")]
+    public async Task GivenACutPageWhoseQueryPagesAndIncludes_WhenEveryCallInNextIsMade_ThenNoneFails(string query)
+    {
+        using TestFolder folder = Chart();
+        FolderSession session = Open(folder);
+        await using InProcessMcp mcp = await InProcessMcp.StartAsync([typeof(ResourceTools)], session);
+
+        IReadOnlyList<NextCall> next = ResourceSearcher.Search(session, new SearchRequest("Observation", query)).Next;
+
+        next.ShouldContain(call => call.Args.ContainsKey("fhirpath"));
+        next.ShouldContain(call => call.Args.ContainsKey("columns"));
+        next.ShouldContain(call => call.Args.ContainsKey("summary"));
+        foreach (NextCall call in next)
+        {
+            CallToolResult result = await mcp.Client.CallToolAsync(call.Tool, call.Args.ToDictionary(arg => arg.Key, arg => (object?)arg.Value), cancellationToken: mcp.CancellationToken);
+            JsonNode envelope = TerminologyFixture.Json(result);
+            result.IsError.ShouldNotBe(true, $"{JsonSerializer.Serialize(call.Args)} failed: {envelope["issues"]?.ToJsonString()}");
+        }
     }
 
     [Fact]

@@ -272,6 +272,27 @@ public class TerminologyTxServerTests
         ((int)result["next"]!.AsArray().ShouldHaveSingleItem()!["args"]!["offset"]!).ShouldBe(11);
     }
 
+    // Regression: at 596c9c3d the codes of other systems were dropped from the server's page without a trace.
+    [Fact]
+    public async Task GivenAValueSetNotLoadedAndASystem_WhenSearchedByText_ThenCodesOfOtherSystemsAreReportedAsOmittedAndPagingStaysTheServers()
+    {
+        using var folder = new TestFolder();
+        using var store = new TestFolder();
+        (FolderSession session, StubHttpHandler tx) = Open(folder, store, _ => Fhir("""
+            {"resourceType":"ValueSet","url":"http://example.org/vs/mixed","expansion":{"total":7,"offset":0,
+             "contains":[{"system":"http://snomed.info/sct","code":"22298006","display":"Myocardial infarction"},{"system":"http://hl7.org/fhir/sid/icd-10","code":"I21","display":"Acute myocardial infarction"},{"system":"http://hl7.org/fhir/sid/icd-10","code":"I22","display":"Subsequent myocardial infarction"}]}}
+            """));
+
+        JsonNode result = Json(await TermSearch.SearchAsync(session, "myocardial infarction", Snomed, "http://example.org/vs/mixed", 3, 0, CancellationToken.None));
+
+        result["facts"]!["matches"]!.AsArray().Select(match => (string)match!["code"]!).ShouldBe(["22298006"]);
+        ((int)result["facts"]!["total"]!).ShouldBe(7);
+        JsonNode omitted = result["omitted"]!.AsArray().Single(item => (string)item!["why"]! == "system-filter")!;
+        ((string)omitted["what"]!).ShouldStartWith("2 of the 3 codes");
+        ((int)result["next"]!.AsArray().ShouldHaveSingleItem()!["args"]!["offset"]!).ShouldBe(3);
+        tx.Requests.ShouldHaveSingleItem().Query.ShouldBe("?url=http%3A%2F%2Fexample.org%2Fvs%2Fmixed&count=3&offset=0&filter=myocardial%20infarction");
+    }
+
     [Fact]
     public async Task GivenALoadedSystemOrNoSystem_WhenSearchedByText_ThenTheServerIsNotAsked()
     {

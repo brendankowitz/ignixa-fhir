@@ -175,6 +175,7 @@ public class PatientListQueryTests
     [InlineData("urn:other|MRN-1001")]
     [InlineData("urn:mrn|MRN-100")]
     [InlineData("|mrn-1001")]
+    [InlineData("|MRN-1001")]
     public void GivenAnIdentifierTokenOfAnotherSystemOrValue_WhenListed_ThenNobodyMatches(string query)
     {
         using TestFolder folder = Mrns();

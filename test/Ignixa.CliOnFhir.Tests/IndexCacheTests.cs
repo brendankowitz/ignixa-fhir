@@ -515,6 +515,28 @@ public class IndexCacheTests
         untouched.ShouldAllBe(directory => Directory.Exists(directory));
     }
 
+    // Regression: at 596c9c3d any directory under the root named index-v* beyond the three most recent was deleted, so a
+    // custom --cache-dir shared with the user's own directories could lose them.
+    [Fact]
+    public void GivenUserDirectoriesThatLookLikeBuilds_WhenOlderBuildsAreEvicted_ThenOnlyTheToolsOwnBuildsAreDeleted()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        string[] lookAlikes =
+        [
+            PlantBuild(cache, "index-vacation-photos", DateTime.UtcNow.AddDays(-30)),
+            PlantBuild(cache, "index-v15-0123456789AB", DateTime.UtcNow.AddDays(-30)),
+            PlantBuild(cache, "index-v15-0123456789abc", DateTime.UtcNow.AddDays(-30)),
+            PlantUserDirectory(cache, "index-v15-eeeeeeeeeeee", DateTime.UtcNow.AddDays(-30)),
+        ];
+        string[] stale = [.. StaleBuilds.Select(build => PlantBuild(cache, build, DateTime.UtcNow.AddDays(-1)))];
+
+        Open(folder, cache).GetIndex("Patient");
+
+        lookAlikes.ShouldAllBe(directory => Directory.Exists(directory));
+        stale.Count(directory => Directory.Exists(directory)).ShouldBe(FolderIndexCache.KeptBuilds - 1);
+    }
+
     // New at V5: before it one patient's context read the index of every type that can be in a Patient compartment.
     [Fact]
     public void GivenCachedPatientCompartments_WhenANewSessionMapsAPatient_ThenNoIndexIsReadAndTheMapIsTheSame()
@@ -1248,6 +1270,15 @@ public class IndexCacheTests
         string directory = Path.Combine(cache.Path, name);
         Directory.CreateDirectory(Path.Combine(directory, "folder-R4"));
         File.WriteAllText(Path.Combine(directory, "folder-R4", "manifest.json"), "{}");
+        Directory.SetLastWriteTimeUtc(directory, lastUsed);
+        return directory;
+    }
+
+    private static string PlantUserDirectory(TestFolder cache, string name, DateTime lastUsed)
+    {
+        string directory = Path.Combine(cache.Path, name);
+        Directory.CreateDirectory(Path.Combine(directory, "notes"));
+        File.WriteAllText(Path.Combine(directory, "notes", "todo.txt"), "mine");
         Directory.SetLastWriteTimeUtc(directory, lastUsed);
         return directory;
     }

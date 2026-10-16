@@ -22,6 +22,7 @@ namespace Ignixa.CliOnFhir.Tests;
 /// The patient map, <c>patient_context</c> root's default and <c>context --compact</c>. New at V5: before it root returned only
 /// the full digest, so every test here fails there (it does not compile).
 /// </summary>
+[Collection("Console")]
 public class PatientMapTests
 {
     private const string Snomed = "http://snomed.info/sct";

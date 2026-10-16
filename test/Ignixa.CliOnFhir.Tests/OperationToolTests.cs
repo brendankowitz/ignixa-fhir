@@ -71,6 +71,32 @@ public class OperationToolTests
         ((string)envelope["facts"]!["display"]!).ShouldBe("Heart disorder");
     }
 
+    // Regression: at 596c9c3d a flag sent as false counted as given, so lookup refused includeFolderUsage=false.
+    [Fact]
+    public async Task GivenAFlagSentAsFalse_WhenCalledOverMcpForAnOperationThatDoesNotTakeIt_ThenItCountsAsNotGiven()
+    {
+        using var folder = new TestFolder();
+        using var store = new TestFolder();
+        await using InProcessMcp mcp = await InProcessMcp.StartAsync([typeof(TerminologyTools)], OpenWithPackage(folder, store));
+
+        (CallToolResult result, JsonNode envelope) = await CallAsync(mcp, "terminology", "lookup", """{"system":"http://example.org/fhir/CodeSystem/body","code":"heart","includeFolderUsage":false}""");
+
+        result.IsError.ShouldBe(false, envelope["issues"]!.ToJsonString());
+        ((string)envelope["facts"]!["display"]!).ShouldBe("Heart disorder");
+    }
+
+    [Fact]
+    public async Task GivenAFlagSentAsTrue_WhenCalledOverMcpForAnOperationThatDoesNotTakeIt_ThenItFailsNamingIt()
+    {
+        using var folder = new TestFolder();
+        using var store = new TestFolder();
+        await using InProcessMcp mcp = await InProcessMcp.StartAsync([typeof(TerminologyTools)], OpenWithPackage(folder, store));
+
+        (CallToolResult result, JsonNode envelope) = await CallAsync(mcp, "terminology", "lookup", """{"system":"http://example.org/fhir/CodeSystem/body","code":"heart","includeFolderUsage":true}""");
+
+        AssertInvalid(result, envelope, "operation=lookup does not take 'includeFolderUsage'.");
+    }
+
     [Theory]
     [InlineData("root", """{"patientId":"p1"}""", "demographics")]
     [InlineData("expand", """{"patientId":"p1","nodeKey":"problems","count":5}""", "nodeKey")]

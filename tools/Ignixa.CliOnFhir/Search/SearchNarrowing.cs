@@ -19,6 +19,12 @@ internal static class SearchNarrowing
     /// <summary>Fewer remaining matches than this are not worth a count-only suggestion.</summary>
     private const int CountWorthwhile = ResourceSearcher.DefaultCount;
 
+    /// <summary>Query parameters that return or trim resources, which <c>columns</c> and <c>fhirpath</c> replace and so refuse.</summary>
+    private static readonly HashSet<string> ResourceShaping = new(StringComparer.Ordinal) { "_include", "_revinclude", "_elements" };
+
+    /// <summary>Query parameters a call over every match refuses or would be cut by: the resource shaping ones and the page size.</summary>
+    private static readonly HashSet<string> PagingAndResourceShaping = new(ResourceShaping, StringComparer.Ordinal) { "_count" };
+
     /// <summary>Top-level elements that answer most questions about a type: its code, value and date.</summary>
     private static readonly Dictionary<string, string> Elements = new(StringComparer.Ordinal)
     {
@@ -137,13 +143,14 @@ internal static class SearchNarrowing
         {
             Dictionary<string, object> args = new(current.Args, StringComparer.Ordinal) { ["columns"] = AsArgument(columns) };
             args.Remove("elements");
+            SetQuery(args, Without(request.Query, ResourceShaping));
             calls.Add(new NextCall(
                 Tool,
                 args,
                 "this page again as a table of values instead of resources, so many more fit; change the columns to the FHIRPath you need (.resolve() follows a reference)"));
         }
 
-        if (DateParameters.TryGetValue(request.ResourceType, out string? parameter) && request.Query?.Contains(parameter + "=", StringComparison.Ordinal) != true)
+        if (DateParameters.TryGetValue(request.ResourceType, out string? parameter) && !ParameterNames(request.Query).Contains(parameter))
         {
             calls.Add(TruncationCalls.With(
                 current,
@@ -179,7 +186,7 @@ internal static class SearchNarrowing
 
         if (request.PerPatient is null && request.Compartment is null && DateParameters.TryGetValue(request.ResourceType, out string? date))
         {
-            bool sorted = request.Query?.Contains("_sort=", StringComparison.Ordinal) == true;
+            bool sorted = ParameterNames(request.Query).Contains("_sort");
             NextCall perPatient = Call(request with { PerPatient = sorted ? PerPatient.First : PerPatient.Latest }, offset: 0);
             yield return perPatient with
             {
@@ -194,6 +201,7 @@ internal static class SearchNarrowing
             yield return Count(request);
         }
     }
+
     /// <summary>Columns as the tool takes them: an object mapping each name to its FHIRPath, in column order.</summary>
     private static Dictionary<string, string> AsArgument(IReadOnlyList<SearchColumn> columns)
     {
@@ -213,14 +221,14 @@ internal static class SearchNarrowing
         return new NextCall(Tool, args, request.PerPatient is null ? "only the number of matches, no resources" : "only the number of patients, no resources");
     }
 
-    /// <summary>The arguments that choose the matches (type, query, compartment, perPatient, lenient), without paging or projection.</summary>
+    /// <summary>
+    /// The arguments that choose the matches (type, query, compartment, perPatient, lenient), without paging or projection:
+    /// the query loses <c>_count</c>, <c>_include</c>, <c>_revinclude</c> and <c>_elements</c>, which a call over every match refuses.
+    /// </summary>
     private static Dictionary<string, object> Whole(SearchRequest request)
     {
         Dictionary<string, object> args = new(StringComparer.Ordinal) { ["resourceType"] = request.ResourceType };
-        if (!string.IsNullOrEmpty(request.Query))
-        {
-            args["query"] = request.Query;
-        }
+        SetQuery(args, Without(request.Query, PagingAndResourceShaping));
 
         if (request.Compartment is not null)
         {
@@ -238,5 +246,33 @@ internal static class SearchNarrowing
         }
 
         return args;
+    }
+
+    private static void SetQuery(Dictionary<string, object> args, string? query)
+    {
+        if (string.IsNullOrEmpty(query))
+        {
+            args.Remove("query");
+        }
+        else
+        {
+            args["query"] = query;
+        }
+    }
+
+    /// <summary>The query without the parameters named in <paramref name="names"/>, whatever their modifiers.</summary>
+    private static string? Without(string? query, HashSet<string> names) =>
+        query is null ? null : string.Join('&', Segments(query).Where(segment => !names.Contains(NameOf(segment))));
+
+    /// <summary>The names of the parameters in the query, without modifiers or chains.</summary>
+    private static HashSet<string> ParameterNames(string? query) => [.. Segments(query).Select(NameOf)];
+
+    private static IEnumerable<string> Segments(string? query) => (query ?? string.Empty).TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries);
+
+    private static string NameOf(string segment)
+    {
+        string name = segment.Split('=', 2)[0];
+        int end = name.IndexOfAny([':', '.']);
+        return end < 0 ? name : name[..end];
     }
 }

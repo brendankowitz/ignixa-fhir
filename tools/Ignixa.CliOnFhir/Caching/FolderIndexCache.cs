@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Ignixa.Abstractions;
 using Ignixa.CliOnFhir.Catalog;
 using Ignixa.CliOnFhir.Contracts;
@@ -34,7 +35,7 @@ namespace Ignixa.CliOnFhir.Caching;
 /// a temporary file that is then moved into place, so concurrent processes can only replace each other's
 /// complete files. Thread-safe.
 /// </remarks>
-internal sealed class FolderIndexCache
+internal sealed partial class FolderIndexCache
 {
     public const string RebuiltCode = "index-cache-rebuilt";
     public const string CorruptCode = "index-cache-corrupt";
@@ -484,8 +485,9 @@ internal sealed class FolderIndexCache
         }
     }
 
-    // Least recently used first out, by the time each session marks its build directory. Links are never followed or deleted:
-    // only real directories this layout names are candidates.
+    // Least recently used first out, by the time each session marks its build directory. The root may be a directory the user
+    // chose and shares with other content, so links are never followed or deleted and a candidate must be a real directory
+    // named exactly as CacheManifest.CurrentBuildKey names one and holding a folder cache with this tool's manifest.
     private void EvictOtherBuilds(string buildDirectory)
     {
         string root = Path.GetDirectoryName(buildDirectory)!;
@@ -494,6 +496,8 @@ internal sealed class FolderIndexCache
             List<DirectoryInfo> others = [.. new DirectoryInfo(root)
                 .EnumerateDirectories(BuildDirectoryPrefix + "v*")
                 .Where(directory => !directory.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                .Where(directory => BuildDirectoryName().IsMatch(directory.Name))
+                .Where(HoldsFolderCache)
                 .Where(directory => !string.Equals(directory.FullName, buildDirectory, StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(directory => directory.LastWriteTimeUtc)
                 .Skip(KeptBuilds - 1)];
@@ -507,6 +511,13 @@ internal sealed class FolderIndexCache
             AddIssue("information", EvictionCode, $"Index caches of other builds under '{root}' could not all be removed: {Describe(ex)}. The current cache is unaffected.");
         }
     }
+
+    private static bool HoldsFolderCache(DirectoryInfo build) =>
+        build.EnumerateDirectories()
+            .Any(folder => !folder.Attributes.HasFlag(FileAttributes.ReparsePoint) && File.Exists(Path.Combine(folder.FullName, ManifestFileName)));
+
+    [GeneratedRegex("^index-v[0-9]+-[0-9a-f]{12}$", RegexOptions.CultureInvariant)]
+    private static partial Regex BuildDirectoryName();
 
     private byte[]? ReadStoredManifest(string manifestPath)
     {

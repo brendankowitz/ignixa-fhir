@@ -109,10 +109,13 @@ internal static class ToolArguments
             : Invalid($"operation={chosen.Name} does not take {Quote(foreign)}. It takes {chosen.Signature}.");
     }
 
-    /// <summary>The names of the arguments that have a value: not null, and for text not blank.</summary>
+    /// <summary>
+    /// The names of the arguments that have a value: not null, for text not blank, and for a flag not false, since a flag
+    /// sent as false asks for nothing more than leaving it out does.
+    /// </summary>
     public static IEnumerable<string> Given(params (string Name, object? Value)[] arguments) =>
         arguments
-            .Where(argument => argument.Value switch { null => false, string text => !string.IsNullOrWhiteSpace(text), _ => true })
+            .Where(argument => argument.Value switch { null or false => false, string text => !string.IsNullOrWhiteSpace(text), _ => true })
             .Select(argument => argument.Name);
 
     private static IssueItem Invalid(string problem) => new("error", "invalid-parameter", problem, Location: null);

@@ -483,14 +483,9 @@ public class DrugClassTests
     }
 
     // Live smoke test against NLM RxNav; runs only with CLI_ON_FHIR_LIVE_RXCLASS=1 so the default run never uses the network.
-    [Fact]
+    [LiveRxClassFact]
     public async Task GivenTheLiveRxClassServer_WhenEnabled_ThenMetoprololIsASelectiveBetaBlocker()
     {
-        if (Environment.GetEnvironmentVariable("CLI_ON_FHIR_LIVE_RXCLASS") != "1")
-        {
-            return;
-        }
-
         using TestFolder folder = Folder();
         using var client = new RxClassClient(new Uri("https://rxnav.nlm.nih.gov/REST"), cacheDirectory: null);
         FolderSession session = TerminologyFixture.Open(folder, new TerminologyOptions { RxClass = client });
@@ -500,5 +495,16 @@ public class DrugClassTests
 
         Codes(classes, "classes", "classId").ShouldContain("C07AB");
         Codes(members, "members", "rxcui").ShouldContain("866412");
+    }
+
+    private sealed class LiveRxClassFactAttribute : FactAttribute
+    {
+        public LiveRxClassFactAttribute()
+        {
+            if (Environment.GetEnvironmentVariable("CLI_ON_FHIR_LIVE_RXCLASS") != "1")
+            {
+                Skip = "Calls NLM RxNav over the network; set CLI_ON_FHIR_LIVE_RXCLASS=1 to run it.";
+            }
+        }
     }
 }
