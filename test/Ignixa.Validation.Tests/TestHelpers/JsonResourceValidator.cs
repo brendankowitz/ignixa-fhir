@@ -22,6 +22,25 @@ internal static class JsonResourceValidator
     private static readonly Lazy<ProfileAwareValidationSchemaResolver> Core = new(() =>
         new ProfileAwareValidationSchemaResolver(new CachedValidationSchemaResolver(new StructureDefinitionSchemaResolver(TestSchemaProvider.GetR4Schema()))));
 
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, (Ignixa.Abstractions.ISchema Schema, ProfileAwareValidationSchemaResolver Resolver)> Versions = new();
+
+    /// <summary>
+    /// Validates <paramref name="json"/> at <paramref name="depth"/> against the core definitions of the FHIR version
+    /// <typeparamref name="TProvider"/> generates (for example <c>STU3CoreSchemaProvider</c>).
+    /// </summary>
+    public static ValidationResult Validate<TProvider>(string json, ValidationDepth depth)
+        where TProvider : Ignixa.Abstractions.ISchema, new()
+    {
+        var (schema, resolver) = Versions.GetOrAdd(typeof(TProvider), _ =>
+        {
+            var provider = new TProvider();
+            return (provider, new ProfileAwareValidationSchemaResolver(new CachedValidationSchemaResolver(new StructureDefinitionSchemaResolver(provider))));
+        });
+        var element = JsonNodeSourceNode.Create(JsonNode.Parse(json)!).ToElement(schema);
+        var resourceSchema = resolver.ResolveForElement(element) ?? throw new InvalidOperationException("The resource has no schema.");
+        return resourceSchema.Validate(element, new ValidationSettings { Depth = depth });
+    }
+
     /// <summary>Validates <paramref name="json"/> at <paramref name="depth"/> against the core definitions.</summary>
     public static ValidationResult Validate(string json, ValidationDepth depth) =>
         Validate(json, new ValidationSettings { Depth = depth }, Core.Value);

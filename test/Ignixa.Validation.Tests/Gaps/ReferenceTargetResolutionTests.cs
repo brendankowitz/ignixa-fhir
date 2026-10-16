@@ -51,6 +51,31 @@ public class ReferenceTargetResolutionTests
         result.Issues.ShouldNotContain(i => i.Code.StartsWith("reference-", StringComparison.Ordinal));
     }
 
+    // Regression: at 758e490 a CodeableReference allowed only its first target type (codegen kept the first targetProfile),
+    // so a conformant R5 reason referencing an Observation or a DocumentReference was rejected at Spec.
+    [Theory]
+    [InlineData("""{"resourceType":"MedicationRequest","id":"m1","status":"active","intent":"order","medication":{"concept":{"text":"x"}},"subject":{"reference":"Patient/1"},"reason":[{"reference":{"reference":"Observation/1"}}]}""")]
+    [InlineData("""{"resourceType":"Procedure","id":"pr1","status":"completed","subject":{"reference":"Patient/1"},"reason":[{"reference":{"reference":"DocumentReference/1"}}]}""")]
+    public void GivenAnR5CodeableReferenceToANonFirstAllowedType_WhenValidatedAtSpec_ThenItIsAccepted(string json)
+    {
+        var result = ValidateR5(json);
+
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldNotContain(i => i.Code.StartsWith("reference-", StringComparison.Ordinal));
+    }
+
+    // Regression: at 758e490 the same held in R4B (MedicinalProductDefinition.operation.type allows ActivityDefinition and
+    // PlanDefinition).
+    [Fact]
+    public void GivenAnR4BCodeableReferenceToANonFirstAllowedType_WhenValidatedAtSpec_ThenItIsAccepted()
+    {
+        var result = JsonResourceValidator.Validate<Ignixa.Specification.Generated.R4BCoreSchemaProvider>("""
+            {"resourceType":"MedicinalProductDefinition","id":"m","name":[{"productName":"x"}],"operation":[{"type":{"reference":{"reference":"PlanDefinition/1"}}}]}
+            """, ValidationDepth.Spec);
+
+        result.Issues.ShouldNotContain(i => i.Code.StartsWith("reference-", StringComparison.Ordinal));
+    }
+
     // Regression: at b0f34da '#' at the root, the resource itself, was not told, so an Observation as its own subject passed.
     [Fact]
     public void GivenARootReferenceToItself_WhenTheElementDoesNotAllowItsType_ThenItIsAnError()

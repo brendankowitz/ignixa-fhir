@@ -63,6 +63,36 @@ public sealed class CoreSnapshotProjectionTests
         ], ignoreOrder: true);
     }
 
+    // Regression: at 758e490 an R5 profile not touching a CodeableReference kept its first target only (the core metadata
+    // carried no full target list for a CodeableReference).
+    [Fact]
+    public void GivenAnR5DifferentialOnlyProfileNotConstrainingACodeableReference_WhenLayeredOverCore_ThenItKeepsEveryCoreTarget()
+    {
+        var provider = new ProfileLayeredSchemaProvider(new R5CoreSchemaProvider(),
+        [
+            new ExtractedResource
+            {
+                ResourceType = "StructureDefinition",
+                Canonical = "http://example.org/fhir/StructureDefinition/mr-min",
+                ResourceId = "mr-min",
+                FhirVersion = "5.0.0",
+                ResourceJson = """
+                    {"resourceType":"StructureDefinition","id":"mr-min","url":"http://example.org/fhir/StructureDefinition/mr-min","name":"MrMin","status":"active","fhirVersion":"5.0.0",
+                     "kind":"resource","abstract":false,"type":"MedicationRequest","baseDefinition":"http://hl7.org/fhir/StructureDefinition/MedicationRequest","derivation":"constraint",
+                     "differential":{"element":[{"id":"MedicationRequest.note","path":"MedicationRequest.note","short":"x"}]}}
+                    """,
+            },
+        ]);
+
+        var reason = (ITypeExtended)provider.GetTypeDefinition("http://example.org/fhir/StructureDefinition/mr-min")!.Children.Single(child => child.Info.Name == "reason");
+
+        reason.Types.Select(type => type.TargetProfile).ShouldBe(
+        [
+            "http://hl7.org/fhir/StructureDefinition/Condition",
+            "http://hl7.org/fhir/StructureDefinition/Observation",
+        ], ignoreOrder: true);
+    }
+
     private static ProfileLayeredSchemaProvider Layer(string id, string canonical, string json) =>
         new(new R4CoreSchemaProvider(), [new ExtractedResource { ResourceType = "StructureDefinition", Canonical = canonical, ResourceId = id, ResourceJson = json, FhirVersion = "4.0.1" }]);
 }

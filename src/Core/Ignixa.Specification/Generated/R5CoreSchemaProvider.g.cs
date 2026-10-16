@@ -21233,7 +21233,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -21607,7 +21607,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Procedure", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Procedure" },
                 contentReference: null,
                 slicing: null
             ),
@@ -22965,7 +22965,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Location", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Location" },
                 contentReference: null,
                 slicing: null
             ),
@@ -28272,7 +28272,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Observation", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Observation" },
                 contentReference: null,
                 slicing: null
             ),
@@ -28862,7 +28862,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/HealthcareService", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "HealthcareService" },
                 contentReference: null,
                 slicing: null
             ),
@@ -28934,7 +28934,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition", "Procedure", "Observation", "ImmunizationRecommendation" },
                 contentReference: null,
                 slicing: null
             ),
@@ -29342,7 +29342,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/DocumentReference", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "DocumentReference", "Binary", "Communication" },
                 contentReference: null,
                 slicing: null
             ),
@@ -37085,7 +37085,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Device", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Device" },
                 contentReference: null,
                 slicing: null
             ),
@@ -42430,7 +42430,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -42629,7 +42629,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Resource", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Resource" },
                 contentReference: null,
                 slicing: null
             ),
@@ -43068,7 +43068,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -44042,7 +44042,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/DiagnosticReport", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "DiagnosticReport", "ImagingStudy", "Immunization", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "Observation", "Procedure", "ServiceRequest", "SupplyDelivery" },
                 contentReference: null,
                 slicing: null
             ),
@@ -44066,7 +44066,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Device", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Device", "Medication", "Substance" },
                 contentReference: null,
                 slicing: null
             ),
@@ -52467,7 +52467,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/BodyStructure", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "BodyStructure" },
                 contentReference: null,
                 slicing: null
             ),
@@ -55794,7 +55794,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/BodyStructure", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "BodyStructure" },
                 contentReference: null,
                 slicing: null
             ),
@@ -59427,7 +59427,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition", "Observation", "DocumentReference" },
                 contentReference: null,
                 slicing: null
             ),
@@ -60041,7 +60041,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/ObservationDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "ObservationDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -60065,7 +60065,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/ObservationDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "ObservationDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -60089,7 +60089,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/ObservationDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "ObservationDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -60288,7 +60288,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/MedicinalProductDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "MedicinalProductDefinition", "Medication", "Substance", "SubstanceDefinition", "NutritionProduct", "BiologicallyDerivedProduct", "ActivityDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -60391,7 +60391,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/ObservationDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "ObservationDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -60415,7 +60415,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/ObservationDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "ObservationDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -60439,7 +60439,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/ObservationDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "ObservationDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -60463,7 +60463,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/ObservationDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "ObservationDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -60710,7 +60710,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/ObservationDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "ObservationDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -60964,7 +60964,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/ObservationDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "ObservationDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -64240,7 +64240,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Resource", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Resource" },
                 contentReference: null,
                 slicing: null
             ),
@@ -65094,7 +65094,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Resource", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Resource" },
                 contentReference: null,
                 slicing: null
             ),
@@ -66936,7 +66936,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Resource", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Resource" },
                 contentReference: null,
                 slicing: null
             ),
@@ -70253,7 +70253,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Resource", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Resource" },
                 contentReference: null,
                 slicing: null
             ),
@@ -76469,7 +76469,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition", "Observation", "DiagnosticReport", "DocumentReference", "Questionnaire", "QuestionnaireResponse" },
                 contentReference: null,
                 slicing: null
             ),
@@ -85221,7 +85221,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/DeviceDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "DeviceDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -85845,7 +85845,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Device", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Device" },
                 contentReference: null,
                 slicing: null
             ),
@@ -88236,7 +88236,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/ChargeItemDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "ChargeItemDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -89389,7 +89389,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/DeviceDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "DeviceDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -90964,7 +90964,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/DetectedIssue", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "DetectedIssue" },
                 contentReference: null,
                 slicing: null
             ),
@@ -91012,7 +91012,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Device", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Device", "DeviceDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -92504,7 +92504,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Device", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Device", "DeviceDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -92696,7 +92696,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Practitioner", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Practitioner", "PractitionerRole", "Organization", "CareTeam", "HealthcareService", "Patient", "Device", "RelatedPerson" },
                 contentReference: null,
                 slicing: null
             ),
@@ -92720,7 +92720,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition", "Observation", "DiagnosticReport", "DocumentReference" },
                 contentReference: null,
                 slicing: null
             ),
@@ -93526,7 +93526,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Device", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Device", "DeviceDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -93550,7 +93550,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition", "Observation", "DiagnosticReport", "DocumentReference", "Procedure" },
                 contentReference: null,
                 slicing: null
             ),
@@ -93574,7 +93574,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/BodyStructure", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "BodyStructure" },
                 contentReference: null,
                 slicing: null
             ),
@@ -95344,7 +95344,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/BodyStructure", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "BodyStructure" },
                 contentReference: null,
                 slicing: null
             ),
@@ -99756,7 +99756,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/HealthcareService", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "HealthcareService" },
                 contentReference: null,
                 slicing: null
             ),
@@ -100610,7 +100610,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -101087,7 +101087,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition", "DiagnosticReport", "Observation", "ImmunizationRecommendation", "Procedure" },
                 contentReference: null,
                 slicing: null
             ),
@@ -101430,7 +101430,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/HealthcareService", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "HealthcareService" },
                 contentReference: null,
                 slicing: null
             ),
@@ -103711,7 +103711,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -103862,7 +103862,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition", "Procedure", "Observation", "HealthcareService" },
                 contentReference: null,
                 slicing: null
             ),
@@ -115651,7 +115651,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/BodyStructure", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "BodyStructure" },
                 contentReference: null,
                 slicing: null
             ),
@@ -118632,7 +118632,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/BodyStructure", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "BodyStructure" },
                 contentReference: null,
                 slicing: null
             ),
@@ -122162,7 +122162,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition", "Observation", "AllergyIntolerance", "QuestionnaireResponse", "DiagnosticReport", "DocumentReference" },
                 contentReference: null,
                 slicing: null
             ),
@@ -123860,7 +123860,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition", "Observation" },
                 contentReference: null,
                 slicing: null
             ),
@@ -125606,7 +125606,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Observation", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Observation" },
                 contentReference: null,
                 slicing: null
             ),
@@ -130367,7 +130367,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/BodyStructure", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "BodyStructure" },
                 contentReference: null,
                 slicing: null
             ),
@@ -131530,7 +131530,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/PlanDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "PlanDefinition", "ActivityDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -131578,7 +131578,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition", "Observation", "DiagnosticReport", "DocumentReference" },
                 contentReference: null,
                 slicing: null
             ),
@@ -131897,7 +131897,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/BodyStructure", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "BodyStructure" },
                 contentReference: null,
                 slicing: null
             ),
@@ -132662,7 +132662,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Medication", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Medication" },
                 contentReference: null,
                 slicing: null
             ),
@@ -132686,7 +132686,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Organization", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Organization" },
                 contentReference: null,
                 slicing: null
             ),
@@ -132878,7 +132878,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Patient", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Patient", "Practitioner", "PractitionerRole", "RelatedPerson", "Organization" },
                 contentReference: null,
                 slicing: null
             ),
@@ -133046,7 +133046,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition", "Observation", "DiagnosticReport" },
                 contentReference: null,
                 slicing: null
             ),
@@ -133770,7 +133770,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Observation", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Observation" },
                 contentReference: null,
                 slicing: null
             ),
@@ -138439,7 +138439,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/SubstanceDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "SubstanceDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -138837,7 +138837,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/SubstanceDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "SubstanceDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -143119,7 +143119,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Medication", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Medication", "Device", "NutritionProduct", "InventoryItem", "BiologicallyDerivedProduct" },
                 contentReference: null,
                 slicing: null
             ),
@@ -147746,7 +147746,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Ingredient", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Ingredient" },
                 contentReference: null,
                 slicing: null
             ),
@@ -153214,7 +153214,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Substance", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Substance", "Medication" },
                 contentReference: null,
                 slicing: null
             ),
@@ -153629,7 +153629,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Medication", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Medication" },
                 contentReference: null,
                 slicing: null
             ),
@@ -153845,7 +153845,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition", "Observation", "DiagnosticReport" },
                 contentReference: null,
                 slicing: null
             ),
@@ -153893,7 +153893,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Device", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Device" },
                 contentReference: null,
                 slicing: null
             ),
@@ -154315,7 +154315,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Practitioner", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Practitioner", "PractitionerRole", "Patient", "RelatedPerson", "Device" },
                 contentReference: null,
                 slicing: null
             ),
@@ -154634,7 +154634,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/DetectedIssue", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "DetectedIssue" },
                 contentReference: null,
                 slicing: null
             ),
@@ -154706,7 +154706,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Medication", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Medication" },
                 contentReference: null,
                 slicing: null
             ),
@@ -156747,7 +156747,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Substance", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Substance" },
                 contentReference: null,
                 slicing: null
             ),
@@ -156898,7 +156898,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/ClinicalUseDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "ClinicalUseDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -159228,7 +159228,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Medication", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Medication" },
                 contentReference: null,
                 slicing: null
             ),
@@ -159468,7 +159468,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/DeviceDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "DeviceDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -159516,7 +159516,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition", "Observation" },
                 contentReference: null,
                 slicing: null
             ),
@@ -160600,7 +160600,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Medication", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Medication" },
                 contentReference: null,
                 slicing: null
             ),
@@ -160768,7 +160768,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition", "Observation", "DiagnosticReport" },
                 contentReference: null,
                 slicing: null
             ),
@@ -161694,7 +161694,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/SubstanceDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "SubstanceDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -162267,7 +162267,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/MedicinalProductDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "MedicinalProductDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -162847,7 +162847,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/ActivityDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "ActivityDefinition", "PlanDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -168445,7 +168445,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition", "Observation", "DiagnosticReport", "DocumentReference" },
                 contentReference: null,
                 slicing: null
             ),
@@ -168596,7 +168596,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/NutritionProduct", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "NutritionProduct" },
                 contentReference: null,
                 slicing: null
             ),
@@ -168819,7 +168819,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Substance", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Substance" },
                 contentReference: null,
                 slicing: null
             ),
@@ -169529,7 +169529,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/CareTeam", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "CareTeam", "Practitioner", "PractitionerRole", "RelatedPerson", "Patient", "Organization" },
                 contentReference: null,
                 slicing: null
             ),
@@ -169824,7 +169824,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/NutritionProduct", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "NutritionProduct" },
                 contentReference: null,
                 slicing: null
             ),
@@ -169872,7 +169872,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/DeviceDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "DeviceDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -170119,7 +170119,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/NutritionProduct", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "NutritionProduct" },
                 contentReference: null,
                 slicing: null
             ),
@@ -171200,7 +171200,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/NutritionProduct", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "NutritionProduct" },
                 contentReference: null,
                 slicing: null
             ),
@@ -171814,7 +171814,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Substance", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Substance" },
                 contentReference: null,
                 slicing: null
             ),
@@ -172116,7 +172116,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/NutritionProduct", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "NutritionProduct" },
                 contentReference: null,
                 slicing: null
             ),
@@ -172490,7 +172490,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Substance", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Substance" },
                 contentReference: null,
                 slicing: null
             ),
@@ -180036,7 +180036,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/ManufacturedItemDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "ManufacturedItemDefinition", "DeviceDefinition", "PackagedProductDefinition", "BiologicallyDerivedProduct", "NutritionProduct" },
                 contentReference: null,
                 slicing: null
             ),
@@ -187236,7 +187236,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Location", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Location" },
                 contentReference: null,
                 slicing: null
             ),
@@ -191267,7 +191267,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition", "Observation", "Procedure", "DiagnosticReport", "DocumentReference" },
                 contentReference: null,
                 slicing: null
             ),
@@ -191363,7 +191363,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -191459,7 +191459,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Device", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Device", "Medication", "Substance", "BiologicallyDerivedProduct" },
                 contentReference: null,
                 slicing: null
             ),
@@ -196303,7 +196303,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/ClinicalUseDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "ClinicalUseDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -198114,7 +198114,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition", "Observation", "DiagnosticReport", "DocumentReference" },
                 contentReference: null,
                 slicing: null
             ),
@@ -198625,7 +198625,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Location", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Location" },
                 contentReference: null,
                 slicing: null
             ),
@@ -201448,7 +201448,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Medication", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Medication", "MedicinalProductDefinition", "SubstanceDefinition", "EvidenceVariable" },
                 contentReference: null,
                 slicing: null
             ),
@@ -204285,7 +204285,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition", "Observation", "DiagnosticReport", "DocumentReference" },
                 contentReference: null,
                 slicing: null
             ),
@@ -205194,7 +205194,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/HealthcareService", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "HealthcareService" },
                 contentReference: null,
                 slicing: null
             ),
@@ -206871,7 +206871,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/ActivityDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "ActivityDefinition", "PlanDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -207159,7 +207159,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Location", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Location" },
                 contentReference: null,
                 slicing: null
             ),
@@ -207183,7 +207183,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition", "Observation", "DiagnosticReport", "DocumentReference", "DetectedIssue" },
                 contentReference: null,
                 slicing: null
             ),
@@ -207231,7 +207231,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Resource", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Resource" },
                 contentReference: null,
                 slicing: null
             ),
@@ -207478,7 +207478,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Device", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Device", "DeviceDefinition", "DeviceRequest", "SupplyRequest", "Medication", "MedicationRequest", "BiologicallyDerivedProduct", "Substance" },
                 contentReference: null,
                 slicing: null
             ),
@@ -208226,7 +208226,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/HealthcareService", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "HealthcareService" },
                 contentReference: null,
                 slicing: null
             ),
@@ -209224,7 +209224,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Device", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Device" },
                 contentReference: null,
                 slicing: null
             ),
@@ -209272,7 +209272,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/BodyStructure", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "BodyStructure" },
                 contentReference: null,
                 slicing: null
             ),
@@ -218932,7 +218932,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/SubstanceDefinition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "SubstanceDefinition" },
                 contentReference: null,
                 slicing: null
             ),
@@ -228452,7 +228452,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Medication", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Medication", "Substance", "Device", "DeviceDefinition", "BiologicallyDerivedProduct", "NutritionProduct", "InventoryItem" },
                 contentReference: null,
                 slicing: null
             ),
@@ -228620,7 +228620,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Condition", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Condition", "Observation", "DiagnosticReport", "DocumentReference" },
                 contentReference: null,
                 slicing: null
             ),
@@ -229546,7 +229546,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Practitioner", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Practitioner", "PractitionerRole", "Organization", "CareTeam", "HealthcareService", "Patient", "Device", "RelatedPerson" },
                 contentReference: null,
                 slicing: null
             ),
@@ -242065,7 +242065,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_CodeableReference, null, "http://hl7.org/fhir/StructureDefinition/Resource", null, null) },
                 defaultTypeName: Constants.Str_CodeableReference,
-                referenceTargets: null,
+                referenceTargets: new[] { "Resource" },
                 contentReference: null,
                 slicing: null
             ),

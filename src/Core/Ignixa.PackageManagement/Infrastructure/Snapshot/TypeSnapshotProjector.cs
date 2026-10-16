@@ -91,7 +91,7 @@ internal static class TypeSnapshotProjector
 
     /// <summary>
     /// One <c>type</c> entry per type code, carrying every profile and target profile the metadata gives it. Generated core
-    /// metadata states a Reference's targets in full only in <paramref name="referenceTargets"/> (resource type names), with
+    /// metadata states a Reference's (and a CodeableReference's) targets in full only in <paramref name="referenceTargets"/> (resource type names), with
     /// the first target alone in <paramref name="types"/>, so those names are added as core canonicals: a profile that does not
     /// constrain the element must keep every target its base allows.
     /// </summary>
@@ -108,7 +108,7 @@ internal static class TypeSnapshotProjector
             }
 
             IEnumerable<string> targets = group.Select(typeReference => typeReference.TargetProfile).OfType<string>();
-            if (group.Key == "Reference")
+            if (group.Key is "Reference" or "CodeableReference")
             {
                 targets = targets.Concat(referenceTargets.Select(target => CorePrefix + target));
             }
