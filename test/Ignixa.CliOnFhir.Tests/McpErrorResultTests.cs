@@ -15,7 +15,8 @@ namespace Ignixa.CliOnFhir.Tests;
 /// A failed call reaches an MCP client as an error result whose text is the whole envelope, with the issue that explains it.
 /// Guard, not regression: the V8 benchmark logged two perPatient calls with count 200 as 2-byte results, and these exact calls
 /// pass at 365d1acd too. The server sent the envelope with isError; Copilot puts an error result's text in
-/// <c>error.message</c> and leaves <c>result.content</c> empty, which the byte count read as <c>""</c>.
+/// <c>error.message</c> and leaves <c>result.content</c> empty, which the byte count read as <c>""</c>. Since V14 both
+/// benchmark calls are answered (ADR 2610's lenient rules), so the error result is checked on calls that still fail.
 /// </summary>
 public class McpErrorResultTests
 {
@@ -26,10 +27,9 @@ public class McpErrorResultTests
         {"resourceType":"Observation","id":"o1","status":"final","code":{"coding":[{"system":"http://loinc.org","code":"18262-6"}]},"subject":{"reference":"Patient/p1"},"effectiveDateTime":"2025-01-01","valueQuantity":{"value":120}}
         """);
 
-    public static TheoryData<string, Dictionary<string, object?>> FailedBenchmarkCalls => new()
+    public static TheoryData<Dictionary<string, object?>> FailedBenchmarkCalls => new()
     {
         {
-            "invalid-parameter",
             new Dictionary<string, object?>
             {
                 ["resourceType"] = "Observation",
@@ -41,7 +41,6 @@ public class McpErrorResultTests
             }
         },
         {
-            "invalid-parameter",
             new Dictionary<string, object?>
             {
                 ["resourceType"] = "Observation",
@@ -55,9 +54,47 @@ public class McpErrorResultTests
         },
     };
 
+    public static TheoryData<Dictionary<string, object?>> RefusedCalls => new()
+    {
+        {
+            new Dictionary<string, object?>
+            {
+                ["resourceType"] = "Observation",
+                ["query"] = Ldl,
+                ["perPatient"] = "first",
+                ["columns"] = new Dictionary<string, string> { ["p"] = "subject.reference" },
+            }
+        },
+        {
+            new Dictionary<string, object?>
+            {
+                ["resourceType"] = "Observation",
+                ["query"] = Ldl,
+                ["summary"] = "count",
+                ["columns"] = new Dictionary<string, string> { ["p"] = "subject.reference" },
+            }
+        },
+    };
+
+    // Regression: at V13 (c9cb6c0a) both returned an invalid-parameter error result.
     [Theory]
     [MemberData(nameof(FailedBenchmarkCalls))]
-    public async Task GivenACallTheToolRefuses_WhenCalledOverMcp_ThenTheErrorResultCarriesTheEnvelopeWithItsIssue(string code, Dictionary<string, object?> arguments)
+    public async Task GivenACallTheBenchmarkSawRefused_WhenCalledOverMcp_ThenItIsAnsweredWithAnAdjustedWarning(Dictionary<string, object?> arguments)
+    {
+        using TestFolder folder = Labs();
+        await using InProcessMcp mcp = await InProcessMcp.StartAsync([typeof(ResourceTools)], Open(folder));
+
+        CallToolResult result = await mcp.Client.CallToolAsync("search_fhir_resources", arguments, cancellationToken: mcp.CancellationToken);
+
+        result.IsError.ShouldNotBe(true);
+        JsonNode envelope = JsonNode.Parse(result.Content.OfType<TextContentBlock>().ShouldHaveSingleItem().Text)!;
+        envelope["facts"]!["rows"]!.AsArray().Count.ShouldBe(1);
+        ((string)envelope["issues"]![0]!["code"]!).ShouldBe("argument-adjusted");
+    }
+
+    [Theory]
+    [MemberData(nameof(RefusedCalls))]
+    public async Task GivenACallTheToolRefuses_WhenCalledOverMcp_ThenTheErrorResultCarriesTheEnvelopeWithItsIssue(Dictionary<string, object?> arguments)
     {
         using TestFolder folder = Labs();
         await using InProcessMcp mcp = await InProcessMcp.StartAsync([typeof(ResourceTools)], Open(folder));
@@ -70,7 +107,7 @@ public class McpErrorResultTests
         envelope["facts"].ShouldBeNull();
         JsonNode issue = envelope["issues"]!.AsArray().ShouldHaveSingleItem()!;
         ((string)issue["severity"]!).ShouldBe("error");
-        ((string)issue["code"]!).ShouldBe(code);
+        ((string)issue["code"]!).ShouldBe("invalid-parameter");
         ((string)issue["diagnostics"]!).Length.ShouldBeGreaterThan(20);
     }
 

@@ -261,11 +261,12 @@ internal static class SearchNarrowing
     }
 
     /// <summary>The query without the parameters named in <paramref name="names"/>, whatever their modifiers.</summary>
-    private static string? Without(string? query, HashSet<string> names) =>
+    /// <summary>The query without the parameters named <paramref name="names"/> (with any modifier or chain).</summary>
+    internal static string? Without(string? query, IReadOnlySet<string> names) =>
         query is null ? null : string.Join('&', Segments(query).Where(segment => !names.Contains(NameOf(segment))));
 
     /// <summary>The names of the parameters in the query, without modifiers or chains.</summary>
-    private static HashSet<string> ParameterNames(string? query) => [.. Segments(query).Select(NameOf)];
+    internal static HashSet<string> ParameterNames(string? query) => [.. Segments(query).Select(NameOf)];
 
     private static IEnumerable<string> Segments(string? query) => (query ?? string.Empty).TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries);
 

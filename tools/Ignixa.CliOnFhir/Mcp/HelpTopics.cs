@@ -39,7 +39,7 @@ internal static class HelpTopics
             - .resolve() reaches any resource the folder holds, following urn:uuid and conditional references (Practitioner?identifier=...) as a chain or _include would, so _include is not needed. A reference it cannot find yields nothing, with a resolve-target-absent issue.
             - A cell is null when the path yields nothing, the value when it yields one (a CodeableConcept or Quantity as JSON), an array when it yields several; first(), where(...) and [n] pick one. facts.emptyCells counts null cells per column; a column null in every row is a column-empty warning, usually a misspelt path.
             - Medication list for either shape: {"date":"authoredOn","drug":"(medication.ofType(CodeableConcept) | medication.ofType(Reference).resolve().code).coding.first().display","prescriber":"requester.resolve().name.first().family"}
-            - Pages default to 50 rows (count, maximum 200). Not with elements, summary=count, _include/_revinclude or fhirpath. At most 20 columns; 'ref' is reserved. A path that does not parse or evaluate fails as invalid-parameter.
+            - Pages default to 50 rows (count, maximum 200). Not with summary=count or _include/_revinclude; elements and _elements are ignored, and so is fhirpath, each with an argument-adjusted warning. At most 20 columns; a column named 'ref' (the key column) is renamed ref_1. A path that does not parse or evaluate fails as invalid-parameter.
             """,
         ["fhirpath"] = """
             fhirpath: one FHIRPath evaluated over a searchset Bundle holding every match in result order (_sort, else catalog order) as entry.resource; the result is facts.value (always an array).
@@ -101,6 +101,7 @@ internal static class HelpTopics
             - too-many-matches: fhirpath over more than 5,000 matches, patientSearch past its work limits (help topic=patient_search), or patient_cohort past 50,000 resources read.
             - unknown-search-parameter, search-not-supported, invalid-search-request, digest-not-supported: the query was not run.
             - parameter-ignored: that parameter did NOT apply (only _format, _pretty, _summary other than count and similar, or any name with lenient).
+            - argument-adjusted: arguments that conflict in a clear way were fixed and the call answered: elements beside columns ignored, a column 'ref' renamed, _sort beside perPatient=latest or earliest dropped, fhirpath beside columns ignored, paging beside fhirpath ignored.
             - column-empty: a column's path matched nothing in any row. resolve-target-absent: resolve() found no target.
             - compartment-excludes-type, compartment-resource-absent, include-not-applicable: the scope matched less than it looks.
             - references-unresolved, unresolved-bundle-reference: references that were not followed (see help topic=references).

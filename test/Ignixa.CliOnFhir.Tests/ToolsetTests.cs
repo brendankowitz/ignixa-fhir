@@ -91,6 +91,25 @@ public class ToolsetTests
     }
 
     [Fact]
+    public async Task GivenTheQueryToolset_WhenColumnsAndFhirpathAreBothSent_ThenTheColumnsAnswerWithAnAdjustedWarning()
+    {
+        using TestFolder folder = Labs();
+        await using InProcessMcp mcp = await InProcessMcp.StartAsync(McpToolset.Query, [typeof(ResourceTools)], Open(folder));
+
+        JsonNode envelope = await CallAsync(mcp, "search_fhir_resources", new()
+        {
+            ["resourceType"] = "Observation",
+            ["compartment"] = "Patient/p1",
+            ["columns"] = new Dictionary<string, string> { ["value"] = "valueQuantity.value" },
+            ["elements"] = "code",
+            ["fhirpath"] = "entry.count()",
+        });
+
+        envelope["facts"]!["rows"]!.AsArray().Count.ShouldBe(10);
+        envelope["issues"]!.AsArray().Select(issue => (string)issue!["code"]!).ShouldBe(["argument-adjusted", "argument-adjusted"]);
+    }
+
+    [Fact]
     public async Task GivenTheQueryToolset_WhenAColumnCallsPatientSearch_ThenTheCallFailsPointingAtPatientCohort()
     {
         using TestFolder folder = Labs();
