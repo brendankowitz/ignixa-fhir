@@ -70,7 +70,7 @@ internal sealed class ParameterPopulation(FolderSession session)
             populated++;
             if (token)
             {
-                foreach ((string value, bool changed) in entries.Select(entry => entry.Value).OfType<TokenSearchValue>().Where(value => value.Code is not null).Select(Shown).Distinct())
+                foreach ((string value, bool changed) in entries.Select(entry => entry.Value).OfType<TokenSearchValue>().Where(value => value.Code is not null || value.System is not null).Select(Shown).Distinct())
                 {
                     values[value] = values.GetValueOrDefault(value) + 1;
                     if (changed)
@@ -95,11 +95,14 @@ internal sealed class ParameterPopulation(FolderSession session)
         return (populated, top);
     }
 
-    /// <summary><c>system|code</c> or <c>|code</c>, each part shape-checked as <c>folder_code_systems</c> checks it, and whether either was replaced.</summary>
+    /// <summary>
+    /// <c>system|code</c>, <c>|code</c> for no system, or <c>system|</c> for a system without a code (which <c>param=system|</c>
+    /// matches), each part shape-checked as <c>folder_code_systems</c> checks it, and whether either was replaced.
+    /// </summary>
     private static (string Value, bool Digested) Shown(TokenSearchValue value)
     {
         string system = value.System is null ? string.Empty : FolderCodeSystems.SafeSystem(value.System);
-        string code = TerminologyNames.Code(value.Code!);
-        return ($"{system}|{code}", (value.System is not null && system != value.System) || code != value.Code);
+        string code = value.Code is null ? string.Empty : TerminologyNames.Code(value.Code);
+        return ($"{system}|{code}", (value.System is not null && system != value.System) || (value.Code is not null && code != value.Code));
     }
 }

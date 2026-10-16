@@ -46,6 +46,29 @@ public static class EnvelopeAssembler
     }
 
     /// <summary>
+    /// The most the envelope <see cref="Create"/> would build from these parts can measure, without building it: every cache
+    /// issue the session holds (whether or not this response would deliver it), room for a <c>freshness-unavailable</c>
+    /// warning, and the widest freshness. Unlike <see cref="Create"/> it consumes no cache event, so a caller fitting a
+    /// response under the cap can measure as often as it needs and create once.
+    /// </summary>
+    public static int MaxSize<TFacts>(
+        FolderSession session,
+        TFacts facts,
+        IReadOnlyList<EvidenceItem> evidence,
+        IReadOnlyList<OmittedItem> omitted,
+        IReadOnlyList<AbsentItem> absent,
+        IEnumerable<IssueItem> issues,
+        IReadOnlyList<NextCall> next)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(issues);
+
+        var freshnessReserve = new IssueItem("warning", "freshness-unavailable", new string('x', 512), Location: null);
+        var envelope = new ToolEnvelope<TFacts>(facts, evidence, omitted, absent, [.. issues, .. session.CacheIssues, freshnessReserve], new FreshnessInfo(DateTimeOffset.MaxValue, int.MaxValue)) { Next = next };
+        return EnvelopeJson.SizeOf(envelope);
+    }
+
+    /// <summary>
     /// An <c>error</c> issue when the folder cannot be read at all (missing, unmounted, unreadable), otherwise null. Tools
     /// check this first so an unreachable folder is reported as a request problem rather than an unhandled exception.
     /// </summary>

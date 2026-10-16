@@ -41,7 +41,14 @@ public static class ResourceSearcher
     /// Searches the folder. A request that cannot be answered (unreadable folder, bad query, unsupported feature, unknown
     /// type) yields an envelope with null facts and an <c>error</c> issue rather than an exception.
     /// </summary>
-    public static ToolEnvelope<SearchFacts?> Search(FolderSession session, SearchRequest request, CancellationToken cancellationToken = default)
+    public static ToolEnvelope<SearchFacts?> Search(FolderSession session, SearchRequest request, CancellationToken cancellationToken = default) =>
+        Search(session, request, extraBytes: 0, cancellationToken);
+
+    /// <summary>
+    /// <see cref="Search(FolderSession, SearchRequest, CancellationToken)"/> leaving <paramref name="extraBytes"/> of the size cap
+    /// unused, for a caller that adds that much to the envelope (the search plan beside its results).
+    /// </summary>
+    internal static ToolEnvelope<SearchFacts?> Search(FolderSession session, SearchRequest request, int extraBytes, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(request);
@@ -53,7 +60,7 @@ public static class ResourceSearcher
 
         try
         {
-            return Execute(session, request, cancellationToken);
+            return Execute(session, request, extraBytes, cancellationToken);
         }
         catch (ToolRequestException ex)
         {
@@ -107,7 +114,7 @@ public static class ResourceSearcher
         _ = Evaluate(engine, parsed);
     }
 
-    private static ToolEnvelope<SearchFacts?> Execute(FolderSession session, SearchRequest request, CancellationToken cancellationToken)
+    private static ToolEnvelope<SearchFacts?> Execute(FolderSession session, SearchRequest request, int extraBytes, CancellationToken cancellationToken)
     {
         ValidatePaging(request);
         (ParsedSearch parsed, FolderSearchSource source, InMemorySearchEngine engine, List<IndexedResource> matches, List<IssueItem> issues) = MatchAll(session, request);
@@ -143,7 +150,7 @@ public static class ResourceSearcher
 
         // The listed resolutions can only shrink once the resources are read, so reserving the candidates keeps the cap.
         Dictionary<string, Dictionary<string, string>> pageCandidates = ResolvedReferences.Candidates(page, ResolvedReferences.Limit);
-        int reserved = ReservedBytes(request, query, matches.Count, included, issues, omitted, pageCandidates);
+        int reserved = ReservedBytes(request, query, matches.Count, included, issues, omitted, pageCandidates) + extraBytes;
         ResourceBatch batch = ResourceBatch.Collect(session.RootPath, [.. page.Select(match => match.Entry)], parsed.Elements, reserved, cancellationToken);
         issues.AddRange(batch.Issues);
         omitted.AddRange(batch.Skipped);
@@ -156,7 +163,7 @@ public static class ResourceSearcher
             List<IndexedResource> wanted = [.. included.Take(IncludeLimit)];
             Dictionary<string, Dictionary<string, string>> includedCandidates = ResolvedReferences.Candidates(wanted, ResolvedReferences.Limit - ResolvedReferences.Count(resolved));
             var pageOnly = new SearchFacts(request.ResourceType, query, request.Compartment, matches.Count, request.Offset, batch.Resources.Count, batch.Resources, [], ResolvedReferences.ToFacts(ResolvedReferences.Merge(resolved, includedCandidates)));
-            ResourceBatch includedBatch = CollectIncluded(session, pageOnly, included, evidence, omitted, issues, cancellationToken);
+            ResourceBatch includedBatch = CollectIncluded(session, pageOnly, included, evidence, omitted, issues, extraBytes, cancellationToken);
             includedResources = includedBatch.Resources;
             (Dictionary<string, Dictionary<string, string>> includedShown, int includedNotListed) = ResolvedReferences.Shown(wanted, includedBatch, includedCandidates);
             resolved = ResolvedReferences.Merge(resolved, includedShown);
@@ -192,6 +199,7 @@ public static class ResourceSearcher
         List<EvidenceItem> evidence,
         List<OmittedItem> omitted,
         List<IssueItem> issues,
+        int extraBytes,
         CancellationToken cancellationToken)
     {
         List<CatalogEntry> wanted = [.. included.Take(IncludeLimit).Select(resource => resource.Entry)];
@@ -201,7 +209,7 @@ public static class ResourceSearcher
             [.. omitted, Placeholder, Placeholder, Placeholder],
             [],
             issues,
-            new FreshnessInfo(DateTimeOffset.MaxValue, StaleFiles: int.MaxValue)));
+            new FreshnessInfo(DateTimeOffset.MaxValue, StaleFiles: int.MaxValue))) + extraBytes;
 
         ResourceBatch batch = ResourceBatch.Collect(session.RootPath, wanted, projection: null, reserved, cancellationToken);
         evidence.AddRange(batch.Evidence);
@@ -270,7 +278,7 @@ public static class ResourceSearcher
         return EnvelopeJson.SizeOf(skeleton);
     }
 
-    private static void ValidatePaging(SearchRequest request)
+    internal static void ValidatePaging(SearchRequest request)
     {
         if (request.Offset < 0)
         {
@@ -283,7 +291,7 @@ public static class ResourceSearcher
         }
     }
 
-    private static int EffectiveCount(int? requested, List<IssueItem> issues)
+    internal static int EffectiveCount(int? requested, List<IssueItem> issues)
     {
         if (requested > MaxCount)
         {

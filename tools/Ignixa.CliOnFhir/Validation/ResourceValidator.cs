@@ -191,10 +191,12 @@ public static class ResourceValidator
             List<(IssueGroup Group, IReadOnlyList<CatalogEntry> Samples)> listed = [.. groups.Take(listedGroups)];
             List<EvidenceItem> evidence = [.. listed.SelectMany(group => group.Samples).Distinct().Select(entry => new EvidenceItem(FhirIds.Reference(entry), entry.FilePath, entry.Line, entry.Offset))];
             ValidateFacts shown = facts with { Groups = [.. listed.Select(group => group.Group)], Outcomes = outcomes?.Take(listedOutcomes).ToList() };
-            ToolEnvelope<ValidateFacts?> envelope = EnvelopeAssembler.Create<ValidateFacts?>(session, shown, scope.BuiltAt, evidence, allOmitted, [.. scope.Absent.Take(listedAbsent)], [.. issues.Take(listedIssues)], cancellationToken) with { Next = next };
-            if (EnvelopeJson.SizeOf(envelope) <= EnvelopeJson.MaxBytes || (listedGroups == 0 && listedOutcomes == 0 && listedIssues == 0 && listedAbsent == 0))
+            List<AbsentItem> absent = [.. scope.Absent.Take(listedAbsent)];
+            List<IssueItem> listedIssueItems = [.. issues.Take(listedIssues)];
+            if (EnvelopeAssembler.MaxSize<ValidateFacts?>(session, shown, evidence, allOmitted, absent, listedIssueItems, next) <= EnvelopeJson.MaxBytes
+                || (listedGroups == 0 && listedOutcomes == 0 && listedIssues == 0 && listedAbsent == 0))
             {
-                return envelope;
+                return EnvelopeAssembler.Create<ValidateFacts?>(session, shown, scope.BuiltAt, evidence, allOmitted, absent, listedIssueItems, cancellationToken) with { Next = next };
             }
 
             if (listedOutcomes > 0)

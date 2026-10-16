@@ -50,19 +50,23 @@ public static class SearchPlanner
 
     private static ToolEnvelope<PlanFacts?> Execute(FolderSession session, SearchRequest request, bool execute, CancellationToken cancellationToken)
     {
+        // The search's own request checks, in the search's order, so a request the search refuses the plan refuses too.
+        ResourceSearcher.ValidatePaging(request);
         (ParsedSearch parsed, List<IssueItem> issues) = ResourceSearcher.Parse(session, request);
+        _ = ResourceSearcher.EffectiveCount(request.Count ?? parsed.RequestedCount, issues);
         ResourceSearcher.Compile(session, parsed);
         issues.AddRange(ReferenceFollowChecks.InapplicableIncludes(parsed.Options));
 
         var population = new ParameterPopulation(session);
         List<ParameterPlan> parameters = [];
+        List<IssueItem> planIssues = [];
         foreach (ParameterTrace trace in parsed.Traces)
         {
             (ParameterPlan plan, bool absentMatches) = Describe(trace, request.ResourceType, population);
             parameters.Add(plan);
             if (!absentMatches && Unpopulated(plan) is { } issue)
             {
-                issues.Add(issue);
+                planIssues.Add(issue);
             }
         }
 
@@ -70,44 +74,49 @@ public static class SearchPlanner
         parameters.AddRange(parsed.Options.Include.Concat(parsed.Options.RevInclude).Select(include => Include(include, population)));
         if (population.DigestedValues > 0)
         {
-            issues.Add(new IssueItem("information", "invalid-value", $"{population.DigestedValues} top values are shown as digests ('~' and 16 hex digits): their system is not an http(s) or urn URI, or their code is not shaped as one. A search cannot use a digest.", Location: null));
+            planIssues.Add(new IssueItem("information", "invalid-value", $"{population.DigestedValues} top values are shown as digests ('~' and 16 hex digits): their system is not an http(s) or urn URI, or their code is not shaped as one. A search cannot use a digest.", Location: null));
         }
 
         var facts = new PlanFacts(request.ResourceType, request.Query ?? string.Empty, request.Compartment, population.Indexed(request.ResourceType), parameters, execute);
-        List<OmittedItem> omitted = [];
-        ResourceSearcher.AddDiagnostics(session, population.Source, issues, omitted);
+        List<OmittedItem> diagnosticsOmitted = [];
+        List<IssueItem> diagnostics = [];
+        ResourceSearcher.AddDiagnostics(session, population.Source, diagnostics, diagnosticsOmitted);
         if (!execute)
         {
             DateTimeOffset builtAt = population.Source.IndexesRead.Select(index => index.BuiltAt).DefaultIfEmpty(session.Catalog.BuiltAt).Max();
-            return EnvelopeAssembler.Create<PlanFacts?>(session, facts, builtAt, [], omitted, [], issues, cancellationToken) with { Next = [Search(request)] };
+            List<NextCall> next = [Search(request)];
+            PlanFit fit = PlanFit.Within(session, facts, [.. issues, .. diagnostics], planIssues, diagnosticsOmitted, next, EnvelopeJson.MaxBytes);
+            return EnvelopeAssembler.Create<PlanFacts?>(session, fit.Facts, builtAt, [], fit.Omitted, [], fit.Issues, cancellationToken) with { Next = next };
         }
 
-        return WithResults(session, request, facts, [.. issues.Where(issue => issue.Code is UnpopulatedCode or "invalid-value")], cancellationToken);
+        return WithResults(session, request, facts, planIssues, cancellationToken);
     }
 
     /// <summary>
-    /// The search's own envelope with the plan added to its facts and the plan's own warnings to its issues. The search sizes
-    /// its page for its own facts, so a page that no longer fits under the cap with the plan beside it is asked for again
-    /// with half as many resources, until it fits; the search's <c>omitted</c> then gives the offset to continue from.
+    /// The search's own envelope with the plan added to its facts and the plan's own warnings to its issues. The plan is fitted
+    /// first (to half the cap, then less if the two together still do not fit), and the search is told to leave the plan's
+    /// size unused, so the page it returns, and its <c>omitted</c>, are sized for the combined response.
     /// </summary>
     private static ToolEnvelope<PlanFacts?> WithResults(FolderSession session, SearchRequest request, PlanFacts facts, List<IssueItem> planIssues, CancellationToken cancellationToken)
     {
-        int? count = request.Count;
+        int planBudget = EnvelopeJson.MaxBytes / 2;
         while (true)
         {
-            ToolEnvelope<SearchFacts?> search = ResourceSearcher.Search(session, request with { Count = count }, cancellationToken);
+            PlanFit fit = PlanFit.Within(session, facts, [], planIssues, [], [], planBudget);
+            int extra = EnvelopeJson.SizeOf(fit.Facts) + EnvelopeJson.SizeOf(fit.Issues) + EnvelopeJson.SizeOf(fit.Omitted);
+            ToolEnvelope<SearchFacts?> search = ResourceSearcher.Search(session, request, extra, cancellationToken);
             if (search.Facts is not { } results)
             {
                 return new ToolEnvelope<PlanFacts?>(null, search.Evidence, search.Omitted, search.Absent, search.Issues, search.Freshness);
             }
 
-            var envelope = new ToolEnvelope<PlanFacts?>(facts with { Results = results }, search.Evidence, search.Omitted, search.Absent, [.. search.Issues, .. planIssues], search.Freshness) { Next = search.Next };
-            if (EnvelopeJson.SizeOf(envelope) <= EnvelopeJson.MaxBytes || results.Returned <= 1)
+            var envelope = new ToolEnvelope<PlanFacts?>(fit.Facts with { Results = results }, search.Evidence, [.. search.Omitted, .. fit.Omitted], search.Absent, [.. search.Issues, .. fit.Issues], search.Freshness) { Next = search.Next };
+            if (EnvelopeJson.SizeOf(envelope) <= EnvelopeJson.MaxBytes || planBudget < 1024)
             {
                 return envelope;
             }
 
-            count = Math.Max(1, results.Returned / 2);
+            planBudget /= 2;
         }
     }
 
@@ -214,14 +223,18 @@ public static class SearchPlanner
     private static NextCall Search(SearchRequest request)
     {
         Dictionary<string, object> args = new() { ["resourceType"] = request.ResourceType };
-        if (request.Query is not null)
+        AddIf(args, "query", request.Query);
+        AddIf(args, "compartment", request.Compartment);
+        AddIf(args, "summary", request.Summary);
+        AddIf(args, "elements", request.Elements);
+        if (request.Count is { } count)
         {
-            args["query"] = request.Query;
+            args["count"] = count;
         }
 
-        if (request.Compartment is not null)
+        if (request.Offset != 0)
         {
-            args["compartment"] = request.Compartment;
+            args["offset"] = request.Offset;
         }
 
         if (request.Lenient)
@@ -230,6 +243,14 @@ public static class SearchPlanner
         }
 
         return new NextCall("search_fhir_resources", args);
+    }
+
+    private static void AddIf(Dictionary<string, object> args, string name, string? value)
+    {
+        if (value is not null)
+        {
+            args[name] = value;
+        }
     }
 
     internal static string Literal<TEnum>(TEnum value)
