@@ -208,7 +208,7 @@ internal static class TxAnswers
             }
 
             omitted.Add(new OmittedItem(total is { } all ? $"{all - offset - codes.Count} more codes" : "possibly more codes", "limit"));
-            next.Add(new NextCall("terminology_expand", args));
+            next.Add(TermNext.Call("expand", args));
         }
 
         return new TerminologyAnswer<TermExpandFacts>(facts, [], omitted, [], issues) { Next = next };

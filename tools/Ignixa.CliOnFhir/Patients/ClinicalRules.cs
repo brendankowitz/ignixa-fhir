@@ -87,7 +87,7 @@ internal static class ClinicalRules
         ["ServiceRequest"] = ["occurrence.ofType(dateTime)", "occurrence.ofType(Period).start", "authoredOn"],
     };
 
-    /// <summary>Each type's main code (a CodeableConcept), which <c>context_find</c> matches and items display.</summary>
+    /// <summary>Each type's main code (a CodeableConcept), which <c>patient_context</c> find matches and items display.</summary>
     public static readonly IReadOnlyDictionary<string, string> MainCode = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["AllergyIntolerance"] = "code",

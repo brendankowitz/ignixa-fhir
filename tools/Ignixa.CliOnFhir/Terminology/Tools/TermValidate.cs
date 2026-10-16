@@ -9,7 +9,7 @@ using Ignixa.CliOnFhir.Session;
 namespace Ignixa.CliOnFhir.Terminology.Tools;
 
 /// <summary>
-/// <c>terminology_validate_code</c> / <c>cli-on-fhir term validate</c>: whether a code is in a CodeSystem or a ValueSet, and
+/// <c>terminology</c> validate / <c>cli-on-fhir term validate</c>: whether a code is in a CodeSystem or a ValueSet, and
 /// whether a display matches. Only a complete answer is <c>valid</c> or <c>invalid</c>; anything the loaded terminology
 /// cannot decide is <c>unknown</c> with the reason, never <c>invalid</c>. A right code with a display that matches neither
 /// its display nor a designation is <c>invalid</c> with reason <c>display-mismatch</c>, as R4 $validate-code and tx.fhir.org

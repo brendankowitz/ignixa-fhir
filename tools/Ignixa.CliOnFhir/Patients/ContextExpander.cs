@@ -13,7 +13,7 @@ using Ignixa.FhirPath.Evaluation;
 
 namespace Ignixa.CliOnFhir.Patients;
 
-/// <summary><c>context_expand</c>: one node of a patient's context, paged, with the page's resources.</summary>
+/// <summary><c>patient_context</c> expand: one node of a patient's context, paged, with the page's resources.</summary>
 public static class ContextExpander
 {
     /// <summary>
@@ -130,7 +130,7 @@ public static class ContextExpander
 
     private static ToolRequestException Unknown(PatientContext context, string nodeKey) => ToolRequestException.Error(
         "unknown-node-key",
-        $"'{nodeKey}' names no node in {context.PatientReference}'s context as of {context.AsOf:O}. Use a node key returned by context_get_root, context_expand or context_find for this patient.");
+        $"'{nodeKey}' names no node in {context.PatientReference}'s context as of {context.AsOf:O}. Use a node key patient_context returned for this patient.");
 
     /// <summary>A resolved node.</summary>
     /// <param name="Entries">Its items, in order.</param>

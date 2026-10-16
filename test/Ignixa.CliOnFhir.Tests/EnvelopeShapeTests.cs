@@ -43,11 +43,11 @@ public class EnvelopeShapeTests
             missingTools.SearchFhirResources("Patient"),
             await new FolderTools(Open(folder)).FolderInspect(),
             patients.PatientList(),
-            patients.ContextGetRoot("p1"),
-            patients.ContextGetRoot("nobody"),
-            patients.ContextExpand("p1", "labs"),
-            patients.ContextExpand("p1", "nonsense"),
-            patients.ContextFind("p1", "8867-4"),
+            patients.PatientContext("root", "p1"),
+            patients.PatientContext("root", "nobody"),
+            patients.PatientContext("expand", "p1", nodeKey: "labs"),
+            patients.PatientContext("expand", "p1", nodeKey: "nonsense"),
+            patients.PatientContext("find", "p1", query: "8867-4"),
         ];
 
         foreach (CallToolResult result in results)

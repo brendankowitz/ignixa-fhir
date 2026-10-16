@@ -6,7 +6,7 @@
 namespace Ignixa.CliOnFhir.Patients;
 
 /// <summary>One patient in <c>patient_list</c>.</summary>
-/// <param name="Id">The Patient's id, or its digest when it is not a FHIR id; pass it to <c>context_get_root</c>.</param>
+/// <param name="Id">The Patient's id, or its digest when it is not a FHIR id; pass it to <c>patient_context</c> root.</param>
 /// <param name="Name">The first official, else usual, else use-less name, as its given names then family: data copied from the resource (never its free <c>text</c>).</param>
 /// <param name="Gender">Administrative gender.</param>
 /// <param name="BirthDate">Birth date as written.</param>

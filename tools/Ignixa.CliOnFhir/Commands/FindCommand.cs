@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Ignixa.CliOnFhir.Commands;
 
-/// <summary><c>cli-on-fhir find &lt;path&gt; &lt;patientId&gt; &lt;query&gt;</c>: the CLI form of the <c>context_find</c> MCP tool.</summary>
+/// <summary><c>cli-on-fhir find &lt;path&gt; &lt;patientId&gt; &lt;query&gt;</c>: the CLI form of the <c>patient_context</c> MCP tool's find operation.</summary>
 internal static class FindCommand
 {
     public static Command Create()

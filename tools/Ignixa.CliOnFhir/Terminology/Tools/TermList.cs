@@ -9,7 +9,7 @@ using Ignixa.CliOnFhir.Session;
 
 namespace Ignixa.CliOnFhir.Terminology.Tools;
 
-/// <summary><c>terminology_list</c> / <c>cli-on-fhir term list</c>: what is loaded and from where, and (on request) which folder codes resolve.</summary>
+/// <summary><c>terminology</c> list / <c>cli-on-fhir term list</c>: what is loaded and from where, and (on request) which folder codes resolve.</summary>
 public static class TermList
 {
     public const int FolderUsageLimit = 20;
@@ -68,12 +68,12 @@ public static class TermList
         if (remaining > 0)
         {
             omitted.Add(new OmittedItem($"{remaining} more {listed}", "limit"));
-            next.Add(new NextCall("terminology_list", Args(listed, package, filter, offset + kept, pageSize, includeFolderUsage)));
+            next.Add(TermNext.Call("list", Args(listed, package, filter, offset + kept, pageSize, includeFolderUsage)));
         }
 
         if (!includeFolderUsage)
         {
-            next.Add(new NextCall("terminology_list", Args(listed, package, filter, offset, pageSize, includeFolderUsage: true)));
+            next.Add(TermNext.Call("list", Args(listed, package, filter, offset, pageSize, includeFolderUsage: true)));
         }
 
         const int ConflictsListed = 5;

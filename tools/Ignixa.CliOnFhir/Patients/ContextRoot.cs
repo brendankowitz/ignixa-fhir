@@ -9,7 +9,7 @@ using Ignixa.CliOnFhir.Session;
 
 namespace Ignixa.CliOnFhir.Patients;
 
-/// <summary><c>context_get_root</c>: the deterministic digest of one patient's context, one stub per domain.</summary>
+/// <summary><c>patient_context</c> root: the deterministic digest of one patient's context, one stub per domain.</summary>
 public static class ContextRoot
 {
     /// <summary>
@@ -104,11 +104,12 @@ public static class ContextRoot
         return EnvelopeAssembler.Create<RootDigestFacts?>(session, facts, builtAt, evidence, omitted, absent, issues, cancellationToken) with { Next = next };
     }
 
-    /// <summary>The <c>context_expand</c> call for <paramref name="nodeKey"/> of this patient.</summary>
+    /// <summary>The <c>patient_context</c> expand call for <paramref name="nodeKey"/> of this patient.</summary>
     internal static NextCall Expand(PatientContext context, string nodeKey, int? offset = null)
     {
         Dictionary<string, object> args = new(StringComparer.Ordinal)
         {
+            ["operation"] = "expand",
             ["patientId"] = context.PatientId,
             ["nodeKey"] = nodeKey,
         };
@@ -117,7 +118,7 @@ public static class ContextRoot
             args["offset"] = value;
         }
 
-        return new NextCall("context_expand", args);
+        return new NextCall("patient_context", args);
     }
 
     /// <summary>The evidence items of <paramref name="entries"/>, in order, each resource once, named as summaries name it (<see cref="FhirIds.Reference(CatalogEntry)"/>).</summary>

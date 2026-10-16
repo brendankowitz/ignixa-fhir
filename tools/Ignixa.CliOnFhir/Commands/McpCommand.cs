@@ -52,14 +52,9 @@ internal static class McpCommand
                 services.GetRequiredService<ILoggerFactory>(),
                 cacheOptions,
                 terminology: terminologyOptions));
-            builder.Services
+            McpServerSetup.AddTools(builder.Services
                 .AddMcpServer(options => McpServerSetup.Configure(options))
-                .WithStdioServerTransport()
-                .WithTools<FolderTools>()
-                .WithTools<ResourceTools>()
-                .WithTools<PatientTools>()
-                .WithTools<TerminologyTools>()
-                .WithTools<ValidationTools>();
+                .WithStdioServerTransport());
 
             await builder.Build().RunAsync(cancellationToken);
             return 0;

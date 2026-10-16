@@ -8,7 +8,7 @@ using System.Text.Json.Serialization;
 
 namespace Ignixa.CliOnFhir.Patients;
 
-/// <summary>What <c>context_find</c> matched in a patient's context.</summary>
+/// <summary>What <c>patient_context</c> find matched in a patient's context.</summary>
 /// <param name="Patient">The patient, <c>Patient/id</c>.</param>
 /// <param name="Query">The query, as received.</param>
 /// <param name="Rule">How the query was matched (code, text or both) and against which elements.</param>

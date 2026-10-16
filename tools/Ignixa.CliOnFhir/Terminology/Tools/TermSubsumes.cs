@@ -9,7 +9,7 @@ using Ignixa.CliOnFhir.Session;
 namespace Ignixa.CliOnFhir.Terminology.Tools;
 
 /// <summary>
-/// <c>terminology_subsumes</c> / <c>cli-on-fhir term subsumes</c>: subsumption between two codes of one system, from the
+/// <c>terminology</c> subsumes / <c>cli-on-fhir term subsumes</c>: subsumption between two codes of one system, from the
 /// loaded hierarchy. <c>not-subsumed</c> is answered only when both codes are in a complete CodeSystem and neither is an
 /// ancestor of the other; a system that is not loaded, a missing code or incomplete content is never <c>not-subsumed</c>,
 /// and a hierarchy declared as other than <c>is-a</c> answers <c>unknown</c> for distinct codes.

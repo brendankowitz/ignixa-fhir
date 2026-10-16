@@ -16,7 +16,7 @@ namespace Ignixa.CliOnFhir.Patients;
 
 /// <summary>
 /// One patient's context as of one instant, for one call: the domains the root digest summarizes and the nodes
-/// <c>context_expand</c> opens, each computed on first use. Membership comes from the compartment, order from the in-memory
+/// <c>patient_context</c> expand opens, each computed on first use. Membership comes from the compartment, order from the in-memory
 /// engine's <c>_sort</c> over the compartment, and every value and rule from FHIRPath over the resources
 /// (<see cref="ClinicalRules"/>). Not thread-safe.
 /// </summary>

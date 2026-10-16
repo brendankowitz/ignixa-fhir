@@ -37,7 +37,8 @@ public class TerminologyLookupTests
         ((string)facts["source"]!["kind"]!).ShouldBe("local");
         ((string)facts["source"]!["package"]!).ShouldBe($"{PackageId}@{PackageVersion}");
         EvidenceFile(result, 0).ShouldBe($"{PackageId}#{PackageVersion}/package/CodeSystem-body.json");
-        ((string)result["next"]![0]!["tool"]!).ShouldBe("terminology_navigate");
+        ((string)result["next"]![0]!["tool"]!).ShouldBe("terminology");
+        ((string)result["next"]![0]!["args"]!["operation"]!).ShouldBe("navigate");
     }
 
     [Fact]

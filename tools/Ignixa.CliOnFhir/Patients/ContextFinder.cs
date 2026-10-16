@@ -11,7 +11,7 @@ using Ignixa.CliOnFhir.Session;
 
 namespace Ignixa.CliOnFhir.Patients;
 
-/// <summary><c>context_find</c>: the resources of a patient's context whose main code matches a code or a text, with their node keys.</summary>
+/// <summary><c>patient_context</c> find: the resources of a patient's context whose main code matches a code or a text, with their node keys.</summary>
 public static class ContextFinder
 {
     /// <summary>Longest query accepted.</summary>
@@ -136,8 +136,9 @@ public static class ContextFinder
             builtAt);
     }
 
-    private static NextCall Next(PatientContext context, string query, int offset) => new("context_find", new Dictionary<string, object>(StringComparer.Ordinal)
+    private static NextCall Next(PatientContext context, string query, int offset) => new("patient_context", new Dictionary<string, object>(StringComparer.Ordinal)
     {
+        ["operation"] = "find",
         ["patientId"] = context.PatientId,
         ["query"] = query,
         ["offset"] = offset,

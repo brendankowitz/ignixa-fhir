@@ -34,11 +34,7 @@ public class TerminologyToolsTests
             .OfType<McpServerToolAttribute>()
             .ToDictionary(tool => tool.Name!);
 
-        tools.Keys.Order(StringComparer.Ordinal).ShouldBe(
-        [
-            "terminology_expand", "terminology_list", "terminology_load_package", "terminology_lookup", "terminology_navigate",
-            "terminology_search", "terminology_subsumes", "terminology_translate", "terminology_validate_code",
-        ]);
+        tools.Keys.Order(StringComparer.Ordinal).ShouldBe(["terminology", "terminology_load_package"]);
         foreach (McpServerToolAttribute tool in tools.Values.Where(tool => tool.Name != "terminology_load_package"))
         {
             (tool.ReadOnly, tool.Idempotent).ShouldBe((true, true), tool.Name);
@@ -60,16 +56,16 @@ public class TerminologyToolsTests
 
         CallToolResult[] results =
         [
-            await tools.TerminologyList(),
-            await tools.TerminologyLookup(Body, "heart"),
-            await tools.TerminologyLookup(Snomed, "1"),
-            await tools.TerminologySearch("heart"),
-            await tools.TerminologyValidateCode("heart", Body),
-            await tools.TerminologyValidateCode("heart"),
-            await tools.TerminologySubsumes(Body, "disorder", "mi"),
-            await tools.TerminologyNavigate(Body, "disorder"),
-            await tools.TerminologyExpand(ValueSetBase + "heart"),
-            await tools.TerminologyTranslate(Body, "mi"),
+            await tools.Terminology("list"),
+            await tools.Terminology("lookup", system: Body, code: "heart"),
+            await tools.Terminology("lookup", system: Snomed, code: "1"),
+            await tools.Terminology("search", text: "heart"),
+            await tools.Terminology("validate", code: "heart", system: Body),
+            await tools.Terminology("validate", code: "heart"),
+            await tools.Terminology("subsumes", system: Body, codeA: "disorder", codeB: "mi"),
+            await tools.Terminology("navigate", system: Body, code: "disorder"),
+            await tools.Terminology("expand", valueSet: ValueSetBase + "heart"),
+            await tools.Terminology("translate", system: Body, code: "mi"),
             await tools.TerminologyLoadPackage("not a package"),
         ];
 

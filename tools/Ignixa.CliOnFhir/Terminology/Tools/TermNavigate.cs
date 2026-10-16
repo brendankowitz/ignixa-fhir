@@ -9,7 +9,7 @@ using Ignixa.CliOnFhir.Session;
 
 namespace Ignixa.CliOnFhir.Terminology.Tools;
 
-/// <summary><c>terminology_navigate</c> / <c>cli-on-fhir term tree</c>: a concept's ancestors or descendants, by depth, paged.</summary>
+/// <summary><c>terminology</c> navigate / <c>cli-on-fhir term tree</c>: a concept's ancestors or descendants, by depth, paged.</summary>
 public static class TermNavigate
 {
     public const int DefaultDepth = 1;
@@ -71,7 +71,7 @@ public static class TermNavigate
             omitted.Add(new OmittedItem($"{remaining} more concepts", "limit"));
             if (echoable)
             {
-                next.Add(new NextCall("terminology_navigate", Args(system, code, way, levels, version, offset + kept, pageSize)));
+                next.Add(TermNext.Call("navigate", Args(system, code, way, levels, version, offset + kept, pageSize)));
             }
         }
         else if (levels < MaxDepth && reached.Exists(step => step.Distance == levels) && entry.Walk(concept, up: way == "ancestors", levels + 1).Count > reached.Count)
@@ -80,7 +80,7 @@ public static class TermNavigate
             omitted.Add(new OmittedItem($"{way} deeper than {levels} levels", "depth"));
             if (echoable)
             {
-                next.Add(new NextCall("terminology_navigate", Args(system, code, way, levels + 1, version, 0, pageSize)));
+                next.Add(TermNext.Call("navigate", Args(system, code, way, levels + 1, version, 0, pageSize)));
             }
         }
 

@@ -175,7 +175,7 @@ public sealed class TerminologySession
             }
         }
 
-        // Canonical conflicts are reported by each answer that uses one, and listed by terminology_list.
+        // Canonical conflicts are reported by each answer that uses one, and listed by terminology list.
         TerminologyStore store = TerminologyStore.Build(sources, _folder.UtcNow());
         (long heap, long workingSet) = Memory();
         return new TerminologyState(store, issues, stopwatch.ElapsedMilliseconds, heap, workingSet);

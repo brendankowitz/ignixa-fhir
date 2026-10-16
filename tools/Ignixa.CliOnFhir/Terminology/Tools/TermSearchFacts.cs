@@ -5,7 +5,7 @@
 
 namespace Ignixa.CliOnFhir.Terminology.Tools;
 
-/// <summary>Facts of <c>terminology_search</c>.</summary>
+/// <summary>Facts of <c>terminology</c> search.</summary>
 /// <param name="Text">The text searched for, as given.</param>
 /// <param name="System">The system searched within, when given.</param>
 /// <param name="ValueSet">The ValueSet searched within, when given.</param>

@@ -48,7 +48,7 @@ public static class TermLoad
         if (codeSystems.Count > ListedCodeSystems)
         {
             omitted.Add(new OmittedItem($"{codeSystems.Count - ListedCodeSystems} more CodeSystems of {source.Info.Name}", "limit"));
-            next.Add(new NextCall("terminology_list", new Dictionary<string, object> { ["kind"] = "codeSystems", ["package"] = source.Info.Name, ["offset"] = 0, ["count"] = 50 }));
+            next.Add(TermNext.Call("list", new Dictionary<string, object> { ["kind"] = "codeSystems", ["package"] = source.Info.Name, ["offset"] = 0, ["count"] = 50 }));
         }
 
         var facts = new TermLoadFacts(

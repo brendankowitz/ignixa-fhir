@@ -9,7 +9,7 @@ using Ignixa.CliOnFhir.Session;
 
 namespace Ignixa.CliOnFhir.Terminology.Tools;
 
-/// <summary><c>terminology_search</c> / <c>cli-on-fhir term search</c>: text to candidate codes over displays and designations.</summary>
+/// <summary><c>terminology</c> search / <c>cli-on-fhir term search</c>: text to candidate codes over displays and designations.</summary>
 public static class TermSearch
 {
     public const string Searched = "searched";
@@ -90,7 +90,7 @@ public static class TermSearch
 
             if (TermNext.Echoable(system, valueSet))
             {
-                next.Add(new NextCall("terminology_search", args));
+                next.Add(TermNext.Call("search", args));
             }
         }
 

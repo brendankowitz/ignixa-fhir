@@ -9,7 +9,7 @@ using Ignixa.CliOnFhir.Session;
 
 namespace Ignixa.CliOnFhir.Terminology.Tools;
 
-/// <summary><c>terminology_expand</c> / <c>cli-on-fhir term expand</c>: a ValueSet's codes over loaded content, filtered and paged.</summary>
+/// <summary><c>terminology</c> expand / <c>cli-on-fhir term expand</c>: a ValueSet's codes over loaded content, filtered and paged.</summary>
 public static class TermExpand
 {
     public const string Expanded = "expanded";
@@ -101,7 +101,7 @@ public static class TermExpand
 
             if (TermNext.Echoable(valueSet))
             {
-                next.Add(new NextCall("terminology_expand", args));
+                next.Add(TermNext.Call("expand", args));
             }
         }
 

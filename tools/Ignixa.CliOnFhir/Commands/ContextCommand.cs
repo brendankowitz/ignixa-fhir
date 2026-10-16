@@ -12,8 +12,8 @@ using Microsoft.Extensions.Logging;
 namespace Ignixa.CliOnFhir.Commands;
 
 /// <summary>
-/// <c>cli-on-fhir context &lt;path&gt; &lt;patientId&gt; [--node &lt;key&gt;]</c>: the CLI form of the <c>context_get_root</c>
-/// MCP tool, and of <c>context_expand</c> with <c>--node</c>.
+/// <c>cli-on-fhir context &lt;path&gt; &lt;patientId&gt; [--node &lt;key&gt;]</c>: the CLI form of the <c>patient_context</c> MCP
+/// tool's root operation, and of its expand operation with <c>--node</c>.
 /// </summary>
 internal static class ContextCommand
 {

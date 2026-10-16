@@ -30,8 +30,8 @@ public class PatientCommandTests
         (string[] args, CallToolResult mcp) = verb switch
         {
             "patients" => (new[] { "patients", folder.Path, "--sort", "latest", "--count", "2" }, tools.PatientList(count: 2, sort: "latest")),
-            "find" => (new[] { "find", folder.Path, "p1", "asthma" }, tools.ContextFind("p1", "asthma")),
-            _ => (new[] { "context", folder.Path, "p1", "--node", "problem/Condition-c1" }, tools.ContextExpand("p1", "problem/Condition-c1")),
+            "find" => (new[] { "find", folder.Path, "p1", "asthma" }, tools.PatientContext("find", "p1", query: "asthma")),
+            _ => (new[] { "context", folder.Path, "p1", "--node", "problem/Condition-c1" }, tools.PatientContext("expand", "p1", nodeKey: "problem/Condition-c1")),
         };
 
         (int exitCode, JsonNode cli) = await RunAsync(verb == "node" ? ContextCommand.Create() : verb == "find" ? FindCommand.Create() : PatientsCommand.Create(), [.. args, "--no-cache"]);
@@ -49,7 +49,7 @@ public class PatientCommandTests
         using TestFolder folder = PatientFixture.Ndjson();
 
         (int exitCode, JsonNode cli) = await RunAsync(ContextCommand.Create(), "context", folder.Path, "p1", "--node", "problem/Condition-zz", "--no-cache");
-        CallToolResult mcp = new PatientTools(PatientFixture.Open(folder)).ContextExpand("p1", "problem/Condition-zz");
+        CallToolResult mcp = new PatientTools(PatientFixture.Open(folder)).PatientContext("expand", "p1", nodeKey: "problem/Condition-zz");
 
         exitCode.ShouldBe(1);
         mcp.IsError.ShouldBe(true);

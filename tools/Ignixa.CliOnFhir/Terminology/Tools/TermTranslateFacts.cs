@@ -5,7 +5,7 @@
 
 namespace Ignixa.CliOnFhir.Terminology.Tools;
 
-/// <summary>Facts of <c>terminology_translate</c>.</summary>
+/// <summary>Facts of <c>terminology</c> translate.</summary>
 /// <param name="Outcome">
 /// <c>mapped</c> (at least one target that is not R4 <c>unmatched</c>/<c>disjoint</c> or R5 <c>not-related-to</c>),
 /// <c>not-mapped</c> (maps from the system exist, but none maps the code, or only to nothing or to an unrelated concept), <c>no-map-for-system</c> (no loaded ConceptMap has a group from the system, to the target system when

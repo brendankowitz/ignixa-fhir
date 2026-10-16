@@ -161,10 +161,10 @@ public class ContextRootTests
         hostile.NodeKey.ShouldNotBeNull().ShouldMatch("^labs/~[0-9a-f]{16}\\|~[0-9a-f]{16}$");
         hostile.ValueType.ShouldBe("string");
         envelope.Next.Select(call => $"{call.Tool} {string.Join(",", call.Args.Select(arg => $"{arg.Key}={arg.Value}"))}").ShouldBe([
-            "context_expand patientId=p1,nodeKey=problems",
-            "context_expand patientId=p1,nodeKey=medications",
-            "context_expand patientId=p1,nodeKey=encounters",
-            "context_expand patientId=p1,nodeKey=labs"]);
+            "patient_context operation=expand,patientId=p1,nodeKey=problems",
+            "patient_context operation=expand,patientId=p1,nodeKey=medications",
+            "patient_context operation=expand,patientId=p1,nodeKey=encounters",
+            "patient_context operation=expand,patientId=p1,nodeKey=labs"]);
     }
 
     [Fact]
