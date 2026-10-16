@@ -4,13 +4,14 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
+using System.Collections.Frozen;
 using System.Runtime.CompilerServices;
 using Ignixa.Abstractions;
 
 namespace Ignixa.Serialization.Extensions;
 
 /// <summary>
-/// Ranks JSON properties into StructureDefinition element order.
+/// Ranks JSON properties into StructureDefinition element order for one schema.
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
@@ -19,110 +20,82 @@ namespace Ignixa.Serialization.Extensions;
 /// <item>A primitive's extension sibling (<c>_birthDate</c>) immediately follows the primitive.</item>
 /// <item>Properties the schema does not describe share the last rank; a stable sort keeps their source order.</item>
 /// </list>
+/// Each type's positions are built from the schema, never from property names in a request, so the
+/// cache is bounded by the schema and an unknown name costs one failed lookup.
 /// </remarks>
-internal static class ElementOrdering
+internal sealed class ElementOrdering
 {
     public const string ResourceTypeProperty = "resourceType";
 
-    private const int ResourceTypeRank = -1;
-    private const int UnknownRank = int.MaxValue;
+    public static readonly ElementPosition ResourceType = new(-1, Type: null);
+    public static readonly ElementPosition Unknown = new(int.MaxValue, Type: null);
 
-    private static readonly ConditionalWeakTable<ISchema, ConcurrentDictionary<(IType Parent, string Name), ElementPosition>> Positions = new();
+    private static readonly ConditionalWeakTable<ISchema, ElementOrdering> PerSchema = new();
+
+    private readonly ISchema _schema;
+    private readonly ConcurrentDictionary<IType, FrozenDictionary<string, ElementPosition>> _byParent = new();
+
+    private ElementOrdering(ISchema schema) => _schema = schema;
+
+    public static ElementOrdering For(ISchema schema) => PerSchema.GetValue(schema, static s => new ElementOrdering(s));
 
     /// <summary>
     /// True where a JSON object is a resource: the root (no type yet) or an element typed as a resource.
     /// </summary>
     public static bool IsResourcePosition(IType? type) => type is null || type.Info.IsResource;
 
-    public static ElementPosition Resolve(IType? parent, string name, ISchema schema)
-    {
-        if (name == ResourceTypeProperty && IsResourcePosition(parent))
-        {
-            return new ElementPosition(ResourceTypeRank, Type: null);
-        }
-
-        if (parent is null)
-        {
-            return new ElementPosition(UnknownRank, Type: null);
-        }
-
-        ConcurrentDictionary<(IType Parent, string Name), ElementPosition> positions = Positions.GetOrCreateValue(schema);
-        if (positions.TryGetValue((parent, name), out ElementPosition cached))
-        {
-            return cached;
-        }
-
-        // Property names come from request bodies, so only names the schema defines are cached:
-        // caching unknown names would let clients grow this process-lifetime cache without bound.
-        ElementPosition position = Compute(parent, name, schema);
-        return position.Rank == UnknownRank ? position : positions.GetOrAdd((parent, name), position);
-    }
-
-    private static ElementPosition Compute(IType parent, string name, ISchema schema)
-    {
-        bool isExtensionSibling = name.Length > 1 && name[0] == '_';
-        string elementName = isExtensionSibling ? name[1..] : name;
-
-        // Exact names win over choice prefixes: "valueSet" must not resolve as a "value[x]" variant.
-        IType? element = parent.Children.FirstOrDefault(child => child.Info.Name == elementName);
-        string? choiceTypeCode = null;
-        if (element is null)
-        {
-            (element, choiceTypeCode) = FindChoiceVariant(parent, elementName);
-        }
-
-        if (element is null)
-        {
-            return new ElementPosition(UnknownRank, Type: null);
-        }
-
-        // Ranks are doubled so an extension sibling ("_birthDate") slots between its element and the next one.
-        int rank = (element.Order * 2) + (isExtensionSibling ? 1 : 0);
-        IType? type = isExtensionSibling
-            ? schema.GetTypeDefinition("Element")
-            : choiceTypeCode is not null
-                ? schema.GetTypeDefinition(choiceTypeCode)
-                : ResolveElementType(parent, element, schema);
-
-        return new ElementPosition(rank, type);
-    }
-
     /// <summary>
-    /// Matches "valueQuantity" to the "value[x]" element only when "Quantity" is one of its declared
-    /// types, so invented names ("valueZz1") stay unknown and are never cached.
+    /// Every property name the schema defines under <paramref name="parent"/>, including choice variants and
+    /// <c>_</c> extension siblings.
     /// </summary>
-    private static (IType? Element, string? TypeCode) FindChoiceVariant(IType parent, string elementName)
+    public FrozenDictionary<string, ElementPosition> ForParent(IType parent) =>
+        _byParent.GetOrAdd(parent, static (type, schema) => Build(type, schema), _schema);
+
+    private static FrozenDictionary<string, ElementPosition> Build(IType parent, ISchema schema)
     {
+        var positions = new Dictionary<string, ElementPosition>(StringComparer.Ordinal);
+        IType? extensionSiblingType = schema.GetTypeDefinition("Element");
+
+        // Exact names first so they win over choice variants: "valueSet" must not resolve as a "value[x]" variant.
         foreach (IType child in parent.Children)
         {
-            string baseName = child.Info.Name;
-            if (!child.Info.IsChoiceElement
-                || child is not ITypeExtended extended
-                || elementName.Length <= baseName.Length
-                || !elementName.StartsWith(baseName, StringComparison.Ordinal))
+            AddWithExtensionSibling(positions, child.Info.Name, child.Order, ResolveElementType(parent, child, schema), extensionSiblingType);
+        }
+
+        foreach (IType child in parent.Children)
+        {
+            if (!child.Info.IsChoiceElement || child is not ITypeExtended extended)
             {
                 continue;
             }
 
-            string suffix = elementName[baseName.Length..];
-            ITypeReference? declared = extended.Types.FirstOrDefault(type => IsChoiceSuffix(suffix, type.Code));
-            if (declared is not null)
+            foreach (ITypeReference declared in extended.Types)
             {
-                return (child, declared.Code);
+                if (string.IsNullOrEmpty(declared.Code))
+                {
+                    continue;
+                }
+
+                // The JSON suffix is the type code with only its first letter capitalized ("string" -> "valueString").
+                string variant = child.Info.Name + char.ToUpperInvariant(declared.Code[0]) + declared.Code[1..];
+                AddWithExtensionSibling(positions, variant, child.Order, schema.GetTypeDefinition(declared.Code), extensionSiblingType);
             }
         }
 
-        return (null, null);
+        return positions.ToFrozenDictionary(StringComparer.Ordinal);
     }
 
-    /// <summary>
-    /// The JSON suffix is the type code with only its first letter capitalized ("string" -> "valueString").
-    /// Any other casing is unknown, so client-chosen casings cannot each add a cache entry.
-    /// </summary>
-    private static bool IsChoiceSuffix(string suffix, string code) =>
-        suffix.Length == code.Length
-        && suffix[0] == char.ToUpperInvariant(code[0])
-        && suffix.AsSpan(1).SequenceEqual(code.AsSpan(1));
+    private static void AddWithExtensionSibling(
+        Dictionary<string, ElementPosition> positions,
+        string name,
+        int order,
+        IType? type,
+        IType? extensionSiblingType)
+    {
+        // Ranks are doubled so an extension sibling ("_birthDate") slots between its element and the next one.
+        positions.TryAdd(name, new ElementPosition(order * 2, type));
+        positions.TryAdd("_" + name, new ElementPosition((order * 2) + 1, extensionSiblingType));
+    }
 
     private static IType? ResolveElementType(IType parent, IType element, ISchema schema)
     {
