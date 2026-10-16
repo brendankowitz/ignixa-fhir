@@ -69,6 +69,19 @@ public static class ResourceSearcher
     /// <exception cref="ToolRequestException">The query cannot be parsed or evaluated.</exception>
     internal static SearchMatch MatchAll(FolderSession session, SearchRequest request)
     {
+        (ParsedSearch parsed, List<IssueItem> issues) = Parse(session, request);
+        var source = new FolderSearchSource(session);
+        var engine = new InMemorySearchEngine(source, Features, session.Compartments);
+        return new SearchMatch(parsed, source, engine, Match(engine, source, parsed), issues);
+    }
+
+    /// <summary>
+    /// Parses <paramref name="request"/> as a search does, digest ids rewritten and the compartment applied, without evaluating
+    /// it; the parser's warnings and the compartment's notes are returned with it.
+    /// </summary>
+    /// <exception cref="ToolRequestException">The query cannot be parsed.</exception>
+    internal static (ParsedSearch Parsed, List<IssueItem> Issues) Parse(FolderSession session, SearchRequest request)
+    {
         ParsedSearch parsed = session.QueryParser.Parse(request with { Query = DigestIdQuery.Rewrite(session, request.ResourceType, request.Query) });
         List<IssueItem> issues = [.. parsed.Warnings];
         if (request.Compartment is { } compartment)
@@ -78,9 +91,20 @@ public static class ResourceSearcher
             issues.AddRange(compartmentIssues);
         }
 
-        var source = new FolderSearchSource(session);
-        var engine = new InMemorySearchEngine(source, Features, session.Compartments);
-        return new SearchMatch(parsed, source, engine, Match(engine, source, parsed), issues);
+        return (parsed, issues);
+    }
+
+    /// <summary>
+    /// Evaluates <paramref name="parsed"/> with the same engine and features as a search, over no resources: every refusal the
+    /// engine decides from the query and the definitions alone (a canonical-only chain or include, a wildcard
+    /// <c>_revinclude</c>, an unevaluable compartment, an expression the interpreter cannot compile) is raised exactly as a
+    /// search raises it, without reading any index.
+    /// </summary>
+    /// <exception cref="ToolRequestException">The search would be refused.</exception>
+    internal static void Compile(FolderSession session, ParsedSearch parsed)
+    {
+        var engine = new InMemorySearchEngine(EmptySearchSource.Instance, Features, session.Compartments);
+        _ = Evaluate(engine, parsed);
     }
 
     private static ToolEnvelope<SearchFacts?> Execute(FolderSession session, SearchRequest request, CancellationToken cancellationToken)
@@ -271,11 +295,14 @@ public static class ResourceSearcher
     }
 
     /// <summary>The indexed resources matching the query, in <c>_sort</c> order or else catalog order.</summary>
-    private static List<IndexedResource> Match(InMemorySearchEngine engine, FolderSearchSource source, ParsedSearch parsed)
+    private static List<IndexedResource> Match(InMemorySearchEngine engine, FolderSearchSource source, ParsedSearch parsed) =>
+        [.. Evaluate(engine, parsed).Select(match => source.Indexed(match.Location))];
+
+    private static IReadOnlyList<(ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)> Evaluate(InMemorySearchEngine engine, ParsedSearch parsed)
     {
         try
         {
-            return [.. engine.Search(parsed.Options).Select(match => source.Indexed(match.Location))];
+            return engine.Search(parsed.Options);
         }
         catch (SearchOperationNotSupportedException ex)
         {

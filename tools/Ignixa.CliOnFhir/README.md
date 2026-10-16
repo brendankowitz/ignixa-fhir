@@ -26,6 +26,9 @@ cli-on-fhir term search ./my-fhir-data inpatient --terminology hl7.terminology.r
 cli-on-fhir inspect ./my-fhir-data --with-terminology
 cli-on-fhir term lookup ./my-fhir-data http://snomed.info/sct 73211009 --tx-server https://tx.fhir.org/r4
 
+# Check a search before running it: how each parameter resolves and how the folder populates it
+cli-on-fhir search ./my-fhir-data Observation "code=http://loinc.org|8867-4&subject:Patient.gender=female" --check
+
 # Validate resources (core definitions, loaded profiles, bindings from the terminology store), summarized by rule
 cli-on-fhir validate ./my-fhir-data --type Observation --limit 500
 cli-on-fhir validate ./my-fhir-data --patient <patientId> --package hl7.fhir.us.core@6.1.0
@@ -69,6 +72,7 @@ Search indexes are persisted per resource type so a new process does not pay for
 | `folder_inspect` | `inspect` | Implemented; `facts.codeSystems` summarizes the ten most used coding systems |
 | `folder_code_systems` | `systems <path>` | Implemented, see [Coding systems](#coding-systems) |
 | `search_fhir_resources` | `search <path> <type> [query]` | Implemented, including chains, `_has`, `_sort`, `_include`, `_revinclude` and compartments (`compartment` / `--compartment`) |
+| `plan_fhir_search` | `search <path> <type> [query] --check [--execute]` | Implemented, see [Search plans](#search-plans) |
 | `read_resources` | `get <path> <ref>...` | Implemented; returned resources keep their Bundle references and `facts.resolvedReferences` maps them as search does (resolved without building an index, and only when the folder has Bundle entries) |
 | `patient_list` | `patients <path>` | Implemented, see [Patient tools](#patient-tools) |
 | `context_get_root` | `context <path> <patientId>` | Implemented |
@@ -108,6 +112,15 @@ Indexer failures are reported as `index-extraction-failed` from the event's stru
 `_lastUpdated` is indexed (by `Ignixa.Search.InMemory.LastUpdatedSearchIndexer`) from `meta.lastUpdated` only when it is a FHIR instant (date, time and timezone); anything else is reported as an `index-extraction-failed` issue and the resource does not match `_lastUpdated`.
 
 The folder index is Ignixa's own (`SearchIndexerFactory`) plus the in-memory `_lastUpdated` entry, so it holds what the server's index holds: ContactPoint is indexed as its value with no system, as the search page's token mapping specifies (`telecom=555-1234`; `telecom=phone|555-1234` does not match, use the `phone` or `email` parameter); a Quantity whose `unit` differs from its `code` is also indexed under the unit (`value-quantity=185||lbs`); a `urn:` reference that names no Bundle entry is kept as an untyped reference (see [Bundle references](#bundle-references)), so `subject=urn:uuid:...` matches it; a `canonical` under a reference parameter (R5 `_profile` over `meta.profile`, `instantiates-canonical`) is added in memory only (`CanonicalReferenceSearchIndexer`; the server stores nothing for it until #430) and matched as a canonical: `url` matches every version, `url|1.0` only that one; a chain, `_has` or include through a parameter that selects only canonicals fails as `search-not-supported` whatever the data, while one through a parameter that also selects references (R5 `RequestOrchestration-participant`) follows the references and counts the canonicals in `references-unresolved`; and a Range indexes as a number or quantity range (R4 `probability`).
+
+## Search plans
+
+`plan_fhir_search` (`search --check`) reports how a query would run without running it. It goes through the same parse and bind path as `search_fhir_resources` (digest ids, the parameter policy, chain diagnosis, the compartment) and is then compiled by the same in-memory engine over no resources, so every refusal (`unknown-search-parameter` with a suggestion, `search-not-supported` including the canonical-only chain and include refusal, `digest-not-supported`, `invalid-search-request`) is the one the search gives, with the same issues, and a query the plan accepts is one the search accepts.
+
+- **Per parameter** (in query order, then sort keys and includes): the outcome (`compiled`, `known-miss` with the parser's reason, `ignored` in lenient mode), the modifiers and, for number, date and quantity parameters, the comparison prefixes applied, and each search parameter definition it resolved to (`resolves`: role `filter`, `chain`, `reverse-chain`, `sort`, `include` or `revinclude`; the type it is evaluated on; code, url, type and FHIRPath expression; for a chain or include the target types). A chain lists every link in order, so `subject:Patient.name` resolves `Observation.subject` (targets `Patient`) then `Patient.name`.
+- **Population:** each definition says how many resources of its type in the folder's index have at least one entry for it (`populated` of `indexed`; every resource for `_id`), reading the index of each type the plan names. A compiled parameter that cannot match anything here is a `parameter-unpopulated` warning: a link no resource populates, or a token filter whose values have text only (use `:text`). `:missing=true` and `:not`, which match an absent value, raise no such warning.
+- **Top values:** a token filter lists its ten most common values as `system|code` (or `|code` with no system) with resource counts, most first, from the index entries; systems and codes come from the data, so one not shaped as such is a digest (an `invalid-value` note), and displays are never shown.
+- `execute` (`--execute` with `--check`) also runs the search and returns its facts in `facts.results` with its evidence, `omitted` and `next`; when the plan and the page do not fit the 50 KB cap together, the page is halved until they do. Without it, `next` suggests the search with the same arguments.
 
 ## Bundle references
 

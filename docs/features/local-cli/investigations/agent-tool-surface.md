@@ -55,7 +55,7 @@ Domains in v1: demographics, problems (`Condition`), medications (`MedicationReq
 | Tool / CLI verb | Purpose | Key inputs | Backing | Gap |
 |-----------------|---------|-----------|---------|-----|
 | `search` / `cli-on-fhir search <type> "<query>"` | FHIR search over the folder | `resourceType`, `query`, `count`, `elements` | `SearchQueryInterpreter` | `_sort`, `_include`/`_revinclude`, chaining, `_has` (see [Search extensions](#search-extensions)) |
-| `plan_fhir_search` / `cli-on-fhir search --check` | Validate an agent-written query before running it: unknown parameters, unsupported modifiers, and parameters no resource in the folder populates, with suggestions | `resourceType`, `query` | `SearchOptionsBuilder`, search parameter definitions, catalog statistics | Populated-parameter statistics (new) |
+| `plan_fhir_search` / `cli-on-fhir search --check` (prototype: implemented) | Validate an agent-written query before running it: unknown parameters, unsupported modifiers, and parameters no resource in the folder populates, with suggestions and the top token values | `resourceType`, `query`, `execute?` | The search's own parse and bind path, compiled by the in-memory engine over no resources; type-index statistics | Populated-parameter statistics (new) |
 | `fhirpath_evaluate` / `cli-on-fhir fhirpath <scope> "<expr>"` | Evaluate FHIRPath over one resource, a patient compartment, or a search result set | `scope`, `expression`, `limit` | `Ignixa.FhirPath` | Scope resolution (new) |
 | `sql_view` / `cli-on-fhir view run` | Run a SQL-on-FHIR ViewDefinition over the folder; returns rows (capped) or writes CSV/Parquet/NDJSON | `view`, `filter`, `out?` | `Ignixa.SqlOnFhir`, `tools/Ignixa.SqlOnFhir.Cli` | Catalog as input source (new) |
 

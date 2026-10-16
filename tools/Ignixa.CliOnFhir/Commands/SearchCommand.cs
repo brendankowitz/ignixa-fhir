@@ -11,7 +11,10 @@ using Microsoft.Extensions.Logging;
 
 namespace Ignixa.CliOnFhir.Commands;
 
-/// <summary><c>cli-on-fhir search &lt;path&gt; &lt;type&gt; [query]</c>: the CLI form of the <c>search_fhir_resources</c> MCP tool.</summary>
+/// <summary>
+/// <c>cli-on-fhir search &lt;path&gt; &lt;type&gt; [query]</c>: the CLI form of the <c>search_fhir_resources</c> MCP tool, and with
+/// <c>--check</c> of <c>plan_fhir_search</c>.
+/// </summary>
 internal static class SearchCommand
 {
     public static Command Create()
@@ -47,6 +50,16 @@ internal static class SearchCommand
             Description = "Search only within a compartment, for example Patient/123 (as Patient/123/Observation does); membership follows the FHIR version's CompartmentDefinitions",
         };
 
+        var checkOption = new Option<bool>("--check")
+        {
+            Description = "Do not run the search: report how each parameter resolves (definition, chain targets, modifiers, prefixes), what is ignored or unsupported, and how many resources in the folder populate each parameter, with the top token values",
+        };
+
+        var executeOption = new Option<bool>("--execute")
+        {
+            Description = "With --check, also run the search and return its results beside the plan",
+        };
+
         Option<string?> cacheDirOption = CommonOptions.CreateCacheDirOption();
         Option<bool> noCacheOption = CommonOptions.CreateNoCacheOption();
         Option<bool> prettyOption = CommonOptions.CreatePrettyOption();
@@ -62,7 +75,16 @@ internal static class SearchCommand
         command.Options.Add(elementsOption);
         command.Options.Add(lenientOption);
         command.Options.Add(compartmentOption);
+        command.Options.Add(checkOption);
+        command.Options.Add(executeOption);
         command.Options.Add(prettyOption);
+        command.Validators.Add(result =>
+        {
+            if (result.GetValue(executeOption) && !result.GetValue(checkOption))
+            {
+                result.AddError("--execute is only used with --check: a search without --check always runs.");
+            }
+        });
         CommonOptions.AddCacheOptions(command, cacheDirOption, noCacheOption);
 
         command.SetAction((parseResult, cancellationToken) =>
@@ -79,7 +101,10 @@ internal static class SearchCommand
                 parseResult.GetValue(lenientOption),
                 parseResult.GetValue(compartmentOption));
 
-            return Task.FromResult(EnvelopeOutput.Write(ResourceSearcher.Search(session, request, cancellationToken), parseResult.GetValue(prettyOption)));
+            bool pretty = parseResult.GetValue(prettyOption);
+            return Task.FromResult(parseResult.GetValue(checkOption)
+                ? EnvelopeOutput.Write(SearchPlanner.Plan(session, request, parseResult.GetValue(executeOption), cancellationToken), pretty)
+                : EnvelopeOutput.Write(ResourceSearcher.Search(session, request, cancellationToken), pretty));
         });
 
         return command;

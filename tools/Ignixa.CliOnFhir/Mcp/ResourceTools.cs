@@ -41,7 +41,8 @@ public sealed class ResourceTools(FolderSession session)
         'error' issue (null facts) means the query was not answered, for example 'search-not-supported' for _text or _filter.
         A resource whose id is not a FHIR id is named by its digest ('Type/~' and 16 hex digits) in evidence and issues, and
         '_id' and 'compartment' accept that digest; the returned JSON keeps the id as written.
-        Call folder_inspect first to see which resource types exist.
+        Call folder_inspect first to see which resource types exist, and plan_fhir_search to check a query (and see which
+        codes the folder holds) before running it.
         """)]
     public CallToolResult SearchFhirResources(
         [Description("Resource type to search, for example 'Observation'.")] string resourceType,
@@ -54,6 +55,35 @@ public sealed class ResourceTools(FolderSession session)
         [Description("Compartment to search within, 'Type/id', for example 'Patient/123'. Compartment types: Patient, Encounter, Practitioner, RelatedPerson, Device. A type that is never in such a compartment matches nothing, with a 'compartment-excludes-type' warning.")] string? compartment = null,
         CancellationToken cancellationToken = default) =>
         ToolResults.From(ResourceSearcher.Search(session, new SearchRequest(resourceType, query, count, offset, summary, elements, lenient, compartment), cancellationToken));
+
+    [McpServerTool(Name = "plan_fhir_search", ReadOnly = true, Idempotent = true)]
+    [Description("""
+        Checks a FHIR search before running it (search_fhir_resources takes the same resourceType, query, compartment and
+        lenient, and parses them the same way, so the plan and the search never disagree). For each query parameter:
+        how it was understood ('outcome' compiled, known-miss, ignored), its modifiers and comparison prefixes, and the search
+        parameter definitions it resolved to ('resolves': url, type, FHIRPath expression; for a chain each link in order,
+        with the types it follows to). Each definition says how many resources of its type in this folder have a value for
+        it ('populated' of 'indexed'); one no resource populates is a 'parameter-unpopulated' warning, since that filter
+        cannot match anything here. Token parameters list their most common values ('topValues', at most 10, as
+        'system|code' or '|code' with resource counts) so you can pick codes that exist. Sort keys and includes are listed
+        too. Problems fail exactly as the search would: 'unknown-search-parameter' with a suggestion, 'search-not-supported',
+        'digest-not-supported', 'invalid-search-request'. Values in 'topValues' are folder data (codes, never displays); a
+        system or code not shaped as one is shown as a digest. Pass 'execute' true to also run the search and get its
+        results in 'facts.results' with the search's evidence and paging ('count', 'offset', 'elements', 'summary' as for
+        search_fhir_resources).
+        """)]
+    public CallToolResult PlanFhirSearch(
+        [Description("Resource type to search, for example 'Observation'.")] string resourceType,
+        [Description("FHIR search query string without the leading '?', for example 'code=http://loinc.org|8867-4&date=ge2020'.")] string? query = null,
+        [Description("Compartment to search within, 'Type/id', for example 'Patient/123'.")] string? compartment = null,
+        [Description("True to ignore unknown parameter names (reported as 'parameter-ignored') instead of failing. Default false.")] bool lenient = false,
+        [Description("True to also run the search and return its results. Default false.")] bool execute = false,
+        [Description("With execute: resources per page. Default 10, maximum 50.")] int? count = null,
+        [Description("With execute: matches to skip. Default 0.")] int offset = 0,
+        [Description("With execute: 'count' to get only the total.")] string? summary = null,
+        [Description("With execute: comma-separated top-level elements to keep.")] string? elements = null,
+        CancellationToken cancellationToken = default) =>
+        ToolResults.From(SearchPlanner.Plan(session, new SearchRequest(resourceType, query, count, offset, summary, elements, lenient, compartment), execute, cancellationToken));
 
     [McpServerTool(Name = "read_resources", ReadOnly = true, Idempotent = true)]
     [Description("""

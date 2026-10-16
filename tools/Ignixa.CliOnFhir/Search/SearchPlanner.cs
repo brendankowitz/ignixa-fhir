@@ -1,0 +1,239 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
+using System.Reflection;
+using Ignixa.CliOnFhir.Contracts;
+using Ignixa.CliOnFhir.Session;
+using Ignixa.Search.Expressions;
+using Ignixa.Search.Indexing;
+using Ignixa.Search.Models;
+using Ignixa.Search.Parsing;
+using Ignixa.Serialization;
+using Ignixa.Specification.ValueSets.Normative;
+
+namespace Ignixa.CliOnFhir.Search;
+
+/// <summary>
+/// <c>plan_fhir_search</c> / <c>cli-on-fhir search --check</c>: how a query would run, without running it. The query goes
+/// through the same parse and bind path as <see cref="ResourceSearcher"/> (<see cref="ResourceSearcher.Parse"/>: digest ids,
+/// the parameter policy, chain diagnosis, the compartment) and is then compiled by the same engine over no resources
+/// (<see cref="ResourceSearcher.Compile"/>), so a query the plan accepts is one the search accepts, and every refusal has the
+/// search's issue code. Each parameter is reported with the definitions it resolved to along any chain, its modifiers and
+/// prefixes, and how the folder's index populates each definition; a definition no resource populates is a
+/// <c>parameter-unpopulated</c> warning, since the filter cannot match anything here.
+/// </summary>
+public static class SearchPlanner
+{
+    public const string UnpopulatedCode = "parameter-unpopulated";
+
+    public static ToolEnvelope<PlanFacts?> Plan(FolderSession session, SearchRequest request, bool execute = false, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (EnvelopeAssembler.FolderProblem(session) is { } folderProblem)
+        {
+            return EnvelopeAssembler.Failure<PlanFacts>(session, folderProblem, cancellationToken);
+        }
+
+        try
+        {
+            return Execute(session, request, execute, cancellationToken);
+        }
+        catch (ToolRequestException ex)
+        {
+            return EnvelopeAssembler.Failure<PlanFacts>(session, ex.Issue, cancellationToken);
+        }
+    }
+
+    private static ToolEnvelope<PlanFacts?> Execute(FolderSession session, SearchRequest request, bool execute, CancellationToken cancellationToken)
+    {
+        (ParsedSearch parsed, List<IssueItem> issues) = ResourceSearcher.Parse(session, request);
+        ResourceSearcher.Compile(session, parsed);
+        issues.AddRange(ReferenceFollowChecks.InapplicableIncludes(parsed.Options));
+
+        var population = new ParameterPopulation(session);
+        List<ParameterPlan> parameters = [];
+        foreach (ParameterTrace trace in parsed.Traces)
+        {
+            (ParameterPlan plan, bool absentMatches) = Describe(trace, request.ResourceType, population);
+            parameters.Add(plan);
+            if (!absentMatches && Unpopulated(plan) is { } issue)
+            {
+                issues.Add(issue);
+            }
+        }
+
+        parameters.AddRange(parsed.Options.Sort.Select(sort => Sort(sort, request.ResourceType, population)));
+        parameters.AddRange(parsed.Options.Include.Concat(parsed.Options.RevInclude).Select(include => Include(include, population)));
+        if (population.DigestedValues > 0)
+        {
+            issues.Add(new IssueItem("information", "invalid-value", $"{population.DigestedValues} top values are shown as digests ('~' and 16 hex digits): their system is not an http(s) or urn URI, or their code is not shaped as one. A search cannot use a digest.", Location: null));
+        }
+
+        var facts = new PlanFacts(request.ResourceType, request.Query ?? string.Empty, request.Compartment, population.Indexed(request.ResourceType), parameters, execute);
+        List<OmittedItem> omitted = [];
+        ResourceSearcher.AddDiagnostics(session, population.Source, issues, omitted);
+        if (!execute)
+        {
+            DateTimeOffset builtAt = population.Source.IndexesRead.Select(index => index.BuiltAt).DefaultIfEmpty(session.Catalog.BuiltAt).Max();
+            return EnvelopeAssembler.Create<PlanFacts?>(session, facts, builtAt, [], omitted, [], issues, cancellationToken) with { Next = [Search(request)] };
+        }
+
+        return WithResults(session, request, facts, [.. issues.Where(issue => issue.Code is UnpopulatedCode or "invalid-value")], cancellationToken);
+    }
+
+    /// <summary>
+    /// The search's own envelope with the plan added to its facts and the plan's own warnings to its issues. The search sizes
+    /// its page for its own facts, so a page that no longer fits under the cap with the plan beside it is asked for again
+    /// with half as many resources, until it fits; the search's <c>omitted</c> then gives the offset to continue from.
+    /// </summary>
+    private static ToolEnvelope<PlanFacts?> WithResults(FolderSession session, SearchRequest request, PlanFacts facts, List<IssueItem> planIssues, CancellationToken cancellationToken)
+    {
+        int? count = request.Count;
+        while (true)
+        {
+            ToolEnvelope<SearchFacts?> search = ResourceSearcher.Search(session, request with { Count = count }, cancellationToken);
+            if (search.Facts is not { } results)
+            {
+                return new ToolEnvelope<PlanFacts?>(null, search.Evidence, search.Omitted, search.Absent, search.Issues, search.Freshness);
+            }
+
+            var envelope = new ToolEnvelope<PlanFacts?>(facts with { Results = results }, search.Evidence, search.Omitted, search.Absent, [.. search.Issues, .. planIssues], search.Freshness) { Next = search.Next };
+            if (EnvelopeJson.SizeOf(envelope) <= EnvelopeJson.MaxBytes || results.Returned <= 1)
+            {
+                return envelope;
+            }
+
+            count = Math.Max(1, results.Returned / 2);
+        }
+    }
+
+    /// <returns>The plan, and whether a resource with no value for the parameter can match (<c>:not</c>, <c>:missing=true</c>).</returns>
+    private static (ParameterPlan Plan, bool AbsentMatches) Describe(ParameterTrace trace, string resourceType, ParameterPopulation population)
+    {
+        var collected = new PlanCollector(population);
+        if (trace.Ir is { } ir)
+        {
+            collected.Walk(ir, [resourceType]);
+        }
+
+        // Some modifiers (:text) lower to a plain string test that no longer names them, so the key's own modifier is added.
+        if (KeyModifier(trace.Key) is { } written)
+        {
+            collected.Modifiers.Add(written);
+        }
+
+        (string outcome, string? reason) = trace.Outcome switch
+        {
+            ParameterOutcome.Compiled => ("compiled", (string?)null),
+            ParameterOutcome.KnownMiss miss => ("known-miss", miss.Reason),
+            ParameterOutcome.Ignored ignored => ("ignored", ignored.Reason),
+            ParameterOutcome.Failed failed => ("failed", failed.Message),
+            _ => throw new InvalidOperationException($"Unknown parameter outcome {trace.Outcome.GetType().Name}."),
+        };
+
+        bool comparable = trace.DataType is SearchParamType.Number or SearchParamType.Date or SearchParamType.Quantity;
+        var plan = new ParameterPlan(trace.Key, trace.Value, outcome, reason, [.. collected.Modifiers.Order(StringComparer.Ordinal)], comparable ? [.. collected.Prefixes.Order(StringComparer.Ordinal)] : [], collected.Bindings);
+        return (plan, collected.Modifiers.Contains("not") || collected.MissingMatches);
+    }
+
+    private static ParameterPlan Sort(SortExpression sort, string resourceType, ParameterPopulation population) =>
+        new("_sort", (sort.SortOrder == Ignixa.Search.Expressions.SortOrder.Descending ? "-" : string.Empty) + sort.Parameter.Code, "compiled", null, [], [], [Binding("sort", resourceType, sort.Parameter, targets: null, population)]);
+
+    private static ParameterPlan Include(IncludeExpression include, ParameterPopulation population)
+    {
+        string name = (include.Reversed ? "_revinclude" : "_include") + (include.Iterate ? ":iterate" : string.Empty);
+        string parameter = include.WildCard ? "*" : include.ReferenceSearchParameter.Code;
+        string value = $"{include.SourceResourceType}:{parameter}{(string.IsNullOrEmpty(include.TargetResourceType) ? string.Empty : ":" + include.TargetResourceType)}";
+        IReadOnlyList<ParameterBinding> bindings = include.WildCard
+            ? []
+            : [Binding(include.Reversed ? "revinclude" : "include", include.SourceResourceType, include.ReferenceSearchParameter, [.. include.ReferencedTypes], population)];
+        return new ParameterPlan(name, value, "compiled", null, [], [], bindings);
+    }
+
+    /// <summary>The modifier written on the key's last link (<c>code:text</c>, <c>subject:Patient.name:exact</c>), not a type; null for none or a <c>_has</c> key.</summary>
+    private static string? KeyModifier(string key)
+    {
+        if (key.StartsWith("_has:", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        string last = key[(key.LastIndexOf('.') + 1)..];
+        int colon = last.IndexOf(':', StringComparison.Ordinal);
+        return colon > 0 && colon < last.Length - 1 && char.IsLower(last[colon + 1]) ? last[(colon + 1)..] : null;
+    }
+
+    internal static ParameterBinding Binding(string role, string resourceType, SearchParameterInfo parameter, IReadOnlyList<string>? targets, ParameterPopulation population)
+    {
+        (int populated, IReadOnlyList<TopValue>? top) = population.Count(resourceType, parameter);
+        return new ParameterBinding(
+            role,
+            resourceType,
+            parameter.Code,
+            parameter.Url.OriginalString,
+            Literal(parameter.Type),
+            parameter.Expression,
+            targets,
+            populated,
+            population.Indexed(resourceType),
+            role == "filter" ? top : null);
+    }
+
+    /// <summary>
+    /// The warning for a compiled parameter that cannot match anything in the folder: a link of it (all of its bindings, for a
+    /// link that applies to several types) that no resource populates, or a token filter whose values all lack a code (text
+    /// only), which a code cannot match; null when it can match.
+    /// </summary>
+    private static IssueItem? Unpopulated(ParameterPlan plan)
+    {
+        if (plan.Outcome != "compiled")
+        {
+            return null;
+        }
+
+        string parameter = $"'{plan.Name}={plan.Value}'";
+        if (plan.Resolves.GroupBy(binding => (binding.Role, binding.Code)).FirstOrDefault(link => link.All(binding => binding.Populated == 0)) is { } empty)
+        {
+            ParameterBinding first = empty.First();
+            return new IssueItem("warning", UnpopulatedCode, $"{parameter} cannot match anything in this folder: none of its {first.Indexed} {first.ResourceType} resources has a value for {first.Code}.", Location: null);
+        }
+
+        if (!plan.Modifiers.Contains("text") && plan.Resolves.FirstOrDefault(binding => binding.TopValues is { Count: 0 } && binding.Populated > 0) is { } textOnly)
+        {
+            return new IssueItem("warning", UnpopulatedCode, $"{parameter} cannot match anything in this folder: the {textOnly.Populated} {textOnly.ResourceType} resources with a value for {textOnly.Code} have text only, no code (use {textOnly.Code}:text to match the text).", Location: null);
+        }
+
+        return null;
+    }
+
+    // Built from the request's own arguments only.
+    private static NextCall Search(SearchRequest request)
+    {
+        Dictionary<string, object> args = new() { ["resourceType"] = request.ResourceType };
+        if (request.Query is not null)
+        {
+            args["query"] = request.Query;
+        }
+
+        if (request.Compartment is not null)
+        {
+            args["compartment"] = request.Compartment;
+        }
+
+        if (request.Lenient)
+        {
+            args["lenient"] = true;
+        }
+
+        return new NextCall("search_fhir_resources", args);
+    }
+
+    internal static string Literal<TEnum>(TEnum value)
+        where TEnum : struct, Enum =>
+        typeof(TEnum).GetField(value.ToString())?.GetCustomAttribute<EnumLiteralAttribute>()?.Literal
+            ?? throw new InvalidOperationException($"{typeof(TEnum).Name}.{value} has no FHIR literal.");
+}
