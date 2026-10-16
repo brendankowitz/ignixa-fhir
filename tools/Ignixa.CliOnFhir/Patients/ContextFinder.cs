@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
+using Ignixa.CliOnFhir.Catalog;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Indexing;
 using Ignixa.CliOnFhir.Reading;
@@ -93,7 +94,7 @@ public static class ContextFinder
 
     private static (IReadOnlyList<ContextEntry> Matches, string Rule) Match(PatientContext context, string query)
     {
-        List<IndexedResource> coded = [.. context.Compartment.Members.Where(member => ClinicalRules.MainCode.ContainsKey(member.Key.ResourceType))];
+        List<CatalogEntry> coded = [.. context.Compartment.Members.Where(member => ClinicalRules.MainCode.ContainsKey(member.ResourceType))];
         int bar = query.IndexOf('|', StringComparison.Ordinal);
         bool byCode = bar >= 0 || !query.Any(char.IsWhiteSpace);
         bool byText = bar < 0;
@@ -104,9 +105,9 @@ public static class ContextFinder
         }
 
         List<ContextEntry> codeMatches = byCode ? Where(context, coded, concept => concept.HasCode(system, code), "code") : [];
-        HashSet<ResourceKey> matched = [.. codeMatches.Select(entry => entry.Resource.Key)];
+        HashSet<CatalogEntry> matched = [.. codeMatches.Select(entry => entry.Resource)];
         List<ContextEntry> textMatches = byText
-            ? Where(context, coded.Where(member => !matched.Contains(member.Key)), concept => concept.Mentions(query), "text")
+            ? Where(context, coded.Where(member => !matched.Contains(member)), concept => concept.Mentions(query), "text")
             : [];
 
         string mode = (byCode, byText) switch
@@ -120,16 +121,16 @@ public static class ContextFinder
         return (context.Navigable([.. codeMatches, .. textMatches]), rule);
     }
 
-    private static List<ContextEntry> Where(PatientContext context, IEnumerable<IndexedResource> resources, Func<CodedConcept, bool> predicate, string matchedBy) =>
+    private static List<ContextEntry> Where(PatientContext context, IEnumerable<CatalogEntry> resources, Func<CodedConcept, bool> predicate, string matchedBy) =>
         [.. context.Describe(resources)
-            .Where(entry => CodedConcept.MainCodes(entry.Resource.Key.ResourceType, context.Element(entry)!).Any(predicate))
+            .Where(entry => CodedConcept.MainCodes(entry.Resource.ResourceType, context.Element(entry)!).Any(predicate))
             .Select(entry => entry with { Item = entry.Item with { MatchedBy = matchedBy } })];
 
     private static AbsentItem Absence(PatientContext context, string query)
     {
         List<string> types = [.. context.Compartment.Types.Where(ClinicalRules.MainCode.ContainsKey).Order(StringComparer.Ordinal)];
-        int searched = context.Compartment.Members.Count(member => ClinicalRules.MainCode.ContainsKey(member.Key.ResourceType));
-        DateTimeOffset builtAt = context.Compartment.Folder.IndexesRead.Max(index => index.BuiltAt);
+        int searched = context.Compartment.Members.Count(member => ClinicalRules.MainCode.ContainsKey(member.ResourceType));
+        DateTimeOffset builtAt = context.Compartment.IndexBuiltAt;
         return new AbsentItem(
             $"resources matching '{query}'",
             $"main codes of the {searched} {(types.Count == 0 ? "coded" : string.Join(", ", types))} resources in {context.PatientReference}'s compartment",

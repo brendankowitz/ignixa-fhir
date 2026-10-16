@@ -35,6 +35,7 @@ public sealed class FolderSession
     private readonly Lazy<BundleReferenceResolver> _bundleReferences;
     private readonly Lazy<InMemoryCompartmentMembership> _compartments;
     private readonly Lazy<HashSet<string>> _catalogTypes;
+    private readonly Lazy<CompartmentIndex> _patientCompartments;
     private readonly TimeProvider _timeProvider;
     private readonly Lock _staleGate = new();
     private readonly Lock _deliveredGate = new();
@@ -112,6 +113,8 @@ public sealed class FolderSession
             () => new FolderIndexCache(options, Catalog, schema.Version.ToString(), _indexBuilder.Value.Builder.Definitions),
             LazyThreadSafetyMode.ExecutionAndPublication);
 
+        _patientCompartments = new Lazy<CompartmentIndex>(() => LoadOrBuildCompartments("Patient"), LazyThreadSafetyMode.ExecutionAndPublication);
+
         Terminology = new TerminologySession(this, terminology ?? TerminologyOptions.None);
         Validators = new ValidatorCache(this);
     }
@@ -183,6 +186,12 @@ public sealed class FolderSession
     /// definitions; created on first use (which loads the definitions, as <see cref="Definitions"/> does).
     /// </summary>
     public InMemoryCompartmentMembership Compartments => _compartments.Value;
+
+    /// <summary>
+    /// Every Patient's compartment, loaded from the persisted cache when it is valid, else worked out once from the indexes of
+    /// every type that can be in one (building or loading them) and persisted. One patient's context then reads no index.
+    /// </summary>
+    public CompartmentIndex PatientCompartments => _patientCompartments.Value;
 
     /// <summary>Whether the catalog holds at least one resource of <paramref name="resourceType"/>.</summary>
     public bool HoldsType(string resourceType) => _catalogTypes.Value.Contains(resourceType);
@@ -278,6 +287,36 @@ public sealed class FolderSession
 
         ResourceTypeIndex built = builder.Build(Catalog, _bundleReferences.Value, resourceType, CancellationToken.None);
         return built with { CacheWriteMilliseconds = cache.Store(built) };
+    }
+
+    private CompartmentIndex LoadOrBuildCompartments(string compartmentType)
+    {
+        FolderIndexCache cache = _cache.Value;
+        if (cache.TryLoadCompartments(compartmentType, FindEntry) is { } cached)
+        {
+            return cached;
+        }
+
+        HashSet<string> ids = [.. Catalog.Entries.Where(entry => entry.ResourceType == compartmentType).Select(entry => entry.Id)];
+        if (ids.Count == 0)
+        {
+            return new CompartmentIndex(compartmentType, new Dictionary<string, IReadOnlyList<CatalogEntry>>(StringComparer.Ordinal), [], [], [], Catalog.BuiltAt, FromCache: false);
+        }
+
+        // The focal type's index is read first, as a single patient's context always read it, so diagnostics keep that order.
+        var folder = new FolderSearchSource(this);
+        _ = folder.Resources(compartmentType);
+        (IReadOnlyDictionary<string, List<IndexedResource>> members, IReadOnlyList<string> unevaluable) = folder.CompartmentMembersOf(compartmentType, ids);
+        var built = new CompartmentIndex(
+            compartmentType,
+            members.ToDictionary(pair => pair.Key, IReadOnlyList<CatalogEntry> (pair) => [.. pair.Value.Select(member => member.Entry)], StringComparer.Ordinal),
+            [.. folder.IndexesRead.Select(index => index.ResourceType)],
+            unevaluable,
+            [.. folder.IndexesRead.SelectMany(index => index.Diagnostics)],
+            folder.IndexesRead.Count > 0 ? folder.IndexesRead.Max(index => index.BuiltAt) : Catalog.BuiltAt,
+            FromCache: false);
+        cache.StoreCompartments(built);
+        return built;
     }
 
     private static (FolderCatalog, BuildStats) BuildCatalog(string rootPath, IFhirSchemaProvider schema)

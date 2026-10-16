@@ -311,10 +311,13 @@ public static class ResourceSearcher
     /// whose unindexable resources a chain or include would otherwise miss without a trace; and, first, for each of those
     /// types, the duplicates the catalog dropped, which the search never saw.
     /// </summary>
-    internal static void AddDiagnostics(FolderSession session, FolderSearchSource source, List<IssueItem> issues, List<OmittedItem> omitted)
+    internal static void AddDiagnostics(FolderSession session, FolderSearchSource source, List<IssueItem> issues, List<OmittedItem> omitted) =>
+        AddDiagnostics(session, [.. source.IndexesRead.Select(index => index.ResourceType)], [.. source.IndexesRead.SelectMany(index => index.Diagnostics)], issues, omitted);
+
+    /// <summary>The duplicate-id warnings of <paramref name="resourceTypes"/> and the first <paramref name="diagnostics"/>, the rest counted in <paramref name="omitted"/>.</summary>
+    internal static void AddDiagnostics(FolderSession session, IReadOnlyList<string> resourceTypes, IReadOnlyList<CatalogDiagnostic> diagnostics, List<IssueItem> issues, List<OmittedItem> omitted)
     {
-        issues.AddRange(DuplicateIdIssues.For(session.Catalog, source.IndexesRead.Select(index => index.ResourceType)));
-        List<CatalogDiagnostic> diagnostics = [.. source.IndexesRead.SelectMany(index => index.Diagnostics)];
+        issues.AddRange(DuplicateIdIssues.For(session.Catalog, resourceTypes));
         issues.AddRange(diagnostics.Take(FolderInspector.DefaultIssueLimit).Select(EnvelopeAssembler.ToIssue));
         if (diagnostics.Count > FolderInspector.DefaultIssueLimit)
         {

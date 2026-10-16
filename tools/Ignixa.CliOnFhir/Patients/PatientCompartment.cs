@@ -13,91 +13,94 @@ namespace Ignixa.CliOnFhir.Patients;
 
 /// <summary>
 /// One patient's resources: the Patient itself and every resource in its Patient compartment, by the session's
-/// CompartmentDefinition (<see cref="FolderSearchSource.CompartmentMembers"/>). The Patient is added explicitly, since the R4
-/// definition has no <c>{def}</c> and so does not make it a member of its own compartment (R5 does; it is counted once).
-/// Created for one call; not thread-safe.
+/// CompartmentDefinition, as the session's <see cref="FolderSession.PatientCompartments"/> holds them, so reading them needs
+/// no search index. The Patient is added explicitly, since the R4 definition has no <c>{def}</c> and so does not make it a
+/// member of its own compartment (R5 does; it is counted once). Created for one call; not thread-safe.
 /// </summary>
 internal sealed class PatientCompartment
 {
     /// <summary>The issue code for types whose membership the definition makes impossible to evaluate.</summary>
     public const string UnevaluableCode = "compartment-type-unevaluable";
 
-    private readonly Dictionary<string, List<IndexedResource>> _byType;
+    private readonly Dictionary<string, List<CatalogEntry>> _byType;
+    private readonly CompartmentIndex _index;
 
-    private PatientCompartment(FolderSearchSource folder, IndexedResource patient, List<IndexedResource> members, IReadOnlyList<string> unevaluableTypes)
+    private PatientCompartment(FolderSession session, CompartmentIndex index, CatalogEntry patient)
     {
-        Folder = folder;
+        _index = index;
+        Folder = new FolderSearchSource(session);
         Patient = patient;
-        Members = members;
-        UnevaluableTypes = unevaluableTypes;
-        _byType = members
-            .GroupBy(member => member.Key.ResourceType, StringComparer.Ordinal)
+        Members = [patient, .. index.MembersOf(patient.Id).Where(member => member != patient)];
+        _byType = Members
+            .GroupBy(member => member.ResourceType, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
     }
 
-    /// <summary>The whole folder; its <see cref="FolderSearchSource.IndexesRead"/> are the indexes this patient's answer read.</summary>
+    /// <summary>
+    /// The whole folder, for what the compartment does not hold (another compartment, the resolved references of a page); its
+    /// <see cref="FolderSearchSource.IndexesRead"/> are the indexes this answer read beyond the compartments.
+    /// </summary>
     public FolderSearchSource Folder { get; }
 
     /// <summary>The Patient resource.</summary>
-    public IndexedResource Patient { get; }
+    public CatalogEntry Patient { get; }
 
     /// <summary>The Patient first, then the compartment's members type by type in ordinal order, in catalog order within a type.</summary>
-    public IReadOnlyList<IndexedResource> Members { get; }
+    public IReadOnlyList<CatalogEntry> Members { get; }
 
     /// <summary>Types the compartment could hold whose membership cannot be evaluated, so they are left out (STU3 AuditEvent, Provenance).</summary>
-    public IReadOnlyList<string> UnevaluableTypes { get; }
+    public IReadOnlyList<string> UnevaluableTypes => _index.UnevaluableTypes;
 
     /// <summary>The resource types among <see cref="Members"/>.</summary>
     public IReadOnlySet<string> Types => _byType.Keys.ToHashSet(StringComparer.Ordinal);
 
-    /// <summary>
-    /// Loads the compartment of <c>Patient/<paramref name="patientId"/></c>, reading the index of every type that can be in it
-    /// and that the folder holds.
-    /// </summary>
+    /// <summary>When the newest index this answer depends on was built: the compartments' and any read beyond them.</summary>
+    public DateTimeOffset IndexBuiltAt => Folder.IndexesRead.Select(index => index.BuiltAt).Append(_index.BuiltAt).Max();
+
+    /// <summary>Loads the compartment of <c>Patient/<paramref name="patientId"/></c> from the session's patient compartments.</summary>
     /// <exception cref="ToolRequestException">The id is not a FHIR id, or the folder holds no such Patient.</exception>
     public static PatientCompartment Load(FolderSession session, string patientId)
     {
         ArgumentNullException.ThrowIfNull(session);
 
         PatientIds.Validate(patientId);
-        var folder = new FolderSearchSource(session);
         // A digest names the Patient whose id is not a FHIR id and hashes to it, as patient_list lists it.
-        IndexedResource? patient = session.FindByName("Patient", patientId) is { } entry && folder.Resolve("Patient", entry.Id) is { } location
-            ? folder.Indexed(location.Location)
-            : null;
-        if (patient is null)
+        if (session.FindByName("Patient", patientId) is not { } patient)
         {
-            int patients = session.HoldsType("Patient") ? folder.Resources("Patient").Count : 0;
+            int patients = session.Catalog.Entries.Count(entry => entry.ResourceType == "Patient");
             throw ToolRequestException.Error("unknown-patient", $"The folder holds no Patient/{patientId} ({patients} Patient resources). Call patient_list (CLI: patients) for the patient ids.");
         }
 
-        return Of(folder, patient);
-    }
-
-    /// <summary>The compartment of <paramref name="patient"/>, read through <paramref name="folder"/>.</summary>
-    public static PatientCompartment Of(FolderSearchSource folder, IndexedResource patient)
-    {
-        ArgumentNullException.ThrowIfNull(folder);
-        ArgumentNullException.ThrowIfNull(patient);
-
-        (IReadOnlyList<IndexedResource> members, IReadOnlyList<string> unevaluable) = folder.CompartmentMembers("Patient", patient.Key.Id);
-        return Of(folder, patient, members, unevaluable);
-    }
-
-    /// <summary>The compartment of <paramref name="patient"/> from its members as the folder enumerated them.</summary>
-    public static PatientCompartment Of(FolderSearchSource folder, IndexedResource patient, IReadOnlyList<IndexedResource> members, IReadOnlyList<string> unevaluableTypes)
-    {
-        ArgumentNullException.ThrowIfNull(folder);
-        ArgumentNullException.ThrowIfNull(patient);
-        ArgumentNullException.ThrowIfNull(members);
-
-        List<IndexedResource> all = [patient, .. members.Where(member => member.Key != patient.Key)];
-        return new PatientCompartment(folder, patient, all, unevaluableTypes);
+        return new PatientCompartment(session, session.PatientCompartments, patient);
     }
 
     /// <summary>The members of <paramref name="resourceType"/>, in catalog order.</summary>
-    public IReadOnlyList<IndexedResource> OfType(string resourceType) =>
-        _byType.TryGetValue(resourceType, out List<IndexedResource>? members) ? members : [];
+    public IReadOnlyList<CatalogEntry> OfType(string resourceType) =>
+        _byType.TryGetValue(resourceType, out List<CatalogEntry>? members) ? members : [];
+
+    /// <summary>The indexed form of a member, which reads (or builds) its type's index on first use.</summary>
+    public IndexedResource Indexed(CatalogEntry member)
+    {
+        ArgumentNullException.ThrowIfNull(member);
+
+        return Folder.Indexed(new(member.ResourceType, member.Id));
+    }
+
+    /// <summary>
+    /// The duplicate-id warnings and the diagnostics of every index the answer depends on: those the compartments were read
+    /// from and any read beyond them (diagnostics beyond the limit are counted in <paramref name="omitted"/>).
+    /// </summary>
+    public void AddDiagnostics(FolderSession session, List<IssueItem> issues, List<OmittedItem> omitted)
+    {
+        HashSet<string> covered = new(_index.IndexedTypes, StringComparer.Ordinal);
+        List<ResourceTypeIndex> beyond = [.. Folder.IndexesRead.Where(index => !covered.Contains(index.ResourceType))];
+        ResourceSearcher.AddDiagnostics(
+            session,
+            [.. _index.IndexedTypes, .. beyond.Select(index => index.ResourceType)],
+            [.. _index.Diagnostics, .. beyond.SelectMany(index => index.Diagnostics)],
+            issues,
+            omitted);
+    }
 
     /// <summary>The issue naming the types left out because their membership cannot be evaluated; null when there are none.</summary>
     public IssueItem? UnevaluableIssue(string patientReference) => UnevaluableTypes.Count == 0

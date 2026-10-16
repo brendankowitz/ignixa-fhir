@@ -12,8 +12,9 @@ using Microsoft.Extensions.Logging;
 namespace Ignixa.CliOnFhir.Commands;
 
 /// <summary>
-/// <c>cli-on-fhir context &lt;path&gt; &lt;patientId&gt; [--node &lt;key&gt;]</c>: the CLI form of the <c>patient_context</c> MCP
-/// tool's root operation, and of its expand operation with <c>--node</c>.
+/// <c>cli-on-fhir context &lt;path&gt; &lt;patientId&gt; [--compact | --node &lt;key&gt;]</c>: the CLI form of the
+/// <c>patient_context</c> MCP tool's root operation (<c>detail=full</c>; with <c>--compact</c> the default patient map), and of
+/// its expand operation with <c>--node</c>.
 /// </summary>
 internal static class ContextCommand
 {
@@ -25,6 +26,10 @@ internal static class ContextCommand
         var nodeOption = new Option<string?>("--node")
         {
             Description = "Expand one node instead of returning the root digest: problems, medications, allergies, encounters, labs, problem/Condition-<id>, encounter/Encounter-<id> or labs/<system>|<code>",
+        };
+        var compactOption = new Option<bool>("--compact")
+        {
+            Description = "Print the patient map, exactly what the patient_context MCP tool's root returns by default, instead of the full root digest",
         };
         var countOption = new Option<int?>("--count") { Description = $"With --node: items per page (default {ResourceSearcher.DefaultCount}, maximum {ResourceSearcher.MaxCount})" };
         var offsetOption = new Option<int>("--offset") { Description = "With --node: items to skip" };
@@ -39,6 +44,7 @@ internal static class ContextCommand
         command.Arguments.Add(patientArgument);
         command.Options.Add(versionOption);
         command.Options.Add(nodeOption);
+        command.Options.Add(compactOption);
         command.Options.Add(countOption);
         command.Options.Add(offsetOption);
         command.Options.Add(elementsOption);
@@ -52,6 +58,11 @@ internal static class ContextCommand
             {
                 result.AddError("--count, --offset, --elements and --max-bytes apply only with --node; the root digest is not paged.");
             }
+
+            if (result.GetValue(compactOption) && result.GetValue(nodeOption) is not null)
+            {
+                result.AddError("--compact prints the patient map, the root; it does not apply with --node.");
+            }
         });
 
         command.SetAction((parseResult, cancellationToken) =>
@@ -62,7 +73,9 @@ internal static class ContextCommand
             bool pretty = parseResult.GetValue(prettyOption);
             int exitCode = parseResult.GetValue(nodeOption) is { } nodeKey
                 ? EnvelopeOutput.Write(ContextExpander.Expand(session, patientId, nodeKey, parseResult.GetValue(countOption), parseResult.GetValue(offsetOption), parseResult.GetValue(elementsOption), parseResult.GetValue(maxBytesOption), cancellationToken), pretty)
-                : EnvelopeOutput.Write(ContextRoot.Get(session, patientId, cancellationToken), pretty);
+                : parseResult.GetValue(compactOption)
+                    ? EnvelopeOutput.Write(PatientMap.Get(session, patientId, cancellationToken), pretty)
+                    : EnvelopeOutput.Write(ContextRoot.Get(session, patientId, cancellationToken), pretty);
             return Task.FromResult(exitCode);
         });
 

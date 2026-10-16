@@ -57,6 +57,8 @@ internal sealed class PatientContext
     private readonly Lazy<IReadOnlyList<ContextEntry>> _allergies;
     private readonly Lazy<IReadOnlyList<ContextEntry>> _encounters;
     private readonly Lazy<(IReadOnlyList<LabSeries> Series, int Excluded)> _labs;
+    private readonly Lazy<IReadOnlyList<ContextEntry>> _immunizations;
+    private readonly Lazy<IReadOnlyList<ContextEntry>> _procedures;
     private readonly FhirTemporal _asOf;
 
     private PatientContext(FolderSession session, PatientCompartment compartment, DateTimeOffset asOf)
@@ -77,6 +79,8 @@ internal sealed class PatientContext
         _allergies = new(() => Newest(Describe(Compartment.OfType("AllergyIntolerance"))));
         _encounters = new(() => Keep(Newest(Describe(Compartment.OfType("Encounter")).Where(InWindow)), ClinicalRules.RecordedEncounter));
         _labs = new(BuildLabs);
+        _immunizations = new(() => Newest(Describe(Compartment.OfType("Immunization"))));
+        _procedures = new(() => Newest(Describe(Compartment.OfType("Procedure"))));
     }
 
     public FolderSession Session { get; }
@@ -101,10 +105,10 @@ internal sealed class PatientContext
     public string LabRuleApplied => RulesApplied ? LabRule : LabRuleUnverified;
 
     /// <summary>The patient as summaries name it: <c>Patient/id</c>, the id replaced by its digest when it is not a FHIR id.</summary>
-    public string PatientReference => FhirIds.Reference("Patient", Compartment.Patient.Key.Id);
+    public string PatientReference => FhirIds.Reference("Patient", Compartment.Patient.Id);
 
     /// <summary>The patient id as <c>next</c> passes it back (see <see cref="PatientReference"/>).</summary>
-    public string PatientId => FhirIds.Safe(Compartment.Patient.Key.Id);
+    public string PatientId => FhirIds.Safe(Compartment.Patient.Id);
 
     /// <summary>The window of the time-dependent domains: everything up to <see cref="AsOf"/>.</summary>
     public ContextWindow Window => new(From: null, AsOf);
@@ -123,6 +127,12 @@ internal sealed class PatientContext
     /// <summary>Lab series in the window, most observations first.</summary>
     public IReadOnlyList<LabSeries> Labs => _labs.Value.Series;
 
+    /// <summary>Every Immunization, any status, newest first.</summary>
+    public IReadOnlyList<ContextEntry> Immunizations => _immunizations.Value;
+
+    /// <summary>Every Procedure, any status, newest first.</summary>
+    public IReadOnlyList<ContextEntry> Procedures => _procedures.Value;
+
     /// <summary>Observations of the compartment in no lab series: outside the window or the category rule, or without a coded code.</summary>
     public int LabsExcluded => _labs.Value.Excluded;
 
@@ -140,7 +150,7 @@ internal sealed class PatientContext
     /// <summary>The Patient's demographics.</summary>
     public Demographics Demographics()
     {
-        IElement? patient = Elements.Get(Compartment.Patient.Entry);
+        IElement? patient = Elements.Get(Compartment.Patient);
         return patient is null
             ? new Demographics(PatientReference, null, null, null, null)
             : new Demographics(
@@ -184,8 +194,8 @@ internal sealed class PatientContext
 
         issues.AddRange(Elements.Problems);
         issues.AddRange(Shapes.Issues());
-        ResourceSearcher.AddDiagnostics(Session, Compartment.Folder, issues, omitted);
-        issues.AddRange(NameIssues.For([Compartment.Patient.Entry, .. shown]));
+        Compartment.AddDiagnostics(Session, issues, omitted);
+        issues.AddRange(NameIssues.For([Compartment.Patient, .. shown]));
         return issues;
     }
 
@@ -197,23 +207,23 @@ internal sealed class PatientContext
         Location: null);
 
     /// <summary>The summary items of <paramref name="resources"/>, in order; a resource that cannot be read is left out (and reported).</summary>
-    public IReadOnlyList<ContextEntry> Describe(IEnumerable<IndexedResource> resources) =>
+    public IReadOnlyList<ContextEntry> Describe(IEnumerable<CatalogEntry> resources) =>
         [.. resources.Select(Describe).OfType<ContextEntry>()];
 
     /// <summary>The summary item of <paramref name="resource"/>, or null when it cannot be read (and is reported).</summary>
-    public ContextEntry? Describe(IndexedResource resource)
+    public ContextEntry? Describe(CatalogEntry resource)
     {
         ArgumentNullException.ThrowIfNull(resource);
 
-        string type = resource.Key.ResourceType;
-        if (Elements.Get(resource.Entry) is not { } element)
+        string type = resource.ResourceType;
+        if (Elements.Get(resource) is not { } element)
         {
             return null;
         }
 
         IReadOnlyList<CodedConcept> codes = CodedConcept.MainCodes(type, element);
         CodedConcept? concept = codes.Count > 0 ? codes[0] : null;
-        List<CatalogEntry> sources = [resource.Entry];
+        List<CatalogEntry> sources = [resource];
         List<AbsentItem> absent = [];
         if (concept is null && type is "MedicationRequest" or "MedicationStatement")
         {
@@ -225,8 +235,8 @@ internal sealed class PatientContext
         string? valueType = type == "Observation" && quantity is null ? element.Select("value").FirstOrDefault()?.InstanceType : null;
         FhirTemporal? date = ClinicalValues.MainDate(type, element);
         var item = new ContextItem(
-            FhirIds.Reference(type, resource.Key.Id),
-            NodeKey.Of(type, resource.Key.Id, labCoding),
+            FhirIds.Reference(type, resource.Id),
+            NodeKey.Of(type, resource.Id, labCoding),
             concept?.Key,
             concept?.Display,
             Shapes.Code(type, "status", ClinicalValues.Status(type, element)),
@@ -255,7 +265,7 @@ internal sealed class PatientContext
     {
         ArgumentNullException.ThrowIfNull(entry);
 
-        return Elements.Get(entry.Resource.Entry);
+        return Elements.Get(entry.Resource);
     }
 
     /// <summary>
@@ -266,8 +276,8 @@ internal sealed class PatientContext
         [.. entries
             .OrderBy(entry => entry.Date is null)
             .ThenByDescending(entry => entry.Date)
-            .ThenBy(entry => entry.Resource.Key.ResourceType, StringComparer.Ordinal)
-            .ThenBy(entry => entry.Resource.Key.Id, StringComparer.Ordinal)];
+            .ThenBy(entry => entry.Resource.ResourceType, StringComparer.Ordinal)
+            .ThenBy(entry => entry.Resource.Id, StringComparer.Ordinal)];
 
     /// <summary>Whether the date <paramref name="entry"/> shows starts at or before <see cref="AsOf"/>; an undated entry is outside.</summary>
     private bool InWindow(ContextEntry entry) => entry.Date is { } date && date.CompareTo(_asOf) <= 0;

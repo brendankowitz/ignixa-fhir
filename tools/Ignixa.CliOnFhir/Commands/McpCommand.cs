@@ -52,6 +52,7 @@ internal static class McpCommand
                 services.GetRequiredService<ILoggerFactory>(),
                 cacheOptions,
                 terminology: terminologyOptions));
+            builder.Services.AddHostedService<SessionWarmup>();
             McpServerSetup.AddTools(builder.Services
                 .AddMcpServer(options => McpServerSetup.Configure(options))
                 .WithStdioServerTransport());

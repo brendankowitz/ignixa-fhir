@@ -20,9 +20,21 @@ public static class TermSearch
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        return TerminologyCall.RunAsync(
+        return TerminologyCall.RunAsync<TermSearchFacts>(
             session,
-            state => Answer(state.Store, TermArguments.Required(text, "text"), TermArguments.Optional(system, "system"), TermArguments.Optional(valueSet, "valueSet"), count, offset, cancellationToken),
+            async state =>
+            {
+                string checkedText = TermArguments.Required(text, "text");
+                string? checkedSystem = TermArguments.Optional(system, "system");
+                string? checkedValueSet = TermArguments.Optional(valueSet, "valueSet");
+                TerminologyAnswer<TermSearchFacts> local = Answer(state.Store, checkedText, checkedSystem, checkedValueSet, count, offset, cancellationToken);
+                // A system or ValueSet the store does not hold is searched on the server, by expanding its (implicit) ValueSet
+                // with the text as filter; a loaded one is never sent.
+                bool missing = TxFallback.SystemMissing(local.Facts.Outcome) || local.Facts.Outcome is TermExpand.ValueSetNotLoaded or TermExpand.VersionNotLoaded;
+                return session.Terminology.Options.TxServer is { } tx && missing && (checkedSystem is not null || checkedValueSet is not null)
+                    ? await TxAnswers.SearchAsync(tx, checkedText, checkedSystem, checkedValueSet, Patients.Paging.Resolve(count, offset, []), offset, TxFallback.Why(local.Absent, local.Facts.Outcome), cancellationToken)
+                    : local;
+            },
             cancellationToken);
     }
 

@@ -66,8 +66,8 @@ public static class ContextRoot
         }
 
         Dictionary<string, int> otherTypes = context.Compartment.Members
-            .Where(member => !ClinicalDomains.StubTypes.Contains(member.Key.ResourceType))
-            .GroupBy(member => member.Key.ResourceType, StringComparer.Ordinal)
+            .Where(member => !ClinicalDomains.StubTypes.Contains(member.ResourceType))
+            .GroupBy(member => member.ResourceType, StringComparer.Ordinal)
             .OrderBy(group => group.Key, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
 
@@ -85,7 +85,7 @@ public static class ContextRoot
             otherTypes,
             context.Shapes.Membership);
 
-        List<EvidenceItem> evidence = Evidence([context.Compartment.Patient.Entry, .. shown.SelectMany(entry => entry.Sources)]);
+        List<EvidenceItem> evidence = Evidence([context.Compartment.Patient, .. shown.SelectMany(entry => entry.Sources)]);
         List<OmittedItem> omitted = [];
         List<IssueItem> issues = context.Issues(omitted, shown.SelectMany(entry => entry.Sources));
         List<NextCall> next =
@@ -93,14 +93,14 @@ public static class ContextRoot
             .. new[] { problems, medications, allergies, encounters, labs }
                 .Where(stub => stub.Count > 0 || stub.Excluded > 0)
                 .Select(stub => Expand(context, stub.NodeKey)),
-            .. otherTypes.Keys.Where(_ => FhirIds.IsValid(context.Compartment.Patient.Key.Id)).Select(type => new NextCall("search_fhir_resources", new Dictionary<string, object>(StringComparer.Ordinal)
+            .. otherTypes.Keys.Where(_ => FhirIds.IsValid(context.Compartment.Patient.Id)).Select(type => new NextCall("search_fhir_resources", new Dictionary<string, object>(StringComparer.Ordinal)
             {
                 ["resourceType"] = type,
                 ["compartment"] = context.PatientReference,
             })),
         ];
 
-        DateTimeOffset builtAt = context.Compartment.Folder.IndexesRead.Max(index => index.BuiltAt);
+        DateTimeOffset builtAt = context.Compartment.IndexBuiltAt;
         return EnvelopeAssembler.Create<RootDigestFacts?>(session, facts, builtAt, evidence, omitted, absent, issues, cancellationToken) with { Next = next };
     }
 
@@ -133,7 +133,7 @@ public static class ContextRoot
         FolderSession session = context.Session;
         IReadOnlyList<string> through = session.Compartments.Parameters("Patient", "AllergyIntolerance");
         int inFolder = session.Catalog.Entries.Count(entry => entry.ResourceType == "AllergyIntolerance");
-        DateTimeOffset builtAt = context.Compartment.Folder.IndexesRead.Max(index => index.BuiltAt);
+        DateTimeOffset builtAt = context.Compartment.IndexBuiltAt;
         return new AbsentItem(
             "AllergyIntolerance",
             $"{context.PatientReference} compartment ({context.Compartment.Members.Count} resources, via {string.Join(", ", through)}); {inFolder} in the folder's {session.Catalog.FilesScanned} files. No record, not 'no known allergies'",

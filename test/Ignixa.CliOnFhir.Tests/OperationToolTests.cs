@@ -87,7 +87,7 @@ public class OperationToolTests
     }
 
     [Theory]
-    [InlineData("root", """{"patientId":"p1","nodeKey":"problems"}""", "operation=root does not take 'nodeKey'. It takes patientId.")]
+    [InlineData("root", """{"patientId":"p1","nodeKey":"problems"}""", "operation=root does not take 'nodeKey'. It takes patientId [detail].")]
     [InlineData("expand", """{"patientId":"p1"}""", "operation=expand needs 'nodeKey'. It takes patientId, nodeKey [count, offset, elements, maxBytes].")]
     [InlineData("find", """{"patientId":"p1","query":"asthma","nodeKey":"problems"}""", "operation=find does not take 'nodeKey'.")]
     [InlineData("summary", """{"patientId":"p1"}""", "'summary' is not an operation of this tool: root | expand | find.")]

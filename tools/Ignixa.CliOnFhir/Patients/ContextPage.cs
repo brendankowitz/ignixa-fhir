@@ -6,6 +6,7 @@
 using System.Text.Json.Nodes;
 using Ignixa.CliOnFhir.Catalog;
 using Ignixa.CliOnFhir.Contracts;
+using Ignixa.CliOnFhir.Indexing;
 using Ignixa.CliOnFhir.Reading;
 using Ignixa.CliOnFhir.Search;
 using Ignixa.CliOnFhir.Session;
@@ -75,7 +76,7 @@ internal static class ContextPage
         }
         else if (projection is not null)
         {
-            foreach (string type in page.Select(entry => entry.Resource.Key.ResourceType).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
+            foreach (string type in page.Select(entry => entry.Resource.ResourceType).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
             {
                 issues.AddRange(projection.Validate(type));
             }
@@ -104,7 +105,7 @@ internal static class ContextPage
 
         List<EvidenceItem> evidence = ContextRoot.Evidence(page.Take(consumed).SelectMany(entry => entry.Sources));
         absent.AddRange(page.Take(consumed).SelectMany(entry => entry.Absent).DistinctBy(item => item.What, StringComparer.Ordinal));
-        DateTimeOffset builtAt = context.Compartment.Folder.IndexesRead.Max(index => index.BuiltAt);
+        DateTimeOffset builtAt = context.Compartment.IndexBuiltAt;
         return EnvelopeAssembler.Create<TFacts?>(session, facts(contents), builtAt, evidence, omitted, absent, issues, cancellationToken) with { Next = next };
     }
 
@@ -121,7 +122,8 @@ internal static class ContextPage
         CancellationToken cancellationToken)
     {
         // The listed resolutions can only shrink once the resources are read, so each resource is charged for its candidates.
-        Dictionary<string, Dictionary<string, string>> candidates = ResolvedReferences.Candidates(page.Select(entry => entry.Resource), ResolvedReferences.Limit);
+        List<IndexedResource> indexed = [.. page.Select(entry => context.Compartment.Indexed(entry.Resource))];
+        Dictionary<string, Dictionary<string, string>> candidates = ResolvedReferences.Candidates(indexed, ResolvedReferences.Limit);
         int Reserved(bool cutBySize) => EnvelopeJson.SizeOf(new ToolEnvelope<TFacts>(
             facts(new Contents([.. page.Select(entry => entry.Item)], [], ResolvedReferences: null)),
             ContextRoot.Evidence(page.SelectMany(entry => entry.Sources)),
@@ -135,8 +137,8 @@ internal static class ContextPage
 
         // The reservation already holds every page item's evidence, which the batch counts again per resource: the
         // envelope's evidence is the items' sources, so the double count only errs towards a smaller page.
-        List<CatalogEntry> entries = [.. page.Select(entry => entry.Resource.Entry)];
-        Func<int, JsonObject, int> costs = ResolvedReferences.Charge([.. page.Select(entry => entry.Resource)]);
+        List<CatalogEntry> entries = [.. page.Select(entry => entry.Resource)];
+        Func<int, JsonObject, int> costs = ResolvedReferences.Charge(indexed);
         ResourceBatch batch = ResourceBatch.Collect(context.Session.RootPath, entries, projection, Reserved(cutBySize: false), budget, costs, cancellationToken);
         if (batch.Consumed < page.Count)
         {
@@ -146,7 +148,7 @@ internal static class ContextPage
         issues.AddRange(batch.Issues);
         omitted.AddRange(batch.Skipped);
         List<ContextEntry> returned = [.. page.Take(batch.Consumed)];
-        (Dictionary<string, Dictionary<string, string>> shown, int notListed) = ResolvedReferences.Shown(returned.Select(entry => entry.Resource), batch, candidates);
+        (Dictionary<string, Dictionary<string, string>> shown, int notListed) = ResolvedReferences.Shown(indexed.Take(batch.Consumed), batch, candidates);
         if (notListed > 0)
         {
             omitted.Add(new OmittedItem($"{notListed} more resolved Bundle references in the returned resources (resolvedReferences lists at most {ResolvedReferences.Limit})", "limit"));

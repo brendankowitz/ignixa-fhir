@@ -227,6 +227,67 @@ public class TerminologyTxServerTests
         tx.Requests.ShouldHaveSingleItem().Query.ShouldBe("?system=http%3A%2F%2Fsnomed.info%2Fsct&codeA=73211009&codeB=46635009");
     }
 
+    // Regression: at 87543aa2 a text search in a system that is not loaded answered system-not-loaded although a server was
+    // configured, so "myocardial infarction" in SNOMED CT could not be found by text.
+    [Fact]
+    public async Task GivenASystemNotLoaded_WhenSearchedByText_ThenTheServerExpandsItsImplicitValueSetWithTheTextAsFilter()
+    {
+        using var folder = new TestFolder();
+        using var store = new TestFolder();
+        (FolderSession session, StubHttpHandler tx) = Open(folder, store, _ => Fhir("""
+            {"resourceType":"ValueSet","url":"http://snomed.info/sct?fhir_vs","version":"http://snomed.info/sct/900000000000207008/version/20250201","expansion":{"total":3,"offset":0,
+             "contains":[{"system":"http://snomed.info/sct","code":"22298006","display":"Myocardial infarction"},{"system":"http://snomed.info/sct","code":"399211009","display":"History of myocardial infarction"}]}}
+            """));
+
+        JsonNode result = Json(await TermSearch.SearchAsync(session, "myocardial infarction", Snomed, null, 2, 0, CancellationToken.None));
+
+        JsonNode facts = result["facts"]!;
+        ((string)facts["outcome"]!).ShouldBe("searched");
+        facts["matches"]!.AsArray().Select(match => $"{match!["code"]}:{match["matchKind"]}:{match["source"]}").ShouldBe(["22298006:exact:tx-server", "399211009:contains:tx-server"]);
+        ((int)facts["total"]!).ShouldBe(3);
+        ((string)facts["source"]!["kind"]!).ShouldBe("tx-server");
+        ((string)facts["source"]!["reportedVersion"]!).ShouldBe("http://snomed.info/sct/900000000000207008/version/20250201");
+        result["issues"]!.AsArray().Select(issue => (string)issue!["code"]!).ShouldContain(TxAnswers.UsedCode);
+        JsonNode next = result["next"]!.AsArray().ShouldHaveSingleItem()!;
+        ((string)next["args"]!["operation"]!).ShouldBe("search");
+        ((int)next["args"]!["offset"]!).ShouldBe(2);
+        ((string)next["args"]!["system"]!).ShouldBe(Snomed);
+        tx.Requests.ShouldHaveSingleItem().Query.ShouldBe("?url=http%3A%2F%2Fsnomed.info%2Fsct%3Ffhir_vs&count=2&offset=0&filter=myocardial%20infarction");
+        ShouldCarryOnlyCodes(tx);
+    }
+
+    [Fact]
+    public async Task GivenLoincNotLoaded_WhenSearchedByText_ThenItsAllCodesValueSetIsExpandedAtTheOffset()
+    {
+        using var folder = new TestFolder();
+        using var store = new TestFolder();
+        (FolderSession session, StubHttpHandler tx) = Open(folder, store, _ => Fhir("""
+            {"resourceType":"ValueSet","url":"http://loinc.org/vs","expansion":{"total":12,"offset":10,"contains":[{"system":"http://loinc.org","code":"2823-3","display":"Potassium [Moles/volume] in Serum or Plasma"}]}}
+            """));
+
+        JsonNode result = Json(await TermSearch.SearchAsync(session, "potassium", "http://loinc.org", null, 10, 10, CancellationToken.None));
+
+        ((string)result["facts"]!["matches"]![0]!["matchKind"]!).ShouldBe("prefix");
+        tx.Requests.ShouldHaveSingleItem().Query.ShouldBe("?url=http%3A%2F%2Floinc.org%2Fvs&count=10&offset=10&filter=potassium");
+        ((int)result["next"]!.AsArray().ShouldHaveSingleItem()!["args"]!["offset"]!).ShouldBe(11);
+    }
+
+    [Fact]
+    public async Task GivenALoadedSystemOrNoSystem_WhenSearchedByText_ThenTheServerIsNotAsked()
+    {
+        using var folder = new TestFolder();
+        using var store = new TestFolder();
+        (FolderSession session, StubHttpHandler tx) = Open(folder, store, _ => Fhir(Parameters()));
+
+        JsonNode loaded = Json(await TermSearch.SearchAsync(session, "heart", Body, null, null, 0, CancellationToken.None));
+        JsonNode anywhere = Json(await TermSearch.SearchAsync(session, "heart", null, null, null, 0, CancellationToken.None));
+
+        ((string)loaded["facts"]!["outcome"]!).ShouldBe("searched");
+        ((string)anywhere["facts"]!["outcome"]!).ShouldBe("searched");
+        loaded["facts"]!["source"].ShouldBeNull();
+        tx.Requests.ShouldBeEmpty();
+    }
+
     [Fact]
     public async Task GivenAValueSetNotLoaded_WhenExpanded_ThenTheServerPageIsReturnedWithItsTotalAndNext()
     {

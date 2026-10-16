@@ -214,6 +214,64 @@ internal static class TxAnswers
         return new TerminologyAnswer<TermExpandFacts>(facts, [], omitted, [], issues) { Next = next };
     }
 
+    /// <summary>
+    /// A text search on the server: <c>ValueSet/$expand</c> of <paramref name="valueSet"/>, else of the system's implicit
+    /// all-codes ValueSet (<see cref="ImplicitValueSet"/>), with the text as <c>filter</c>, paged by count and offset.
+    /// </summary>
+    public static async Task<TerminologyAnswer<TermSearchFacts>> SearchAsync(TxServerClient tx, string text, string? system, string? valueSet, int pageSize, int offset, string why, CancellationToken cancellationToken)
+    {
+        string url = valueSet ?? ImplicitValueSet(system!);
+        TerminologyAnswer<TermExpandFacts> expanded = await ExpandAsync(tx, url, text, pageSize, offset, why, cancellationToken);
+        string folded = TextFolding.Fold(text);
+        List<TermMatch> matches = [.. expanded.Facts.Codes
+            .Where(code => system is null || code.System == system)
+            .Select(code => new TermMatch(code.System, code.Version, code.Code, code.Display, "display", Kind(code.Display, folded), null, code.Inactive, "tx-server"))];
+        var facts = new TermSearchFacts(
+            text,
+            system,
+            valueSet,
+            TermSearch.Searched,
+            matches.Select(match => match.System).Distinct(StringComparer.Ordinal).Count(),
+            expanded.Facts.Total,
+            null,
+            expanded.Facts.Total,
+            offset,
+            matches.Count,
+            matches,
+            expanded.Facts.Source);
+        List<NextCall> next = [.. expanded.Next.Select(call =>
+        {
+            var args = new Dictionary<string, object>(StringComparer.Ordinal) { ["text"] = text, ["offset"] = call.Args["offset"], ["count"] = pageSize };
+            if (system is not null)
+            {
+                args["system"] = system;
+            }
+
+            if (valueSet is not null)
+            {
+                args["valueSet"] = valueSet;
+            }
+
+            return TermNext.Call("search", args);
+        })];
+        return new TerminologyAnswer<TermSearchFacts>(facts, [], expanded.Omitted, [], expanded.Issues) { Next = next };
+    }
+
+    /// <summary>
+    /// The ValueSet of every code of <paramref name="system"/>: LOINC's <c>http://loinc.org/vs</c>, else the implicit
+    /// <c>system?fhir_vs</c> form SNOMED CT defines (and servers such as tx.fhir.org accept for other systems).
+    /// </summary>
+    public static string ImplicitValueSet(string system) => system == "http://loinc.org" ? "http://loinc.org/vs" : system + "?fhir_vs";
+
+    // The server matched the filter its own way (words, designations); the kind says how the returned display relates to the text.
+    private static string Kind(string? display, string folded) => display is null ? "server" : TextFolding.Fold(display) switch
+    {
+        var value when value == folded => "exact",
+        var value when value.StartsWith(folded, StringComparison.Ordinal) => "prefix",
+        var value when value.Contains(folded, StringComparison.Ordinal) => "contains",
+        _ => "server",
+    };
+
     public static async Task<TerminologyAnswer<TermTranslateFacts>> TranslateAsync(TxServerClient tx, string system, string code, string? targetSystem, string? conceptMap, string why, CancellationToken cancellationToken)
     {
         // The parameter names differ by the SERVER's FHIR version (R4 code/targetsystem, R5 sourceCode/targetSystem); when it

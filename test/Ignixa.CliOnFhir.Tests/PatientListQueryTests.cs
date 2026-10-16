@@ -7,6 +7,7 @@ using System.Text.Json.Nodes;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Mcp;
 using Ignixa.CliOnFhir.Patients;
+using Ignixa.CliOnFhir.Session;
 using ModelContextProtocol.Protocol;
 using Shouldly;
 using static Ignixa.CliOnFhir.Tests.SearchFixture;
@@ -129,6 +130,56 @@ public class PatientListQueryTests
 
         text.Length.ShouldBeLessThan(1500);
         text.ShouldNotContain("dateRule");
+    }
+
+    // New at V5: before it every row carried its compartment, so a lookup read the index of every type in a compartment.
+    [Theory]
+    [InlineData("Madalyn472")]
+    [InlineData("MRN-1001")]
+    [InlineData("m1")]
+    public void GivenAQuery_WhenListed_ThenItFindsThePatientTheListingHasWithoutBuildingAnyIndex(string query)
+    {
+        using TestFolder folder = Mrns();
+        FolderSession lookupSession = Open(folder);
+
+        PatientSummary found = PatientLister.List(lookupSession, query: query).Facts.ShouldNotBeNull().Patients.ShouldHaveSingleItem();
+        PatientSummary listed = PatientLister.List(Open(folder)).Facts.ShouldNotBeNull().Patients.Single(patient => patient.Id == found.Id);
+
+        found.ShouldBe(new PatientSummary(listed.Id, listed.Name, listed.Gender, listed.BirthDate));
+        lookupSession.BuiltIndexTypes.ShouldBeEmpty();
+        listed.ResourceCount.ShouldBe(2);
+    }
+
+    [Fact]
+    public void GivenALookup_WhenListedOverMcp_ThenRowsCarryOnlyThePatientsOwnFields()
+    {
+        using TestFolder folder = Mrns();
+
+        JsonNode facts = Facts(new PatientTools(Open(folder)).PatientList(query: "MRN-1001"));
+
+        facts["patients"]![0]!.AsObject().Select(property => property.Key).ShouldBe(["id", "name", "gender", "birthDate"]);
+    }
+
+    [Theory]
+    [InlineData("urn:mrn|MRN-1001", "m1")]
+    [InlineData("|MRN-2002", "m2")]
+    [InlineData("|MRN-2002 abbott", "m2")]
+    public void GivenAnIdentifierToken_WhenListed_ThenItMatchesThatIdentifierExactly(string query, string expectedId)
+    {
+        using TestFolder folder = Mrns();
+
+        PatientLister.List(Open(folder), query: query).Facts.ShouldNotBeNull().Patients.ShouldHaveSingleItem().Id.ShouldBe(expectedId);
+    }
+
+    [Theory]
+    [InlineData("urn:other|MRN-1001")]
+    [InlineData("urn:mrn|MRN-100")]
+    [InlineData("|mrn-1001")]
+    public void GivenAnIdentifierTokenOfAnotherSystemOrValue_WhenListed_ThenNobodyMatches(string query)
+    {
+        using TestFolder folder = Mrns();
+
+        PatientLister.List(Open(folder), query: query).Facts.ShouldNotBeNull().Patients.ShouldBeEmpty();
     }
 
     private static JsonNode Facts(CallToolResult result) => JsonNode.Parse(result.Content.OfType<TextContentBlock>().Single().Text)!["facts"]!;

@@ -18,12 +18,17 @@ using Ignixa.Search.Models;
 namespace Ignixa.CliOnFhir.Caching;
 
 /// <summary>
-/// Persists each resource type's index under a per-folder directory outside the source folder, and loads it
-/// back when nothing it depends on has changed. A cache that cannot be used is reported and bypassed, never
-/// partially served: the caller then builds the index as if there were no cache.
+/// Persists each resource type's index under a per-build, per-folder directory outside the source folder
+/// (<c>&lt;root&gt;/index-&lt;build&gt;/&lt;folder hash&gt;-&lt;FHIR version&gt;</c>), and loads it back when nothing it
+/// depends on has changed. A cache that cannot be used is reported and bypassed, never partially served: the caller then
+/// builds the index as if there were no cache.
 /// </summary>
 /// <remarks>
-/// The first use compares the stored manifest with the current one. A match keeps the stored type files; any
+/// Each build (format version, tool version and indexing assemblies, <see cref="CacheManifest.CurrentBuildKey"/>) has its own
+/// directory, so two builds used side by side on one root keep their caches instead of discarding each other's. A session
+/// marks its build directory as used when it opens the cache, and deletes the build directories beyond the
+/// <see cref="KeptBuilds"/> most recently used; a process still running an evicted build finds its files gone and rebuilds.
+/// Directories of the earlier layout (no build directory) are never touched. The first use compares the stored manifest with the current one. A match keeps the stored type files; any
 /// mismatch replaces the manifest, which orphans the old type files (each names the manifest it was written
 /// under), so a type file is only ever read together with the manifest that vouched for it. All writes go to
 /// a temporary file that is then moved into place, so concurrent processes can only replace each other's
@@ -34,9 +39,15 @@ internal sealed class FolderIndexCache
     public const string RebuiltCode = "index-cache-rebuilt";
     public const string CorruptCode = "index-cache-corrupt";
     public const string UnavailableCode = "index-cache-unavailable";
+    public const string EvictionCode = "index-cache-eviction-incomplete";
 
+    /// <summary>Build directories kept under the root: the current one and the most recently used others.</summary>
+    public const int KeptBuilds = 3;
+
+    private const string BuildDirectoryPrefix = "index-";
     private const string ManifestFileName = "manifest.json";
     private const string TypeFileSuffix = ".index.json";
+    private const string CompartmentFileSuffix = ".compartments.json";
     private const int FileBufferSize = 1 << 16;
 
     // Exact member names and no duplicates: the identity checks read the JSON with exact names, so the typed read
@@ -80,7 +91,7 @@ internal sealed class FolderIndexCache
         _unavailableReason = options.UnavailableReason ?? (options.RootDirectory is null ? null : OverlapReason(options.RootDirectory));
         CacheDirectory = options.RootDirectory is null || _unavailableReason is not null
             ? null
-            : Path.Combine(options.RootDirectory, FolderDirectoryName(_folderPath, fhirVersion));
+            : Path.Combine(options.RootDirectory, BuildDirectoryPrefix + CacheManifest.CurrentBuildKey(), FolderDirectoryName(_folderPath, fhirVersion));
     }
 
     /// <summary>This folder's cache directory; null when the cache is not in use.</summary>
@@ -198,6 +209,102 @@ internal sealed class FolderIndexCache
         }
     }
 
+    /// <summary>
+    /// Loads the persisted compartments of <paramref name="compartmentType"/>, naming each member by its catalog entry through
+    /// <paramref name="findEntry"/>; null when the cache is off, nothing was stored, or the file is unusable (reported).
+    /// </summary>
+    public CompartmentIndex? TryLoadCompartments(string compartmentType, Func<string, string, CatalogEntry?> findEntry)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(compartmentType);
+        ArgumentNullException.ThrowIfNull(findEntry);
+
+        string? manifestId = OpenManifest();
+        if (manifestId is null)
+        {
+            return null;
+        }
+
+        string path = CompartmentFilePath(compartmentType);
+        try
+        {
+            CachedCompartmentIndex? cached;
+            using (FileStream stream = OpenShared(path, FileOptions.SequentialScan))
+            {
+                cached = JsonSerializer.Deserialize<CachedCompartmentIndex>(stream, JsonOptions);
+            }
+
+            if (cached?.ManifestId is not { } writtenUnder)
+            {
+                throw new InvalidDataException("the file names no manifest.");
+            }
+
+            if (!string.Equals(writtenUnder, manifestId, StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            cached.Validate();
+            if (!string.Equals(cached.CompartmentType, compartmentType, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException($"the file holds {cached.CompartmentType} compartments.");
+            }
+
+            Dictionary<string, IReadOnlyList<CatalogEntry>> members = new(cached.Compartments.Count, StringComparer.Ordinal);
+            foreach (CachedCompartment compartment in cached.Compartments)
+            {
+                members.Add(compartment.Id, [.. compartment.Types.SelectMany(group => group.Ids.Select(id => findEntry(group.Type, id)
+                    ?? throw new InvalidDataException($"{FhirIds.Reference(group.Type, id)} is not in the folder's catalog.")))]);
+            }
+
+            return new CompartmentIndex(compartmentType, members, cached.IndexedTypes, cached.UnevaluableTypes, cached.Diagnostics, cached.BuiltAt, FromCache: true);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return null;
+        }
+        catch (Exception ex) when (IsUnreadableCacheFile(ex))
+        {
+            AddIssue("warning", CorruptCode, $"The cached {compartmentType} compartments at '{path}' could not be used and were rebuilt: {Describe(ex)}");
+            return null;
+        }
+    }
+
+    /// <summary>Persists <paramref name="compartments"/>; false when it was not (cache off or unavailable, in which case an issue says why).</summary>
+    public bool StoreCompartments(CompartmentIndex compartments)
+    {
+        ArgumentNullException.ThrowIfNull(compartments);
+
+        string? manifestId = OpenManifest();
+        if (manifestId is null || WritesDisabled())
+        {
+            return false;
+        }
+
+        var cached = new CachedCompartmentIndex(
+            manifestId,
+            compartments.CompartmentType,
+            compartments.BuiltAt,
+            compartments.IndexedTypes,
+            compartments.UnevaluableTypes,
+            compartments.Diagnostics,
+            [.. compartments.Members.Select(pair => new CachedCompartment(
+                pair.Key,
+                [.. pair.Value
+                    .GroupBy(member => member.ResourceType, StringComparer.Ordinal)
+                    .Select(group => new CachedMemberGroup(group.Key, [.. group.Select(member => member.Id)]))]))]);
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(cached, JsonOptions);
+        try
+        {
+            WriteAtomically(CompartmentFilePath(compartments.CompartmentType), stream => stream.Write(bytes));
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            ReportUnavailable($"The index cache at '{CacheDirectory}' cannot be written: {Describe(ex)}");
+            return false;
+        }
+    }
+
     private static string NormalizeFolderPath(string path)
     {
         string trimmed = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
@@ -275,6 +382,8 @@ internal sealed class FolderIndexCache
 
     private string TypeFilePath(string resourceType) => Path.Combine(CacheDirectory!, resourceType + TypeFileSuffix);
 
+    private string CompartmentFilePath(string compartmentType) => Path.Combine(CacheDirectory!, compartmentType + CompartmentFileSuffix);
+
     private bool WritesDisabled()
     {
         lock (_gate)
@@ -341,6 +450,19 @@ internal sealed class FolderIndexCache
             return null;
         }
 
+        string buildDirectory = Path.GetDirectoryName(CacheDirectory)!;
+        try
+        {
+            Directory.CreateDirectory(buildDirectory);
+            Directory.SetLastWriteTimeUtc(buildDirectory, DateTime.UtcNow);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            ReportUnavailable($"The index cache at '{CacheDirectory}' cannot be written: {Describe(ex)}");
+            return null;
+        }
+
+        EvictOtherBuilds(buildDirectory);
         CacheManifest current = CacheManifest.For(_catalog, _folderPath, _fhirVersion, _definitions);
         string manifestPath = Path.Combine(CacheDirectory, ManifestFileName);
         byte[]? stored = ReadStoredManifest(manifestPath);
@@ -359,6 +481,30 @@ internal sealed class FolderIndexCache
         {
             ReportUnavailable($"The index cache at '{CacheDirectory}' cannot be written: {Describe(ex)}");
             return null;
+        }
+    }
+
+    // Least recently used first out, by the time each session marks its build directory. Links are never followed or deleted:
+    // only real directories this layout names are candidates.
+    private void EvictOtherBuilds(string buildDirectory)
+    {
+        string root = Path.GetDirectoryName(buildDirectory)!;
+        try
+        {
+            List<DirectoryInfo> others = [.. new DirectoryInfo(root)
+                .EnumerateDirectories(BuildDirectoryPrefix + "v*")
+                .Where(directory => !directory.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                .Where(directory => !string.Equals(directory.FullName, buildDirectory, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(directory => directory.LastWriteTimeUtc)
+                .Skip(KeptBuilds - 1)];
+            foreach (DirectoryInfo stale in others)
+            {
+                stale.Delete(recursive: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AddIssue("information", EvictionCode, $"Index caches of other builds under '{root}' could not all be removed: {Describe(ex)}. The current cache is unaffected.");
         }
     }
 

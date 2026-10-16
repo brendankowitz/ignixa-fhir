@@ -85,7 +85,7 @@ public static class ContextExpander
     {
         ContextEntry condition = context.Problems.FirstOrDefault(entry => entry.Item.NodeKey == nodeKey) ?? throw Unknown(context, nodeKey);
         // Matched against the reference as resolved, so by the Condition's own id; the item's name may be its digest.
-        string reference = $"Condition/{condition.Resource.Key.Id}";
+        string reference = $"Condition/{condition.Resource.Id}";
         List<CodedConcept> codes = [.. CodedConcept.MainCodes("Condition", context.Element(condition)!)];
         List<ContextEntry> linked = [];
         foreach (ContextEntry medication in context.Medications)
@@ -106,16 +106,16 @@ public static class ContextExpander
     /// <summary>The Encounter, then the resources in its Encounter compartment, type by type.</summary>
     private static Node Encounter(PatientContext context, string nodeKey, List<IssueItem> issues)
     {
-        IndexedResource encounter = context.Compartment.OfType("Encounter").FirstOrDefault(resource => NodeKey.Encounter(resource.Key.Id) == nodeKey)
+        CatalogEntry encounter = context.Compartment.OfType("Encounter").FirstOrDefault(resource => NodeKey.Encounter(resource.Id) == nodeKey)
             ?? throw Unknown(context, nodeKey);
-        (IReadOnlyList<IndexedResource> members, IReadOnlyList<string> unevaluable) = context.Compartment.Folder.CompartmentMembers("Encounter", encounter.Key.Id);
+        (IReadOnlyList<IndexedResource> members, IReadOnlyList<string> unevaluable) = context.Compartment.Folder.CompartmentMembers("Encounter", encounter.Id);
         if (unevaluable.Count > 0)
         {
-            issues.Add(new IssueItem("warning", PatientCompartment.UnevaluableCode, $"{string.Join(", ", unevaluable)} resources in the folder were not considered for {FhirIds.Reference("Encounter", encounter.Key.Id)}'s compartment: the CompartmentDefinition lists codes for them that are not reference search parameters.", Location: null));
+            issues.Add(new IssueItem("warning", PatientCompartment.UnevaluableCode, $"{string.Join(", ", unevaluable)} resources in the folder were not considered for {FhirIds.Reference("Encounter", encounter.Id)}'s compartment: the CompartmentDefinition lists codes for them that are not reference search parameters.", Location: null));
         }
 
-        IReadOnlyList<ContextEntry> entries = context.Navigable(context.Describe([encounter, .. members.Where(member => member.Key != encounter.Key)]));
-        return new(entries, $"{FhirIds.Reference("Encounter", encounter.Key.Id)}, then every resource in its Encounter compartment (by the {context.Session.Schema.Version} CompartmentDefinition), type by type in catalog order");
+        IReadOnlyList<ContextEntry> entries = context.Navigable(context.Describe([encounter, .. members.Select(member => member.Entry).Where(member => member != encounter)]));
+        return new(entries, $"{FhirIds.Reference("Encounter", encounter.Id)}, then every resource in its Encounter compartment (by the {context.Session.Schema.Version} CompartmentDefinition), type by type in catalog order");
     }
 
     /// <summary>Every observation of one lab code in the window, newest first.</summary>

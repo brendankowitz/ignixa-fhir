@@ -42,7 +42,7 @@ internal sealed record CacheManifest(
     string ModuleVersions,
     IReadOnlyList<CatalogFile> Files)
 {
-    public const int CurrentFormatVersion = 14;
+    public const int CurrentFormatVersion = 15;
 
     public static CacheManifest For(FolderCatalog catalog, string folderPath, string fhirVersion, ISearchParameterDefinitionManager definitions)
     {
@@ -159,6 +159,18 @@ internal sealed record CacheManifest(
         return changed == 0
             ? null
             : new ManifestMismatch($"{changed} of the folder's files changed since the cache was written ({added} added, {removed} removed, {modified} modified)", changed);
+    }
+
+    /// <summary>
+    /// Names the build that writes the cache: the format version and a hash of the tool version and the indexing assemblies'
+    /// module versions. Each build keeps its own cache under the root (<see cref="FolderIndexCache"/>), so two builds used side
+    /// by side never discard each other's.
+    /// </summary>
+    public static string CurrentBuildKey()
+    {
+        string build = CurrentToolVersion() + "\n" + CurrentModuleVersions();
+        string hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(build)))[..12];
+        return string.Create(CultureInfo.InvariantCulture, $"v{CurrentFormatVersion}-{hash}");
     }
 
     private IEnumerable<(string Label, string Name, string Value)> IdentityMembers()

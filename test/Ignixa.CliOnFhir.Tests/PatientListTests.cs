@@ -123,7 +123,7 @@ public class PatientListTests
     private sealed class SummaryComparer : IEqualityComparer<PatientSummary>
     {
         public bool Equals(PatientSummary? x, PatientSummary? y) =>
-            x is not null && y is not null && x with { Domains = [] } == y with { Domains = [] } && x.Domains.SequenceEqual(y.Domains);
+            x is not null && y is not null && x with { Domains = [] } == y with { Domains = [] } && (x.Domains ?? []).SequenceEqual(y.Domains ?? []);
 
         public int GetHashCode(PatientSummary obj) => obj.Id.GetHashCode(StringComparison.Ordinal);
     }
