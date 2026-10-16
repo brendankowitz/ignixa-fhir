@@ -25,6 +25,7 @@
   <ItemGroup>
     <!-- The E2E token-search fixture's data, so its server write path is tested without SQL Server. -->
     <Compile Include="..\Ignixa.Api.E2ETests\_TestData\Fixtures\DataTypeSearch\TokenSearchObservations.cs" Link="Registrations\TokenSearchObservations.cs" />
+    <Compile Include="..\Ignixa.Api.E2ETests\_TestData\Scenarios\*.cs" Link="Registrations\E2EScenarios\%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

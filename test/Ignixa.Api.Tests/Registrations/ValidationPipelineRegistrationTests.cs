@@ -371,7 +371,8 @@ public class ValidationPipelineRegistrationTests
             string? depth = null,
             IValidationSchemaResolver? resolver = null,
             int tenantId = 1,
-            IReadOnlyDictionary<int, IFhirSchemaProvider>? tenantSchemas = null)
+            IReadOnlyDictionary<int, IFhirSchemaProvider>? tenantSchemas = null,
+            IReadOnlyCollection<string>? updatableTypes = null)
         {
             _baseVersionContext = new FhirVersionContext(
                 NullLoggerFactory.Instance, new SearchParameterResolutionOptions(), NullFhirBaseUriProvider.Instance);
@@ -420,11 +421,10 @@ public class ValidationPipelineRegistrationTests
             segment.ApplyAsync(Arg.Any<CapabilityStatementJsonNode>(), Arg.Any<CapabilityContext>(), Arg.Any<CancellationToken>())
                 .Returns(call =>
                 {
-                    call.Arg<CapabilityStatementJsonNode>().Rest.Add(new RestComponentJsonNode(JsonNode.Parse("""
-                        {"mode":"server","resource":[
-                          {"type":"Patient","interaction":[{"code":"update"}]},
-                          {"type":"Observation","interaction":[{"code":"update"}]}]}
-                        """)!.AsObject()));
+                    var resources = new JsonArray([.. (updatableTypes ?? ["Patient", "Observation"]).Select(type =>
+                        (JsonNode)new JsonObject { ["type"] = type, ["interaction"] = new JsonArray(new JsonObject { ["code"] = "update" }) })]);
+                    call.Arg<CapabilityStatementJsonNode>().Rest.Add(new RestComponentJsonNode(
+                        new JsonObject { ["mode"] = "server", ["resource"] = resources }));
                     return ValueTask.CompletedTask;
                 });
             var capabilities = new CapabilityStatementService(
