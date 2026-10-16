@@ -50,10 +50,26 @@ public class SqlViewLimitsTests
     {
         using TestFolder folder = ManyPatients(3000);
 
-        IssueItem error = Error(await RunInAsync(folder.Path, new ViewRequest(PatientView, Compartment: "Patient/p1"), timeout: TimeSpan.FromMilliseconds(1)));
+        IssueItem error = Error(await RunInAsync(folder.Path, new ViewRequest(PatientView, Compartment: "Patient/p1"), timeout: TimeSpan.Zero));
 
         error.Code.ShouldBe("view-timeout");
         error.Diagnostics.ShouldNotContain("compartment Patient/");
+        // The time ran out while the patient compartments were being worked out: say so, and how a first run is made to succeed.
+        error.Diagnostics.ShouldContain("patient compartments were being worked out");
+        error.Diagnostics.ShouldContain("a build cut by the timeout keeps nothing");
+        error.Diagnostics.ShouldContain("--timeout 300");
+    }
+
+    [Fact]
+    public async Task GivenATimeoutOutsideTheCompartmentBuild_WhenTheRunIsStopped_ThenTheErrorDoesNotBlameAnIndexBuild()
+    {
+        using TestFolder folder = ManyPatients(3000);
+
+        IssueItem error = Error(await RunInAsync(folder.Path, new ViewRequest(PatientView), timeout: TimeSpan.Zero));
+
+        error.Code.ShouldBe("view-timeout");
+        error.Diagnostics.ShouldNotContain("compartments were being worked out");
+        error.Diagnostics.ShouldContain("compartment Patient/<id>");
     }
 
     [Fact]
@@ -94,7 +110,7 @@ public class SqlViewLimitsTests
         using var elsewhere = new TestFolder();
         string path = Path.Combine(elsewhere.Path, "made", "rows.csv");
 
-        ToolEnvelope<ViewFacts?> envelope = await RunInAsync(folder.Path, new ViewRequest(PatientView, Out: path), timeout: TimeSpan.FromMilliseconds(1));
+        ToolEnvelope<ViewFacts?> envelope = await RunInAsync(folder.Path, new ViewRequest(PatientView, Out: path), timeout: TimeSpan.Zero);
 
         IssueItem error = Error(envelope);
         error.Code.ShouldBe("view-timeout");

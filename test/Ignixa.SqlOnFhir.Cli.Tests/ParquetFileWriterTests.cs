@@ -32,6 +32,15 @@ public class ParquetFileWriterTests : IAsyncDisposable
         ids.Data.Cast<string>().ShouldBe(["p1", "p2"]);
     }
 
+    [Fact]
+    public void GivenAStreamThatCannotSeek_WhenTheWriterIsCreated_ThenItIsRefusedUpFront()
+    {
+        using var inner = new MemoryStream();
+        var schema = new ParquetSchema(new DataField<string>("id"));
+
+        Should.Throw<ArgumentException>(() => new ParquetFileWriter(new WriteOnlyStream(inner), schema, NullLogger.Instance)).ParamName.ShouldBe("stream");
+    }
+
     public ValueTask DisposeAsync()
     {
         if (File.Exists(_outputPath)) File.Delete(_outputPath);

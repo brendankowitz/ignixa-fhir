@@ -71,6 +71,10 @@ public partial class ParquetFileWriter : IAsyncDisposable
         : this("(stream)", schema, logger, columnTypeMap, rowsPerBatch)
     {
         ArgumentNullException.ThrowIfNull(stream);
+        if (!stream.CanSeek || !stream.CanWrite)
+        {
+            throw new ArgumentException("A Parquet file is finished by seeking back to write its footer, so the stream must be writable and seekable.", nameof(stream));
+        }
 
         _fileStream = stream;
     }

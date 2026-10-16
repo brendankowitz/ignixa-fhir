@@ -74,6 +74,12 @@ public static class ViewRunner
         }
     }
 
+    // Which step a run is in, for a timeout to say what used the time.
+    private sealed class RunProgress
+    {
+        public bool ResolvingScope { get; set; }
+    }
+
     // A failure still reports what it left behind (a temporary file it could not safely delete).
     private static ToolEnvelope<ViewFacts?> Failure(FolderSession session, IssueItem error, List<IssueItem> notes, CancellationToken cancellationToken) =>
         EnvelopeAssembler.FolderProblem(session) is not null || notes.Count == 0
@@ -90,18 +96,22 @@ public static class ViewRunner
 
         using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(limit ?? TimeSpan.FromSeconds(seconds));
+        var progress = new RunProgress();
         try
         {
-            return await ExecuteAsync(session, request, notes, timeout.Token);
+            return await ExecuteAsync(session, request, notes, progress, timeout.Token);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeout.IsCancellationRequested)
         {
             string narrower = request.Compartment is null ? "Limit it to one patient's resources with compartment Patient/<id>, or raise" : "Raise";
-            throw ToolRequestException.Error("view-timeout", $"The view did not finish within {limit?.TotalSeconds ?? seconds} seconds and was stopped. {narrower} the timeout (up to {MaxTimeoutSeconds}).");
+            string cold = progress.ResolvingScope
+                ? " The time ran out while the patient compartments were being worked out, which a first run over a folder does from the search indexes of every type that can be in one; a build cut by the timeout keeps nothing, so run it once with a higher timeout (for example --timeout 300) to build them and keep them in the index cache, and later runs read them from there (with the cache off, nothing is kept)."
+                : string.Empty;
+            throw ToolRequestException.Error("view-timeout", $"The view did not finish within {limit?.TotalSeconds ?? seconds} seconds and was stopped.{cold} {narrower} the timeout (up to {MaxTimeoutSeconds}).");
         }
     }
 
-    private static async Task<ToolEnvelope<ViewFacts?>> ExecuteAsync(FolderSession session, ViewRequest request, List<IssueItem> notes, CancellationToken cancellationToken)
+    private static async Task<ToolEnvelope<ViewFacts?>> ExecuteAsync(FolderSession session, ViewRequest request, List<IssueItem> notes, RunProgress progress, CancellationToken cancellationToken)
     {
         List<IssueItem> issues = [];
         List<OmittedItem> omitted = [];
@@ -115,7 +125,9 @@ public static class ViewRunner
         issues.AddRange(ViewVariables.Undeclared(variables, view.Expression));
         issues.AddRange(ViewIssues.ResolveUse(loaded.Json));
         int? distinctColumn = DistinctColumn(view, request.Distinct);
+        progress.ResolvingScope = request.Compartment is not null;
         ViewScope scope = await ViewScope.ResolveAsync(session, view.Resource, request.Compartment, issues, omitted, cancellationToken);
+        progress.ResolvingScope = false;
         CheckResourceLimit(request, view, scope);
 
         var evaluation = new ViewEvaluation(session, view, variables, JsonSourceNodeFactory.Parse(new JsonObject { ["resourceType"] = view.Resource }).ToElement(session.Schema));
@@ -176,30 +188,57 @@ public static class ViewRunner
         }
 
         OutputFile file = target.Begin();
-        ViewFileSink sink = ViewFileSink.Create(file.Stream, target.Format, view.Columns);
+        ViewFileSink? sink = null;
         ViewPass pass;
         long bytes;
+
+        // Every way out of the write ends the writer first, whatever stopped it, and then removes what this run created.
+        async Task AbandonAsync()
+        {
+            try
+            {
+                if (sink is not null)
+                {
+                    await sink.DisposeAsync();
+                }
+            }
+            finally
+            {
+                Note(file.Discard(), notes);
+            }
+        }
+
         try
         {
+            sink = ViewFileSink.Create(file.Stream, target.Format, view.Columns);
+
             // The rows kept are the first ones, which evidence cites.
             pass = await ViewPass.RunAsync(rows, view.Columns.Count, new ViewPaging(ViewResponse.EvidenceRows, Offset: 0), distinctColumn, sink, cancellationToken);
             bytes = await sink.CompleteAsync(cancellationToken);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            await sink.DisposeAsync();
-            Note(file.Discard(), notes);
+            await AbandonAsync();
             throw ToolRequestException.Error("out-write-failed", $"Writing '{target.Path}' failed: {ex.Message}. The partial file was removed.");
         }
         catch
         {
-            await sink.DisposeAsync();
+            await AbandonAsync();
+            throw;
+        }
+
+        ViewFileSink finished = sink!;
+        try
+        {
+            await finished.DisposeAsync();
+        }
+        catch
+        {
             Note(file.Discard(), notes);
             throw;
         }
 
-        await sink.DisposeAsync();
-        if (sink.Rows == 0)
+        if (finished.Rows == 0)
         {
             Note(file.Discard(), notes);
             return (pass, new ViewFileFacts(target.Path, target.Format, 0, 0, Created: false));
@@ -215,7 +254,7 @@ public static class ViewRunner
             throw;
         }
 
-        return (pass, new ViewFileFacts(target.Path, target.Format, sink.Rows, bytes, Created: true));
+        return (pass, new ViewFileFacts(target.Path, target.Format, finished.Rows, bytes, Created: true));
     }
 
     private static void Note(IssueItem? left, List<IssueItem> notes)

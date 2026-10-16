@@ -11,15 +11,15 @@ namespace Ignixa.CliOnFhir.Views;
 /// Lexical limits on the FHIRPath of a ViewDefinition, checked before the parser sees any of it. The FHIRPath parser and evaluator
 /// recurse on the shape of an expression, so a ViewDefinition from the folder (which is untrusted) with a path nested hundreds of
 /// parentheses deep, or a <c>repeat</c> that never moves on (<c>$this</c>), ends the whole process with a stack overflow, which no
-/// <c>catch</c> can stop. These guards refuse such a view with an error instead. They are the tool's; a depth limit in the Core
-/// parser and evaluator, and a repeat that cannot be seen to stand still lexically (<c>$this.where(true)</c>), are separate follow-ups.
+/// <c>catch</c> can stop. These guards refuse such a view with an error instead. They are the tool's cheap early errors. A repeat that stands still without being lexically <c>$this</c> is stopped by the
+/// evaluator (<c>repeat went deeper than 100 levels</c>); a depth limit in the Core FHIRPath parser is a separate follow-up.
 /// </summary>
 internal static class ViewExpressionGuards
 {
     /// <summary>The longest FHIRPath expression a view may have.</summary>
     public const int MaxLength = 4096;
 
-    /// <summary>The deepest bracket nesting an expression may have: parentheses, indexers and braces together.</summary>
+    /// <summary>The deepest bracket nesting an expression may have: parentheses, indexers and braces together, wherever they appear.</summary>
     public const int MaxDepth = 64;
 
     /// <summary>
@@ -133,13 +133,12 @@ internal static class ViewExpressionGuards
         return current.Length > 0 && current != "$this";
     }
 
-    // The index of the parenthesis that closes the one at 0, outside string literals and delimited identifiers.
+    // The index of the parenthesis that closes the one at 0, counting every one: quoted text is not skipped (see Depth).
     private static int ClosingParenthesis(string text)
     {
         int depth = 0;
         for (int i = 0; i < text.Length; i++)
         {
-            i = SkipQuoted(text, i);
             if (text[i] == '(')
             {
                 depth++;
@@ -153,49 +152,26 @@ internal static class ViewExpressionGuards
         return -1;
     }
 
+    // Every bracket counts, wherever it is. FHIRPath has comments (/* */ and //) in which a quote or backtick means nothing, so a
+    // scan that skipped quoted text could be made to stop counting by one inside a comment; counting everything cannot be
+    // bypassed. The price is that a string literal with more than MaxDepth unbalanced opening brackets is refused too.
     private static int Depth(string text)
     {
         int depth = 0;
         int deepest = 0;
-        for (int i = 0; i < text.Length; i++)
+        foreach (char character in text)
         {
-            i = SkipQuoted(text, i);
-            if (text[i] is '(' or '[' or '{')
+            if (character is '(' or '[' or '{')
             {
                 deepest = Math.Max(deepest, ++depth);
             }
-            else if (text[i] is ')' or ']' or '}')
+            else if (character is ')' or ']' or '}')
             {
                 depth = Math.Max(0, depth - 1);
             }
         }
 
         return deepest;
-    }
-
-    // If a string literal ('...' with \ escapes) or a delimited identifier (`...`) starts at index, the index of its closing quote;
-    // otherwise index itself. An unterminated one runs to the end.
-    private static int SkipQuoted(string text, int index)
-    {
-        char quote = text[index];
-        if (quote is not ('\'' or '`'))
-        {
-            return index;
-        }
-
-        for (int i = index + 1; i < text.Length; i++)
-        {
-            if (text[i] == '\\')
-            {
-                i++;
-            }
-            else if (text[i] == quote)
-            {
-                return i;
-            }
-        }
-
-        return text.Length - 1;
     }
 
     private static IEnumerable<(JsonObject Object, string Path)> Items(JsonNode? node, string path)

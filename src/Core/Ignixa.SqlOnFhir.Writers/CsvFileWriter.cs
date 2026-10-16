@@ -16,7 +16,7 @@ namespace Ignixa.SqlOnFhir.Writers;
 public partial class CsvFileWriter : IAsyncDisposable
 {
     private readonly string _outputPath;
-    private readonly Stream? _stream;
+    private readonly ByteCountingStream? _stream;
     private readonly ILogger _logger;
     private StreamWriter? _writer;
     private bool _headerWritten;
@@ -47,7 +47,7 @@ public partial class CsvFileWriter : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(logger);
 
         _outputPath = "(stream)";
-        _stream = stream;
+        _stream = new ByteCountingStream(stream);
         _logger = logger;
     }
 
@@ -104,7 +104,7 @@ public partial class CsvFileWriter : IAsyncDisposable
             // Get file size
             if (_stream is not null)
             {
-                BytesWritten = _stream.Length;
+                BytesWritten = _stream.BytesWritten;
             }
             else
             {
@@ -150,7 +150,7 @@ public partial class CsvFileWriter : IAsyncDisposable
 
     private void InitializeWriter()
     {
-        var fileStream = _stream ?? File.Create(_outputPath);
+        Stream fileStream = _stream ?? (Stream)File.Create(_outputPath);
         // No byte order mark: a file that is read back as CSV text or fed to other tools should start with its first header.
         _writer = new StreamWriter(fileStream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 

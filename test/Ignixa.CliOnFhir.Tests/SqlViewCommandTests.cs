@@ -95,6 +95,18 @@ public class SqlViewCommandTests
         File.Exists(Path.Combine(folder.Path, "out.csv")).ShouldBeFalse();
     }
 
+    [Fact]
+    public async Task GivenANestedWhereBehindAQuoteInACommentOnTheCli_WhenRun_ThenAnEnvelopeIsPrintedNotAnAbort()
+    {
+        using TestFolder folder = Clinic();
+        string where = "/* ' */" + new string('(', 1500) + "true" + new string(')', 1500) + "/* ' */";
+
+        (int exitCode, JsonNode output) = await RunAsync("view", folder.Path, PatientView, "--where", where, "--no-cache");
+
+        exitCode.ShouldNotBe(0);
+        ((string)output["issues"]![0]!["code"]!).ShouldBe("invalid-parameter");
+    }
+
     private static async Task<(int ExitCode, JsonNode Output)> RunAsync(params string[] args)
     {
         var root = new RootCommand();

@@ -19,8 +19,9 @@ internal sealed record ViewScope(IReadOnlyList<CatalogEntry> Entries, DateTimeOf
     /// <summary>
     /// <see cref="Resolve"/>, abandoned when <paramref name="cancellationToken"/> is cancelled. Working out the patient compartments
     /// for the first time (a cold cache builds every search index they need) cannot be interrupted, so it runs off the calling
-    /// thread and is awaited; a timeout is then reported when it is due, and the build is left to finish and persist what it can
-    /// (it is shared by the session, and the process ends with the verb).
+    /// thread and is awaited, and a timeout is reported when it is due. The build itself is not stopped: in a process that goes on
+    /// it finishes and persists what it built, but the CLI process ends with the verb, so a build cut by the timeout keeps nothing
+    /// and the next cold run starts again; <see cref="ViewRunner"/>'s timeout error says so.
     /// </summary>
     public static Task<ViewScope> ResolveAsync(FolderSession session, string resourceType, string? compartment, List<IssueItem> issues, List<OmittedItem> omitted, CancellationToken cancellationToken)
     {

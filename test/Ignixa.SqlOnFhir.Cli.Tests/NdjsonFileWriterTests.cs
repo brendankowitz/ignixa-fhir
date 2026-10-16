@@ -111,6 +111,20 @@ public class NdjsonFileWriterTests : IAsyncDisposable
         stream.CanWrite.ShouldBeFalse();
     }
 
+    [Fact]
+    public async Task GivenAStreamThatCannotSeekOrBeMeasured_WhenRowsAreWritten_ThenTheBytesAreCountedAsTheyAreWritten()
+    {
+        using var inner = new MemoryStream();
+        var stream = new WriteOnlyStream(inner);
+        await using (var writer = new NdjsonFileWriter(stream, NullLogger.Instance))
+        {
+            await writer.WriteRowAsync(new Dictionary<string, object?> { ["id"] = "p1" });
+            await writer.FlushAsync();
+            writer.BytesWritten.ShouldBe(inner.Length);
+            writer.BytesWritten.ShouldBeGreaterThan(0);
+        }
+    }
+
     public ValueTask DisposeAsync()
     {
         if (File.Exists(_outputPath)) File.Delete(_outputPath);

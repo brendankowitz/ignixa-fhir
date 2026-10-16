@@ -86,16 +86,101 @@ public class SqlViewExpressionGuardTests
     }
 
     [Fact]
-    public async Task GivenBracketsInsideStringLiterals_WhenRun_ThenTheyAreNotCountedAsNesting()
+    public async Task GivenBracketsInsideAShortStringLiteral_WhenRun_ThenTheyAreNotAProblem()
     {
         using TestFolder folder = Clinic();
-        string literal = new string('(', 200) + new string('[', 200);
-        string view = Select($$"""{"column":[{"name":"x","path":"'{{literal}}'"},{"name":"y","path":"`{{literal}}`.exists()"}]}""");
+        string literal = new string('(', 30) + new string('[', 30);
+        string view = Select($$"""{"column":[{"name":"x","path":"'{{literal}}'"}]}""");
 
-        // The second column is not a name that exists: it is the lexical guard that is asked, not the answer.
-        ToolEnvelope<ViewFacts?> envelope = await RunAsync(folder, new ViewRequest(view));
+        Facts(await RunAsync(folder, new ViewRequest(view))).Total.ShouldBe(3);
+    }
 
-        envelope.Issues.Where(issue => issue.Code == "invalid-view").Select(issue => issue.Diagnostics).ShouldNotContain(text => text.Contains("nested", StringComparison.Ordinal));
+    // Every bracket counts, quoted or not: a literal of more than 64 unbalanced brackets is refused too, which is the documented price
+    // of a count that cannot be switched off by a quote or backtick inside a FHIRPath comment.
+    [Fact]
+    public async Task GivenMoreThanTheLimitOfBracketsInAStringLiteral_WhenRun_ThenItIsRefusedAllTheSame()
+    {
+        using TestFolder folder = Clinic();
+        string view = Select($$"""{"column":[{"name":"x","path":"'{{new string('(', 200)}}'"}]}""");
+
+        IssueItem error = Error(await RunAsync(folder, new ViewRequest(view)));
+
+        error.Code.ShouldBe("invalid-view");
+        error.Diagnostics.ShouldContain("nested more than 64 levels");
+    }
+
+    // A quote or backtick inside a comment is nothing to FHIRPath; counting that skipped quoted text stopped at it.
+    public static TheoryData<string, string> CommentBypasses()
+    {
+        string deep = new string('(', 1500) + "id" + new string(')', 1500);
+        string deepName = new string('(', 1500) + "name" + new string(')', 1500);
+        return new TheoryData<string, string>
+        {
+            { "column /* ' */", Select(Column($"/* ' */ {deep} /* ' */")) },
+            { "column // '", Select(Column($"// '\\n{deep}\\n// '")) },
+            { "column /* ` */", Select(Column($"/* ` */ {deep} /* ` */")) },
+            { "where /* ' */", $$"""{"resourceType":"ViewDefinition","resource":"Patient","select":[{"column":[{"name":"x","path":"id"}]}],"where":[{"path":"/* ' */{{new string('(', 1500)}}true{{new string(')', 1500)}}/* ' */"}]}""" },
+            { "forEach /* ' */", Select($$"""{"forEach":"/* ' */{{deepName}}/* ' */","column":[{"name":"x","path":"family"}]}""") },
+            { "repeat /* ' */", Select($$"""{"repeat":["/* ' */{{deepName}}/* ' */"],"column":[{"name":"x","path":"id"}]}""") },
+        };
+    }
+
+    private static string Column(string path) => $$"""{"column":[{"name":"x","path":"{{path}}"}]}""";
+
+    [Theory]
+    [MemberData(nameof(CommentBypasses))]
+    public async Task GivenDeepNestingHiddenBehindAQuoteInAComment_WhenRun_ThenItIsStillRefused(string label, string view)
+    {
+        label.ShouldNotBeNullOrEmpty();
+        using TestFolder folder = Clinic();
+
+        IssueItem error = Error(await RunAsync(folder, new ViewRequest(view)));
+
+        error.Code.ShouldBe("invalid-view");
+        error.Diagnostics.ShouldContain("nested more than 64 levels");
+    }
+
+    [Fact]
+    public async Task GivenAnExtraWhereWithNestingHiddenBehindAQuoteInAComment_WhenRun_ThenItIsAnInvalidParameter()
+    {
+        using TestFolder folder = Clinic();
+        string where = "/* ' */" + new string('(', 1500) + "true" + new string(')', 1500) + "/* ' */";
+
+        Error(await RunAsync(folder, new ViewRequest(PatientView, Where: where))).Code.ShouldBe("invalid-parameter");
+    }
+
+    // These do not look like a loop to a scan of the text; the evaluator stops them at 100 levels.
+    [Theory]
+    [InlineData("$this.where(true)")]
+    [InlineData("$this | $this")]
+    [InlineData("$this.first()")]
+    [InlineData("select($this)")]
+    [InlineData("%rootResource")]
+    [InlineData("/* c */ $this")]
+    [InlineData("$this // c")]
+    public async Task GivenARepeatThatLoopsWithoutLookingLikeThis_WhenRun_ThenTheEvaluatorStopsItAndTheCallerIsTold(string repeat)
+    {
+        using TestFolder folder = Clinic();
+        string view = Select($$"""{"repeat":["{{repeat}}"],"column":[{"name":"x","path":"id"}]}""");
+
+        IssueItem error = Error(await RunAsync(folder, new ViewRequest(view)));
+
+        error.Code.ShouldBe("view-evaluation-failed");
+        error.Diagnostics.ShouldContain("repeat went deeper than 100 levels");
+    }
+
+    [Fact]
+    public async Task GivenALoopingRepeatInAFolderViewDefinition_WhenRunById_ThenItIsAnEnvelopeWithoutTheFolderTextQuoted()
+    {
+        using TestFolder folder = Clinic().Write("views/loop.json", """
+            {"resourceType":"ViewDefinition","id":"vd-loop","resource":"Patient","select":[{"repeat":["$this.where(true)"],"column":[{"name":"x","path":"id"}]}]}
+            """);
+
+        IssueItem error = Error(await RunAsync(folder, new ViewRequest("vd-loop")));
+
+        error.Code.ShouldBe("view-evaluation-failed");
+        error.Diagnostics.ShouldContain("digest");
+        error.Diagnostics.ShouldNotContain("where(true)");
     }
 
     [Fact]

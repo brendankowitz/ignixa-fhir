@@ -7,7 +7,7 @@ namespace Ignixa.SqlOnFhir.Writers;
 public partial class NdjsonFileWriter : IAsyncDisposable
 {
     private readonly string _outputPath;
-    private readonly Stream? _stream;
+    private readonly ByteCountingStream? _stream;
     private readonly ILogger _logger;
     private StreamWriter? _writer;
     private bool _disposed;
@@ -33,7 +33,7 @@ public partial class NdjsonFileWriter : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentNullException.ThrowIfNull(logger);
         _outputPath = "(stream)";
-        _stream = stream;
+        _stream = new ByteCountingStream(stream);
         _logger = logger;
     }
 
@@ -41,7 +41,7 @@ public partial class NdjsonFileWriter : IAsyncDisposable
     {
         ThrowIfDisposed();
         // No byte order mark: every line of NDJSON must itself be JSON, and a BOM makes the first one not.
-        _writer ??= new StreamWriter(_stream ?? new FileStream(_outputPath, FileMode.Create, FileAccess.Write, FileShare.Read), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        _writer ??= new StreamWriter(_stream ?? (Stream)new FileStream(_outputPath, FileMode.Create, FileAccess.Write, FileShare.Read), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         var json = JsonSerializer.Serialize(row);
         await _writer.WriteLineAsync(json.AsMemory(), cancellationToken);
         _rowsWritten++;
@@ -53,7 +53,7 @@ public partial class NdjsonFileWriter : IAsyncDisposable
         if (_writer != null)
         {
             await _writer.FlushAsync(cancellationToken);
-            BytesWritten = _stream?.Length ?? (new FileInfo(_outputPath).Exists ? new FileInfo(_outputPath).Length : 0);
+            BytesWritten = _stream?.BytesWritten ?? (new FileInfo(_outputPath).Exists ? new FileInfo(_outputPath).Length : 0);
             LogNdjsonFileWritten(_logger, _rowsWritten, BytesWritten, _outputPath);
         }
     }
