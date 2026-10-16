@@ -83,6 +83,19 @@ public class NdjsonFileWriterTests : IAsyncDisposable
         lines[1].ShouldContain("p2");
     }
 
+    [Fact]
+    public async Task GivenRows_WhenWritten_ThenTheFileHasNoByteOrderMark()
+    {
+        await using (var writer = new NdjsonFileWriter(_outputPath, NullLogger.Instance))
+        {
+            await writer.WriteRowAsync(new Dictionary<string, object?> { ["id"] = "p1" });
+            await writer.FlushAsync();
+        }
+
+        byte[] bytes = await File.ReadAllBytesAsync(_outputPath);
+        bytes[0].ShouldBe((byte)'{');
+    }
+
     public ValueTask DisposeAsync()
     {
         if (File.Exists(_outputPath)) File.Delete(_outputPath);

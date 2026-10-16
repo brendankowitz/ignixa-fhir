@@ -20,6 +20,8 @@ namespace Ignixa.CliOnFhir.Views;
 /// <param name="Format"><c>csv</c>, <c>ndjson</c> or <c>parquet</c>; with <paramref name="Out"/>, else taken from its extension.</param>
 /// <param name="Overwrite">Replace <paramref name="Out"/> when it exists; otherwise that is refused.</param>
 /// <param name="MaxBytes">The response budget, as for the other tools that return resources.</param>
+/// <param name="TimeoutSeconds">How long a run may take (default <see cref="ViewRunner.DefaultTimeoutSeconds"/>, at most <see cref="ViewRunner.MaxTimeoutSeconds"/>).</param>
+/// <param name="MaxResources">The most resources a run may read (default <see cref="ViewRunner.DefaultMaxResources"/>).</param>
 public sealed record ViewRequest(
     string View,
     string? Where = null,
@@ -31,4 +33,6 @@ public sealed record ViewRequest(
     string? Out = null,
     string? Format = null,
     bool Overwrite = false,
-    int? MaxBytes = null);
+    int? MaxBytes = null,
+    int? TimeoutSeconds = null,
+    int? MaxResources = null);

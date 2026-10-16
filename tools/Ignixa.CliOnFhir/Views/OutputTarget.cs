@@ -10,9 +10,14 @@ using Ignixa.CliOnFhir.Session;
 namespace Ignixa.CliOnFhir.Views;
 
 /// <summary>Where a run writes every row, checked before anything is evaluated or written.</summary>
-/// <param name="Path">The absolute path of the file.</param>
+/// <param name="Path">
+/// The file's one canonical path (links resolved, <c>..</c> applied after them, as the operating system does). The checks, the
+/// directories created and the write all use this string, so what was checked is what is written.
+/// </param>
 /// <param name="Format"><see cref="Csv"/>, <see cref="Ndjson"/> or <see cref="Parquet"/>.</param>
-internal sealed record OutputTarget(string Path, string Format)
+/// <param name="Overwrite">Whether an existing file at <paramref name="Path"/> may be replaced.</param>
+/// <param name="FolderPath">The data folder, which nothing may be written in.</param>
+internal sealed record OutputTarget(string Path, string Format, bool Overwrite, string FolderPath)
 {
     public const string Csv = "csv";
 
@@ -20,7 +25,7 @@ internal sealed record OutputTarget(string Path, string Format)
 
     public const string Parquet = "parquet";
 
-    private const string Remedy = "the file would be read as data on the next catalog. Give an out path outside the folder";
+    private const string Remedy = "files written into it can be read as data on the next catalog. Give an out path outside the folder";
 
     /// <summary>
     /// The file a request writes to, or null when it only returns rows. The path must be outside the data folder, by the
@@ -48,11 +53,8 @@ internal sealed record OutputTarget(string Path, string Format)
         }
 
         string format = FormatOf(request);
-        string path = System.IO.Path.GetFullPath(request.Out);
-        if (new FolderOverlap(session.RootPath).Reason(request.Out, "output file", Remedy) is { } reason)
-        {
-            throw ToolRequestException.Error("out-refused", $"Cannot write there: {reason}.");
-        }
+        string path = Canonical(request.Out);
+        Check(session.RootPath, path);
 
         if (Directory.Exists(path))
         {
@@ -64,7 +66,82 @@ internal sealed record OutputTarget(string Path, string Format)
             throw ToolRequestException.Error("out-refused", $"The output file '{path}' already exists; choose another path, or set overwrite to replace it.");
         }
 
-        return new OutputTarget(path, format);
+        return new OutputTarget(path, format, request.Overwrite, session.RootPath);
+    }
+
+    /// <summary>
+    /// Creates the directories the file needs and an empty file beside it to write into, checking again, now that they exist, that
+    /// neither can lead into the data folder: a link may have replaced a directory since <see cref="Resolve"/> looked. The rows are
+    /// written to that file, and <see cref="OutputFile.Commit"/> renames it to <see cref="Path"/>, so a file already there is
+    /// replaced only by a complete result.
+    /// </summary>
+    /// <exception cref="ToolRequestException">The path now leads into the data folder, or the file cannot be created.</exception>
+    public OutputFile Begin()
+    {
+        string directory = System.IO.Path.GetDirectoryName(Path)!;
+        List<string> created = MissingDirectories(directory);
+        string temp = System.IO.Path.Combine(directory, $".{System.IO.Path.GetFileName(Path)}.{Guid.NewGuid():N}.tmp");
+        var file = new OutputFile(temp, Path, Overwrite, created);
+        try
+        {
+            Directory.CreateDirectory(directory);
+
+            // Resolve() looked at this very string; if the directory now resolves to anything else, a link has replaced a part of it.
+            if (!string.Equals(Canonical(directory), directory, StringComparison.Ordinal))
+            {
+                throw ToolRequestException.Error("out-refused", $"The directory '{directory}' of the output file is now reached through a link; run it again.");
+            }
+
+            // CreateNew never opens an existing file or follows a link planted at that name.
+            using (new FileStream(temp, FileMode.CreateNew, FileAccess.Write))
+            {
+            }
+
+            Check(FolderPath, Canonical(temp));
+            return file;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            file.Discard();
+            throw ToolRequestException.Error("out-write-failed", $"Cannot create the output file in '{directory}': {ex.Message}");
+        }
+        catch
+        {
+            file.Discard();
+            throw;
+        }
+    }
+
+    private static string Canonical(string path)
+    {
+        try
+        {
+            return CanonicalPath.Resolve(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw ToolRequestException.Error("out-refused", $"The output path '{QueryEcho.Of(path)}' cannot be resolved: {ex.Message}");
+        }
+    }
+
+    private static void Check(string folderPath, string resolvedPath)
+    {
+        if (new FolderOverlap(folderPath).Reason(resolvedPath, "output file", Remedy) is { } reason)
+        {
+            throw ToolRequestException.Error("out-refused", $"Cannot write there: {reason}.");
+        }
+    }
+
+    // The directories from the first missing one down, so that only these are removed if nothing is written.
+    private static List<string> MissingDirectories(string directory)
+    {
+        List<string> missing = [];
+        for (string? current = directory; current is not null && !Directory.Exists(current); current = System.IO.Path.GetDirectoryName(current))
+        {
+            missing.Add(current);
+        }
+
+        return missing;
     }
 
     private static string FormatOf(ViewRequest request)

@@ -136,12 +136,12 @@ public class SqlViewTests
         facts.Total.ShouldBe(5);
         facts.Returned.ShouldBe(2);
         Cells(facts).Select(row => row[0]).ShouldBe(["o1", "o2"]);
-        envelope.Omitted.ShouldHaveSingleItem().ShouldBe(new OmittedItem("3 more rows (offset=2)", "limit"));
-        envelope.Next.Select(call => call.Tool).ShouldBe(["sql_view", "sql_view"]);
-        envelope.Next[0].Args["out"].ShouldBe("view-rows.csv");
-        envelope.Next[1].Args["offset"].ShouldBe(2);
-        envelope.Next[1].Args["count"].ShouldBe(2);
-        envelope.Next[1].Args["view"].ShouldBe(ObservationView);
+        envelope.Omitted[0].ShouldBe(new OmittedItem("3 more rows (offset=2)", "limit"));
+        // No call is listed: the tool a call would name does not exist yet, and omitted says how to go on instead.
+        envelope.Next.ShouldBeEmpty();
+        envelope.Omitted.Count.ShouldBe(2);
+        envelope.Omitted[1].What.ShouldStartWith("next: no call is listed");
+        envelope.Omitted[1].What.ShouldContain("offset 2");
     }
 
     [Fact]
@@ -178,7 +178,6 @@ public class SqlViewTests
         facts.Total.ShouldBe(5);
         facts.Rows.ShouldBeEmpty();
         envelope.Evidence.ShouldBeEmpty();
-        envelope.Next[1].Args.ContainsKey("count").ShouldBeFalse();
     }
 
     [Fact]
@@ -192,7 +191,7 @@ public class SqlViewTests
         facts.Total.ShouldBe(1100);
         facts.Returned.ShouldBe(ViewPaging.MaxCount);
         envelope.Issues.ShouldContain(issue => issue.Code == "count-clamped");
-        envelope.Omitted.ShouldHaveSingleItem().What.ShouldBe("100 more rows (offset=1000)");
+        envelope.Omitted[0].What.ShouldBe("100 more rows (offset=1000)");
     }
 
     [Fact]
@@ -209,10 +208,10 @@ public class SqlViewTests
         facts.Returned.ShouldNotBeNull().ShouldBeGreaterThan(0);
         facts.Returned.Value.ShouldBeLessThan(60);
         EnvelopeJson.SizeOf(envelope).ShouldBeLessThanOrEqualTo(4096);
-        OmittedItem cut = envelope.Omitted.ShouldHaveSingleItem();
+        OmittedItem cut = envelope.Omitted[0];
         cut.Why.ShouldBe("size-budget");
         cut.What.ShouldBe($"{60 - facts.Returned} more rows (offset={facts.Returned})");
-        envelope.Next[^1].Args["offset"].ShouldBe(facts.Returned);
+        envelope.Omitted[1].What.ShouldContain($"offset {facts.Returned}");
     }
 
     [Fact]

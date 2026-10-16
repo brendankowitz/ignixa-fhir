@@ -9,6 +9,7 @@ using Ignixa.Abstractions;
 using Ignixa.CliOnFhir.Catalog;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Patients;
+using Ignixa.CliOnFhir.Session;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.SqlOnFhir.Evaluation;
 
@@ -18,22 +19,28 @@ namespace Ignixa.CliOnFhir.Views;
 /// Evaluates a view over catalogued resources with Ignixa's SQL-on-FHIR evaluator (<see cref="SqlOnFhirEvaluator"/>, as
 /// <c>tools/Ignixa.SqlOnFhir.Cli</c>'s <c>run</c> does), reading each resource through <see cref="ResourceElements"/> so its
 /// Bundle and conditional references read as the <c>Type/id</c> the search index resolved them to. A resource is evaluated on
-/// its own, which keeps its rows' source known; a view the engine orders across resources is evaluated in one batch instead.
-/// Not thread-safe.
+/// its own, which keeps its rows' source known and lets it go once its rows are made: each file is read once and dropped when
+/// the next begins, so memory does not grow with the folder. A view the engine orders across resources is evaluated in one
+/// batch instead, which needs every resource at once. Not thread-safe.
 /// </summary>
+/// <param name="session">The folder.</param>
 /// <param name="view">The validated view.</param>
 /// <param name="variables">The variables applied.</param>
-/// <param name="elements">The resources as FHIRPath input.</param>
 /// <param name="empty">A resource of the view's type with no elements, to tell a failure of the view from a failure on data.</param>
-internal sealed partial class ViewEvaluation(CompiledView view, IReadOnlyDictionary<string, string> variables, ResourceElements elements, IElement empty)
+internal sealed partial class ViewEvaluation(FolderSession session, CompiledView view, IReadOnlyDictionary<string, string> variables, IElement empty)
 {
     private readonly SqlOnFhirEvaluator _evaluator = new();
     private readonly Dictionary<string, int> _columnIndexes = view.Columns
         .Select((column, index) => (column.Name, index))
         .ToDictionary(pair => pair.Name, pair => pair.index, StringComparer.Ordinal);
 
-    /// <summary>Resources in scope that could not be read, and so produced no rows (each is among the elements' problems).</summary>
+    private readonly List<IssueItem> _problems = [];
+
+    /// <summary>Resources in scope that could not be read, and so produced no rows (each is among <see cref="Problems"/>).</summary>
     public int Unreadable { get; private set; }
+
+    /// <summary>Resources that could not be read (changed or removed since they were catalogued), one issue each.</summary>
+    public IReadOnlyList<IssueItem> Problems => _problems;
 
     /// <summary>
     /// Checks the variables before anything is read: the engine rejects a name it manages itself (such as <c>rowIndex</c>), and
@@ -59,21 +66,43 @@ internal sealed partial class ViewEvaluation(CompiledView view, IReadOnlyDiction
     /// <exception cref="ToolRequestException">The engine cannot evaluate the view.</exception>
     public void EvaluateOnEmpty(bool viewFromFolder) => Evaluate(() => _evaluator.Evaluate(view.Navigator, empty, variables), "an empty resource", viewFromFolder);
 
-    /// <summary>The rows of <paramref name="entries"/>, in order.</summary>
+    /// <summary>The rows of <paramref name="entries"/>, in order, read and evaluated as the sequence is enumerated.</summary>
     /// <exception cref="ToolRequestException">The engine cannot evaluate the view on a resource.</exception>
-    public IEnumerable<ViewRow> Rows(IReadOnlyList<CatalogEntry> entries, bool viewFromFolder)
-    {
-        if (view.OrdersAcrossResources)
-        {
-            return BatchRows(entries, viewFromFolder);
-        }
+    /// <exception cref="OperationCanceledException">The token was cancelled; it is checked before each resource.</exception>
+    public IEnumerable<ViewRow> Rows(IReadOnlyList<CatalogEntry> entries, bool viewFromFolder, CancellationToken cancellationToken) =>
+        view.OrdersAcrossResources ? BatchRows(entries, viewFromFolder, cancellationToken) : OneByOne(entries, viewFromFolder, cancellationToken);
 
-        return entries.SelectMany(entry => OneRows(entry, viewFromFolder));
+    private IEnumerable<ViewRow> OneByOne(IReadOnlyList<CatalogEntry> entries, bool viewFromFolder, CancellationToken cancellationToken)
+    {
+        ResourceElements? file = null;
+        string? filePath = null;
+        try
+        {
+            foreach (CatalogEntry entry in entries)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (entry.FilePath != filePath)
+                {
+                    Collect(file);
+                    file = new ResourceElements(session, retainElements: false);
+                    filePath = entry.FilePath;
+                }
+
+                foreach (ViewRow row in OneRows(file!, entry, viewFromFolder))
+                {
+                    yield return row;
+                }
+            }
+        }
+        finally
+        {
+            Collect(file);
+        }
     }
 
-    private IEnumerable<ViewRow> OneRows(CatalogEntry entry, bool viewFromFolder)
+    private IEnumerable<ViewRow> OneRows(ResourceElements file, CatalogEntry entry, bool viewFromFolder)
     {
-        if (elements.Get(entry) is not { } element)
+        if (file.Get(entry) is not { } element)
         {
             Unreadable++;
             return [];
@@ -83,12 +112,22 @@ internal sealed partial class ViewEvaluation(CompiledView view, IReadOnlyDiction
         return rows.Select(row => new ViewRow(Cells(row), entry));
     }
 
-    private IEnumerable<ViewRow> BatchRows(IReadOnlyList<CatalogEntry> entries, bool viewFromFolder)
+    private IEnumerable<ViewRow> BatchRows(IReadOnlyList<CatalogEntry> entries, bool viewFromFolder, CancellationToken cancellationToken)
     {
         List<IElement> resources = [];
+        ResourceElements? file = null;
+        string? filePath = null;
         foreach (CatalogEntry entry in entries)
         {
-            if (elements.Get(entry) is { } element)
+            cancellationToken.ThrowIfCancellationRequested();
+            if (entry.FilePath != filePath)
+            {
+                Collect(file);
+                file = new ResourceElements(session, retainElements: false);
+                filePath = entry.FilePath;
+            }
+
+            if (file!.Get(entry) is { } element)
             {
                 resources.Add(element);
             }
@@ -98,8 +137,17 @@ internal sealed partial class ViewEvaluation(CompiledView view, IReadOnlyDiction
             }
         }
 
+        Collect(file);
         List<Dictionary<string, object?>> rows = Evaluate(() => _evaluator.EvaluateBatch(view.Navigator, resources, variables), $"{resources.Count} resources", viewFromFolder);
         return rows.Select(row => new ViewRow(Cells(row), Source: null));
+    }
+
+    private void Collect(ResourceElements? file)
+    {
+        if (file is not null)
+        {
+            _problems.AddRange(file.Problems);
+        }
     }
 
     private List<Dictionary<string, object?>> Evaluate(Func<IEnumerable<Dictionary<string, object?>>> evaluate, string subject, bool viewFromFolder)

@@ -27,6 +27,8 @@ internal static class ViewCommand
         var outOption = new Option<string?>("--out") { Description = "Write every row to this file, which must be outside the folder, instead of returning rows" };
         var formatOption = new Option<string?>("--format") { Description = "csv, ndjson or parquet for --out (default: from its extension)" };
         var overwriteOption = new Option<bool>("--overwrite") { Description = "Replace --out when it exists" };
+        var timeoutOption = new Option<int?>("--timeout") { Description = $"Seconds the run may take (default {ViewRunner.DefaultTimeoutSeconds}, at most {ViewRunner.MaxTimeoutSeconds}); it is then stopped, and nothing is written to --out" };
+        var maxResourcesOption = new Option<int?>("--max-resources") { Description = $"Most resources the run may read (default {ViewRunner.DefaultMaxResources}); more fails, suggesting --compartment" };
         Option<int?> maxBytesOption = CommonOptions.CreateMaxBytesOption();
         Option<string?> cacheDirOption = CommonOptions.CreateCacheDirOption();
         Option<bool> noCacheOption = CommonOptions.CreateNoCacheOption();
@@ -35,7 +37,7 @@ internal static class ViewCommand
         var command = new Command("view", "Run a SQL-on-FHIR ViewDefinition over the folder's resources of its type: rows in the response (capped, with the total) or every row to a csv, ndjson or parquet file outside the folder");
         command.Arguments.Add(pathArgument);
         command.Arguments.Add(viewArgument);
-        foreach (Option option in new Option[] { versionOption, whereOption, varOption, compartmentOption, countOption, offsetOption, distinctOption, outOption, formatOption, overwriteOption, maxBytesOption, prettyOption })
+        foreach (Option option in new Option[] { versionOption, whereOption, varOption, compartmentOption, countOption, offsetOption, distinctOption, outOption, formatOption, overwriteOption, timeoutOption, maxResourcesOption, maxBytesOption, prettyOption })
         {
             command.Options.Add(option);
         }
@@ -57,8 +59,10 @@ internal static class ViewCommand
                 parseResult.GetValue(outOption),
                 parseResult.GetValue(formatOption),
                 parseResult.GetValue(overwriteOption),
-                parseResult.GetValue(maxBytesOption));
-            return EnvelopeOutput.Write(await ViewRunner.RunAsync(session, request, cancellationToken), parseResult.GetValue(prettyOption));
+                parseResult.GetValue(maxBytesOption),
+                parseResult.GetValue(timeoutOption),
+                parseResult.GetValue(maxResourcesOption));
+            return EnvelopeOutput.Write(await ViewRunner.RunAsync(session, request, cancellationToken, loggerFactory.CreateLogger("view")), parseResult.GetValue(prettyOption));
         });
 
         return command;

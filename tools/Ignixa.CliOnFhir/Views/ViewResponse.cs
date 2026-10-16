@@ -19,9 +19,6 @@ internal static class ViewResponse
     /// <summary>Why a view has no per-row sources: the engine orders its rows across resources.</summary>
     public const string UnionAllOrder = "union-all-order";
 
-    /// <summary>Where the call a cut table offers for every row would write; any path outside the folder will do.</summary>
-    private const string WholeAnswerPath = "view-rows.csv";
-
     /// <summary>The response that returns rows: as many of the page as fit the budget, the rest in <c>omitted</c> and <c>next</c>.</summary>
     public static ToolEnvelope<ViewFacts?> ForRows(ViewOutcome outcome, CancellationToken cancellationToken)
     {
@@ -36,10 +33,10 @@ internal static class ViewResponse
         int take = Largest(outcome.Pass.Kept.Count, outcome.Budget, count =>
         {
             Parts measured = Assemble(outcome, count);
-            return EnvelopeAssembler.MaxSize(outcome.Session, measured.Facts, measured.Evidence, measured.Omitted, [], issues, measured.Next);
+            return EnvelopeAssembler.MaxSize(outcome.Session, measured.Facts, measured.Evidence, measured.Omitted, [], issues, []);
         });
         Parts parts = Assemble(outcome, take);
-        return EnvelopeAssembler.Create<ViewFacts?>(outcome.Session, parts.Facts, outcome.Scope.BuiltAt, parts.Evidence, parts.Omitted, [], issues, cancellationToken) with { Next = parts.Next };
+        return EnvelopeAssembler.Create<ViewFacts?>(outcome.Session, parts.Facts, outcome.Scope.BuiltAt, parts.Evidence, parts.Omitted, [], issues, cancellationToken);
     }
 
     /// <summary>The response of a run that wrote every row to a file: the file's facts and the first rows' sources as evidence.</summary>
@@ -60,7 +57,7 @@ internal static class ViewResponse
         return EnvelopeAssembler.Create<ViewFacts?>(outcome.Session, facts, outcome.Scope.BuiltAt, Evidence(outcome, outcome.Pass.Kept), omitted, [], issues, cancellationToken);
     }
 
-    private readonly record struct Parts(ViewFacts Facts, List<EvidenceItem> Evidence, List<OmittedItem> Omitted, List<NextCall> Next);
+    private readonly record struct Parts(ViewFacts Facts, List<EvidenceItem> Evidence, List<OmittedItem> Omitted);
 
     // The most rows, up to the available ones, whose envelope fits the budget; adding a row never makes an envelope smaller.
     private static int Largest(int available, int budget, Func<int, int> sizeWith)
@@ -90,15 +87,16 @@ internal static class ViewResponse
         ViewFacts facts = Facts(outcome, omitted, [.. shown.Select(row => (IReadOnlyList<object?>)row.Cells)], file: null);
 
         long remaining = Math.Max(0, outcome.Pass.Total - outcome.Paging.Offset) - take;
-        List<NextCall> next = [];
         if (remaining > 0)
         {
             int nextOffset = outcome.Paging.Offset + take;
             omitted.Add(new OmittedItem($"{remaining} more rows (offset={nextOffset})", take < outcome.Pass.Kept.Count ? "size-budget" : "limit"));
-            next = Next(outcome, nextOffset, take < outcome.Pass.Kept.Count, omitted);
+            omitted.Add(new OmittedItem(
+                $"next: no call is listed, because the sql_view tool does not exist yet and the view verb is CLI only; run the same view with offset {nextOffset} for the following rows, or with out set to a path outside the folder for every row",
+                "limit"));
         }
 
-        return new Parts(facts, Evidence(outcome, shown), omitted, next);
+        return new Parts(facts, Evidence(outcome, shown), omitted);
     }
 
     private static ViewFacts Facts(ViewOutcome outcome, List<OmittedItem> omitted, IReadOnlyList<IReadOnlyList<object?>>? rows, ViewFileFacts? file = null)
@@ -144,51 +142,5 @@ internal static class ViewResponse
             .Distinct()
             .Select(entry => new EvidenceItem(ResourceReader.Describe(entry), entry.FilePath, entry.Line, entry.Offset)));
         return evidence;
-    }
-
-    // Whole-answer calls first, as every tool does: every row in a file, then the page that follows.
-    private static List<NextCall> Next(ViewOutcome outcome, int nextOffset, bool cutBySize, List<OmittedItem> omitted)
-    {
-        ViewRequest request = outcome.Request;
-        if (QueryEcho.IsCut(request.View) || QueryEcho.IsCut(request.Where) || (request.Variables?.Any(QueryEcho.IsCut) ?? false))
-        {
-            omitted.Add(QueryEcho.NextLeftOut("the rest of the rows"));
-            return [];
-        }
-
-        Dictionary<string, object> shared = new(StringComparer.Ordinal) { ["view"] = request.View };
-        AddIfGiven(shared, "where", request.Where);
-        AddIfGiven(shared, "compartment", request.Compartment);
-        if (request.Variables is { Count: > 0 } variables)
-        {
-            shared["variables"] = variables.ToArray();
-        }
-
-        Dictionary<string, object> page = new(shared, StringComparer.Ordinal) { ["offset"] = nextOffset };
-        // count 0 asks for the totals only; the page that follows is a page of rows.
-        if (request.Count is > 0 and int count)
-        {
-            page["count"] = count;
-        }
-
-        if (request.MaxBytes is int maxBytes)
-        {
-            page["maxBytes"] = maxBytes;
-        }
-
-        Dictionary<string, object> everything = new(shared, StringComparer.Ordinal) { ["out"] = WholeAnswerPath };
-        return
-        [
-            new NextCall("sql_view", everything, "every row in one file: set out to a path outside the folder (csv, ndjson or parquet by its extension), then read the file"),
-            new NextCall("sql_view", page, cutBySize ? "the rows left; fewer columns or a smaller count fit more of them in one response" : "the next rows"),
-        ];
-    }
-
-    private static void AddIfGiven(Dictionary<string, object> args, string name, string? value)
-    {
-        if (value is not null)
-        {
-            args[name] = value;
-        }
     }
 }

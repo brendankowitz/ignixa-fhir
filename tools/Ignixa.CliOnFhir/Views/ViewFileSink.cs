@@ -38,25 +38,26 @@ internal sealed class ViewFileSink : IAsyncDisposable
     /// <summary>Rows written so far.</summary>
     public long Rows { get; private set; }
 
-    public static ViewFileSink Create(OutputTarget target, IReadOnlyList<ColumnSchema> columns)
+    /// <summary>A sink writing <paramref name="format"/> rows to <paramref name="path"/>, which the caller owns (it is a temporary file).</summary>
+    public static ViewFileSink Create(string path, string format, IReadOnlyList<ColumnSchema> columns)
     {
-        ArgumentNullException.ThrowIfNull(target);
+        ArgumentException.ThrowIfNullOrEmpty(path);
         ArgumentNullException.ThrowIfNull(columns);
 
-        if (target.Format == OutputTarget.Csv)
+        if (format == OutputTarget.Csv)
         {
-            var csv = new CsvFileWriter(target.Path, NullLogger.Instance);
+            var csv = new CsvFileWriter(path, NullLogger.Instance);
             return new ViewFileSink(columns, new bool[columns.Count], csv.WriteRowAsync, csv.FlushAsync, () => csv.BytesWritten, csv);
         }
 
-        if (target.Format == OutputTarget.Ndjson)
+        if (format == OutputTarget.Ndjson)
         {
-            var ndjson = new NdjsonFileWriter(target.Path, NullLogger.Instance);
+            var ndjson = new NdjsonFileWriter(path, NullLogger.Instance);
             return new ViewFileSink(columns, new bool[columns.Count], ndjson.WriteRowAsync, ndjson.FlushAsync, () => ndjson.BytesWritten, ndjson);
         }
 
         (ParquetSchema schema, Dictionary<string, string> types) = ParquetSchemaOf(columns);
-        var parquet = new ParquetFileWriter(target.Path, schema, NullLogger.Instance, types);
+        var parquet = new ParquetFileWriter(path, schema, NullLogger.Instance, types);
         bool[] text = [.. columns.Select(column => types[column.Name] == "STRING")];
         return new ViewFileSink(columns, text, parquet.WriteRowAsync, parquet.FlushAsync, () => parquet.BytesWritten, parquet);
     }

@@ -123,7 +123,8 @@ public partial class CsvFileWriter : IAsyncDisposable
     private void InitializeWriter()
     {
         var fileStream = File.Create(_outputPath);
-        _writer = new StreamWriter(fileStream, Encoding.UTF8);
+        // No byte order mark: a file that is read back as CSV text or fed to other tools should start with its first header.
+        _writer = new StreamWriter(fileStream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
         LogCsvWriterInitialized(_logger, _outputPath);
     }

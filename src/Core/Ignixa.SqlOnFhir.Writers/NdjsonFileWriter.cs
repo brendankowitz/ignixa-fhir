@@ -26,7 +26,8 @@ public partial class NdjsonFileWriter : IAsyncDisposable
     public async Task WriteRowAsync(Dictionary<string, object?> row, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        _writer ??= new StreamWriter(new FileStream(_outputPath, FileMode.Create, FileAccess.Write, FileShare.Read), Encoding.UTF8);
+        // No byte order mark: every line of NDJSON must itself be JSON, and a BOM makes the first one not.
+        _writer ??= new StreamWriter(new FileStream(_outputPath, FileMode.Create, FileAccess.Write, FileShare.Read), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         var json = JsonSerializer.Serialize(row);
         await _writer.WriteLineAsync(json.AsMemory(), cancellationToken);
         _rowsWritten++;

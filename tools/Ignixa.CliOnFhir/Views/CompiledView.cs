@@ -21,10 +21,19 @@ internal sealed record CompiledView(ISourceNavigator Navigator, ViewDefinitionEx
     public string Resource => Expression.Resource;
 
     /// <summary>
-    /// Whether the evaluator orders this view's rows across resources, not resource by resource: a top-level <c>unionAll</c>
-    /// is evaluated branch by branch over every resource (SQL UNION ALL), so a row then has no single source resource. This is
-    /// a superset of the evaluator's own test, which only makes evaluating all resources in one batch (the same rows) more
-    /// likely, never row provenance wrong.
+    /// Whether the evaluator orders this view's rows across resources, not resource by resource: a top-level select that is only a
+    /// <c>unionAll</c> of plain branches is evaluated branch by branch over every resource (SQL UNION ALL), so a row then has no
+    /// single source resource. Mirrors the evaluator's own test (<c>SqlOnFhirEvaluationVisitor.IsBatchOrderedUnionAllSelect</c>)
+    /// condition for condition; a view with columns beside the <c>unionAll</c>, or branches that unnest, is evaluated per resource.
     /// </summary>
-    public bool OrdersAcrossResources => Expression.Select.Any(select => !select.UnionAll.IsEmpty && select.ForEach is null && select.ForEachOrNull is null);
+    public bool OrdersAcrossResources => Expression.Select.Any(IsBatchOrderedUnionAll);
+
+    private static bool IsBatchOrderedUnionAll(SelectExpression select) =>
+        !select.UnionAll.IsEmpty
+        && select.ForEach is null
+        && select.ForEachOrNull is null
+        && select.Repeat.IsEmpty
+        && select.Columns.IsEmpty
+        && select.NestedSelect.IsEmpty
+        && select.UnionAll.All(branch => branch.ForEach is null && branch.ForEachOrNull is null && branch.Repeat.IsEmpty);
 }

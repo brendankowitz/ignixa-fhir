@@ -23,7 +23,11 @@ namespace Ignixa.CliOnFhir.Patients;
 /// </summary>
 /// <param name="session">The folder.</param>
 /// <param name="resolveReferences">Whether FHIRPath must see resolved references; false only where no rule reads a reference.</param>
-internal sealed class ResourceElements(FolderSession session, bool resolveReferences = true)
+/// <param name="retainElements">
+/// Whether an element is kept after it is returned (the default, so a resource is read at most once). A caller that passes each
+/// resource on once, and lets the instance go with each file, passes false so that memory does not grow with the folder.
+/// </param>
+internal sealed class ResourceElements(FolderSession session, bool resolveReferences = true, bool retainElements = true)
 {
     private readonly Dictionary<(string ResourceType, string Id), IElement?> _elements = [];
     private readonly Dictionary<string, byte[]> _files = new(StringComparer.Ordinal);
@@ -43,7 +47,11 @@ internal sealed class ResourceElements(FolderSession session, bool resolveRefere
         }
 
         IElement? element = Read(entry);
-        _elements.Add((entry.ResourceType, entry.Id), element);
+        if (retainElements)
+        {
+            _elements.Add((entry.ResourceType, entry.Id), element);
+        }
+
         return element;
     }
 
