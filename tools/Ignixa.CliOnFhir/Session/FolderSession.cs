@@ -91,9 +91,10 @@ public sealed class FolderSession
                 .ToDictionary(group => group.Key, group => group.First()),
             LazyThreadSafetyMode.ExecutionAndPublication);
 
-        // Read with the index's own reference parser, so a fullUrl parses the way a reference to it does.
+        // Read with the index's own reference parser, so a fullUrl parses the way a reference to it does. The conditional
+        // resolver builds each type's identifier lookup on the first conditional reference to that type.
         _bundleReferences = new Lazy<BundleReferenceResolver>(
-            () => new BundleReferenceResolver(Catalog.FullUrls, _indexBuilder.Value.Builder.ReferenceParser),
+            () => new BundleReferenceResolver(Catalog.FullUrls, new ConditionalReferenceResolver(Catalog), _indexBuilder.Value.Builder.ReferenceParser),
             LazyThreadSafetyMode.ExecutionAndPublication);
 
         _catalogTypes = new Lazy<HashSet<string>>(

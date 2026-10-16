@@ -57,8 +57,9 @@ public static partial class FhirIds
     /// <summary>
     /// A reference as a resource wrote it, for a message or a map that names it: a relative <c>Type/id</c> with its id made
     /// <see cref="Safe"/>; a <c>urn:</c> or http(s) reference kept when it holds no whitespace, control character, quote,
-    /// angle bracket, backslash or <c>|</c> (so it cannot carry prose), and at most 256 characters; anything else replaced by
-    /// its <see cref="Digest"/>.
+    /// angle bracket, backslash or <c>|</c> (so it cannot carry prose), and at most 256 characters; a conditional reference
+    /// (<c>Type?identifier=system|value</c>) kept under the same rule except that it may hold <c>|</c>, which separates an
+    /// identifier's system from its value; anything else replaced by its <see cref="Digest"/>.
     /// </summary>
     public static string Written(string reference)
     {
@@ -69,7 +70,8 @@ public static partial class FhirIds
             return Reference(relative.Groups["type"].Value, relative.Groups["id"].Value);
         }
 
-        return reference.Length <= 256 && WrittenShape().IsMatch(reference) ? reference : Digest(reference);
+        bool shown = WrittenShape().IsMatch(reference) || (Indexing.ConditionalReferenceResolver.IsConditional(reference) && NoProse().IsMatch(reference));
+        return reference.Length <= 256 && shown ? reference : Digest(reference);
     }
 
     /// <summary><c>~</c> and the first 16 hex digits of the SHA-256 of <paramref name="value"/>.</summary>
@@ -91,4 +93,7 @@ public static partial class FhirIds
 
     [GeneratedRegex("^(urn|https?):[^\\s\\p{C}\"'<>\\\\|]+$")]
     private static partial Regex WrittenShape();
+
+    [GeneratedRegex("^[^\\s\\p{C}\"'<>\\\\]+$")]
+    private static partial Regex NoProse();
 }

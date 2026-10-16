@@ -176,15 +176,10 @@ internal sealed class FolderIndexCache
             EntriesOf(index.ResourceType).Length,
             index.BuiltAt,
             index.Diagnostics,
-            [.. index.Resources.Select(resource =>
-            {
-                (IReadOnlyDictionary<string, string>? resolved, IReadOnlyList<string>? unresolved) = CachedResource.From(resource.BundleReferences);
-                return new CachedResource(
-                    resource.Key.Id,
-                    [.. resource.Index.Select(entry => new CachedEntry(entry.SearchParameter.Code, entry.Value))],
-                    resolved,
-                    unresolved);
-            })]);
+            [.. index.Resources.Select(resource => CachedResource.From(
+                resource.Key.Id,
+                [.. resource.Index.Select(entry => new CachedEntry(entry.SearchParameter.Code, entry.Value))],
+                resource.BundleReferences))]);
 
         // A value type the format does not know throws here (a programmer error). Ignixa's compact value format is
         // lossless for every value the indexer produces (Ignixa.Search.Tests' CompactSearchValueFormatTests), so what is

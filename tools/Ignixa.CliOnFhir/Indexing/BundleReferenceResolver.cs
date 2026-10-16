@@ -41,6 +41,12 @@ namespace Ignixa.CliOnFhir.Indexing;
 /// its manifest lists every catalogued file, so any change invalidates every cached index. Immutable after construction,
 /// so safe for concurrent use.
 /// </para>
+/// <para>
+/// A conditional reference (<c>Practitioner?identifier=system|value</c>) is resolved at the same point by
+/// <see cref="ConditionalReferenceResolver"/>, to the one resource of that type the folder holds with that identifier, as a
+/// server resolves it when it processes the transaction. One it cannot resolve is returned with its reason, reported and
+/// skipped like an unresolved <c>urn:</c>.
+/// </para>
 /// </remarks>
 internal sealed class BundleReferenceResolver
 {
@@ -56,17 +62,21 @@ internal sealed class BundleReferenceResolver
     private const string UrnScheme = "urn:";
 
     private readonly IReferenceSearchValueParser _parser;
+    private readonly ConditionalReferenceResolver _conditionals;
     private readonly Dictionary<(string FilePath, string Key), string?> _byBundle = [];
     private readonly Dictionary<string, string?> _byFolder = new(StringComparer.Ordinal);
 
     /// <param name="fullUrls">The catalog's Bundle entry fullUrls.</param>
+    /// <param name="conditionals">Resolves conditional references against the folder's resources.</param>
     /// <param name="parser">The parser the index is built with, so a fullUrl and a reference to it are read alike.</param>
-    public BundleReferenceResolver(IReadOnlyList<BundleFullUrl> fullUrls, IReferenceSearchValueParser parser)
+    public BundleReferenceResolver(IReadOnlyList<BundleFullUrl> fullUrls, ConditionalReferenceResolver conditionals, IReferenceSearchValueParser parser)
     {
         ArgumentNullException.ThrowIfNull(fullUrls);
+        ArgumentNullException.ThrowIfNull(conditionals);
         ArgumentNullException.ThrowIfNull(parser);
 
         _parser = parser;
+        _conditionals = conditionals;
         foreach (BundleFullUrl fullUrl in fullUrls)
         {
             // A relative fullUrl is not one a reference could name differently from the resource's own Type/id.
@@ -82,15 +92,19 @@ internal sealed class BundleReferenceResolver
     }
 
     /// <summary>
-    /// The <c>urn:</c> an indexed <paramref name="reference"/> is, as it was written, or null when it is not one. The indexer
-    /// types a <c>urn:</c> under a single-target parameter (<c>Encounter/urn:uuid:...</c>), so the id, not the type, tells.
+    /// The text an indexed <paramref name="reference"/> was written as when the parser could not read it as a <c>Type/id</c>
+    /// (a <c>urn:</c>, a conditional reference): its id. The indexer types such text under a single-target parameter
+    /// (<c>Encounter/urn:uuid:...</c>) but keeps it whole as the id, so the id, not the type, tells. The parser's
+    /// <c>Type/id</c> match is not anchored, so a conditional reference holding one in its criteria
+    /// (<c>Organization?identifier=https://x.org/fhir/NamingSystem/npi|1</c>) comes back as a base and that <c>Type/id</c>,
+    /// with the rest of the text dropped: then this is a prefix of the reference as written. The parsed value's own original
+    /// text is internal to Ignixa.Search and not kept by the index cache, so it cannot be used instead.
     /// </summary>
-    public static string? UrnOf(ReferenceSearchValue reference)
+    public static string WrittenOf(ReferenceSearchValue reference)
     {
         ArgumentNullException.ThrowIfNull(reference);
 
-        string text = reference.BaseUri is null ? reference.ResourceId : reference.ToString();
-        return text.StartsWith(UrnScheme, StringComparison.Ordinal) ? text : null;
+        return reference.BaseUri is null ? reference.ResourceId : reference.ToString();
     }
 
     /// <summary>Every <c>reference</c> string in <paramref name="node"/>, in document order.</summary>
@@ -125,7 +139,7 @@ internal sealed class BundleReferenceResolver
 
     /// <summary>
     /// Replaces, in place, every <c>reference</c> in <paramref name="resource"/> that names a catalogued Bundle entry with that
-    /// entry's relative <c>Type/id</c>.
+    /// entry's relative <c>Type/id</c>, and every conditional reference that identifies exactly one resource with its <c>Type/id</c>.
     /// </summary>
     /// <param name="entry">Where the resource was catalogued; its Bundle (its file) is searched first, and its fullUrl is the base of its relative references.</param>
     /// <param name="resource">The tool's own parse of the resource, before it is converted for indexing.</param>
@@ -137,23 +151,40 @@ internal sealed class BundleReferenceResolver
 
         string? restfulBase = entry.FullUrl is { } fullUrl && RestfulUrl.TryParse(fullUrl, out string baseUrl, out _, out _) ? baseUrl : null;
         Dictionary<string, string> resolved = new(StringComparer.Ordinal);
-        List<string> unresolved = [];
+        var unresolved = new Unresolved([], []);
         List<string> crossScope = [];
         Rewrite(resource, entry.FilePath, restfulBase, resolved, unresolved, crossScope);
         return (
-            resolved.Count == 0 && unresolved.Count == 0 ? ReferenceResolution.None : new ReferenceResolution(resolved, [.. unresolved.Distinct(StringComparer.Ordinal)]),
+            resolved.Count == 0 && unresolved.Urns.Count == 0 && unresolved.Conditionals.Count == 0
+                ? ReferenceResolution.None
+                : new ReferenceResolution(
+                    resolved,
+                    [.. unresolved.Urns.Distinct(StringComparer.Ordinal)],
+                    [.. unresolved.Conditionals.DistinctBy(conditional => conditional.Reference, StringComparer.Ordinal)]),
             [.. crossScope.Distinct(StringComparer.Ordinal)]);
     }
 
     // Walks the JSON as BundleReferencePreProcessor.RewriteReferences does (src/Application/Ignixa.Application/Features/Bundle/).
-    private void Rewrite(JsonNode? node, string filePath, string? restfulBase, Dictionary<string, string> resolved, List<string> unresolved, List<string> crossScope)
+    private void Rewrite(JsonNode? node, string filePath, string? restfulBase, Dictionary<string, string> resolved, Unresolved unresolved, List<string> crossScope)
     {
         switch (node)
         {
             case JsonObject obj:
                 if (obj["reference"] is JsonValue value && value.TryGetValue(out string? reference))
                 {
-                    if (Resolve(reference, filePath, restfulBase) is var (target, outsideBundle))
+                    if (ConditionalReferenceResolver.IsConditional(reference))
+                    {
+                        if (_conditionals.TryResolve(reference, out string? target, out ConditionalReferenceFailure? failure))
+                        {
+                            obj["reference"] = target;
+                            resolved.TryAdd(reference, target);
+                        }
+                        else
+                        {
+                            unresolved.Conditionals.Add(new UnresolvedConditional(reference, failure));
+                        }
+                    }
+                    else if (Resolve(reference, filePath, restfulBase) is var (target, outsideBundle))
                     {
                         // A relative reference that resolves to itself changed nothing and is not recorded.
                         if (!string.Equals(target, reference, StringComparison.Ordinal))
@@ -168,7 +199,7 @@ internal sealed class BundleReferenceResolver
                     }
                     else if (reference.StartsWith(UrnScheme, StringComparison.Ordinal))
                     {
-                        unresolved.Add(reference);
+                        unresolved.Urns.Add(reference);
                     }
                 }
 
@@ -232,6 +263,9 @@ internal sealed class BundleReferenceResolver
         ReferenceSearchValue parsed = _parser.Parse(text);
         return parsed.BaseUri is null ? text : parsed.ToString();
     }
+
+    /// <summary>The references of one resource left unresolved, in document order.</summary>
+    private sealed record Unresolved(List<string> Urns, List<UnresolvedConditional> Conditionals);
 
     /// <summary>Maps <paramref name="key"/> to <paramref name="target"/>, or to null (ambiguous) when it already names another resource.</summary>
     private static void Add<TKey>(Dictionary<TKey, string?> map, TKey key, string target)

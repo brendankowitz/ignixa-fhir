@@ -115,16 +115,15 @@ public static class ResourceFetcher
 
     /// <summary>
     /// Each found resource's Bundle references and the <c>Type/id</c> they name, by <c>Type/id</c>, resolved as the index
-    /// resolves them (<see cref="Indexing.BundleReferenceResolver"/>) but without building any index. A folder without Bundle
-    /// entry fullUrls has no Bundle references, so nothing is read for it; a resource that cannot be read resolves nothing
-    /// here and is reported by the batch.
+    /// resolves them (<see cref="Indexing.BundleReferenceResolver"/>, conditional references included) but without building
+    /// any index; a resource that cannot be read resolves nothing here and is reported by the batch.
     /// </summary>
     private static Dictionary<string, IReadOnlyDictionary<string, string>> Resolutions(FolderSession session, List<CatalogEntry> found)
     {
         Dictionary<string, IReadOnlyDictionary<string, string>> resolutions = new(StringComparer.Ordinal);
         foreach (CatalogEntry entry in found)
         {
-            resolutions[ResourceReader.Describe(entry)] = session.Catalog.FullUrls.Count > 0 && ResourceReader.Read(session.RootPath, entry).Resource is { } resource
+            resolutions[ResourceReader.Describe(entry)] = ResourceReader.Read(session.RootPath, entry).Resource is { } resource
                 ? session.BundleReferences.Rewrite(entry, resource).Resolution.Resolved
                 : Indexing.ReferenceResolution.None.Resolved;
         }
