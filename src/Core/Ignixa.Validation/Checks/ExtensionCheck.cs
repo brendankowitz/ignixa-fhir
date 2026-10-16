@@ -149,7 +149,7 @@ internal sealed class ExtensionCheck : IValidationCheck, ISingletonCheck
     /// <summary>Validates one extension used on <paramref name="host"/>; true when it was validated against a loaded definition.</summary>
     private bool ValidateExtension(IElement extension, string? url, ExtensionHost host, ValidationSettings settings, ValidationState state, List<ValidationResult> results)
     {
-        bool absolute = Uri.TryCreate(url, UriKind.Absolute, out _);
+        bool absolute = AbsoluteUris.IsAbsolute(url);
         if (url is { Length: > 0 } relative && !absolute && !host.IsExtension && settings.Depth != ValidationDepth.Compatibility)
         {
             // Only a complex extension's sub-extensions may be named relatively (R4 extensibility).

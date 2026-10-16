@@ -102,4 +102,53 @@ public class EntryResourceValidationTests
         result.Issues.ShouldContain(i => i.Severity == IssueSeverity.Error && i.Path == "Observation.contained[0].status");
         result.Issues.ShouldNotContain(i => i.Path.Contains("contained[0].contained", StringComparison.Ordinal));
     }
+
+    // Regression: at 758e490 an entry of a nested Bundle resolved against the outermost container, so a sibling urn to an
+    // Organization (not an allowed subject) in the inner Bundle went untold.
+    [Theory]
+    [InlineData("""{"resourceType":"Bundle","id":"out","type":"collection","entry":[{"fullUrl":"urn:uuid:99999999-9999-9999-9999-999999999999","resource":@INNER}]}""", "Bundle.entry[0].resource.entry[1].resource.subject")]
+    [InlineData("""{"resourceType":"Parameters","id":"pp","parameter":[{"name":"b","resource":@INNER}]}""", "Parameters.parameter[0].resource.entry[1].resource.subject")]
+    public void GivenANestedBundleWhoseEntryReferencesASibling_WhenValidatedAtSpec_ThenItResolvesInTheInnerBundle(string outer, string path)
+    {
+        const string inner = """
+            {"resourceType":"Bundle","id":"in","type":"collection","entry":[
+              {"fullUrl":"urn:uuid:11111111-1111-1111-1111-111111111111","resource":{"resourceType":"Organization","id":"org","name":"x"}},
+              {"fullUrl":"urn:uuid:22222222-2222-2222-2222-222222222222","resource":{"resourceType":"Observation","id":"o2","status":"final","code":{"text":"x"},"subject":{"reference":"urn:uuid:11111111-1111-1111-1111-111111111111"}}}]}
+            """;
+
+        var result = JsonResourceValidator.Validate(outer.Replace("@INNER", inner, StringComparison.Ordinal), ValidationDepth.Spec);
+
+        result.Issues.ShouldContain(i => i.Code == "reference-target-type" && i.Path == path);
+    }
+
+    // Regression: at 758e490 an urn naming only an entry of the outer Bundle resolved inside the inner one, telling its
+    // target type from the wrong Bundle; it is now reported unchecked.
+    [Fact]
+    public void GivenANestedBundleEntryReferencingAnOuterEntry_WhenValidatedAtSpec_ThenTheReferenceIsNotResolved()
+    {
+        var result = JsonResourceValidator.Validate("""
+            {"resourceType":"Bundle","id":"out","type":"collection","entry":[
+              {"fullUrl":"urn:uuid:11111111-1111-1111-1111-111111111111","resource":{"resourceType":"Organization","id":"org","name":"x"}},
+              {"fullUrl":"urn:uuid:99999999-9999-9999-9999-999999999999","resource":{"resourceType":"Bundle","id":"in","type":"collection","entry":[
+                {"fullUrl":"urn:uuid:22222222-2222-2222-2222-222222222222","resource":{"resourceType":"Observation","id":"o2","status":"final","code":{"text":"x"},"subject":{"reference":"urn:uuid:11111111-1111-1111-1111-111111111111"}}}]}}]}
+            """, ValidationDepth.Spec);
+
+        result.Issues.ShouldNotContain(i => i.Code == "reference-target-type");
+        result.Issues.ShouldContain(i => i.Code == "reference-target-unchecked" && i.Path == "Bundle.entry[1].resource.entry[0].resource.subject");
+    }
+
+    // Regression: at 758e490 a parameter's parts (contentReference #Parameters.parameter) lacked the parameter's elements,
+    // so a part's name and resource were unknown properties.
+    [Theory]
+    [InlineData(ValidationDepth.Spec)]
+    [InlineData(ValidationDepth.Full)]
+    public void GivenAParameterWithParts_WhenValidated_ThenThePartsHaveTheParametersElements(ValidationDepth depth)
+    {
+        var result = JsonResourceValidator.Validate("""
+            {"resourceType":"Parameters","id":"pp","parameter":[{"name":"b","part":[{"name":"c","valueString":"x"},{"name":"d","resource":{"resourceType":"Observation","id":"o","status":"final","code":{"text":"x"},"zzz":1}}]}]}
+            """, depth);
+
+        result.Issues.ShouldNotContain(i => i.Code == "unknown-property" && !i.Path.EndsWith(".zzz", StringComparison.Ordinal));
+        result.Issues.ShouldContain(i => i.Code == "unknown-property" && i.Path == "Parameters.parameter[0].part[1].resource.zzz");
+    }
 }

@@ -168,7 +168,8 @@ public record ValidationState
 
     /// <summary>
     /// Enters an entry resource E of the Bundle or Parameters resource being validated: %resource and %rootResource become
-    /// E, and <see cref="EnclosingContainer"/> keeps the container for reference resolution.
+    /// E, and <see cref="EnclosingContainer"/> becomes that container for reference resolution: the innermost one, so an entry
+    /// of a Bundle nested in another resolves against its own Bundle's entries, never the outer one's.
     /// </summary>
     /// <param name="entry">The entry resource element being entered.</param>
     /// <returns>A new validation state scoped to the entry resource.</returns>
@@ -178,7 +179,7 @@ public record ValidationState
 
         return this with
         {
-            EnclosingContainer = EnclosingContainer ?? Scope.RootResource,
+            EnclosingContainer = Scope.RootResource,
             Scope = new ResourceScope { Resource = entry, RootResource = entry },
         };
     }

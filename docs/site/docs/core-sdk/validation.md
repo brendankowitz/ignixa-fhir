@@ -195,7 +195,7 @@ Checks (includes Minimal, plus):
   no coding from the ValueSet)
 - Fixed value constraints
 - Pattern constraints
-- Coding.system must be absolute URI, wherever the Coding appears (a choice variant such as `valueCodeableConcept`
+- Coding.system must be an absolute URI (one starting with a scheme, so `/foo` is relative), wherever the Coding appears (a choice variant such as `valueCodeableConcept`
   and an extension value included; before these were validated, a relative system there was accepted)
 - Every extension, wherever it appears (including a primitive's `_field` shadow), as the Extension datatype: `url`
   present, one `value[x]` of an allowed type, its value's datatype rules; a relative `url` is an error
@@ -205,7 +205,8 @@ Checks (includes Minimal, plus):
   `Parameters.parameter.resource` and its parts'), against its own type and `meta.profile`, with issues rooted at the
   entry (`Bundle.entry[3].resource.status`); an entry with no known `resourceType` is `entry-invalid-resourcetype`.
   Within an entry `%resource` and `%rootResource` are the entry, while its references to sibling entries resolve
-  against the container
+  against the Bundle or Parameters that holds it: the innermost one, so an entry of a Bundle nested in another sees only
+  its own Bundle's entries
 
 ### Compatibility
 

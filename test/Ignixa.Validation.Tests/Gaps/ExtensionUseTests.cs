@@ -146,6 +146,28 @@ public class ExtensionUseTests
         result.Issues.ShouldContain(i => i.Severity == IssueSeverity.Error && i.Code == "extension-url-relative" && i.Path == "Patient.extension[0]");
     }
 
+    // Regression: at 758e490 '/foo' passed as absolute on Unix (Uri reads it as a file path), so it was not reported.
+    [Fact]
+    public void GivenATopLevelExtensionWithARootRelativeUrl_WhenValidatedAtSpec_ThenItIsAnError()
+    {
+        var result = JsonResourceValidator.Validate(Expand("""
+            {"resourceType":"Patient","id":"p","extension":[{"url":"/foo","valueString":"x"}],@TEXT}
+            """), ValidationDepth.Spec);
+
+        result.Issues.ShouldContain(i => i.Code == "extension-url-relative" && i.Path == "Patient.extension[0]");
+    }
+
+    // Regression: at 758e490 a Coding.system of '/foo' passed as absolute on Unix.
+    [Fact]
+    public void GivenACodingSystemWithARootRelativeUrl_WhenValidatedAtSpec_ThenItIsAnError()
+    {
+        var result = JsonResourceValidator.Validate("""
+            {"resourceType":"Observation","id":"o","status":"final","code":{"coding":[{"system":"/foo","code":"x"}]}}
+            """, ValidationDepth.Spec);
+
+        result.Issues.ShouldContain(i => i.Code == "coding-system-absolute" && i.Path == "Observation.code.coding[0].system");
+    }
+
     // Guard: a complex extension's sub-extensions may use relative urls.
     [Fact]
     public void GivenASubExtensionWithARelativeUrl_WhenValidatedAtSpec_ThenItIsAccepted()

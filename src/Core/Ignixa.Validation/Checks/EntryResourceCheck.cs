@@ -17,7 +17,7 @@ namespace Ignixa.Validation.Checks;
 /// </summary>
 /// <remarks>
 /// An entry is an independent resource: its <c>%resource</c> and <c>%rootResource</c> are the entry itself, while its
-/// references to sibling entries resolve against the container (<see cref="ValidationState.EnclosingContainer"/>). An entry
+/// references to sibling entries resolve against the innermost container (<see cref="ValidationState.EnclosingContainer"/>). An entry
 /// whose <c>resourceType</c> is missing or unknown is an error. Contained resources are left to
 /// <see cref="ContainedResourceCheck"/>.
 /// </remarks>

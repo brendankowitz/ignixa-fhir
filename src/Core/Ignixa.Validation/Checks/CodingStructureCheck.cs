@@ -154,6 +154,5 @@ public class CodingStructureCheck : IValidationCheck
     /// </summary>
     /// <param name="uri">The URI string to validate.</param>
     /// <returns>True if the URI is absolute; false if it's relative or null/empty.</returns>
-    private static bool IsAbsoluteUri(string? uri) =>
-        !string.IsNullOrEmpty(uri) && Uri.TryCreate(uri, UriKind.Absolute, out _);
+    private static bool IsAbsoluteUri(string? uri) => AbsoluteUris.IsAbsolute(uri);
 }

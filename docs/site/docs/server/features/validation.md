@@ -237,12 +237,14 @@ server caller can see.
   CodeableReference.
 - A malformed extension: no `url`, more than one `value[x]`, a value breaking its datatype.
 - A resource-level extension with a relative `url` (`extension-url-relative`); only a
-  complex extension's sub-extensions may use one.
+  complex extension's sub-extensions may use one. A url, like a `Coding.system`, is
+  absolute only when it starts with a scheme (`http:`, `urn:`): `/foo` is relative on every
+  platform (it used to pass `coding-system-absolute` on Linux).
 - A Bundle or Parameters resource whose entries break their own type or `meta.profile`:
   each `Bundle.entry.resource`, `Bundle.entry.response.outcome` and
   `Parameters.parameter.resource` (parts included) is validated, and an entry with no known
   `resourceType` is `entry-invalid-resourcetype`. The entries' references resolve against
-  the Bundle.
+  the Bundle that holds them (the innermost one, for a Bundle nested in another).
 
 **Newly rejected at `Full` only:**
 
@@ -250,8 +252,10 @@ server caller can see.
   (`extension-context`), and a modifier extension under `extension` or a non-modifier
   under `modifierExtension` (`extension-modifier-mismatch`).
 - The invariants of a nested Reference, CodeableConcept or Coding (for example `ref-1`,
-  which now runs on every Reference; its R4, R4B and STU3 form is applied with R5's
-  correction, so a Reference with only an identifier or a display passes).
+  which now runs on every Reference). Published invariants the HL7 validator corrects are
+  corrected the same way: `ref-1` passes a Reference with only an identifier or a display,
+  and in STU3 and R4 a `#` reference, and STU3's reads the contained pool from the
+  containing resource; STU3's and R4's `bdl-8` passes a Bundle entry with no `fullUrl`.
 
 **Newly accepted:**
 

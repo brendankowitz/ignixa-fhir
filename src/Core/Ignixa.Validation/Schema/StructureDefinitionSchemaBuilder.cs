@@ -558,10 +558,13 @@ public class StructureDefinitionSchemaBuilder
     /// item with exactly two enableWhen and no enableBehavior is wrongly accepted.
     /// </para>
     /// <para>
-    /// ref-1 shipped in STU3, R4 and R4B without a guard for an absent <c>reference</c>, so a Reference with only an
-    /// identifier or a display evaluates to empty, which fails; R5 corrected it to <c>reference.exists() implies (...)</c>,
-    /// which is applied to the earlier forms. (A Reference's own invariants run since Reference is validated as a nested
-    /// datatype.)
+    /// ref-1 and bdl-8 are corrected as the HL7 validator's <c>FHIRPathExpressionFixer</c> corrects them. ref-1 shipped in
+    /// STU3, R4 and R4B without a guard for an absent <c>reference</c>, so a Reference with only an identifier or a display
+    /// evaluates to empty, which fails: R4B's form is wrapped in <c>reference.exists() implies (...)</c>, as R5 published it;
+    /// R4's also accepts <c>#</c> (the container, or the resource itself); STU3's also reads the contained pool from
+    /// <c>%rootResource</c>, since from inside a contained resource <c>%resource</c> has none. STU3's and R4's bdl-8 fail an entry
+    /// without a <c>fullUrl</c>, which R4B guarded with <c>fullUrl.exists() implies</c>. (A Reference's own invariants run
+    /// since Reference is validated as a nested datatype.)
     /// </para>
     /// </summary>
     private static readonly IReadOnlyDictionary<(string Key, string From), string> ConstraintExpressionErrata =
@@ -569,12 +572,18 @@ public class StructureDefinitionSchemaBuilder
         {
             [("que-12", "enableWhen.count() > 2 implies enableBehavior.exists()")] =
                 "enableWhen.count() >= 2 implies enableBehavior.exists()",
+            // STU3
             [("ref-1", "reference.startsWith('#').not() or (reference.substring(1).trace('url') in %resource.contained.id.trace('ids'))")] =
-                "reference.exists() implies (reference.startsWith('#').not() or (reference.substring(1).trace('url') in %resource.contained.id.trace('ids')))",
+                "reference.exists() implies (reference = '#' or (reference.startsWith('#').not() or (reference.substring(1).trace('url') in %rootResource.contained.id.trace('ids'))))",
+            // R4
             [("ref-1", "reference.startsWith('#').not() or (reference.substring(1).trace('url') in %rootResource.contained.id.trace('ids'))")] =
-                "reference.exists() implies (reference.startsWith('#').not() or (reference.substring(1).trace('url') in %rootResource.contained.id.trace('ids')))",
+                "reference.exists() implies (reference = '#' or (reference.startsWith('#').not() or (reference.substring(1).trace('url') in %rootResource.contained.id.trace('ids'))))",
+            // R4B
             [("ref-1", "reference.startsWith('#').not() or (reference.substring(1).trace('url') in %rootResource.contained.id.trace('ids')) or (reference='#' and %rootResource!=%resource)")] =
                 "reference.exists() implies (reference.startsWith('#').not() or (reference.substring(1).trace('url') in %rootResource.contained.id.trace('ids')) or (reference='#' and %rootResource!=%resource))",
+            // STU3 and R4 (R4B and later publish the guarded form)
+            [("bdl-8", "fullUrl.contains('/_history/').not()")] =
+                "fullUrl.exists() implies fullUrl.contains('/_history/').not()",
         };
 
     /// <summary>
@@ -839,11 +848,13 @@ public class StructureDefinitionSchemaBuilder
                     {
                         nestedTypeDefinition = schema.GetTypeDefinition(declaredType) ?? nestedTypeDefinition;
                     }
-                    if (nestedTypeDefinition == null
+                    // A core target found only as an inline element without children (Parameters.part's
+                    // #Parameters.parameter) is a generated backbone; its children live on the named type.
+                    if ((nestedTypeDefinition == null || nestedTypeDefinition.Children.Count == 0)
                         && (snapshotRoot as ITypeExtended)?.CanonicalUrl == null)
                     {
                         string generatedName = string.Join('.', reference[1..].Split('.').Select(CapitalizeFirst));
-                        nestedTypeDefinition = schema.GetTypeDefinition(generatedName);
+                        nestedTypeDefinition = schema.GetTypeDefinition(generatedName) ?? nestedTypeDefinition;
                     }
                 }
             }
