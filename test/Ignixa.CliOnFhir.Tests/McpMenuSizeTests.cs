@@ -63,7 +63,7 @@ public class McpMenuSizeTests(ITestOutputHelper output)
 
         provider.GetServices<McpServerTool>().Select(tool => tool.ProtocolTool.Name).Order(StringComparer.Ordinal).ShouldBe(
         [
-            "folder_code_systems", "folder_inspect", "help", "patient_context", "patient_list", "plan_fhir_search", "read_resources",
+            "folder_code_systems", "folder_inspect", "help", "patient_cohort", "patient_context", "patient_list", "plan_fhir_search", "read_resources",
             "search_fhir_resources", "terminology", "terminology_load_package", "validate_resources",
         ]);
     }

@@ -106,7 +106,7 @@ public static class TermClassMembers
             },
             cancellationToken);
 
-    private static async Task<List<DrugClassMember>> ReadMembersAsync(RxClassReads reads, DrugClassSource source, string classId, CancellationToken cancellationToken)
+    internal static async Task<List<DrugClassMember>> ReadMembersAsync(RxClassReads reads, DrugClassSource source, string classId, CancellationToken cancellationToken)
     {
         Task<JsonObject>[] productReads = [.. source.Products.Select(relation => reads.GetAsync("classMembers.json", [("classId", classId), .. relation], cancellationToken))];
         Task<JsonObject>? ingredientRead = source.Ingredients is { } ingredients ? reads.GetAsync("classMembers.json", [("classId", classId), .. ingredients], cancellationToken) : null;

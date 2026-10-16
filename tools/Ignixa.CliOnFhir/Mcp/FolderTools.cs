@@ -23,7 +23,7 @@ public sealed class FolderTools(FolderSession session)
         """)]
     public async Task<CallToolResult> FolderInspect(
         [Description("Default 20.")] int? issueLimit = null,
-        [Description("Load terminology first to report how codes resolve.")] bool withTerminology = false,
+        bool withTerminology = false,
         CancellationToken cancellationToken = default) =>
         ToolResults.From(await FolderInspector.InspectAsync(session, issueLimit ?? FolderInspector.DefaultIssueLimit, buildIndexes: false, withTerminology, cancellationToken));
 
@@ -35,7 +35,7 @@ public sealed class FolderTools(FolderSession session)
         [Description("Default 10, maximum 50.")] int? count = null,
         int offset = 0,
         [Description("Codes per system.")] int? top = null,
-        [Description("Load terminology first to report how codes resolve.")] bool withTerminology = false,
+        bool withTerminology = false,
         string? detail = null,
         CancellationToken cancellationToken = default) => detail switch
         {

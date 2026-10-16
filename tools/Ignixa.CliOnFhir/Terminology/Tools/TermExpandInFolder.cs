@@ -53,25 +53,52 @@ public static class TermExpandInFolder
                 List<IssueItem> issues = [];
                 int pageSize = Paging.Resolve(count ?? DefaultCount, offset, issues);
                 CanonicalResolution<ValueSetEntry> resolution = state.Store.ResolveValueSet(checkedValueSet);
-                LocalExpansion? local = resolution.Entry is { } entry ? TermExpand.ExpandLocally(state.Store, resolution, entry, checkedFilter, cancellationToken) : null;
-                if (session.Terminology.Options.TxServer is { } tx && local is not { Expansion.IsComplete: true })
-                {
-                    string why = TxFallback.Why(
-                        local is null ? [TermExpand.NotLoadedAbsent(state.Store, resolution)] : [],
-                        local is null ? (resolution.LoadedVersions.Count > 0 ? TermExpand.VersionNotLoaded : TermExpand.ValueSetNotLoaded) : ValueSetExpansion.IncompleteCode);
-                    Expansion remote = await ReadFromServerAsync(tx, checkedValueSet, checkedFilter, why, cancellationToken);
-                    return InFolder(session, checkedValueSet, checkedFilter, remote, pageSize, offset, issues);
-                }
-
-                if (local is null)
-                {
-                    return NotLoaded(state.Store, resolution, checkedFilter, offset, issues);
-                }
-
-                var expansion = new Expansion(local.Entry.Url, local.Entry.Version, AnswerSource.Local(local.Entry.Origin), local.Expansion.IsComplete, local.Codes, TermExpand.Evidence(local.Expansion), local.Issues, []);
-                return InFolder(session, checkedValueSet, checkedFilter, expansion, pageSize, offset, issues);
+                return await ReadAsync(session, state.Store, checkedValueSet, resolution, checkedFilter, cancellationToken) is { } expansion
+                    ? InFolder(session, checkedValueSet, checkedFilter, expansion, pageSize, offset, issues)
+                    : NotLoaded(state.Store, resolution, checkedFilter, offset, issues);
             },
             cancellationToken);
+    }
+
+    /// <summary>
+    /// The whole expansion of <paramref name="valueSet"/>: loaded content when it expands completely, else the terminology
+    /// server's, read page by page; null when it is not loaded and no server is configured.
+    /// </summary>
+    /// <exception cref="ToolRequestException">The terminology server failed.</exception>
+    internal static async Task<Expansion?> ReadAsync(FolderSession session, TerminologyStore store, string valueSet, CanonicalResolution<ValueSetEntry> resolution, string? filter, CancellationToken cancellationToken)
+    {
+        LocalExpansion? local = resolution.Entry is { } entry ? TermExpand.ExpandLocally(store, resolution, entry, filter, cancellationToken) : null;
+        if (session.Terminology.Options.TxServer is { } tx && local is not { Expansion.IsComplete: true })
+        {
+            string why = TxFallback.Why(
+                local is null ? [TermExpand.NotLoadedAbsent(store, resolution)] : [],
+                local is null ? (resolution.LoadedVersions.Count > 0 ? TermExpand.VersionNotLoaded : TermExpand.ValueSetNotLoaded) : ValueSetExpansion.IncompleteCode);
+            return await ReadFromServerAsync(tx, valueSet, filter, why, cancellationToken);
+        }
+
+        return local is null
+            ? null
+            : new Expansion(local.Entry.Url, local.Entry.Version, AnswerSource.Local(local.Entry.Origin), local.Expansion.IsComplete, local.Codes, TermExpand.Evidence(local.Expansion), local.Issues, []);
+    }
+
+    /// <summary>The codes of <paramref name="expansion"/> the folder carries, most used first, and the searches that find them.</summary>
+    internal static (List<TermFolderCode> Codes, FolderCodeUses Uses) InFolderCodes(FolderSession session, Expansion expansion)
+    {
+        Dictionary<string, HashSet<string>> wanted = new(StringComparer.Ordinal);
+        Dictionary<(string System, string Code), string?> displays = [];
+        foreach (ExpansionCode code in expansion.Codes)
+        {
+            (wanted.TryGetValue(code.System, out HashSet<string>? set) ? set : wanted[code.System] = new HashSet<string>(StringComparer.Ordinal)).Add(code.Code);
+            displays.TryAdd((code.System, code.Code), code.Display);
+        }
+
+        FolderCodeUses uses = FolderTerminology.Uses(session, wanted);
+        List<TermFolderCode> inFolder = [.. uses.Codes
+            .Select(use => new TermFolderCode(use.System, use.Code, Clip(displays.GetValueOrDefault((use.System, use.Code))), use.Resources))
+            .OrderByDescending(code => code.Resources)
+            .ThenBy(code => code.System, StringComparer.Ordinal)
+            .ThenBy(code => code.Code, StringComparer.Ordinal)];
+        return (inFolder, uses);
     }
 
     /// <summary>
@@ -110,21 +137,7 @@ public static class TermExpandInFolder
 
     private static TerminologyAnswer<TermFolderExpansionFacts> InFolder(FolderSession session, string valueSet, string? filter, Expansion expansion, int pageSize, int offset, List<IssueItem> issues)
     {
-        Dictionary<string, HashSet<string>> wanted = new(StringComparer.Ordinal);
-        Dictionary<(string System, string Code), string?> displays = [];
-        foreach (ExpansionCode code in expansion.Codes)
-        {
-            (wanted.TryGetValue(code.System, out HashSet<string>? set) ? set : wanted[code.System] = new HashSet<string>(StringComparer.Ordinal)).Add(code.Code);
-            displays.TryAdd((code.System, code.Code), code.Display);
-        }
-
-        FolderCodeUses uses = FolderTerminology.Uses(session, wanted);
-        List<TermFolderCode> inFolder = [.. uses.Codes
-            .Select(use => new TermFolderCode(use.System, use.Code, Clip(displays.GetValueOrDefault((use.System, use.Code))), use.Resources))
-            .OrderByDescending(code => code.Resources)
-            .ThenBy(code => code.System, StringComparer.Ordinal)
-            .ThenBy(code => code.Code, StringComparer.Ordinal)];
-
+        (List<TermFolderCode> inFolder, FolderCodeUses uses) = InFolderCodes(session, expansion);
         List<OmittedItem> omitted = [.. expansion.Omitted];
         List<TermFolderCode> page = [.. inFolder.Skip(offset).Take(pageSize)];
         (TermFolderExpansionFacts facts, int kept) = TermText.FitPage(
@@ -189,7 +202,7 @@ public static class TermExpandInFolder
     /// An expansion as read: the ValueSet expanded and what answered, whether it is complete (null when a server answered, which
     /// does not say), every code, and what reading it reported.
     /// </summary>
-    private sealed record Expansion(
+    internal sealed record Expansion(
         string Url,
         string? Version,
         AnswerSource? Source,

@@ -22,24 +22,23 @@ public sealed class ResourceTools(FolderSession session)
 
     [McpServerTool(Name = "search_fhir_resources", ReadOnly = true, Idempotent = true)]
     [Description("""
-        FHIR search over the folder for one resource type. Every search parameter, _sort and _count included, goes inside 'query' in FHIR syntax, for example 'code=http://loinc.org|4548-4&date=ge2020&_sort=-date'; chains, _has, _include and _revinclude work. An argument this tool does not define fails the call.
+        FHIR search over the folder for one resource type. Every search parameter, _sort and _count included, goes inside 'query' in FHIR syntax, for example 'code=http://loinc.org|4548-4&date=ge2020&_sort=-date'.
         - compartment=Patient/<id> scopes to one patient; it needs only the id, no lookup first.
         - 'columns' returns a table of FHIRPath values instead of resources. .resolve() follows references, urn:uuid and conditional ones too, so _include is rarely needed. A medication list, whichever medication[x] an order uses: columns={"date":"authoredOn","drug":"(medication.ofType(CodeableConcept) | medication.ofType(Reference).resolve().code).coding.first().display","prescriber":"requester.resolve().name.first().family"}
-        - 'fhirpath' returns one value over a Bundle of every match: 'entry.count()', 'entry.resource.value.ofType(Quantity).value.max()'.
+        - 'fhirpath' returns one value over a Bundle of every match: 'entry.resource.value.ofType(Quantity).value.max()'.
         - summary=count answers "how many"; _sort=-date with count=1 gives the latest.
-        - Cohort in one call: search Patient with fhirpath 'entry.resource.where(patientSearch('Condition','code=...&clinical-status=active').exists()).count()'; patientSearch searches each patient's compartment (help topic=cohorts).
-        - perPatient=latest|earliest|first keeps one match per patient (by date, or first in _sort order).
+        - Population counts: patient_cohort.
         - MedicationRequest code= matches medicationCodeableConcept only; for medicationReference orders use 'medication:Medication.code=...'.
-        Responses are held to about 12 KB (at most 16 KB); when cut, 'next' has the call for the rest. Check 'issues': parameter-ignored means a filter did not apply. help topics: search, columns, fhirpath, cohorts, paging, references, issues.
+        When cut, 'next' has the call for the rest. Check 'issues': parameter-ignored means a filter did not apply. help topics: search, columns, fhirpath, patient_search, paging, references, issues.
         """)]
     public CallToolResult SearchFhirResources(
         [Description("For example 'Observation'.")] string resourceType,
         [Description("FHIR search query without '?'. Every search parameter goes here.")] string? query = null,
-        [Description("Page size: resources default 10, maximum 50; rows default 50, maximum 200.")] int? count = null,
+        [Description("Default 10 (rows 50), maximum 50 (rows 200).")] int? count = null,
         int offset = 0,
         [Description("'count' for the total only.")] string? summary = null,
-        [Description("Top-level elements to keep, comma-separated JSON names, for example 'code,valueQuantity'.")] string? elements = null,
-        [Description("Ignore unknown parameter names with a warning instead of failing; can widen results.")] bool lenient = false,
+        [Description("Top-level elements to keep, e.g. 'code,valueQuantity'.")] string? elements = null,
+        [Description("Unknown parameter names warn instead of failing.")] bool lenient = false,
         [Description("'Type/id', for example 'Patient/123'.")] string? compartment = null,
         [Description("Default 12288, maximum 16384; narrowing is better.")] int? maxBytes = null,
         [Description("Column name to FHIRPath, evaluated per match.")] Dictionary<string, string>? columns = null,
@@ -71,7 +70,7 @@ public sealed class ResourceTools(FolderSession session)
 
     [McpServerTool(Name = "read_resources", ReadOnly = true, Idempotent = true)]
     [Description("""
-        Reads up to 50 resources by reference ('Type/id'), each with its file location as evidence; 'absent' lists those the folder does not hold. Pass 'elements' to keep responses small (about 12 KB by default).
+        Reads up to 50 resources by reference ('Type/id'), each with its file location as evidence; 'absent' lists those the folder does not hold. Pass 'elements' to keep responses small.
         """)]
     public CallToolResult ReadResources(
         [Description("For example ['Patient/123', 'Observation/931'].")] string[] references,
