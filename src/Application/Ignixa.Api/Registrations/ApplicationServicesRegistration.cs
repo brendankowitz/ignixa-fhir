@@ -81,7 +81,7 @@ public static class ApplicationServicesRegistration
         RegisterMedinoServices(builder);
 
         // Resource CRUD handlers
-        RegisterResourceHandlers(builder);
+        RegisterResourceHandlers(builder, configuration);
 
         // Conditional operations handlers
         RegisterConditionalOperationHandlers(builder);
@@ -186,11 +186,28 @@ public static class ApplicationServicesRegistration
             .InstancePerLifetimeScope();
     }
 
-    private static void RegisterResourceHandlers(ContainerBuilder builder)
+    private static void RegisterResourceHandlers(ContainerBuilder builder, IConfiguration configuration)
     {
+        // Bound when resolved rather than at registration so configuration sources added later apply,
+        // and resolved once the container is built so a bad value fails startup instead of every write.
+        builder.Register(_ =>
+            {
+                var options = new SerializationOptions();
+                configuration.GetSection(SerializationOptions.SectionName)
+                    .Bind(options, binder => binder.ErrorOnUnknownConfiguration = true);
+                return options;
+            })
+            .AsSelf()
+            .SingleInstance();
+        builder.RegisterBuildCallback(scope => scope.Resolve<SerializationOptions>());
+
         builder.RegisterType<GetResourceHandler>()
             .As<IRequestHandler<GetResourceQuery, SearchEntryResult?>>()
             .InstancePerDependency();
+
+        builder.RegisterType<ResourceElementOrdering>()
+            .AsSelf()
+            .SingleInstance();
 
         builder.RegisterType<CreateOrUpdateResourceHandler>()
             .As<IRequestHandler<CreateOrUpdateResourceCommand, UpdateResult>>()

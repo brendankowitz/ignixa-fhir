@@ -57,7 +57,8 @@ public class BulkImportStorageFailureTests
             new MemoryStream(Encoding.UTF8.GetBytes(string.Join('\n', Enumerable.Repeat(patient, 20)))));
         var activity = new StreamingImportFileActivity(factory, versions, tenants, blobs,
             new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Import:ConsumerCount"] = "1" }).Build(),
-            new FhirRequestContextAccessor(), NullLogger<StreamingImportFileActivity>.Instance);
+            new FhirRequestContextAccessor(), new ResourceElementOrdering(new SerializationOptions()),
+            NullLogger<StreamingImportFileActivity>.Instance);
         var input = new StreamingImportFileInput { JobId = "job", TenantId = 1, ResourceType = "Patient", FileUrl = "input.ndjson",
             Mode = "IncrementalLoad", BatchSize = 1, ChannelCapacity = 1 };
 

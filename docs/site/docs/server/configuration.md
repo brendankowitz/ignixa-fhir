@@ -32,6 +32,35 @@ These settings are request-size and transaction-cardinality guards, not a memory
 transaction cap changes behavior for clients that previously submitted transactions larger than
 500 entries.
 
+## Resource Element Order
+
+```json
+{
+  "Serialization": {
+    "OrderElementsOnWrite": false
+  }
+}
+```
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `Serialization:OrderElementsOnWrite` | `false` | Store resources with their properties in StructureDefinition element order. |
+
+By default the server keeps the property order the client sent; properties the server adds that
+the client omitted (`id` on create, `meta`, `meta.versionId`, `meta.lastUpdated`) are appended.
+When enabled, every resource write through the FHIR API (create, update, patch, conditional
+operations, batch and transaction bundles, GraphQL mutations, `X-Provenance`) and bulk `$import`
+stores the resource in element order. An invalid value fails server startup.
+
+Properties are ordered with `resourceType` first, then elements in the order the resource's FHIR
+version defines them. A primitive's extension sibling (`_birthDate`) follows its value, properties
+the specification does not define are kept after the defined ones, and embedded resources
+(`contained`, `Bundle.entry.resource`) are ordered by their own `resourceType`. Array element order
+never changes.
+
+Reads serve the stored JSON and do not reorder it, so resources written before the setting was
+enabled keep their original order until they are next updated.
+
 ## Tenant Configuration (Required)
 
 Ignixa requires at least two tenant configurations: Tenant 0 (system partition) and Tenant 1+ (your data).

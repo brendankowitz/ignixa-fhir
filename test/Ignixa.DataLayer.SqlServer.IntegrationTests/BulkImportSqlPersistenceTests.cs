@@ -74,7 +74,8 @@ public class BulkImportSqlPersistenceTests
                 blobs, new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["Import:ConsumerCount"] = "1"
-                }).Build(), new FhirRequestContextAccessor(), NullLogger<StreamingImportFileActivity>.Instance);
+                }).Build(), new FhirRequestContextAccessor(), new ResourceElementOrdering(new SerializationOptions()),
+                NullLogger<StreamingImportFileActivity>.Instance);
 
             var outputJson = await activity.RunAsync(context, JsonSerializer.Serialize(new[]
             {
