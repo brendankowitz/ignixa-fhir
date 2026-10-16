@@ -94,7 +94,15 @@ internal static partial class ViewCompiler
             throw ToolRequestException.Error("invalid-parameter", $"'where' {reason}.");
         }
 
-        FolderFhirPath.Compile("'where'", extraWhere);
+        try
+        {
+            FolderFhirPath.Compile("'where'", extraWhere);
+        }
+        catch (OverflowException ex)
+        {
+            throw ToolRequestException.Error("invalid-parameter", $"'where' {QueryEcho.Of(extraWhere)} is not valid FHIRPath: {ex.Message}");
+        }
+
         JsonObject filtered = (JsonObject)view.Json.DeepClone();
         JsonArray clauses = filtered["where"] as JsonArray ?? [];
         clauses.Add(new JsonObject { ["path"] = extraWhere });
@@ -187,8 +195,9 @@ internal static partial class ViewCompiler
 
     private static ISourceNavigator Navigator(JsonObject json) => JsonSourceNodeFactory.Parse(json).ToSourceNavigator();
 
+    // An OverflowException is the parser's answer to a number literal too large for its type (a 4,000-digit integer).
     private static bool IsDefinitionProblem(Exception ex) =>
-        ex is InvalidOperationException or FormatException or ArgumentException or NotSupportedException;
+        ex is InvalidOperationException or FormatException or ArgumentException or NotSupportedException or OverflowException;
 
     private static ToolRequestException Invalid(string diagnostics) => ToolRequestException.Error(InvalidCode, diagnostics);
 }

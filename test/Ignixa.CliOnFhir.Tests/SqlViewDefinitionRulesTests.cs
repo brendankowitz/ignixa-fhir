@@ -215,4 +215,43 @@ public class SqlViewDefinitionRulesTests
         Facts(envelope).Provenance.EvidenceRows.ShouldNotBeNull();
         envelope.Evidence.ShouldNotBeEmpty();
     }
+
+    // The parser turns a number literal too large for its type into an OverflowException, which is a problem of the definition, not
+    // a defect of the tool (it was reported as view-internal-error, with a stack trace in the log).
+    [Theory]
+    [InlineData("")]
+    [InlineData(" 'mg'")]
+    [InlineData(".5")]
+    public async Task GivenANumberLiteralTooLargeForItsType_WhenRun_ThenItIsAnInvalidView(string suffix)
+    {
+        using TestFolder folder = Clinic();
+        string view = $$"""{"resourceType":"ViewDefinition","resource":"Patient","select":[{"column":[{"name":"id","path":"id"},{"name":"n","path":"{{new string('9', 4000)}}{{suffix}}"}]}]}""";
+
+        IssueItem error = Error(await RunAsync(folder, new ViewRequest(view)));
+
+        error.Code.ShouldBe("invalid-view");
+    }
+
+    [Fact]
+    public async Task GivenANumberLiteralTooLargeInAFolderViewDefinition_WhenRunById_ThenItIsAnInvalidViewWithoutTheFolderTextQuoted()
+    {
+        using TestFolder folder = Clinic().Write("views/big.json", $$"""
+            {"resourceType":"ViewDefinition","id":"vd-big","resource":"Patient","select":[{"column":[{"name":"n","path":"{{new string('9', 4000)}} 'mg'"}]}]}
+            """);
+
+        IssueItem error = Error(await RunAsync(folder, new ViewRequest("vd-big")));
+
+        error.Code.ShouldBe("invalid-view");
+        error.Diagnostics.ShouldNotContain("9999");
+    }
+
+    [Fact]
+    public async Task GivenAnExtraWhereWithANumberLiteralTooLargeForItsType_WhenRun_ThenItIsAnInvalidParameter()
+    {
+        using TestFolder folder = Clinic();
+
+        IssueItem error = Error(await RunAsync(folder, new ViewRequest(PatientView, Where: $"{new string('9', 4000)} > 1")));
+
+        error.Code.ShouldBe("invalid-parameter");
+    }
 }

@@ -5,6 +5,7 @@
 
 using System.Diagnostics;
 using System.Security.Cryptography;
+using Ignixa.CliOnFhir.Caching;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Session;
 using Ignixa.CliOnFhir.Views;
@@ -93,7 +94,7 @@ public class SqlViewOutputSafetyTests
         Directory.CreateSymbolicLink(swapped, Path.Combine(data, "inner"));
         string[] before = Snapshot(data);
 
-        ToolRequestException refused = Should.Throw<ToolRequestException>(() => target.Begin());
+        ToolRequestException refused = Should.Throw<ToolRequestException>(() => target.Begin([]));
 
         refused.Issue.Code.ShouldBe("out-refused");
         Snapshot(data).ShouldBe(before);
@@ -116,7 +117,7 @@ public class SqlViewOutputSafetyTests
         OutputTarget target = OutputTarget.Resolve(session, new ViewRequest(PatientView, Out: Path.Combine(swapped, "rows.csv"))).ShouldNotBeNull();
         Directory.CreateSymbolicLink(swapped, elsewhere);
 
-        ToolRequestException refused = Should.Throw<ToolRequestException>(() => target.Begin());
+        ToolRequestException refused = Should.Throw<ToolRequestException>(() => target.Begin([]));
 
         refused.Issue.Code.ShouldBe("out-refused");
         Directory.GetFileSystemEntries(elsewhere).ShouldBeEmpty();
@@ -143,7 +144,7 @@ public class SqlViewOutputSafetyTests
         var session = new FolderSession(data, new R4CoreSchemaProvider(), NullLoggerFactory.Instance);
         string output = Path.Combine(root.Path, "out");
         OutputTarget target = OutputTarget.Resolve(session, new ViewRequest(PatientView, Out: Path.Combine(output, $"rows.{format}"))).ShouldNotBeNull();
-        OutputFile file = target.Begin();
+        OutputFile file = target.Begin([]);
         string decoy = Path.Combine(inner, Path.GetFileName(file.TempPath));
 
         void Swap()
@@ -174,7 +175,7 @@ public class SqlViewOutputSafetyTests
         refused.Issue.Code.ShouldBe("out-refused");
         left.Code.ShouldBe("out-temp-left");
         left.Severity.ShouldBe("information");
-        left.Diagnostics.ShouldContain(file.TempPath);
+        left.Diagnostics.ShouldContain(OperatingSystem.IsLinux() ? Path.Combine(output + ".old", Path.GetFileName(file.TempPath)) : file.TempPath);
         Directory.GetFileSystemEntries(inner).ShouldBe([decoy]);
         (await File.ReadAllTextAsync(decoy)).ShouldBe("decoy");
         new FileInfo(Path.Combine(output + ".old", Path.GetFileName(file.TempPath))).Length.ShouldBeGreaterThan(0);
@@ -188,7 +189,7 @@ public class SqlViewOutputSafetyTests
         string data = Path.Combine(root.Path, "data");
         var target = new OutputTarget(Path.Combine(data, "landed.csv"), "csv", false, data);
 
-        ToolRequestException error = Should.Throw<ToolRequestException>(() => target.CheckFinal());
+        ToolRequestException error = Should.Throw<ToolRequestException>(() => target.CheckFinal(landed: null));
 
         error.Issue.Code.ShouldBe("out-refused");
         error.Issue.Diagnostics.ShouldContain(Path.Combine(data, "landed.csv"));
@@ -301,6 +302,152 @@ public class SqlViewOutputSafetyTests
         var session = new FolderSession(Path.GetDirectoryName(path)!, new R4CoreSchemaProvider(), NullLoggerFactory.Instance);
         session.Catalog.Diagnostics.ShouldBeEmpty();
         session.Catalog.Entries.Select(entry => entry.Id).ShouldBe(["p1", "p2", "p3"]);
+    }
+
+    // The race the handle check closes: the directory passed its last check, then became a link into the data folder just before
+    // the file was created, so the file was created in the data folder. No path check can see that once the link is gone again;
+    // the open file's real path does. Nothing may be left in the data folder, and the refusal names nothing in it.
+    [Fact]
+    public void GivenTheDirectorySwappedForALinkIntoTheDataFolderJustBeforeTheFileIsCreated_WhenBegun_ThenItIsRefusedAndTheDataFolderIsUnchanged()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return; // the open file's path is read from /proc there; symbolic links need a privilege on Windows
+        }
+
+        using TestFolder root = new TestFolder().Write("data/patients.ndjson", PatientsData);
+        string data = Path.Combine(root.Path, "data");
+        var session = new FolderSession(data, new R4CoreSchemaProvider(), NullLoggerFactory.Instance);
+        string output = Directory.CreateDirectory(Path.Combine(root.Path, "out")).FullName;
+        OutputTarget target = OutputTarget.Resolve(session, new ViewRequest(PatientView, Out: Path.Combine(output, "rows.csv"))).ShouldNotBeNull();
+        string[] before = Snapshot(data);
+        List<IssueItem> notes = [];
+
+        ToolRequestException refused = Should.Throw<ToolRequestException>(() => target.Begin(notes, beforeCreate: () =>
+        {
+            Directory.Move(output, output + ".old");
+            Directory.CreateSymbolicLink(output, data);
+        }));
+
+        refused.Issue.Code.ShouldBe("out-refused");
+        refused.Issue.Diagnostics.ShouldNotContain(data);
+        notes.ShouldBeEmpty();
+        Snapshot(data).ShouldBe(before);
+        Directory.GetFileSystemEntries(output + ".old").ShouldBeEmpty();
+    }
+
+    // Outside the data folder too: a file is created where it was checked or not at all.
+    [Fact]
+    public void GivenTheDirectorySwappedForALinkElsewhereJustBeforeTheFileIsCreated_WhenBegun_ThenItIsRefusedAndNothingIsLeftThere()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        using TestFolder root = new TestFolder().Write("data/patients.ndjson", PatientsData);
+        string data = Path.Combine(root.Path, "data");
+        string elsewhere = Directory.CreateDirectory(Path.Combine(root.Path, "elsewhere")).FullName;
+        var session = new FolderSession(data, new R4CoreSchemaProvider(), NullLoggerFactory.Instance);
+        string output = Directory.CreateDirectory(Path.Combine(root.Path, "out")).FullName;
+        OutputTarget target = OutputTarget.Resolve(session, new ViewRequest(PatientView, Out: Path.Combine(output, "rows.csv"))).ShouldNotBeNull();
+
+        ToolRequestException refused = Should.Throw<ToolRequestException>(() => target.Begin([], beforeCreate: () =>
+        {
+            Directory.Move(output, output + ".old");
+            Directory.CreateSymbolicLink(output, elsewhere);
+        }));
+
+        refused.Issue.Code.ShouldBe("out-refused");
+        Directory.GetFileSystemEntries(elsewhere).ShouldBeEmpty();
+    }
+
+    // The directory was moved away after Begin and a plain directory put in its place: every path check passes again, but the
+    // file with the rows is not where its path says. Commit must not rename by that path, and Discard must say where the file is.
+    [Fact]
+    public async Task GivenTheDirectoryMovedAndAPlainOneMadeInItsPlaceAfterBegin_WhenCommitted_ThenNothingIsRenamedAndTheFileIsReportedWhereItIs()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return; // Windows does not move a directory with an open file in it
+        }
+
+        using TestFolder root = new TestFolder().Write("data/patients.ndjson", PatientsData);
+        string data = Path.Combine(root.Path, "data");
+        var session = new FolderSession(data, new R4CoreSchemaProvider(), NullLoggerFactory.Instance);
+        string output = Directory.CreateDirectory(Path.Combine(root.Path, "out")).FullName;
+        OutputTarget target = OutputTarget.Resolve(session, new ViewRequest(PatientView, Out: Path.Combine(output, "rows.ndjson"))).ShouldNotBeNull();
+        OutputFile file = target.Begin([]);
+        ViewFileSink sink = ViewFileSink.Create(file.Stream, "ndjson", [new ColumnSchema("id", "string", false)]);
+        await sink.WriteAsync(["p1"], CancellationToken.None);
+        await sink.CompleteAsync(CancellationToken.None);
+        await sink.DisposeAsync();
+        Directory.Move(output, output + ".old");
+        Directory.CreateDirectory(output);
+
+        ToolRequestException refused = Should.Throw<ToolRequestException>(() => file.Commit());
+        IssueItem left = file.Discard().ShouldNotBeNull();
+
+        refused.Issue.Code.ShouldBe("out-refused");
+        left.Code.ShouldBe("out-temp-left");
+        string moved = Path.Combine(output + ".old", Path.GetFileName(file.TempPath));
+        left.Diagnostics.ShouldContain(moved);
+        (await File.ReadAllTextAsync(moved)).ShouldContain("p1");
+        Directory.GetFileSystemEntries(output).ShouldBeEmpty();
+    }
+
+    // A failed run cleans up after itself through a directory that something else removed meanwhile: what is gone is gone, and the
+    // cleanup itself must not fail (it did, with DirectoryNotFoundException, which surfaced as view-internal-error).
+    [Fact]
+    public void GivenTheOutputDirectoryRemovedAfterBegin_WhenDiscarded_ThenNothingThrowsAndNothingIsLeft()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return; // Windows does not delete a directory with an open file in it
+        }
+
+        using TestFolder root = new TestFolder().Write("data/patients.ndjson", PatientsData);
+        string data = Path.Combine(root.Path, "data");
+        var session = new FolderSession(data, new R4CoreSchemaProvider(), NullLoggerFactory.Instance);
+        string output = Path.Combine(root.Path, "made", "deeper");
+        OutputTarget target = OutputTarget.Resolve(session, new ViewRequest(PatientView, Out: Path.Combine(output, "rows.csv"))).ShouldNotBeNull();
+        OutputFile file = target.Begin([]);
+        Directory.Delete(Path.Combine(root.Path, "made"), recursive: true);
+
+        IssueItem? left = file.Discard();
+
+        left.ShouldBeNull();
+        Directory.Exists(Path.Combine(root.Path, "made")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenAFileTheHandleShowsLandedSomewhereElse_WhenCheckedAfterTheRename_ThenItIsNamedAndLeftInPlace()
+    {
+        using TestFolder root = new TestFolder().Write("data/patients.ndjson", PatientsData).Write("elsewhere/rows.csv", "x");
+        string data = Path.Combine(root.Path, "data");
+        string landed = Path.Combine(root.Path, "elsewhere", "rows.csv");
+        var target = new OutputTarget(Path.Combine(root.Path, "out", "rows.csv"), "csv", false, data);
+
+        ToolRequestException error = Should.Throw<ToolRequestException>(() => target.CheckFinal(landed));
+
+        error.Issue.Code.ShouldBe("out-refused");
+        error.Issue.Diagnostics.ShouldContain(landed);
+        File.Exists(landed).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenAFileTheHandleShowsInTheDataFolder_WhenCheckedAfterTheRename_ThenItIsNamedAndLeftInPlace()
+    {
+        using TestFolder root = new TestFolder().Write("data/patients.ndjson", PatientsData).Write("data/rows.csv", "x");
+        string data = Path.Combine(root.Path, "data");
+        string landed = Path.Combine(CanonicalPath.Resolve(data), "rows.csv");
+        var target = new OutputTarget(Path.Combine(root.Path, "out", "rows.csv"), "csv", false, data);
+
+        ToolRequestException error = Should.Throw<ToolRequestException>(() => target.CheckFinal(landed));
+
+        error.Issue.Code.ShouldBe("out-refused");
+        error.Issue.Diagnostics.ShouldContain("inside the data folder");
+        File.Exists(landed).ShouldBeTrue();
     }
 
     private static bool TryHardLink(string existing, string link)

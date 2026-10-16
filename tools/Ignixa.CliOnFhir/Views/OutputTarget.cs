@@ -6,6 +6,7 @@
 using Ignixa.CliOnFhir.Caching;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Session;
+using Microsoft.Win32.SafeHandles;
 
 namespace Ignixa.CliOnFhir.Views;
 
@@ -72,16 +73,30 @@ internal sealed record OutputTarget(string Path, string Format, bool Overwrite, 
     /// <summary>
     /// Creates the directories the file needs and a new file beside the target to write into, and returns it open. The directory is
     /// resolved again once it exists, since a link may have replaced a part of it since <see cref="Resolve"/> looked, and the file
-    /// is created exclusively (<c>CreateNew</c>: never an existing file, never one a link names) and checked. The writers are given
-    /// that open stream and never reopen it by path, so what they write goes to this file whatever happens to its path meanwhile;
-    /// <see cref="OutputFile.Commit"/> renames it to <see cref="Path"/>, so a file already there is replaced only by a complete result.
+    /// is created exclusively (<c>CreateNew</c>: never an existing file, never one a link names). Then, before anything is written,
+    /// the operating system is asked where the open file really is (<see cref="OpenFilePath"/>): a directory swapped for a link
+    /// between the check and the creation puts the file wherever the link leads, which no check of a path string can see. A file
+    /// that is not at the checked path is closed, deleted (this run created it a moment ago, empty) and refused. Where the operating
+    /// system cannot say, the new file's path is resolved and checked instead. The writers are given the open file and never reopen
+    /// it by path; <see cref="OutputFile.Commit"/> renames it to <see cref="Path"/>, so a file already there is replaced only by a
+    /// complete result.
     /// </summary>
-    /// <exception cref="ToolRequestException">The path now leads into the data folder, or the file cannot be created.</exception>
-    public OutputFile Begin()
+    /// <param name="notes">Receives an <c>out-temp-left</c> or <c>out-directory-left</c> note for what a refusal could not remove.</param>
+    /// <exception cref="ToolRequestException">
+    /// <c>out-refused</c>: the path now leads somewhere else (the data folder included). <c>out-write-failed</c>: the file cannot be created.
+    /// </exception>
+    public OutputFile Begin(List<IssueItem> notes) => Begin(notes, beforeCreate: null);
+
+    /// <param name="notes">As for <see cref="Begin(List{IssueItem})"/>.</param>
+    /// <param name="beforeCreate">Runs between the directory's last check and the file's creation; a test swaps the directory there.</param>
+    internal OutputFile Begin(List<IssueItem> notes, Action? beforeCreate)
     {
+        ArgumentNullException.ThrowIfNull(notes);
+
         string directory = System.IO.Path.GetDirectoryName(Path)!;
         List<string> created = MissingDirectories(directory);
         string temp = System.IO.Path.Combine(directory, $".{System.IO.Path.GetFileName(Path)}.{Guid.NewGuid():N}.tmp");
+        SafeFileHandle handle;
         try
         {
             Directory.CreateDirectory(directory);
@@ -92,29 +107,21 @@ internal sealed record OutputTarget(string Path, string Format, bool Overwrite, 
                 throw ToolRequestException.Error("out-refused", $"The directory '{directory}' of the output file is now reached through a link; run it again.");
             }
 
-            var stream = new FileStream(temp, new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.ReadWrite, Share = FileShare.None });
-            var file = new OutputFile(this, stream, temp, created);
-            try
-            {
-                Check(FolderPath, Canonical(temp));
-                return file;
-            }
-            catch
-            {
-                file.Discard();
-                throw;
-            }
+            beforeCreate?.Invoke();
+            handle = File.OpenHandle(temp, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            RemoveCreated(created);
+            Note(RemoveCreated(created), notes);
             throw ToolRequestException.Error("out-write-failed", $"Cannot create the output file in '{directory}': {ex.Message}");
         }
         catch (ToolRequestException)
         {
-            RemoveCreated(created);
+            Note(RemoveCreated(created), notes);
             throw;
         }
+
+        return OpenFilePath.IsAvailable ? Verified(handle, temp, created, notes) : CheckedByPath(handle, temp, created, notes);
     }
 
     /// <summary>Whether <paramref name="directory"/>, a path already resolved, still resolves to itself: no link has replaced a part of it.</summary>
@@ -131,33 +138,61 @@ internal sealed record OutputTarget(string Path, string Format, bool Overwrite, 
     }
 
     /// <summary>
-    /// After the rename: the file's own canonical path must be outside the data folder. If it is not, the error names it and the
-    /// file is left; nothing is deleted inside the data folder.
+    /// After the rename: where the file landed (<paramref name="landed"/>, from its handle; null to resolve <see cref="Path"/> instead)
+    /// must be outside the data folder and, when the handle says, the target itself. If not, the error names it and the file is left;
+    /// nothing is deleted inside the data folder.
     /// </summary>
-    internal void CheckFinal()
+    internal void CheckFinal(string? landed)
     {
-        string resolved = Canonical(Path);
+        string resolved = landed ?? Canonical(Path);
         if (new FolderOverlap(FolderPath).Reason(resolved, "output file", Remedy) is { } reason)
         {
             throw ToolRequestException.Error("out-refused", $"The output file ended up inside the data folder at '{resolved}' and was not removed; delete it yourself: {reason}.");
         }
+
+        if (landed is not null && !OpenFilePath.Same(landed, Path))
+        {
+            throw ToolRequestException.Error("out-refused", $"The output file was renamed to '{Path}' but landed at '{landed}', because a link replaced its directory during the rename; it was left there.");
+        }
     }
 
-    /// <summary>Removes the directories in <paramref name="created"/> (deepest first) that are still plain, empty directories this run made.</summary>
-    internal static void RemoveCreated(IReadOnlyList<string> created)
+    /// <summary>
+    /// Removes the directories in <paramref name="created"/> (deepest first) that are still plain, empty directories this run made; one
+    /// something else has put an entry in since is kept. Nothing is removed once the deepest no longer resolves to itself.
+    /// </summary>
+    /// <returns>An <c>out-directory-left</c> information issue when a directory this run made could not be removed; otherwise null.</returns>
+    internal static IssueItem? RemoveCreated(IReadOnlyList<string> created)
     {
-        if (created.Count == 0 || !DirectoryUnchanged(created[0]))
+        if (created.Count == 0)
         {
-            return;
+            return null;
+        }
+
+        if (!DirectoryUnchanged(created[0]))
+        {
+            return DirectoryLeft(created[^1], $"'{created[0]}' no longer resolves to the path that was checked, so nothing was deleted through it");
         }
 
         foreach (string directory in created)
         {
-            if (Directory.Exists(directory) && !Directory.EnumerateFileSystemEntries(directory).Any())
+            try
             {
-                Directory.Delete(directory);
+                if (Directory.Exists(directory) && !Directory.EnumerateFileSystemEntries(directory).Any())
+                {
+                    Directory.Delete(directory);
+                }
+            }
+            catch (DirectoryNotFoundException)
+            {
+                // Already gone, which is what removing it was for.
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return DirectoryLeft(directory, $"it could not be deleted ({ex.GetType().Name}: {ex.Message})");
             }
         }
+
+        return null;
     }
 
     internal static string Canonical(string path)
@@ -177,6 +212,79 @@ internal sealed record OutputTarget(string Path, string Format, bool Overwrite, 
         if (new FolderOverlap(folderPath).Reason(resolvedPath, "output file", Remedy) is { } reason)
         {
             throw ToolRequestException.Error("out-refused", $"Cannot write there: {reason}.");
+        }
+    }
+
+    private static IssueItem DirectoryLeft(string directory, string why) =>
+        new("information", "out-directory-left", $"The directory '{directory}', which this run created for the output file, was left: {why}.", Location: null);
+
+    private static void Note(IssueItem? left, List<IssueItem> notes)
+    {
+        if (left is not null)
+        {
+            notes.Add(left);
+        }
+    }
+
+    // The new file must be at the checked path, as the operating system sees the open file. One that is not was created a moment
+    // ago, exclusively, and nothing has been written to it, so deleting exactly that file undoes it, wherever the swap put it.
+    private OutputFile Verified(SafeFileHandle handle, string temp, List<string> created, List<IssueItem> notes)
+    {
+        string? location;
+        try
+        {
+            location = OpenFilePath.Of(handle);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            handle.Dispose();
+            notes.Add(new IssueItem("information", "out-temp-left", $"The temporary file '{temp}' may have been left: where it was created could not be read ({ex.GetType().Name}), so it was not deleted.", Location: null));
+            throw ToolRequestException.Error("out-write-failed", $"Cannot tell where the output file was created: {ex.Message}");
+        }
+
+        if (location is not null && OpenFilePath.Same(location, temp))
+        {
+            return new OutputFile(this, handle, temp, created);
+        }
+
+        handle.Dispose();
+        DeleteStray(location, notes);
+        Note(RemoveCreated(created), notes);
+        // Windows can also resolve a path spelt in another form (a short 8.3 name, a substituted or mapped drive) to a different string.
+        string spelling = OperatingSystem.IsWindows() ? ", or the path is spelt in a form Windows resolves differently (a short 8.3 name, a substituted or mapped drive; give its long form)" : string.Empty;
+        throw ToolRequestException.Error("out-refused", $"The output file was not created at the path that was checked ('{temp}'): a link replaced a part of its directory while it was being created{spelling}. It was deleted with nothing written to it; run it again.");
+    }
+
+    // Where the operating system cannot say where an open file is: the path is resolved once more and checked, as before.
+    private OutputFile CheckedByPath(SafeFileHandle handle, string temp, List<string> created, List<IssueItem> notes)
+    {
+        var file = new OutputFile(this, handle, temp, created);
+        try
+        {
+            Check(FolderPath, Canonical(temp));
+            return file;
+        }
+        catch (ToolRequestException)
+        {
+            Note(file.Discard(), notes);
+            throw;
+        }
+    }
+
+    private static void DeleteStray(string? location, List<IssueItem> notes)
+    {
+        if (location is null)
+        {
+            return; // something else deleted it already
+        }
+
+        try
+        {
+            File.Delete(location);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            notes.Add(new IssueItem("information", "out-temp-left", $"The temporary file '{location}' was left: it was created there through a link and could not be deleted ({ex.GetType().Name}: {ex.Message}). Delete it yourself.", Location: null));
         }
     }
 

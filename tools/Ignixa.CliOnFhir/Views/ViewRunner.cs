@@ -181,64 +181,40 @@ public static class ViewRunner
     private static async Task<(ViewPass Pass, ViewFileFacts? File)> PassAsync(
         ViewEvaluation evaluation, ViewScope scope, LoadedView loaded, CompiledView view, ViewPaging paging, int? distinctColumn, OutputTarget? target, List<IssueItem> notes, CancellationToken cancellationToken)
     {
-        IEnumerable<ViewRow> rows = evaluation.Rows(scope.Entries, loaded.FromFolder, cancellationToken);
         if (target is null)
         {
-            return (await ViewPass.RunAsync(rows, view.Columns.Count, paging, distinctColumn, sink: null, cancellationToken), null);
+            return (await ViewPass.RunAsync(evaluation.Rows(scope.Entries, loaded.FromFolder, cancellationToken), view.Columns.Count, paging, distinctColumn, sink: null, cancellationToken), null);
         }
 
-        OutputFile file = target.Begin();
+        OutputFile file = target.Begin(notes);
         ViewFileSink? sink = null;
         ViewPass pass;
         long bytes;
-
-        // Every way out of the write ends the writer first, whatever stopped it, and then removes what this run created.
-        async Task AbandonAsync()
-        {
-            try
-            {
-                if (sink is not null)
-                {
-                    await sink.DisposeAsync();
-                }
-            }
-            finally
-            {
-                Note(file.Discard(), notes);
-            }
-        }
-
+        long rows;
         try
         {
             sink = ViewFileSink.Create(file.Stream, target.Format, view.Columns);
 
             // The rows kept are the first ones, which evidence cites.
-            pass = await ViewPass.RunAsync(rows, view.Columns.Count, new ViewPaging(ViewResponse.EvidenceRows, Offset: 0), distinctColumn, sink, cancellationToken);
+            pass = await ViewPass.RunAsync(evaluation.Rows(scope.Entries, loaded.FromFolder, cancellationToken), view.Columns.Count, new ViewPaging(ViewResponse.EvidenceRows, Offset: 0), distinctColumn, sink, cancellationToken);
             bytes = await sink.CompleteAsync(cancellationToken);
+            rows = sink.Rows;
+            ViewFileSink finished = sink;
+            sink = null;
+            await finished.DisposeAsync();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            await AbandonAsync();
-            throw ToolRequestException.Error("out-write-failed", $"Writing '{target.Path}' failed: {ex.Message}. The partial file was removed.");
+            await AbandonAsync(sink, file, notes);
+            throw ToolRequestException.Error("out-write-failed", $"Writing '{target.Path}' failed: {ex.Message}. The partial file was removed unless a note says otherwise.");
         }
         catch
         {
-            await AbandonAsync();
+            await AbandonAsync(sink, file, notes);
             throw;
         }
 
-        ViewFileSink finished = sink!;
-        try
-        {
-            await finished.DisposeAsync();
-        }
-        catch
-        {
-            Note(file.Discard(), notes);
-            throw;
-        }
-
-        if (finished.Rows == 0)
+        if (rows == 0)
         {
             Note(file.Discard(), notes);
             return (pass, new ViewFileFacts(target.Path, target.Format, 0, 0, Created: false));
@@ -254,7 +230,29 @@ public static class ViewRunner
             throw;
         }
 
-        return (pass, new ViewFileFacts(target.Path, target.Format, finished.Rows, bytes, Created: true));
+        return (pass, new ViewFileFacts(target.Path, target.Format, rows, bytes, Created: true));
+    }
+
+    // Every way out of a failed write ends the writer first, whatever stopped it, and then removes what this run created. A writer
+    // that fails to finish while being abandoned changes nothing: its file is being thrown away, and the failure that stopped the
+    // run is the one reported.
+    private static async Task AbandonAsync(ViewFileSink? sink, OutputFile file, List<IssueItem> notes)
+    {
+        try
+        {
+            if (sink is not null)
+            {
+                await sink.DisposeAsync();
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // See above: the partial file is discarded next.
+        }
+        finally
+        {
+            Note(file.Discard(), notes);
+        }
     }
 
     private static void Note(IssueItem? left, List<IssueItem> notes)
