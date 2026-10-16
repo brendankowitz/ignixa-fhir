@@ -131,6 +131,27 @@ public static class IssueTemplates
     /// </summary>
     public static IssueTemplate ExtensionSliceNotValidated { get; } = new("extension-slice-not-validated", "Sub-extension '{0}' was validated as a generic Extension only: the rules its extension's definition gives it were not checked", 1);
 
+    /// <summary>A Bundle or Parameters entry resource without a resourceType, or with one that is not a resource type.</summary>
+    public static IssueTemplate EntryResourceTypeUnknown { get; } = new("entry-resource-type-unknown", "The resource carried here has no resourceType, or one that is not a resource type of this FHIR version", 0);
+
+    /// <summary>An extension used where its definition's contexts do not allow it: the extension url, then the contexts.</summary>
+    public static IssueTemplate ExtensionContextMismatch { get; } = new("extension-context-mismatch", "Extension '{0}' is not allowed here: its definition allows it on {1}", 2);
+
+    /// <summary>A modifier extension's definition used under <c>extension</c>: the extension url.</summary>
+    public static IssueTemplate ExtensionModifierNotInModifierExtension { get; } = new("extension-modifier-not-in-modifierextension", "Extension '{0}' is defined as a modifier extension, so it must appear in modifierExtension", 1);
+
+    /// <summary>A non-modifier extension's definition used under <c>modifierExtension</c>: the extension url.</summary>
+    public static IssueTemplate ExtensionNotModifierInModifierExtension { get; } = new("extension-not-modifier-in-modifierextension", "Extension '{0}' is not defined as a modifier extension, so it must not appear in modifierExtension", 1);
+
+    /// <summary>An extension whose definition's context is a FHIRPath expression, which is not evaluated: the extension url.</summary>
+    public static IssueTemplate ExtensionContextFhirPathUnchecked { get; } = new("extension-context-fhirpath-unchecked", "The context of extension '{0}' was not checked: its definition states it as a FHIRPath expression", 1);
+
+    /// <summary>An extension whose definition's contexts the schema does not describe: the extension url.</summary>
+    public static IssueTemplate ExtensionContextNotDescribed { get; } = new("extension-context-not-described", "The context of extension '{0}' was not checked: the schema does not describe extension contexts", 1);
+
+    /// <summary>A resource-level extension with a relative url: the url.</summary>
+    public static IssueTemplate ExtensionUrlRelative { get; } = new("extension-url-relative", "Extension url '{0}' is relative; only the sub-extensions of a complex extension may use a relative url", 1);
+
     /// <summary>Every template above, for consumers that key a table on <see cref="IssueTemplate.Id"/>.</summary>
     public static IReadOnlyList<IssueTemplate> All { get; } =
     [
@@ -141,6 +162,8 @@ public static class IssueTemplates
         ReferenceTypeMismatch, ReferenceTargetUndeterminable, ReferenceTargetDisplayOnly, ReferenceTargetProfileNotLoaded,
         BindingRequiredTextOnly, BindingCodeInvalid, BindingExampleMiss, BindingNotChecked, BindingTerminologyError,
         CodingWithoutSystemOrCode, CodingSystemNotAbsolute, ProfileNotResolved, ExtensionExampleUrl,
-        ExtensionDefinitionNotLoaded, ExtensionSliceNotValidated,
+        ExtensionDefinitionNotLoaded, ExtensionSliceNotValidated, EntryResourceTypeUnknown, ExtensionContextMismatch,
+        ExtensionModifierNotInModifierExtension, ExtensionNotModifierInModifierExtension, ExtensionContextFhirPathUnchecked,
+        ExtensionContextNotDescribed, ExtensionUrlRelative,
     ];
 }

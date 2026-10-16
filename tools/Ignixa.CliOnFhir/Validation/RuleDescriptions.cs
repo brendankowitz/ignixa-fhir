@@ -65,6 +65,11 @@ internal static class RuleDescriptions
         [ValidationRules.ReferenceTypeMismatch] = "A reference's 'type' names a different resource type than its 'reference' does.",
         [ValidationRules.ReferenceTargetType] = "A reference points at a resource type the element does not allow (by the core definition or a profile's target profiles).",
         [ValidationRules.ExtensionDefinitionUnchecked] = "An extension was validated only as the Extension datatype: its definition is not loaded, or it is a sub-extension whose slice rules are not checked; so the verdict is unknown.",
+        [ValidationRules.ExtensionContextUnchecked] = "An extension's context (where its definition allows it) could not be checked: its definition states a FHIRPath context; so the verdict is unknown.",
+        ["extension-context"] = "An extension is used on an element its definition's contexts do not allow.",
+        ["extension-modifier-mismatch"] = "A modifier extension is used under 'extension', or an extension that is not a modifier under 'modifierExtension'.",
+        ["extension-url-relative"] = "An extension that is not a sub-extension of another has a relative url.",
+        ["entry-invalid-resourcetype"] = "A resource carried by a Bundle or Parameters entry has no resourceType, or one that is not a resource type of this FHIR version.",
         [ValidationRules.BindingRequiredTextOnly] = "A CodeableConcept under a required binding has text only: it carries no coding from the ValueSet (named in 'valueSet').",
     }.ToFrozenDictionary(StringComparer.Ordinal);
 

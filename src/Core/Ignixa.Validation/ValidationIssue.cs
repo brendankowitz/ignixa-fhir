@@ -93,6 +93,40 @@ public sealed record ValidationIssue
     public IReadOnlyList<string> TemplateArguments { get; init; } = [];
 
     /// <summary>
+    /// Whether <paramref name="other"/> is the same issue: equal severity, code, path, message, details, template id, and
+    /// template arguments compared element by element (so two issues rendered from the same template and arguments are equal).
+    /// </summary>
+    /// <param name="other">The issue to compare with.</param>
+    /// <returns>True when the issues are equal.</returns>
+    public bool Equals(ValidationIssue? other) =>
+        other is not null
+        && Severity == other.Severity
+        && Code == other.Code
+        && Path == other.Path
+        && Message == other.Message
+        && EqualityComparer<CodeableConcept?>.Default.Equals(Details, other.Details)
+        && TemplateId == other.TemplateId
+        && TemplateArguments.SequenceEqual(other.TemplateArguments);
+
+    /// <inheritdoc />
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Severity);
+        hash.Add(Code);
+        hash.Add(Path);
+        hash.Add(Message);
+        hash.Add(Details);
+        hash.Add(TemplateId);
+        foreach (var argument in TemplateArguments)
+        {
+            hash.Add(argument);
+        }
+
+        return hash.ToHashCode();
+    }
+
+    /// <summary>
     /// Creates an issue whose message is rendered from <paramref name="template"/>, recording the template and its arguments.
     /// </summary>
     /// <param name="severity">The severity of the issue.</param>

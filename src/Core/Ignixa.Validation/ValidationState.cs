@@ -160,6 +160,30 @@ public record ValidationState
     }
 
     /// <summary>
+    /// The Bundle or Parameters resource whose entry is being validated, when it is; null otherwise. An entry resource is
+    /// an independent resource (its own <c>%resource</c> and <c>%rootResource</c>), but its references to sibling entries
+    /// (<c>urn:uuid:</c> fullUrls, <c>Type/id</c>) resolve against the container.
+    /// </summary>
+    internal IElement? EnclosingContainer { get; init; }
+
+    /// <summary>
+    /// Enters an entry resource E of the Bundle or Parameters resource being validated: %resource and %rootResource become
+    /// E, and <see cref="EnclosingContainer"/> keeps the container for reference resolution.
+    /// </summary>
+    /// <param name="entry">The entry resource element being entered.</param>
+    /// <returns>A new validation state scoped to the entry resource.</returns>
+    internal ValidationState EnterEntryResource(IElement entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+
+        return this with
+        {
+            EnclosingContainer = EnclosingContainer ?? Scope.RootResource,
+            Scope = new ResourceScope { Resource = entry, RootResource = entry },
+        };
+    }
+
+    /// <summary>
     /// Enters a contained resource C inside the current parent resource P: %resource becomes C and
     /// %rootResource becomes P (the containing resource).
     /// </summary>

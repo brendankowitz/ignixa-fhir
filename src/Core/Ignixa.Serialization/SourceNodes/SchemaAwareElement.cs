@@ -59,6 +59,8 @@ internal class SchemaAwareElement : IElement
 
     private volatile object? _cachedTypeDefinition = TypeDefinitionNotComputed;
 
+    private ConcurrentDictionary<ChildListKey, IReadOnlyList<IElement>>? _childCache;
+
     // OPTIMIZATION: Child resolution is cached per (parent type, child name) for the whole process
     // rather than per element instance.
     //
@@ -387,7 +389,9 @@ internal class SchemaAwareElement : IElement
 
     public IReadOnlyList<IElement> Children(string? name)
     {
-        var childCache = SharedChildElements.GetValue(
+        // The shared table entry for _source never changes once created, so the first lookup is kept on the instance:
+        // wrappers are themselves cached and reused, and validation asks one element for its children many times.
+        var childCache = _childCache ??= SharedChildElements.GetValue(
             _source,
             static _ => new ConcurrentDictionary<ChildListKey, IReadOnlyList<IElement>>());
 
@@ -426,9 +430,10 @@ internal class SchemaAwareElement : IElement
                 {
                     // Check if this is a choice element (IsChoiceElement == true)
                     // OR if there's an element with [x] suffix
+                    var choiceName = name + "[x]";
                     var choiceElement = cachedTypeDef.Children
                         .FirstOrDefault(e => (e.Info.Name == name && e.Info.IsChoiceElement) ||
-                                              e.Info.Name == name + "[x]");
+                                              e.Info.Name == choiceName);
 
                     // If this element is polymorphic, match any child starting with the name
                     if (choiceElement != null)

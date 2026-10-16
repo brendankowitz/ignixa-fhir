@@ -47,6 +47,9 @@ internal static class ValidationRules
     /// </summary>
     public const string ExtensionDefinitionUnchecked = "extension-definition-unchecked";
 
+    /// <summary>An extension whose definition states its context as a FHIRPath expression, which is not evaluated.</summary>
+    public const string ExtensionContextUnchecked = "extension-context-unchecked";
+
     /// <summary>A reference whose <c>type</c> names another resource type than its <c>reference</c> does.</summary>
     public const string ReferenceTypeMismatch = "reference-type-mismatch";
 
@@ -67,7 +70,7 @@ internal static class ValidationRules
 
     /// <summary>The rules that leave a verdict unknown.</summary>
     public static IReadOnlySet<string> Unevaluated { get; } = new HashSet<string>(
-        [StoreTerminologyService.NotCheckedRule, ProfileNotLoaded, ConstraintNotEvaluated, TerminologyError, SlicingDeferred, NestingLimit, SchemaNotFound, DepthSpec, ExtensionDefinitionUnchecked],
+        [StoreTerminologyService.NotCheckedRule, ProfileNotLoaded, ConstraintNotEvaluated, TerminologyError, SlicingDeferred, NestingLimit, SchemaNotFound, DepthSpec, ExtensionDefinitionUnchecked, ExtensionContextUnchecked],
         StringComparer.Ordinal);
 
     /// <summary>The rules counted in a summary's <c>notChecked</c>: the unevaluated ones and unchecked extensible bindings.</summary>

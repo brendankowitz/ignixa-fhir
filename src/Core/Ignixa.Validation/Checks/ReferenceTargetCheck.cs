@@ -25,6 +25,10 @@ namespace Ignixa.Validation.Checks;
 /// <c>reference-type-mismatch</c>. The type checked against the allowed ones is the reference's own, else <c>Reference.type</c>.
 /// </para>
 /// <para>
+/// A conditional reference (<c>Type?criteria</c>) is a reference to its type. A bare <c>#</c> is the container: the
+/// containing resource from a contained one, else the resource itself.
+/// </para>
+/// <para>
 /// A reference whose type cannot be told (an unresolved urn, an identifier only, a logical reference), one with only a
 /// display, and every reference at an element whose target profile is not loaded are reported as a non-failing
 /// <c>reference-target-unchecked</c> information issue, never passed: no validator can check them without the target.
@@ -35,16 +39,22 @@ internal sealed partial class ReferenceTargetCheck : IValidationCheck
     private const string CorePrefix = "http://hl7.org/fhir/StructureDefinition/";
 
     private readonly string _elementName;
+    private readonly string _shadowName;
     private readonly IReadOnlySet<string> _allowed;
     private readonly IReadOnlyList<string> _unloadedTargetProfiles;
     private readonly Func<string, bool> _isResourceType;
     private readonly string _allowedText;
+    private readonly string? _within;
 
     /// <param name="elementName">The concrete element name (<c>subject</c>, <c>valueReference</c>).</param>
     /// <param name="allowed">The resource types the element allows; not empty.</param>
     /// <param name="unloadedTargetProfiles">Target profiles whose resource type cannot be told because they are not loaded.</param>
     /// <param name="isResourceType">Whether a name is a resource type of the FHIR version.</param>
-    public ReferenceTargetCheck(string elementName, IReadOnlySet<string> allowed, IReadOnlyList<string> unloadedTargetProfiles, Func<string, bool> isResourceType)
+    /// <param name="within">
+    /// The child holding the Reference, for an element that wraps one (<c>reference</c> of a CodeableReference); null when the
+    /// element is itself the Reference.
+    /// </param>
+    public ReferenceTargetCheck(string elementName, IReadOnlySet<string> allowed, IReadOnlyList<string> unloadedTargetProfiles, Func<string, bool> isResourceType, string? within = null)
     {
         ArgumentNullException.ThrowIfNull(elementName);
         ArgumentNullException.ThrowIfNull(allowed);
@@ -56,10 +66,12 @@ internal sealed partial class ReferenceTargetCheck : IValidationCheck
         }
 
         _elementName = elementName;
+        _shadowName = $"_{elementName}";
         _allowed = allowed;
         _unloadedTargetProfiles = unloadedTargetProfiles;
         _isResourceType = isResourceType;
         _allowedText = string.Join(", ", allowed.Order(StringComparer.Ordinal));
+        _within = within;
     }
 
     /// <inheritdoc />
@@ -70,7 +82,15 @@ internal sealed partial class ReferenceTargetCheck : IValidationCheck
             return ValidationResult.Success();
         }
 
-        var references = element.Children(_elementName);
+        // The element name is always concrete (never a choice base name), so the raw JSON decides absence.
+        if (RawMembers.CertainlyAbsent(element, _elementName, _shadowName))
+        {
+            return ValidationResult.Success();
+        }
+
+        IReadOnlyList<IElement> references = _within is { } inner
+            ? [.. element.Children(_elementName).SelectMany(wrapper => wrapper.Children(inner))]
+            : element.Children(_elementName);
         if (references.Count == 0)
         {
             return ValidationResult.Success();
@@ -129,7 +149,11 @@ internal sealed partial class ReferenceTargetCheck : IValidationCheck
     {
         if (written.StartsWith('#'))
         {
-            var target = written.Length == 1 ? lookup.Index.ResolveContainerScope(lookup.Resource) : lookup.Index.Resolve(written, location);
+            // A bare "#" names the container (R4 references.html): from a contained resource, the resource containing it;
+            // from a resource that is not contained, that resource itself.
+            var target = written.Length > 1 ? lookup.Index.Resolve(written, location)
+                : lookup.IsContained ? lookup.Index.ResolveContainerScope(lookup.Resource)
+                : lookup.Resource;
             return target?.InstanceType is { } containedType && _isResourceType(containedType) ? containedType : null;
         }
 
@@ -147,6 +171,13 @@ internal sealed partial class ReferenceTargetCheck : IValidationCheck
         if (relative.Success)
         {
             return Known(relative.Groups["type"].Value);
+        }
+
+        // A conditional reference (Type?criteria) names its type before the query.
+        Match conditional = Conditional().Match(written);
+        if (conditional.Success)
+        {
+            return Known(conditional.Groups["type"].Value);
         }
 
         return Uri.TryCreate(written, UriKind.Absolute, out Uri? uri) && uri.Scheme is "http" or "https" ? TypeOfUrl(uri) : null;
@@ -180,15 +211,24 @@ internal sealed partial class ReferenceTargetCheck : IValidationCheck
     [GeneratedRegex("^(?<type>[A-Z][A-Za-z]{1,63})/[A-Za-z0-9\\-\\.]{1,64}(?:/_history/[A-Za-z0-9\\-\\.]{1,64})?$")]
     private static partial Regex Relative();
 
-    /// <summary>The in-instance reference index for one validation of the check, built only when a reference needs it.</summary>
+    // A conditional reference: Type?search-criteria.
+    [GeneratedRegex("^(?<type>[A-Z][A-Za-z]{1,63})\\?.+$")]
+    private static partial Regex Conditional();
+
+    /// <summary>
+    /// The reference index for one validation of the check, built only when a reference needs it: over the Bundle or
+    /// Parameters whose entry is being validated, else over the resource validation is rooted at.
+    /// </summary>
     private sealed class Lookup(ValidationState state)
     {
         private ReferenceIndex? _index;
 
         public IElement Resource => state.Scope.Resource;
 
-        public bool InContainer => state.Scope.RootResource.InstanceType is "Bundle" or "Parameters";
+        public bool IsContained => !ReferenceEquals(state.Scope.Resource, state.Scope.RootResource);
 
-        public ReferenceIndex Index => _index ??= ReferenceIndex.Build(state.Scope.RootResource);
+        public bool InContainer => state.EnclosingContainer is not null || state.Scope.RootResource.InstanceType is "Bundle" or "Parameters";
+
+        public ReferenceIndex Index => _index ??= ReferenceIndex.Build(state.EnclosingContainer ?? state.Scope.RootResource);
     }
 }

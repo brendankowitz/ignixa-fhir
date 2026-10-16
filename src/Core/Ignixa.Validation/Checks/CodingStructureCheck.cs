@@ -23,7 +23,20 @@ namespace Ignixa.Validation.Checks;
 public class CodingStructureCheck : IValidationCheck
 {
     private readonly string _fieldName;
+    private readonly string? _shadowName;
+
     private readonly string? _declaredType;
+
+    /// <summary>
+    /// Gets a value indicating whether the element name is exact - not a choice element's base name (<c>value</c>), whose
+    /// children are its concrete variants - so an absent element can be passed from the raw JSON without a child lookup.
+    /// Set by the schema builder, which knows; false for any other caller.
+    /// </summary>
+    internal bool ExactName
+    {
+        get => _shadowName is not null;
+        init => _shadowName = value ? $"_{_fieldName}" : null;
+    }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CodingStructureCheck"/> class that infers Coding or CodeableConcept from the instance.
@@ -61,6 +74,11 @@ public class CodingStructureCheck : IValidationCheck
     public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
         var issues = new List<ValidationIssue>();
+
+        if (_shadowName is not null && RawMembers.CertainlyAbsent(element, _fieldName, _shadowName))
+        {
+            return ValidationResult.Success();
+        }
 
         var fieldNodes = element.Children(_fieldName);
         foreach (var fieldNode in fieldNodes)

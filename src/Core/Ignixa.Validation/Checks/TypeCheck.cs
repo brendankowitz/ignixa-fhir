@@ -21,6 +21,8 @@ namespace Ignixa.Validation.Checks;
 public class TypeCheck : IValidationCheck
 {
     private readonly string _elementName;
+    private readonly string? _shadowName;
+
     private readonly string _expectedType;
 
     // FHIR: no string-valued primitive may exceed 1 MB (1,048,576 bytes).
@@ -46,6 +48,17 @@ public class TypeCheck : IValidationCheck
     private static readonly Regex UrlPattern = new(@"^https?://", RegexOptions.Compiled);
 
     /// <summary>
+    /// Gets a value indicating whether the element name is exact - not a choice element's base name (<c>value</c>), whose
+    /// children are its concrete variants - so an absent element can be passed from the raw JSON without a child lookup.
+    /// Set by the schema builder, which knows; false for any other caller.
+    /// </summary>
+    internal bool ExactName
+    {
+        get => _shadowName is not null;
+        init => _shadowName = value ? $"_{_elementName}" : null;
+    }
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="TypeCheck"/> class.
     /// </summary>
     /// <param name="elementName">The name of the element to check.</param>
@@ -65,6 +78,11 @@ public class TypeCheck : IValidationCheck
     /// <returns>A validation result indicating success or failure.</returns>
     public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
+        if (_shadowName is not null && RawMembers.CertainlyAbsent(element, _elementName, _shadowName))
+        {
+            return ValidationResult.Success();
+        }
+
         var fieldChildren = element.Children(_elementName);
         if (fieldChildren.Count == 0)
         {

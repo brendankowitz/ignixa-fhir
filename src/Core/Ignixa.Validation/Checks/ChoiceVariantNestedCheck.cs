@@ -34,6 +34,7 @@ namespace Ignixa.Validation.Checks;
 public sealed class ChoiceVariantNestedCheck : IValidationCheck
 {
     private readonly string _variantName;
+    private readonly string _variantShadowName;
     private readonly bool _isCollection;
     private readonly ValidationSchema _variantSchema;
 
@@ -46,6 +47,7 @@ public sealed class ChoiceVariantNestedCheck : IValidationCheck
     public ChoiceVariantNestedCheck(string variantName, bool isCollection, ValidationSchema variantSchema)
     {
         _variantName = variantName ?? throw new ArgumentNullException(nameof(variantName));
+        _variantShadowName = $"_{variantName}";
         _isCollection = isCollection;
         _variantSchema = variantSchema ?? throw new ArgumentNullException(nameof(variantSchema));
     }
@@ -56,6 +58,12 @@ public sealed class ChoiceVariantNestedCheck : IValidationCheck
         // Registered in the spec tier, which ValidationSchema does not run at Minimal; the guard keeps
         // a direct caller to the same contract.
         if (settings.Depth == ValidationDepth.Minimal)
+        {
+            return ValidationResult.Success();
+        }
+
+        // One check per variant runs on every node carrying the choice element, and at most one variant is present.
+        if (RawMembers.CertainlyAbsent(element, _variantName, _variantShadowName))
         {
             return ValidationResult.Success();
         }

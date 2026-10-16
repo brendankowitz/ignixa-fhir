@@ -15,8 +15,20 @@ namespace Ignixa.Validation.Checks;
 public class CardinalityCheck : IValidationCheck
 {
     private readonly string _elementName;
+    private readonly string? _shadowName;
     private readonly int _min;
     private readonly int? _max; // null = unbounded (*)
+
+    /// <summary>
+    /// Gets a value indicating whether the element name is exact - not a choice element's base name (<c>value</c>), whose
+    /// children are its concrete variants - so an absent optional element can be passed from the raw JSON without a
+    /// child lookup. Set by the schema builder, which knows; false for any other caller.
+    /// </summary>
+    internal bool ExactName
+    {
+        get => _shadowName is not null;
+        init => _shadowName = value ? $"_{_elementName}" : null;
+    }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CardinalityCheck"/> class.
@@ -40,37 +52,38 @@ public class CardinalityCheck : IValidationCheck
     /// <returns>A validation result indicating success or failure.</returns>
     public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
+        // 0..* constrains nothing; skipping it saves a child lookup per element on every validated node.
+        if (_min == 0 && _max is null)
+        {
+            return ValidationResult.Success();
+        }
+
+        if (_min == 0 && _shadowName is not null && RawMembers.CertainlyAbsent(element, _elementName, _shadowName))
+        {
+            return ValidationResult.Success();
+        }
+
         // Get all children with this name (IElement.Children already returns IReadOnlyList)
-        var children = element.Children(_elementName);
-        var actualCount = children.Count;
+        var actualCount = element.Children(_elementName).Count;
+        if (actualCount >= _min && (!_max.HasValue || actualCount <= _max.Value))
+        {
+            return ValidationResult.Success();
+        }
 
         var location = string.IsNullOrEmpty(element.Location)
             ? _elementName
             : $"{element.Location}.{_elementName}";
 
-        // Check minimum cardinality
-        if (actualCount < _min)
+        // In Compatibility mode, skip minimum cardinality checks for 2nd level+ nested elements
+        // (e.g., Appointment.participant.status, Patient.contact.relationship)
+        // This matches Firely SDK lenient behavior for nested backbone elements
+        if (actualCount < _min && settings.Depth == ValidationDepth.Compatibility && IsNestedElement(location))
         {
-            // In Compatibility mode, skip cardinality checks for 2nd level+ nested elements
-            // (e.g., Appointment.participant.status, Patient.contact.relationship)
-            // This matches Firely SDK lenient behavior for nested backbone elements
-            if (settings.Depth == ValidationDepth.Compatibility && IsNestedElement(location))
-            {
-                return ValidationResult.Success();
-            }
-
-            return ValidationResult.Failure(
-                ValidationIssue.CardinalityViolation(location, _min, _max, actualCount));
+            return ValidationResult.Success();
         }
 
-        // Check maximum cardinality
-        if (_max.HasValue && actualCount > _max.Value)
-        {
-            return ValidationResult.Failure(
-                ValidationIssue.CardinalityViolation(location, _min, _max, actualCount));
-        }
-
-        return ValidationResult.Success();
+        return ValidationResult.Failure(
+            ValidationIssue.CardinalityViolation(location, _min, _max, actualCount));
     }
 
     /// <summary>

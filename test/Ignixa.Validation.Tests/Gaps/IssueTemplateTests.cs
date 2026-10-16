@@ -111,6 +111,19 @@ public class IssueTemplateTests
         result.Issues.ShouldNotContain(i => i.Code == "reference-target-unchecked");
     }
 
+    // Regression: at b0f34da two issues built from the same template and arguments were unequal (the argument array compared
+    // by reference), so a set of issues did not deduplicate them.
+    [Fact]
+    public void GivenTwoIssuesFromTheSameTemplateAndArguments_WhenCompared_ThenTheyAreEqualAndHashAlike()
+    {
+        var first = ValidationIssue.FromTemplate(IssueSeverity.Error, "unknown-property", "Patient.x", IssueTemplates.UnknownProperty, "x", "Patient");
+        var second = ValidationIssue.FromTemplate(IssueSeverity.Error, "unknown-property", "Patient.x", IssueTemplates.UnknownProperty, "x", "Patient");
+
+        second.ShouldBe(first);
+        second.GetHashCode().ShouldBe(first.GetHashCode());
+        new HashSet<ValidationIssue> { first, second }.Count.ShouldBe(1);
+    }
+
     private sealed class FixedTypes(Dictionary<string, string> types) : IReferenceTypeResolver
     {
         public string? ResolveResourceType(string reference) => types.GetValueOrDefault(reference);

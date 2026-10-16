@@ -37,6 +37,8 @@ public class BindingCheck : IValidationCheck
     private readonly ITerminologyService _terminologyService;
     private readonly string? _declaredType;
 
+    private const string DataAbsentReasonUrl = "http://hl7.org/fhir/StructureDefinition/data-absent-reason";
+
     /// <summary>
     /// Initializes a new instance of the <see cref="BindingCheck"/> class.
     /// </summary>
@@ -209,6 +211,12 @@ public class BindingCheck : IValidationCheck
     private ValidationResult ValidateTextOnlyConcept(IElement element, ValidationSettings settings)
     {
         if (ParseStrength(_bindingStrength) != BindingStrength.Required || settings.Depth == ValidationDepth.Compatibility)
+        {
+            return ValidationResult.Success();
+        }
+
+        // A concept stated absent (the data-absent-reason extension) has no value for the binding to apply to.
+        if (element.Children("extension").Any(extension => extension.Children("url") is [{ Value: DataAbsentReasonUrl }, ..]))
         {
             return ValidationResult.Success();
         }

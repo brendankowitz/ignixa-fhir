@@ -282,6 +282,12 @@ public static class ResourceValidator
             yield return new IssueItem("warning", ValidationRules.ExtensionDefinitionUnchecked, $"{extensions} resources have extensions validated only as the Extension datatype: their definitions are not loaded, or they are sub-extensions of a complex extension whose slice rules are not checked. Their verdict is unknown unless another check failed; pass the package that defines them in 'packages'.", Location: null);
         }
 
+        int contexts = summary.ResourcesNotChecked(ValidationRules.ExtensionContextUnchecked);
+        if (contexts > 0)
+        {
+            yield return new IssueItem("information", ValidationRules.ExtensionContextUnchecked, $"{contexts} resources use extensions whose context (where their definition allows them) could not be checked: a FHIRPath context, which is not evaluated. Their verdict is unknown unless another check failed.", Location: null);
+        }
+
         int spec = summary.ResourcesNotChecked(ValidationRules.DepthSpec);
         if (spec > 0)
         {
@@ -408,13 +414,12 @@ public static class ResourceValidator
     /// <summary>
     /// The checks that do not run at <paramref name="depth"/>, as facts state them, and the reference target checks that could
     /// not run because the target's type could not be told or the reference has only a display (they leave verdicts as they are).
-    /// Extension contexts (where a definition allows an extension) are checked at no depth.
     /// </summary>
     private static IReadOnlyList<string> ChecksNotRun(ValidationDepth depth, int undeterminableReferences, int displayOnlyReferences)
     {
         List<string> notRun = depth == ValidationDepth.Spec
-            ? ["invariants", "slicing", "extensible-bindings", "extension-definitions", "extension-contexts", "displays"]
-            : ["extension-contexts", "displays"];
+            ? ["invariants", "slicing", "extensible-bindings", "extension-definitions", "displays"]
+            : ["displays"];
         if (undeterminableReferences > 0)
         {
             notRun.Add($"{ValidationRules.ReferenceTargetType} (undeterminable: {undeterminableReferences})");

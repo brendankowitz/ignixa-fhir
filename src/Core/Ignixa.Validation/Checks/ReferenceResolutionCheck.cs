@@ -49,6 +49,13 @@ public sealed class ReferenceResolutionCheck : IValidationCheck
             return ValidationResult.Success();
         }
 
+        // A Bundle or Parameters entry: the container's own run of this check walks the whole container, entries
+        // included, so running it again per entry would report each unresolved reference twice.
+        if (state.EnclosingContainer is not null)
+        {
+            return ValidationResult.Success();
+        }
+
         // Index the OUTERMOST resource of the current scope, matching the root that resolve() indexes
         // (FhirSpecificFunctions.Resolve uses RootResource ?? Resource; here RootResource is always set,
         // so the fallback never fires). At contained scope RootResource is the containing parent, which

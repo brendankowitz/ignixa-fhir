@@ -67,4 +67,30 @@ public class TextOnlyConceptBindingTests
         result.Issues.ShouldNotContain(i => i.Severity == IssueSeverity.Error);
         result.Issues.ShouldNotContain(i => i.Code == "code-invalid");
     }
+
+    // Regression: at b0f34da a concept carrying only a data-absent-reason extension was "text-only" under a required binding.
+    [Theory]
+    [InlineData(ValidationDepth.Spec)]
+    [InlineData(ValidationDepth.Full)]
+    public void GivenAConceptWithOnlyADataAbsentReasonUnderARequiredBinding_WhenValidated_ThenTheBindingRaisesNothing(ValidationDepth depth)
+    {
+        var result = JsonResourceValidator.Validate("""
+            {"resourceType":"Condition","id":"c","clinicalStatus":{"extension":[{"url":"http://hl7.org/fhir/StructureDefinition/data-absent-reason","valueCode":"unknown"}]},"code":{"text":"x"},"subject":{"reference":"Patient/1"}}
+            """, depth);
+
+        result.Issues.ShouldNotContain(i => i.Severity == IssueSeverity.Error);
+        result.Issues.ShouldNotContain(i => i.Path.StartsWith("Condition.clinicalStatus", StringComparison.Ordinal) && i.Code != "extension-definition-unchecked");
+    }
+
+    // Guard: a data-absent-reason does not excuse a coding outside the required ValueSet.
+    [Fact]
+    public void GivenAConceptWithADataAbsentReasonAndAWrongCoding_WhenValidatedAtSpec_ThenTheCodingIsRejected()
+    {
+        var result = JsonResourceValidator.Validate("""
+            {"resourceType":"Condition","id":"c","clinicalStatus":{"extension":[{"url":"http://hl7.org/fhir/StructureDefinition/data-absent-reason","valueCode":"unknown"}],
+             "coding":[{"system":"http://terminology.hl7.org/CodeSystem/condition-clinical","code":"bogus"}]},"code":{"text":"x"},"subject":{"reference":"Patient/1"}}
+            """, ValidationDepth.Spec);
+
+        result.Issues.ShouldContain(i => i.Severity == IssueSeverity.Error && i.Path.StartsWith("Condition.clinicalStatus", StringComparison.Ordinal));
+    }
 }

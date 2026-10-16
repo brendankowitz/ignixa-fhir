@@ -145,12 +145,16 @@ An element is validated according to its **type**, not according to how it is de
 validated through its own schema at Spec and above, whether it is a plain element (`Observation.referenceRange.low`), a
 complex choice variant (`Observation.valueQuantity`) or an extension's value (`extension.valueQuantity`). A
 Reference, CodeableConcept or Coding gets the same dedicated checks (reference format and target type, coding
-structure, bindings) in all three positions. What a tier adds is a kind of rule, never more of the instance:
+structure, bindings) in all three positions, and its inside is validated through its own schema like any other
+datatype (unknown properties, JSON primitive types, cardinality, and at Full its invariants). A resource a Bundle or
+Parameters carries is validated against its own type and `meta.profile`, and a contained resource against its own
+type. What a tier
+adds is a kind of rule, never more of the instance:
 
 - **Spec** checks what the core definitions and the profiles' snapshots state element by element: structure,
   cardinality, primitive types, fixed values and patterns, required bindings and reference target types.
 - **Full** adds the rules that need evaluation beyond one element: FHIRPath invariants, slicing, extensible
-  bindings, and extensions against their loaded definitions.
+  bindings, and extensions against their loaded definitions, including their contexts and modifier placement.
 
 A check that applies but cannot conclude is reported, never passed: a reference whose target type cannot be told,
 an extension whose definition is not loaded, a binding the terminology service cannot decide, a constraint the
@@ -194,7 +198,14 @@ Checks (includes Minimal, plus):
 - Coding.system must be absolute URI, wherever the Coding appears (a choice variant such as `valueCodeableConcept`
   and an extension value included; before these were validated, a relative system there was accepted)
 - Every extension, wherever it appears (including a primitive's `_field` shadow), as the Extension datatype: `url`
-  present, one `value[x]` of an allowed type, its value's datatype rules
+  present, one `value[x]` of an allowed type, its value's datatype rules; a relative `url` is an error
+  (`extension-url-relative`) except on a complex extension's sub-extension
+- The insides of CodeableConcept, Coding and Reference, as their datatypes
+- Each resource a Bundle or Parameters carries (`Bundle.entry.resource`, `Bundle.entry.response.outcome`,
+  `Parameters.parameter.resource` and its parts'), against its own type and `meta.profile`, with issues rooted at the
+  entry (`Bundle.entry[3].resource.status`); an entry with no known `resourceType` is `entry-invalid-resourcetype`.
+  Within an entry `%resource` and `%rootResource` are the entry, while its references to sibling entries resolve
+  against the container
 
 ### Compatibility
 
@@ -207,7 +218,8 @@ var settings = new ValidationSettings { Depth = ValidationDepth.Compatibility };
 Checks (similar to Spec, but more lenient):
 - All Minimal checks
 - Cardinality constraints (min/max)
-- Type checking, including nested datatypes, complex choice variants and extension values
+- Type checking, including nested datatypes, complex choice variants, extension values, the insides of
+  CodeableConcept, Coding and Reference, and Bundle and Parameters entries
 - Reference format validation
 - Choice element validation
 - Required terminology bindings
@@ -216,6 +228,7 @@ Checks (similar to Spec, but more lenient):
 - **Accepts relative URIs in Coding.system** (e.g., `"internal-tags"`) - relaxed from Spec
 - **Accepts a text-only CodeableConcept under a required binding** - relaxed from Spec
 - **Does not check reference target types** - relaxed from Spec
+- **Accepts a relative url on a resource-level extension** - relaxed from Spec
 
 Use when:
 - Migrating from Microsoft FHIR Server (Firely SDK validation)
@@ -235,6 +248,8 @@ Checks (includes Spec, plus):
 - Slice matching
 - Extensions against their definitions, when the schema the resolver builds from has them loaded (a package layered
   over the core schema): value types narrowed, bindings, cardinalities, a complex extension's sub-extension slices
+- Where an extension is used: its definition's contexts (`extension-context`) and its modifier status
+  (`extension-modifier-mismatch`: a modifier extension under `extension`, or a non-modifier under `modifierExtension`)
 - Extensible terminology bindings
 - Display name validation
 - Advanced profile constraints
@@ -242,22 +257,33 @@ Checks (includes Spec, plus):
 At Full an extension whose definition is not loaded is validated as the Extension datatype and reported as
 `extension-definition-unchecked` (Information), as the HL7 validator reports an unknown extension. So is a
 sub-extension of a loaded complex extension: the rules a definition gives its sub-extension slices (their value types
-and bindings) are not modelled, only the slices' cardinalities. An extension's context (where its definition allows
-it) is not checked at any depth.
+and bindings) are not modelled, only the slices' cardinalities.
+
+An extension's use is checked when the schema provider also implements the optional `IExtensionDefinitionInfo` lookup
+(`ProfileLayeredSchemaProvider` does), which answers a definition's contexts and `isModifier` by url. An `element`
+context matches the parent's type name (`HumanName`, or a specialization of it such as `Age` for `Quantity`), its
+element path (`Patient.name`), `Element`, or for a resource-level extension `Resource` or `DomainResource`; an
+`extension` context matches the url of the extension it is nested in. A definition allowing an extension only in
+`fhirpath` contexts, which are not evaluated, and a schema without the lookup, make it `extension-context-unchecked`
+(Information).
 
 ### dateTime timezone leniency
 
 Below Full, a `dateTime` may omit its timezone after a time (`2023-01-01T12:00:00`) or carry one after a date
 (`2021-10-13+02:00`); Full applies the strict R4 grammar, which requires a timezone whenever a time is present and
 allows none after a date. This is a deliberate compatibility policy (bug #210-4: real-world data carries these forms,
-and the R5 grammar admits them), and it applies to every dateTime, a plain element and a choice variant alike. Every
+and the R5 regular expression admits them, although R5's prose still requires a timezone whenever a time is present),
+and it applies to every dateTime, a plain element and a choice variant alike. Every
 other dateTime rule (component ranges, calendar validity) applies at every depth.
 
 ### Reference target types
 
-A reference's target type is told from, in order: a contained resource its `#id` names; the host's
-`ValidationSettings.ReferenceTypeResolver`; an entry of the enclosing Bundle or Parameters; a relative `Type/id`; an
-absolute URL ending in `Type/id` (an id of at most 64 characters, not a page such as `.html`). A reference whose type
+A reference's target type is told from, in order: a contained resource its `#id` names, or for `#` alone the
+containing resource (from a contained resource) or the resource itself (at its root); the host's
+`ValidationSettings.ReferenceTypeResolver`; an entry of the enclosing Bundle or Parameters; a relative `Type/id`; a
+conditional reference `Type?query` (the type before `?`); an absolute URL ending in `Type/id` (an id of at most 64
+characters, not a page such as `.html`). In R4B and R5 the `reference` of a CodeableReference is checked against the
+element's target profiles in the same way. A reference whose type
 cannot be told (an unresolved `urn:uuid:`, an identifier only), one with only a display, and one at an element whose
 target profile is not loaded are reported as `reference-target-unchecked` (Information), never passed. A host that
 validates resources extracted from a Bundle can resolve their `urn:uuid:` references by setting a resolver on that
@@ -325,7 +351,8 @@ issue rendered from one of the validator's templates also carries the template's
 was filled with, in placeholder order, as `TemplateArguments`, so a consumer can render its own text, or redact, without
 parsing `Message`. `IssueTemplates` lists every template (`IssueTemplates.All`); `IssueTemplate.Render(arguments)`
 reproduces `Message`. An issue built from free text (a custom check) has a null `TemplateId`. Treat every argument as
-untrusted content.
+untrusted content. Issues compare by value, their template arguments included, so two identical issues are equal and
+hash alike (a `HashSet<ValidationIssue>` deduplicates them).
 
 ```csharp
 foreach (var issue in result.Issues)
@@ -548,8 +575,11 @@ await Parallel.ForEachAsync(resources, async (resourceNode, ct) =>
 
 ### Bundle Validation
 
+Validating a Bundle (or Parameters) resource validates each resource it carries, at Spec and above, so there is no
+need to validate the entries one by one. Each entry is checked against its own type and `meta.profile` (through the
+profile-aware resolver the schema was built with), and its issues are rooted at the entry:
+
 ```csharp
-// Validate entire bundle as a resource
 var bundleSchema = schemaResolver.GetSchema(
     "http://hl7.org/fhir/StructureDefinition/Bundle");
 
@@ -558,22 +588,12 @@ var bundleElement = JsonNodeSourceNode.Create(bundle.MutableNode)
 
 var bundleResult = bundleSchema.Validate(bundleElement, settings);
 
-// Validate each entry resource individually
-if (bundle.Entry != null)
-{
-    foreach (var entry in bundle.Entry)
-    {
-        if (entry.Resource != null)
-        {
-            var entryElement = JsonNodeSourceNode.Create(entry.Resource.MutableNode)
-                .ToElement(schemaProvider);
-            var entrySchema = schemaResolver.GetSchema(
-                $"http://hl7.org/fhir/StructureDefinition/{entry.Resource.ResourceType}");
-            var entryResult = entrySchema?.Validate(entryElement, settings);
-        }
-    }
-}
+// e.g. "Bundle.entry[1].resource.status": an error in the second entry
+var entryIssues = bundleResult.Issues.Where(i => i.Path.StartsWith("Bundle.entry[", StringComparison.Ordinal));
 ```
+
+A host that validates entries separately instead (for example while processing a transaction) can still resolve their
+`urn:uuid:` references with a `ReferenceTypeResolver`, as above.
 
 ## CLI Tool
 
