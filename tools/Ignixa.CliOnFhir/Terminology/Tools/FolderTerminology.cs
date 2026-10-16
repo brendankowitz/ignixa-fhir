@@ -123,7 +123,7 @@ public static class FolderTerminology
             .Select(entry => entry.Value is TokenSearchValue { System: { Length: > 0 } system, Code: { Length: > 0 } code } ? (entry.SearchParameter.Code, system, code) : default)
             .Where(token => token.code is not null);
 
-    private static bool OverIdentifier(SearchParameterInfo parameter) =>
+    internal static bool OverIdentifier(SearchParameterInfo parameter) =>
         parameter.Code == "identifier" || (parameter.Expression?.Contains("identifier", StringComparison.OrdinalIgnoreCase) ?? false);
 
     private static SystemUsage Resolve(TerminologyStore store, string system, HashSet<string> codes)

@@ -22,11 +22,11 @@ public static class McpServerSetup
         - Find a patient: search Patient by identifier=<MRN> or name=<text>, or patient_list; then compartment=Patient/<id>.
         - Lookup: search with compartment and code, _sort=-date and count=1.
         - Filter, count, trend: search_fhir_resources with fhirpath (one value) or columns (rows; requester.resolve() and medication.ofType(Reference).resolve() follow references, not _include); summary=count. Every search parameter goes inside query.
-        - Population counts: patient_cohort (one call). Expert: patientSearch() or perPatient=latest. Never page rows.
-        - ICD-10 or hierarchy questions: terminology expand isa/<code> scope=folder (help hierarchies).
-        - Drug classes: terminology class-search, class-members. Code systems: folder_code_systems.
+        - Population counts: patient_cohort (one call). Expert: patientSearch() or perPatient=latest.
+        - Categories (ICD-10, 'any X', history of): list the folder's matching codes by words first (folder_code_systems text=a|b), choose every code that belongs (complications, 'history of'), then count.
+        - Drug classes: terminology class-search, class-members.
         - Medications come in two shapes, medicationCodeableConcept and medicationReference; read both.
-        - Check codes with terminology lookup before answering.
+        - Verify codes with terminology lookup.
         - When cut, 'next' has the call for the rest. Check 'issues'. Absent means not recorded. In-depth: help.
         """;
 

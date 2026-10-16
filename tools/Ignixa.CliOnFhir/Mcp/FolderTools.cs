@@ -30,6 +30,7 @@ public sealed class FolderTools(FolderSession session)
     [McpServerTool(Name = "folder_code_systems", ReadOnly = true, Idempotent = true)]
     [Description("""
         Which code systems the folder's codings use (SNOMED CT, LOINC, RxNorm, ICD-10, ...), counted from the data with no terminology and no network: per system its URI, alias and counts. top=n adds its top codes; detail=full adds elements and hints. Paged by usage.
+        text=a|b lists instead the folder's codes whose display has a word starting a or b, with resource and patient counts.
         """)]
     public async Task<CallToolResult> FolderCodeSystems(
         [Description("Default 10, maximum 50.")] int? count = null,
@@ -37,13 +38,34 @@ public sealed class FolderTools(FolderSession session)
         [Description("Codes per system.")] int? top = null,
         bool withTerminology = false,
         string? detail = null,
-        CancellationToken cancellationToken = default) => detail switch
+        [Description("Words or alternatives, 'diabet|glyc'.")] string? text = null,
+        [Description("With text.")] string? resourceType = null,
+        [Description("With text.")] string? system = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (text is not null)
         {
-            null or "compact" => ToolResults.From(await CodeSystems.FolderCodeSystems.ListCompactAsync(session, count, offset, top, withTerminology, cancellationToken)),
-            "full" => ToolResults.From(await CodeSystems.FolderCodeSystems.ListAsync(session, count, offset, top, withTerminology, cancellationToken)),
-            _ => ToolResults.From(EnvelopeAssembler.Failure<object>(
+            return ToolResults.From(CodeSystems.FolderCodeSystems.SearchText(session, text, resourceType, system, count, offset, cancellationToken));
+        }
+
+        if (resourceType is not null || system is not null)
+        {
+            return ToolResults.From(EnvelopeAssembler.Failure<object>(
                 session,
-                new IssueItem("error", "invalid-parameter", $"'detail' must be 'compact' (the default) or 'full', not '{detail}'.", Location: null),
-                cancellationToken)),
-        };
+                new IssueItem("error", "invalid-parameter", "'resourceType' and 'system' narrow a text search; give 'text' too.", Location: null),
+                cancellationToken));
+        }
+
+        return await ListAsync(count, offset, top, withTerminology, detail, cancellationToken);
+    }
+
+    private async Task<CallToolResult> ListAsync(int? count, int offset, int? top, bool withTerminology, string? detail, CancellationToken cancellationToken) => detail switch
+    {
+        null or "compact" => ToolResults.From(await CodeSystems.FolderCodeSystems.ListCompactAsync(session, count, offset, top, withTerminology, cancellationToken)),
+        "full" => ToolResults.From(await CodeSystems.FolderCodeSystems.ListAsync(session, count, offset, top, withTerminology, cancellationToken)),
+        _ => ToolResults.From(EnvelopeAssembler.Failure<object>(
+            session,
+            new IssueItem("error", "invalid-parameter", $"'detail' must be 'compact' (the default) or 'full', not '{detail}'.", Location: null),
+            cancellationToken)),
+    };
 }

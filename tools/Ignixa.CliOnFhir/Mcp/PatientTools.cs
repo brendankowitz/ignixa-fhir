@@ -31,9 +31,9 @@ public sealed class PatientTools(FolderSession session)
 
     [McpServerTool(Name = "patient_cohort", ReadOnly = true, Idempotent = true)]
     [Description("""
-        Population counts in one call: patients meeting every criterion (AND), living by default; facts.count, facts.steps (left after each), facts.patients. Example, adults 18-75 with prediabetes whose latest A1c in the past year is above 6.0 or missing:
-        {"asOf":"2026-08-17","ageMin":18,"ageMax":75,"conditions":[{"codes":["http://snomed.info/sct|714628002"]}],"observations":[{"codes":["http://loinc.org|4548-4"],"window":{"after":"2025-08-17"},"comparator":"gt","value":6.0,"missing":"include"}]}
-        Also: conditions valueSet (isa/<sctid>), medications [{codes or classId}], immunizations [{codes, window}]. Rules: help topic=cohorts.
+        Population counts: patients meeting every criterion (AND), living by default; facts.count, facts.steps (left after each), facts.patients. Example, adults with prediabetes:
+        {"ageMin":18,"conditions":[{"codes":["http://snomed.info/sct|714628002"]}]}
+        Also: conditions valueSet, medications [{codes or classId}], immunizations [{codes, window}], observations (a lab compared with a value). Rules, examples: help topic=cohorts.
         """)]
     public async Task<CallToolResult> PatientCohort(
         [Description("Default today.")] string? asOf = null,

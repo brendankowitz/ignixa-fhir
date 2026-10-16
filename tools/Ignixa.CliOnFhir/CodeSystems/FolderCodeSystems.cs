@@ -119,6 +119,18 @@ public static partial class FolderCodeSystems
         }
     }
 
+    /// <summary>
+    /// The codes the folder uses whose display (or loaded designation) starts a word with any of the words of <paramref name="text"/>,
+    /// from the search indexes and without terminology or network; see <see cref="FolderCodeText"/>.
+    /// </summary>
+    public static ToolEnvelope<CodeTextFacts?> SearchText(FolderSession session, string text, string? resourceType, string? system, int? count, int offset, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(text);
+
+        return Guarded(session, () => FolderCodeText.Search(session, text, resourceType, system, count, offset, cancellationToken), cancellationToken);
+    }
+
     /// <summary>The ten most used systems, for <c>folder_inspect</c>.</summary>
     public static IReadOnlyList<CodeSystemBrief> Summary(FolderSession session, CancellationToken cancellationToken, int limit = 10)
     {

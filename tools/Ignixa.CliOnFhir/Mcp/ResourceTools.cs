@@ -27,9 +27,8 @@ public sealed class ResourceTools(FolderSession session)
         - 'columns' returns a table of FHIRPath values instead of resources. .resolve() follows references, urn:uuid and conditional ones too, so _include is rarely needed. A medication list, whichever medication[x] an order uses: columns={"date":"authoredOn","drug":"(medication.ofType(CodeableConcept) | medication.ofType(Reference).resolve().code).coding.first().display","prescriber":"requester.resolve().name.first().family"}
         - 'fhirpath' returns one value over a Bundle of every match: 'entry.resource.value.ofType(Quantity).value.max()'.
         - summary=count answers "how many"; _sort=-date with count=1 gives the latest.
-        - Population counts: patient_cohort.
         - MedicationRequest code= matches medicationCodeableConcept only; for medicationReference orders use 'medication:Medication.code=...'.
-        When cut, 'next' has the call for the rest. Check 'issues': parameter-ignored means a filter did not apply. help topics: search, columns, fhirpath, patient_search, paging, references, issues.
+        When cut, 'next' has the call for the rest. Check 'issues': parameter-ignored means a filter did not apply. help topics: search, columns, fhirpath, paging, issues.
         """)]
     public CallToolResult SearchFhirResources(
         [Description("For example 'Observation'.")] string resourceType,
