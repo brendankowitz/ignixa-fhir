@@ -138,17 +138,22 @@ hints:
 
 The engine must not reject an expression the evaluator answers. So only the unknown-element finding blocks, and only on a
 concrete type. Everything the analyzer cannot decide (after `resolve()`, on an abstract `Resource`, an unknown function
-such as `patientSearch`) produces no issue at all. Three analyzer defects surfaced while measuring this against the
+such as `patientSearch`) produces no issue at all. Four analyzer defects surfaced while measuring this against the
 expressions the tool's own tests and help use, and they are fixed in Core:
 
 - a lower-case element named like a resource type (`medication`, `encounter`) was typed as that resource;
 - every element on an abstract `Resource` focus was an error;
-- `ofType(Observation)` on a `Resource` focus was "always empty".
+- `ofType(Observation)` on a `Resource` focus was "always empty";
+- an unknown function's result took its focus's type, so navigation after `patientSearch()` was checked against Patient.
+
+Unresolved properties become structured issues (`ValidationIssueKind.UnresolvedProperty` with the property and focus
+types), so the hint is built from the schema rather than from message text.
 
 ### 5. A smaller menu and help
 
-The `query` menu, with the instructions, is held to a test budget of 2,000 tokens (V13: 2,985 for everything). `all` keeps
-the V13 budget. `help` lists only the topics of the toolset in use.
+The `query` menu, with the instructions, is held to a test budget of 2,000 tokens (V13: 2,985 for everything; V14 measures
+1,760). `all` gains `patient_summary` and is held to 3,300 (V14: 3,188). Both are measured with LF line breaks, since a
+CRLF checkout adds a character per description line. `help` lists only the topics of the toolset in use.
 
 ## Consequences
 
@@ -169,6 +174,11 @@ the V13 budget. `help` lists only the topics of the toolset in use.
   well under the 87 in 548 of V13); `help` calls per attempt; and whether `patient_summary` as the first call (the
   instructed route, no map in the prompt) matches the warm-map arm. If it does, the bench can drop the prompt-injected map
   in favour of the resource template.
+- **The resource URI puts the id in the authority.** `patient://{id}/summary` is what was asked for, and hosts that send
+  the URI as written work with any id, MRN or encoded `system|value`. A client that normalizes it through a URI parser
+  (`System.Uri` does) lowercases the authority, so a mixed-case id names nobody, and an unencoded `|` or `:` is not a
+  valid host. A path form (`patient:///summary/{id}`, or `patient://summary/{id}`) avoids both; decide before hosts
+  depend on the template.
 - **Reversibility.** `--toolset all` restores the V13 surface, less the failure modes the lenient rules remove.
 
 ## References
