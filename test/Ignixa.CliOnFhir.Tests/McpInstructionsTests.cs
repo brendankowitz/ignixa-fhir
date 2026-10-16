@@ -70,7 +70,8 @@ public class McpInstructionsTests
     [Fact]
     public void GivenTheInstructions_WhenMeasured_ThenTheyStayShort()
     {
-        McpServerSetup.Instructions.Length.ShouldBeLessThan(1200);
+        // Measured with LF line breaks, so the result does not depend on how the source file was checked out.
+        McpServerSetup.Instructions.ReplaceLineEndings("\n").Length.ShouldBeLessThan(1200);
     }
 
     [Fact]

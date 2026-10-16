@@ -24,7 +24,9 @@ namespace Ignixa.CliOnFhir.Tests;
 /// </summary>
 public class McpMenuSizeTests(ITestOutputHelper output)
 {
-    private const int TokenBudget = 4000;
+    // 4,000 held the nine tools of the agent-efficiency work at V7 (about 3,550 tokens); plan_fhir_search and validate_resources,
+    // already cut to a few lines each with their detail in help, add about 470.
+    private const int TokenBudget = 4100;
 
     [Fact]
     public async Task GivenEveryTool_WhenListedOverMcp_ThenTheMenuAndInstructionsStayUnderTheirBudget()

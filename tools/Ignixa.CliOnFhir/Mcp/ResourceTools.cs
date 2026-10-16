@@ -53,7 +53,7 @@ public sealed class ResourceTools(FolderSession session)
 
     [McpServerTool(Name = "plan_fhir_search", ReadOnly = true, Idempotent = true)]
     [Description("""
-        Explains a search without running it: how each query parameter resolves, how many folder resources populate it, and a token parameter's 10 most common codes. Same arguments and failures as search_fhir_resources; execute=true also runs it. help topic=plan.
+        Explains a search without running it: how each parameter resolves, how many folder resources populate it, its top codes. Takes search_fhir_resources' arguments; execute=true runs it too. help topic=plan.
         """)]
     public CallToolResult PlanFhirSearch(
         string resourceType,
@@ -61,7 +61,7 @@ public sealed class ResourceTools(FolderSession session)
         string? compartment = null,
         bool lenient = false,
         bool execute = false,
-        [Description("With execute, as for search_fhir_resources.")] int? count = null,
+        int? count = null,
         int offset = 0,
         string? summary = null,
         string? elements = null,

@@ -107,7 +107,7 @@ public class PatientListQueryTests
 
         JsonNode facts = Facts(new PatientTools(Open(folder)).PatientList());
 
-        facts.AsObject().Select(property => property.Key).ShouldBe(["total", "offset", "returned", "sort", "patients"], ignoreOrder: true);
+        facts.AsObject().Select(property => property.Key).ShouldBe(["total", "offset", "returned", "sort", "patients", "valueBindings"], ignoreOrder: true);
     }
 
     [Fact]
