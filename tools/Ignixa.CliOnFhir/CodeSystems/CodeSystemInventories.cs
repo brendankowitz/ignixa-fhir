@@ -10,7 +10,6 @@ using Ignixa.Abstractions;
 using Ignixa.CliOnFhir.Catalog;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Reading;
-using Ignixa.Search.Generated;
 
 namespace Ignixa.CliOnFhir.CodeSystems;
 
@@ -24,13 +23,14 @@ public static class CodeSystemInventories
 
     private static readonly ConditionalWeakTable<FolderCatalog, Lazy<CodeSystemInventory>> Cache = [];
 
-    public static CodeSystemInventory For(FolderCatalog catalog, FhirVersion version, CancellationToken cancellationToken)
+    public static CodeSystemInventory For(FolderCatalog catalog, IFhirSchemaProvider schema, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(catalog);
+        ArgumentNullException.ThrowIfNull(schema);
 
         while (true)
         {
-            Lazy<CodeSystemInventory> inventory = Cache.GetValue(catalog, key => new Lazy<CodeSystemInventory>(() => Build(key, version, cancellationToken), LazyThreadSafetyMode.ExecutionAndPublication));
+            Lazy<CodeSystemInventory> inventory = Cache.GetValue(catalog, key => new Lazy<CodeSystemInventory>(() => Build(key, schema, cancellationToken), LazyThreadSafetyMode.ExecutionAndPublication));
             try
             {
                 return inventory.Value;
@@ -45,16 +45,6 @@ public static class CodeSystemInventories
         }
     }
 
-    /// <summary>The FHIR <c>code</c> elements with a FHIR-defined binding, by path, from Ignixa's generated element map for <paramref name="version"/>.</summary>
-    public static IReadOnlySet<string> ImplicitElements(FhirVersion version) => version switch
-    {
-        FhirVersion.Stu3 => STU3CodeSystemMappings.GetMappings().Keys.ToHashSet(StringComparer.Ordinal),
-        FhirVersion.R4 => R4CodeSystemMappings.GetMappings().Keys.ToHashSet(StringComparer.Ordinal),
-        FhirVersion.R4B => R4BCodeSystemMappings.GetMappings().Keys.ToHashSet(StringComparer.Ordinal),
-        FhirVersion.R5 => R5CodeSystemMappings.GetMappings().Keys.ToHashSet(StringComparer.Ordinal),
-        _ => R6CodeSystemMappings.GetMappings().Keys.ToHashSet(StringComparer.Ordinal),
-    };
-
     // Entries are only ever added when absent, so under the lock the entry cannot change between the check and the removal.
     private static void Forget(FolderCatalog catalog, Lazy<CodeSystemInventory> cancelled)
     {
@@ -67,10 +57,10 @@ public static class CodeSystemInventories
         }
     }
 
-    private static CodeSystemInventory Build(FolderCatalog catalog, FhirVersion version, CancellationToken cancellationToken)
+    private static CodeSystemInventory Build(FolderCatalog catalog, IFhirSchemaProvider schema, CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
-        IReadOnlySet<string> implicitElements = ImplicitElements(version);
+        ImplicitCodeElements implicitElements = ImplicitCodeElements.From(schema);
         var builder = new InventoryBuilder();
         List<IssueItem> problems = [];
         int read = 0;

@@ -13,16 +13,16 @@ namespace Ignixa.CliOnFhir.CodeSystems;
 /// Finds the codings in one resource's JSON. A coding is an object with a string <c>code</c> that has a string
 /// <c>system</c> (a Coding, or a Quantity with a unit system) or sits in a <c>coding</c> array (a Coding without a system).
 /// Extensions and contained resources are walked too. A string value of a FHIR <c>code</c> element with a FHIR-defined
-/// binding (by the FHIR version's element map, for example <c>Patient.gender</c>) is an implicit code instead: it has no
-/// system in the data and is not attributed one. Element paths are built from property names, which are folder data, so a
+/// binding (by the FHIR version's schema, for example <c>Patient.gender</c>; see <see cref="ImplicitCodeElements"/>) is an
+/// implicit code instead: it has no system in the data, and carries the system its binding implies only where one is known. Element paths are built from property names, which are folder data, so a
 /// name that is not shaped like a FHIR element name is replaced by its digest.
 /// </summary>
 internal static partial class CodingWalker
 {
-    public static void Walk(JsonElement resource, string resourceType, string resourceName, IReadOnlySet<string> implicitElements, InventoryBuilder builder) =>
+    public static void Walk(JsonElement resource, string resourceType, string resourceName, ImplicitCodeElements implicitElements, InventoryBuilder builder) =>
         Object(resource, resourceType, inCodingArray: false, resourceName, implicitElements, builder);
 
-    private static void Object(JsonElement element, string path, bool inCodingArray, string resource, IReadOnlySet<string> implicitElements, InventoryBuilder builder)
+    private static void Object(JsonElement element, string path, bool inCodingArray, string resource, ImplicitCodeElements implicitElements, InventoryBuilder builder)
     {
         string? code = StringMember(element, "code");
         string? system = StringMember(element, "system");
@@ -53,17 +53,17 @@ internal static partial class CodingWalker
 
                     break;
                 case JsonValueKind.String when implicitElements.Contains(child):
-                    builder.Implicit(child, value.GetString()!);
+                    builder.Implicit(child, implicitElements.SystemOf(child), value.GetString()!);
                     break;
             }
         }
     }
 
-    private static void Item(string name, JsonElement item, string path, string resource, IReadOnlySet<string> implicitElements, InventoryBuilder builder)
+    private static void Item(string name, JsonElement item, string path, string resource, ImplicitCodeElements implicitElements, InventoryBuilder builder)
     {
         if (item.ValueKind == JsonValueKind.String && implicitElements.Contains(path))
         {
-            builder.Implicit(path, item.GetString()!);
+            builder.Implicit(path, implicitElements.SystemOf(path), item.GetString()!);
         }
         else if (item.ValueKind == JsonValueKind.Object)
         {

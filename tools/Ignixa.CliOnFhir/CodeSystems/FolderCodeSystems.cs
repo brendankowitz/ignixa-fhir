@@ -27,10 +27,13 @@ public static partial class FolderCodeSystems
 
     public const string Basis = "Every Coding in the catalogued resources' JSON (an object with a string code and a string system, or any object "
         + "with a string code in a 'coding' array), including extensions and contained resources, and every Quantity with a unit system; one coding per "
-        + "occurrence. Values of the FHIR code elements that resources and their backbone elements declare with a FHIR-defined binding (Patient.gender, "
-        + "Observation.status, Patient.contact.gender, ...) carry no system in the data and are listed separately under implicitCodes, by element, not "
-        + "attributed to a system. Code elements of datatypes (HumanName.use, ContactPoint.system, Address.use, Identifier.use, Quantity.comparator, "
-        + "Narrative.status, ...) are not counted. No search index is used.";
+        + "occurrence. Values of the FHIR code elements that resources and their backbone elements declare with a binding in the FHIR version's schema "
+        + "(Patient.gender, Observation.status, Patient.contact.gender, ...) carry no system in the data and are listed separately under implicitCodes, "
+        + "by element, not counted under systems; each element gives the system its binding implies (Patient.gender: "
+        + "http://hl7.org/fhir/administrative-gender), which search indexes them under, or none where the binding implies no single code system "
+        + "(R4 Task.intent). Code elements of datatypes (HumanName.use, ContactPoint.system, Address.use, Identifier.use, Quantity.comparator, "
+        + "Narrative.status, ...) and of elements that repeat another element's definition (Questionnaire.item.item) are not counted. No search "
+        + "index is used.";
 
     private const string PatternCheck = "pattern only (http://hl7.org/fhir/CodeSystem/<name> or http://hl7.org/fhir/ValueSet/<name> used as a system)";
     private const string StoreCheck = "loaded terminology (the session's CodeSystems), then the pattern";
@@ -80,7 +83,7 @@ public static partial class FolderCodeSystems
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        return [.. CodeSystemInventories.For(session.Catalog, session.Schema.Version, cancellationToken).Systems
+        return [.. CodeSystemInventories.For(session.Catalog, session.Schema, cancellationToken).Systems
             .Take(limit)
             .Select(tally => new CodeSystemBrief(SafeSystem(tally.System), WellKnownSystems.Identify(tally.System).Name, tally.Codes.Count, tally.Codings))];
     }
@@ -90,7 +93,7 @@ public static partial class FolderCodeSystems
         List<IssueItem> issues = [];
         int pageSize = Paging.Resolve(count, offset, issues);
         int topCodes = Top(top, issues);
-        CodeSystemInventory inventory = CodeSystemInventories.For(session.Catalog, session.Schema.Version, cancellationToken);
+        CodeSystemInventory inventory = CodeSystemInventories.For(session.Catalog, session.Schema, cancellationToken);
         TerminologyState? terminology = session.Terminology.Current is { IsUnusable: false } loaded ? loaded : null;
 
         List<OmittedItem> omitted = [];
@@ -121,7 +124,7 @@ public static partial class FolderCodeSystems
             systems.Count,
             topCodes,
             systems,
-            [.. inventory.Implicit.Take(MaxListed).Select(tally => new ImplicitCodeUsage(tally.Element, tally.Codes.Count, tally.Occurrences, [.. tally.Codes.Take(topCodes).Select(code => new CodeCount(TerminologyNames.Code(code.Code), code.Count))]))],
+            [.. inventory.Implicit.Take(MaxListed).Select(tally => new ImplicitCodeUsage(tally.Element, tally.System, tally.Codes.Count, tally.Occurrences, [.. tally.Codes.Take(topCodes).Select(code => new CodeCount(TerminologyNames.Code(code.Code), code.Count))]))],
             [.. inventory.WithoutSystem.Take(MaxListed)],
             terminology is null ? "not loaded" : "loaded",
             terminology is null ? PatternCheck : StoreCheck);

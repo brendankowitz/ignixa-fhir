@@ -9,7 +9,7 @@ namespace Ignixa.CliOnFhir.CodeSystems;
 internal sealed class InventoryBuilder
 {
     private readonly Dictionary<string, SystemAccumulator> _systems = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, Dictionary<string, int>> _implicit = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (string? System, Dictionary<string, int> Codes)> _implicit = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _withoutSystem = new(StringComparer.Ordinal);
 
     public void Coding(string resource, string element, string? system, string code)
@@ -29,15 +29,16 @@ internal sealed class InventoryBuilder
         accumulator.Add(resource, element, code);
     }
 
-    public void Implicit(string element, string code)
+    /// <summary>Counts <paramref name="code"/> at <paramref name="element"/>, whose implied <paramref name="system"/> is the same at every call for it.</summary>
+    public void Implicit(string element, string? system, string code)
     {
-        if (!_implicit.TryGetValue(element, out Dictionary<string, int>? codes))
+        if (!_implicit.TryGetValue(element, out (string? System, Dictionary<string, int> Codes) tally))
         {
-            codes = new Dictionary<string, int>(StringComparer.Ordinal);
-            _implicit[element] = codes;
+            tally = (system, new Dictionary<string, int>(StringComparer.Ordinal));
+            _implicit[element] = tally;
         }
 
-        codes[code] = codes.GetValueOrDefault(code) + 1;
+        tally.Codes[code] = tally.Codes.GetValueOrDefault(code) + 1;
     }
 
     public (IReadOnlyList<SystemTally> Systems, IReadOnlyList<ImplicitTally> Implicit, IReadOnlyList<ElementCount> WithoutSystem) Build() =>
@@ -47,7 +48,7 @@ internal sealed class InventoryBuilder
             .OrderByDescending(tally => tally.Codings)
             .ThenBy(tally => tally.System, StringComparer.Ordinal)],
         [.. _implicit
-            .Select(pair => new ImplicitTally(pair.Key, Sorted(pair.Value), pair.Value.Values.Sum()))
+            .Select(pair => new ImplicitTally(pair.Key, pair.Value.System, Sorted(pair.Value.Codes), pair.Value.Codes.Values.Sum()))
             .OrderByDescending(tally => tally.Occurrences)
             .ThenBy(tally => tally.Element, StringComparer.Ordinal)],
         [.. Sorted(_withoutSystem).Select(element => new ElementCount(element.Code, element.Count))]

@@ -7,11 +7,13 @@ using System.CommandLine;
 using System.ComponentModel;
 using System.Reflection;
 using System.Text.Json.Nodes;
+using Ignixa.Abstractions;
 using Ignixa.CliOnFhir.CodeSystems;
 using Ignixa.CliOnFhir.Commands;
 using Ignixa.CliOnFhir.Mcp;
 using Ignixa.CliOnFhir.Session;
 using Ignixa.CliOnFhir.Terminology.Tools;
+using Ignixa.Search.Generated;
 using Ignixa.Specification.Generated;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Server;
@@ -232,6 +234,56 @@ public class CodeSystemsToolTests
         result["facts"]!["systems"]!.AsArray().ShouldBeEmpty();
     }
 
+    // Regressions (Task 7c fix round 1): each row fails at 0462637, where the element list was the keys of the generated
+    // code-system map, so a code element whose binding implies no single system (R4 Task.intent, R5 DetectedIssue.status,
+    // STU3's example-bound Sequence.type) was skipped without a word, and no element said which system it is indexed under.
+    [Theory]
+    [InlineData("r4", """{"resourceType":"Task","id":"t1","status":"draft","intent":"order"}""", "Task.intent", null)]
+    [InlineData("r4", """{"resourceType":"Patient","id":"p1","gender":"female"}""", "Patient.gender", "http://hl7.org/fhir/administrative-gender")]
+    [InlineData("r4", """{"resourceType":"Patient","id":"p1","contact":[{"gender":"male"}]}""", "Patient.contact.gender", "http://hl7.org/fhir/administrative-gender")]
+    [InlineData("r5", """{"resourceType":"DetectedIssue","id":"d1","status":"final"}""", "DetectedIssue.status", null)]
+    [InlineData("r5", """{"resourceType":"Patient","id":"p1","language":"en"}""", "Patient.language", "urn:ietf:bcp:47")]
+    [InlineData("stu3", """{"resourceType":"Sequence","id":"s1","type":"dna","coordinateSystem":0}""", "Sequence.type", null)]
+    public async Task GivenABoundCodeElement_WhenListed_ThenItIsAnImplicitCodeWithTheSystemItsBindingImplies(string version, string resource, string element, string? system)
+    {
+        using TestFolder folder = new TestFolder().Write("data.ndjson", resource + "\n");
+
+        JsonNode result = await List(new FolderSession(folder.Path, FhirSchemas.Resolve(version), NullLoggerFactory.Instance));
+
+        JsonObject usage = result["facts"]!["implicitCodes"]!.AsArray().Single(usage => (string)usage!["element"]! == element)!.AsObject();
+        ((int)usage["occurrences"]!).ShouldBe(1);
+        usage.ContainsKey("system").ShouldBeTrue();
+        ((string?)usage["system"]).ShouldBe(system);
+        result["facts"]!["systems"]!.AsArray().ShouldBeEmpty();
+    }
+
+    // Guard (new type; it does not compile at 0462637, and was mutation-checked by dropping the resolved system): the schema's
+    // element list covers every element the indexer gives a system, with that system, in all five versions.
+    [Theory]
+    [InlineData("STU3")]
+    [InlineData("R4")]
+    [InlineData("R4B")]
+    [InlineData("R5")]
+    [InlineData("R6")]
+    public void GivenAVersion_WhenItsImplicitCodeElementsAreRead_ThenEveryIndexedSystemIsAttached(string version)
+    {
+        (IFhirSchemaProvider schema, Dictionary<string, string> mappings) = version switch
+        {
+            "STU3" => ((IFhirSchemaProvider)new STU3CoreSchemaProvider(), STU3CodeSystemMappings.GetMappings()),
+            "R4" => (new R4CoreSchemaProvider(), R4CodeSystemMappings.GetMappings()),
+            "R4B" => (new R4BCoreSchemaProvider(), R4BCodeSystemMappings.GetMappings()),
+            "R5" => (new R5CoreSchemaProvider(), R5CodeSystemMappings.GetMappings()),
+            _ => (new R6CoreSchemaProvider(), R6CodeSystemMappings.GetMappings()),
+        };
+
+        ImplicitCodeElements elements = ImplicitCodeElements.From(schema);
+
+        mappings.ShouldNotBeEmpty();
+        mappings.Where(mapping => !elements.Contains(mapping.Key) || elements.SystemOf(mapping.Key) != mapping.Value)
+            .Select(mapping => mapping.Key)
+            .ShouldBeEmpty();
+    }
+
     // Regression (F7): at 4073a28 the inventory build took no token (this does not compile there), so a cancelled request
     // still read every file. A cancelled build is not cached: the next request builds it.
     [Fact]
@@ -242,8 +294,8 @@ public class CodeSystemsToolTests
         using var cancelled = new CancellationTokenSource();
         await cancelled.CancelAsync();
 
-        Should.Throw<OperationCanceledException>(() => CodeSystemInventories.For(session.Catalog, session.Schema.Version, cancelled.Token));
-        CodeSystemInventory inventory = await Task.Run(() => CodeSystemInventories.For(session.Catalog, session.Schema.Version, CancellationToken.None)).WaitAsync(TimeSpan.FromSeconds(10));
+        Should.Throw<OperationCanceledException>(() => CodeSystemInventories.For(session.Catalog, session.Schema, cancelled.Token));
+        CodeSystemInventory inventory = await Task.Run(() => CodeSystemInventories.For(session.Catalog, session.Schema, CancellationToken.None)).WaitAsync(TimeSpan.FromSeconds(10));
 
         inventory.ResourcesRead.ShouldBe(Resources.Length);
         inventory.Systems.Select(tally => tally.System).ShouldContain(Loinc);

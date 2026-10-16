@@ -41,8 +41,8 @@ public sealed class FolderTools(FolderSession session)
         distinct codes, codings, resources, codings per element (for example Observation.code versus
         Observation.component.code) and the most frequent codes as 'system|code' with counts ('top', default 5, maximum 50).
         Counted from every Coding in the resources' JSON, extensions and contained resources included ('facts.basis');
-        values of FHIR code elements such as Patient.gender are listed separately under 'implicitCodes', not attributed to a
-        system. Paged by usage: 'count' (default 10, maximum 50) and 'offset'. Hints, as information issues: a non-preferred
+        values of FHIR code elements such as Patient.gender are listed separately under 'implicitCodes', each with the
+        system its binding implies where it implies one (null otherwise), not counted under a system. Paged by usage: 'count' (default 10, maximum 50) and 'offset'. Hints, as information issues: a non-preferred
         identifier of a known system (an OID form, an alias URI), a URI that looks like a FHIR-defined system but is not its
         canonical, codings with a code but no system. URIs and codes are folder data; no display is ever shown (look codes up
         with terminology_lookup). When terminology is already loaded (or 'withTerminology' is true, which loads it and may
