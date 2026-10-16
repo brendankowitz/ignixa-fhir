@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Ignixa.CliOnFhir.Contracts;
 using ModelContextProtocol.Protocol;
 
@@ -23,6 +24,34 @@ internal static class ToolResults
         return new CallToolResult
         {
             Content = [new TextContentBlock { Text = JsonSerializer.Serialize(envelope, EnvelopeJson.Compact) }],
+            IsError = envelope.Facts is null,
+        };
+    }
+
+    /// <summary>
+    /// <see cref="From{TFacts}"/> without the members that carry nothing: <c>derived</c> (always null), <c>absent</c> when empty and
+    /// <c>freshness</c> when no file changed since the index was built. A call that could not be answered, or whose folder is
+    /// stale or unreadable, keeps its freshness.
+    /// </summary>
+    public static CallToolResult Lean<TFacts>(ToolEnvelope<TFacts> envelope)
+    {
+        ArgumentNullException.ThrowIfNull(envelope);
+
+        JsonObject node = JsonSerializer.SerializeToNode(envelope, EnvelopeJson.Compact)!.AsObject();
+        node.Remove("derived");
+        if (envelope.Absent.Count == 0)
+        {
+            node.Remove("absent");
+        }
+
+        if (envelope.Freshness.StaleFiles == 0)
+        {
+            node.Remove("freshness");
+        }
+
+        return new CallToolResult
+        {
+            Content = [new TextContentBlock { Text = node.ToJsonString(EnvelopeJson.Compact) }],
             IsError = envelope.Facts is null,
         };
     }

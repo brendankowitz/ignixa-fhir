@@ -147,14 +147,14 @@ internal static class SearchNarrowing
             calls.Add(new NextCall(
                 Tool,
                 args,
-                "this page again as a table of values instead of resources, so many more fit; change the columns to the FHIRPath you need (.resolve() follows a reference)"));
+                "same page as a table, more rows fit; edit columns (.resolve() follows references)"));
         }
 
         if (DateParameters.TryGetValue(request.ResourceType, out string? parameter) && !ParameterNames(request.Query).Contains(parameter))
         {
             calls.Add(TruncationCalls.With(
                 current,
-                $"this page again with {parameter}=geYYYY-MM-DD added to the query to limit the date range; _sort=-{parameter} with count=1 gives the latest",
+                $"same page with {parameter}=geYYYY-MM-DD added to limit the range",
                 offset: null,
                 elements: null,
                 maxBytes: null));
@@ -181,7 +181,7 @@ internal static class SearchNarrowing
             yield return new NextCall(
                 Tool,
                 args,
-                $"all {total} matches in one value instead of pages: set fhirpath to what the question needs, e.g. entry.resource.where(value.ofType(Quantity).value >= 130).count()");
+                $"all {total} matches in one value instead of pages: set fhirpath, e.g. entry.resource.where(value.ofType(Quantity).value >= 130).count()");
         }
 
         if (request.PerPatient is null && request.Compartment is null && DateParameters.TryGetValue(request.ResourceType, out string? date))
@@ -191,8 +191,8 @@ internal static class SearchNarrowing
             yield return perPatient with
             {
                 Hint = sorted
-                    ? "one match per patient, the first in this _sort order; add fhirpath or summary=count for a cohort answer"
-                    : $"one match per patient, the latest by {date}; add fhirpath or summary=count for a cohort answer",
+                    ? "one match per patient, first in this _sort order; add fhirpath or summary=count"
+                    : $"one match per patient, latest by {date}; add fhirpath or summary=count",
             };
         }
 
@@ -218,7 +218,7 @@ internal static class SearchNarrowing
     {
         Dictionary<string, object> args = Whole(request);
         args["summary"] = "count";
-        return new NextCall(Tool, args, request.PerPatient is null ? "only the number of matches, no resources" : "only the number of patients, no resources");
+        return new NextCall(Tool, args, request.PerPatient is null ? "number of matches only" : "number of patients only");
     }
 
     /// <summary>

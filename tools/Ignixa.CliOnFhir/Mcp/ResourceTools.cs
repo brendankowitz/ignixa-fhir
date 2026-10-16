@@ -22,37 +22,37 @@ public sealed class ResourceTools(FolderSession session)
 
     [McpServerTool(Name = "search_fhir_resources", ReadOnly = true, Idempotent = true)]
     [Description("""
-        FHIR search over the folder for one resource type. Every search parameter, _sort and _count included, goes inside 'query' in FHIR syntax, for example 'code=http://loinc.org|4548-4&date=ge2020&_sort=-date'.
-        - compartment=Patient/<id> scopes to one patient; it needs only the id, no lookup first.
-        - 'columns' returns a table of FHIRPath values instead of resources. .resolve() follows references, urn:uuid and conditional ones too, so _include is rarely needed. A medication list, whichever medication[x] an order uses: columns={"date":"authoredOn","drug":"(medication.ofType(CodeableConcept) | medication.ofType(Reference).resolve().code).coding.first().display","prescriber":"requester.resolve().name.first().family"}
-        - 'fhirpath' returns one value over a Bundle of every match: 'entry.resource.value.ofType(Quantity).value.max()'.
-        - summary=count answers "how many"; _sort=-date with count=1 gives the latest.
-        - MedicationRequest code= matches medicationCodeableConcept only; for medicationReference orders use 'medication:Medication.code=...'.
-        When cut, 'next' has the call for the rest. Check 'issues': parameter-ignored means a filter did not apply. help topics: search, columns, fhirpath, paging, issues.
+        FHIR search over one resource type. Every search parameter, _sort and _count included, goes inside 'query': 'code=http://loinc.org|4548-4&date=ge2020&_sort=-date'.
+        - compartment=Patient/<id>: one patient, no lookup first.
+        - columns: a table of FHIRPath values per match; .resolve() follows references: {"drug":"medication.ofType(Reference).resolve().code.coding.first().display","by":"requester.resolve().name.first().family"}
+        - fhirpath: one value over a Bundle of all matches: 'entry.resource.value.ofType(Quantity).value.max()'.
+        - summary=count: how many.
+        - MedicationRequest code= matches medicationCodeableConcept only; medicationReference: 'medication:Medication.code=...'.
+        Check 'issues'. help: search, columns, fhirpath, paging, issues.
         """)]
     public CallToolResult SearchFhirResources(
-        [Description("For example 'Observation'.")] string resourceType,
-        [Description("FHIR search query without '?'. Every search parameter goes here.")] string? query = null,
-        [Description("Default 10 (rows 50), maximum 50 (rows 200).")] int? count = null,
+        string resourceType,
+        string? query = null,
+        int? count = null,
         int offset = 0,
-        [Description("'count' for the total only.")] string? summary = null,
-        [Description("Top-level elements to keep, e.g. 'code,valueQuantity'.")] string? elements = null,
-        [Description("Unknown parameter names warn instead of failing.")] bool lenient = false,
-        [Description("'Type/id', for example 'Patient/123'.")] string? compartment = null,
-        [Description("Default 12288, maximum 16384; narrowing is better.")] int? maxBytes = null,
-        [Description("Column name to FHIRPath, evaluated per match.")] Dictionary<string, string>? columns = null,
-        [Description("One FHIRPath over a Bundle of every match.")] string? fhirpath = null,
-        [Description("'latest', 'earliest' or 'first': one match per patient.")] string? perPatient = null,
+        string? summary = null,
+        string? elements = null,
+        bool lenient = false,
+        [Description("'Patient/123'")] string? compartment = null,
+        int? maxBytes = null,
+        Dictionary<string, string>? columns = null,
+        string? fhirpath = null,
+        [Description("latest, earliest or first: one match per patient.")] string? perPatient = null,
         RequestContext<CallToolRequestParams>? context = null,
         CancellationToken cancellationToken = default)
     {
         var request = new SearchRequest(resourceType, query, count, offset, summary, elements, lenient, compartment, maxBytes, columns is null ? null : SearchColumn.From(columns), fhirpath, perPatient);
-        return ToolResults.From(ToolArguments.CheckSearch(session, SearchArguments, context?.Params?.Arguments?.Keys, lenient, () => ResourceSearcher.Search(session, request, cancellationToken), cancellationToken));
+        return ToolResults.Lean(ToolArguments.CheckSearch(session, SearchArguments, context?.Params?.Arguments?.Keys, lenient, () => ResourceSearcher.Search(session, request, cancellationToken), cancellationToken));
     }
 
     [McpServerTool(Name = "plan_fhir_search", ReadOnly = true, Idempotent = true)]
     [Description("""
-        Explains a search without running it: how each parameter resolves, how many folder resources populate it, its top codes. Takes search_fhir_resources' arguments; execute=true runs it too. help topic=plan.
+        Explains a search without running it: how each parameter resolves, how many resources populate it, top codes. Takes search_fhir_resources' arguments; execute=true runs it too. help topic=plan.
         """)]
     public CallToolResult PlanFhirSearch(
         string resourceType,
@@ -69,12 +69,12 @@ public sealed class ResourceTools(FolderSession session)
 
     [McpServerTool(Name = "read_resources", ReadOnly = true, Idempotent = true)]
     [Description("""
-        Reads up to 50 resources by reference ('Type/id'), each with its file location as evidence; 'absent' lists those the folder does not hold. Pass 'elements' to keep responses small.
+        Reads up to 50 resources by reference ('Type/id') with file evidence; 'absent' lists those not held. 'elements' keeps responses small.
         """)]
     public CallToolResult ReadResources(
-        [Description("For example ['Patient/123', 'Observation/931'].")] string[] references,
-        [Description("Top-level elements to keep, comma-separated.")] string? elements = null,
-        [Description("Default 12288, maximum 16384.")] int? maxBytes = null,
+        string[] references,
+        string? elements = null,
+        int? maxBytes = null,
         CancellationToken cancellationToken = default) =>
         ToolResults.From(ResourceFetcher.Read(session, references, elements, maxBytes, cancellationToken));
 }

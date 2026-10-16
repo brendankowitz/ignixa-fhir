@@ -56,11 +56,11 @@ public class PatientCohortTests
         Observations: Json(LatestA1cAboveSix.Replace("\"include\"", $"\"{missing}\"", StringComparison.Ordinal)));
 
     [Fact]
-    public async Task GivenAConditionAndALatestLabWithMissingIncluded_WhenCounted_ThenTheCountStepsPatientsAndDecidingEvidenceAreReturned()
+    public async Task GivenAConditionAndALatestLabWithMissingIncluded_WhenCountedInFull_ThenTheCountStepsRulesPatientsAndDecidingEvidenceAreReturned()
     {
         using TestFolder folder = Prediabetic();
 
-        ToolEnvelope<CohortFacts?> envelope = await Count(SearchFixture.Open(folder), PrediabetesQuestion());
+        ToolEnvelope<CohortFacts?> envelope = await Count(SearchFixture.Open(folder), PrediabetesQuestion() with { Detail = "full" });
 
         CohortFacts facts = Facts(envelope);
         facts.Count.ShouldBe(3);
@@ -71,9 +71,57 @@ public class PatientCohortTests
         envelope.Evidence.Select(item => item.Reference).ShouldBe(["Patient/pa", "Condition/ca", "Observation/a1", "Patient/pc", "Condition/cc", "Patient/pg", "Condition/cg"]);
         envelope.Omitted.ShouldBeEmpty();
         CohortStep labStep = facts.Steps[^1];
-        labStep.Rule.ShouldContain("the latest");
+        labStep.Rule.ShouldNotBeNull().ShouldContain("the latest");
         labStep.Rule.ShouldContain("(2025-08-17, 2026-08-17]");
         labStep.Rule.ShouldContain("> 6.0");
+    }
+
+    // New at V13: at b3a34f4e (V12) every step repeated its rule sentence and every listed patient's evidence was returned.
+    [Fact]
+    public async Task GivenACountedCohort_WhenCountedByDefault_ThenStepsCarryNoRuleAndEvidenceStopsAfterTheFirstPatients()
+    {
+        using TestFolder folder = Prediabetic();
+
+        ToolEnvelope<CohortFacts?> envelope = await Count(SearchFixture.Open(folder), PrediabetesQuestion());
+
+        CohortFacts facts = Facts(envelope);
+        facts.Count.ShouldBe(3);
+        facts.Patients.ShouldBe(["Patient/pa", "Patient/pc", "Patient/pg"]);
+        Steps(facts).ShouldBe([("patients", 7), ("living", 6), ("age", 6), ("conditions[0]", 5), ("observations[0]", 3)]);
+        facts.Steps.ShouldAllBe(step => step.Rule == null);
+        facts.Steps[^1].WithoutReading.ShouldBe(2);
+        envelope.Evidence.Select(item => item.Reference).ShouldBe(["Patient/pa", "Condition/ca", "Observation/a1", "Patient/pc", "Condition/cc"]);
+        envelope.Omitted.ShouldHaveSingleItem().What.ShouldContain("detail=full");
+        envelope.Next.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenMoreCountedPatientsThanAreListed_WhenCountedByDefault_ThenTheListIsCappedAndFullDetailListsThemAll()
+    {
+        const int patients = 30;
+        using TestFolder folder = new TestFolder()
+            .Write("patients.ndjson", Lines([.. Enumerable.Range(0, patients).Select(index => Patient($"p{index:D2}", "1970-01-01"))]))
+            .Write("conditions.ndjson", Lines([.. Enumerable.Range(0, patients).Select(index => Condition($"c{index}", $"p{index:D2}"))]));
+        var arguments = new CohortArguments(Conditions: Json($$"""{"codes":["{{Prediabetes}}"]}"""));
+
+        CohortFacts compact = Facts(await Count(SearchFixture.Open(folder), arguments));
+        ToolEnvelope<CohortFacts?> full = await Count(SearchFixture.Open(folder), arguments with { Detail = "full" });
+
+        compact.Count.ShouldBe(patients);
+        compact.Patients.Count.ShouldBe(PatientCohort.PatientsListed);
+        Facts(full).Patients.Count.ShouldBe(patients);
+        full.Next.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task GivenAnUnknownDetail_WhenCounted_ThenTheCallFailsAsInvalidParameter()
+    {
+        using TestFolder folder = Prediabetic();
+
+        IssueItem issue = Failure(await Count(SearchFixture.Open(folder), PrediabetesQuestion() with { Detail = "everything" }));
+
+        issue.Code.ShouldBe("invalid-parameter");
+        issue.Diagnostics.ShouldContain("'compact' (the default) or 'full'");
     }
 
     [Fact]
@@ -88,11 +136,11 @@ public class PatientCohortTests
     }
 
     [Fact]
-    public async Task GivenACountedCohort_WhenAnswered_ThenNextListsThePatientsAsATable()
+    public async Task GivenACountedCohort_WhenAnsweredInFull_ThenNextListsThePatientsAsATable()
     {
         using TestFolder folder = Prediabetic();
 
-        ToolEnvelope<CohortFacts?> envelope = await Count(SearchFixture.Open(folder), PrediabetesQuestion());
+        ToolEnvelope<CohortFacts?> envelope = await Count(SearchFixture.Open(folder), PrediabetesQuestion() with { Detail = "full" });
 
         NextCall next = envelope.Next.ShouldHaveSingleItem();
         next.Tool.ShouldBe("search_fhir_resources");

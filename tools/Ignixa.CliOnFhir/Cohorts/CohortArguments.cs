@@ -26,4 +26,5 @@ internal sealed record CohortArguments(
     JsonElement? Conditions = null,
     JsonElement? Medications = null,
     JsonElement? Immunizations = null,
-    JsonElement? Observations = null);
+    JsonElement? Observations = null,
+    string? Detail = null);

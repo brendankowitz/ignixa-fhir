@@ -151,7 +151,7 @@ public class PatientMapTests
 
         map["facts"]!["domains"].ShouldNotBeNull();
         explicitMap.ToJsonString().ShouldBe(map.ToJsonString());
-        full.ToJsonString().ShouldBe(JsonNode.Parse(JsonSerializer.Serialize(ContextRoot.Get(session, "p1"), EnvelopeJson.Compact))!.ToJsonString());
+        full.ToJsonString().ShouldBe(WithoutEmptyMembers(JsonNode.Parse(JsonSerializer.Serialize(ContextRoot.Get(session, "p1"), EnvelopeJson.Compact))!).ToJsonString());
     }
 
     [Fact]
@@ -230,11 +230,29 @@ public class PatientMapTests
     /// <summary>The envelope without what follows each session's clock: the freshness instant.</summary>
     private static JsonNode WithoutClock(JsonNode envelope)
     {
-        JsonNode copy = envelope.DeepClone();
+        JsonNode copy = WithoutEmptyMembers(envelope);
         copy.AsObject().Remove("freshness");
-        foreach (JsonNode? item in copy["absent"]!.AsArray())
+        foreach (JsonNode? item in copy["absent"]?.AsArray() ?? [])
         {
             item!.AsObject().Remove("indexBuiltAt");
+        }
+
+        return copy;
+    }
+
+    /// <summary>The envelope as the MCP tool sends it: without derived, an empty absent and an unchanged folder's freshness.</summary>
+    private static JsonNode WithoutEmptyMembers(JsonNode envelope)
+    {
+        JsonNode copy = envelope.DeepClone();
+        copy.AsObject().Remove("derived");
+        if (copy["absent"] is JsonArray { Count: 0 })
+        {
+            copy.AsObject().Remove("absent");
+        }
+
+        if ((int?)copy["freshness"]?["staleFiles"] == 0)
+        {
+            copy.AsObject().Remove("freshness");
         }
 
         return copy;

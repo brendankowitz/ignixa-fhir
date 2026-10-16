@@ -19,8 +19,16 @@ namespace Ignixa.CliOnFhir.Cohorts;
 /// </summary>
 internal static class PatientCohort
 {
-    /// <summary>Most patients the 'next' call lists.</summary>
-    public const int NextPatients = 20;
+    /// <summary>Most patients a compact response lists.</summary>
+    public const int PatientsListed = 20;
+
+    /// <summary>How many of the listed patients a compact response gives evidence for.</summary>
+    public const int EvidencePatients = 2;
+
+    /// <summary>The <c>detail</c> that adds each step's rule text, every listed patient that fits and all their evidence.</summary>
+    public const string FullDetail = "full";
+
+    private const int CompactCodes = 5;
 
     /// <exception cref="OperationCanceledException">The call was cancelled.</exception>
     public static async Task<ToolEnvelope<CohortFacts?>> RunAsync(FolderSession session, CohortArguments arguments, CancellationToken cancellationToken, int maxRead = CohortEvaluation.MaxResourcesRead)
@@ -42,6 +50,12 @@ internal static class PatientCohort
                     $"patient_cohort's rules read R4 element paths (onset[x], abatement[x], medication[x], effective[x]) and this folder is read as {session.Schema.Version}; use search_fhir_resources with fhirpath instead.");
             }
 
+            if (arguments.Detail is not (null or "compact" or FullDetail))
+            {
+                throw ToolRequestException.Error("invalid-parameter", $"'detail' must be 'compact' (the default) or 'full', not '{arguments.Detail}'.");
+            }
+
+            bool isFull = arguments.Detail == FullDetail;
             CohortRequest request = CohortRequest.Parse(arguments, session.UtcNow());
             List<IssueItem> issues = [];
             List<OmittedItem> omitted = [];
@@ -53,7 +67,7 @@ internal static class PatientCohort
 
             // Assembled once: the assembler hands over the session's one-time cache notices, so each candidate size is a copy of it.
             ToolEnvelope<CohortFacts?> shell = EnvelopeAssembler.Create<CohortFacts?>(session, null, outcome.BuiltAt, [], omitted, [], issues, cancellationToken);
-            return new Fit(shell, request, outcome).Within(Math.Min(EnvelopeJson.DefaultBudget, session.MaxResponseBytes));
+            return new Fit(shell, request, outcome, isFull).Within(Math.Min(EnvelopeJson.DefaultBudget, session.MaxResponseBytes));
         }
         catch (ToolRequestException ex)
         {
@@ -62,11 +76,11 @@ internal static class PatientCohort
     }
 
     /// <summary>The count and steps whole, then as many patients as fit, then as much of their evidence as still fits.</summary>
-    private sealed class Fit(ToolEnvelope<CohortFacts?> shell, CohortRequest request, CohortOutcome outcome)
+    private sealed class Fit(ToolEnvelope<CohortFacts?> shell, CohortRequest request, CohortOutcome outcome, bool isFull)
     {
         public ToolEnvelope<CohortFacts?> Within(int budget)
         {
-            int patients = Largest(outcome.Counted.Count, shown => Build(shown, evidenceShown: 0), budget);
+            int patients = Largest(isFull ? outcome.Counted.Count : Math.Min(outcome.Counted.Count, PatientsListed), shown => Build(shown, evidenceShown: 0), budget);
             int evidence = Largest(Evidence(patients).Count, shown => Build(patients, shown), budget);
             return Build(patients, evidence);
         }
@@ -93,7 +107,7 @@ internal static class PatientCohort
         }
 
         /// <summary>The evidence of the first <paramref name="patients"/> patients counted, patient by patient.</summary>
-        private List<CatalogEntry> Evidence(int patients) => [.. outcome.Evidence.Take(patients).SelectMany(group => group)];
+        private List<CatalogEntry> Evidence(int patients) => [.. outcome.Evidence.Take(isFull ? patients : Math.Min(patients, EvidencePatients)).SelectMany(group => group)];
 
         private ToolEnvelope<CohortFacts?> Build(int patientsShown, int evidenceShown)
         {
@@ -103,8 +117,13 @@ internal static class PatientCohort
             if (patientsShown < outcome.Counted.Count)
             {
                 omitted.Add(new OmittedItem(
-                    $"{outcome.Counted.Count - patientsShown} more patients counted are not listed in facts.patients (it lists the first {patientsShown}); facts.count is exact. Add a criterion to list fewer.",
+                    $"{outcome.Counted.Count - patientsShown} more patients counted are not listed (facts.patients has the first {patientsShown}); facts.count is exact.{(isFull ? " Add a criterion to list fewer." : " detail=full lists more.")}",
                     "size-budget"));
+            }
+
+            if (!isFull && patientsShown > EvidencePatients)
+            {
+                omitted.Add(new OmittedItem($"evidence for patients after the first {EvidencePatients}; detail=full has it", "size-budget"));
             }
 
             if (evidenceShown < evidence.Count)
@@ -112,15 +131,17 @@ internal static class PatientCohort
                 omitted.Add(new OmittedItem($"{evidence.Count - evidenceShown} more evidence items (the listed patients and the resources that decided each criterion)", "size-budget"));
             }
 
-            var facts = new CohortFacts(CohortInstant.Format(request.AsOf), outcome.Counted.Count, outcome.Steps, [.. listed.Select(ResourceReader.Describe)]);
+            var facts = new CohortFacts(CohortInstant.Format(request.AsOf), outcome.Counted.Count, isFull ? outcome.Steps : [.. outcome.Steps.Select(Compact)], [.. listed.Select(ResourceReader.Describe)]);
             return shell with
             {
                 Facts = facts,
                 Evidence = [.. evidence.Take(evidenceShown).Select(entry => new EvidenceItem(ResourceReader.Describe(entry), entry.FilePath, entry.Line, entry.Offset))],
                 Omitted = omitted,
-                Next = Next(listed),
+                Next = isFull ? Next(listed) : [],
             };
         }
+
+        private static CohortStep Compact(CohortStep step) => step with { Rule = null, Codes = step.Codes?.Take(CompactCodes).ToList() };
 
         // Built from structure only: the counted patients' ids and fixed column paths.
         private static List<NextCall> Next(List<CatalogEntry> listed)
@@ -130,7 +151,7 @@ internal static class PatientCohort
                 return [];
             }
 
-            List<CatalogEntry> first = [.. listed.Take(NextPatients)];
+            List<CatalogEntry> first = [.. listed.Take(PatientsListed)];
             string ids = string.Join(',', first.Select(patient => FhirIds.Reference(patient)["Patient/".Length..]));
             return
             [

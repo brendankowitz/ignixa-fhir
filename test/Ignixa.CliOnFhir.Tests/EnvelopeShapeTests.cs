@@ -24,6 +24,9 @@ public class EnvelopeShapeTests
 
     private static readonly string[] Freshness = ["indexBuiltAt", "staleFiles"];
 
+    // New at V13: at 3affbc14 every MCP response carried derived (null), absent and freshness even when they said nothing.
+    private static readonly string[] Always = ["facts", "evidence", "omitted", "issues", "next"];
+
     [Fact]
     public async Task GivenMcpCalls_WhenSucceededOrFailedOrFolderMissing_ThenTheTopLevelKeysAreTheSame()
     {
@@ -35,19 +38,10 @@ public class EnvelopeShapeTests
 
         CallToolResult[] results =
         [
-            tools.SearchFhirResources("Patient"),
-            tools.SearchFhirResources("Patient", summary: "count"),
-            tools.SearchFhirResources("Patient", "_sort=family"),
             tools.ReadResources(["Patient/p1"]),
             tools.ReadResources(["nonsense"]),
-            missingTools.SearchFhirResources("Patient"),
             await new FolderTools(Open(folder)).FolderInspect(),
             patients.PatientList(),
-            patients.PatientContext("root", "p1"),
-            patients.PatientContext("root", "nobody"),
-            patients.PatientContext("expand", "p1", nodeKey: "labs"),
-            patients.PatientContext("expand", "p1", nodeKey: "nonsense"),
-            patients.PatientContext("find", "p1", query: "8867-4"),
         ];
 
         foreach (CallToolResult result in results)
@@ -58,6 +52,42 @@ public class EnvelopeShapeTests
             envelope["derived"].ShouldBeNull();
             envelope["next"].ShouldBeOfType<JsonArray>();
         }
+
+        CallToolResult[] lean =
+        [
+            tools.SearchFhirResources("Patient"),
+            tools.SearchFhirResources("Patient", summary: "count"),
+            tools.SearchFhirResources("Patient", "_sort=family"),
+            missingTools.SearchFhirResources("Patient"),
+            patients.PatientContext("root", "p1"),
+            patients.PatientContext("root", "nobody"),
+            patients.PatientContext("expand", "p1", nodeKey: "labs"),
+            patients.PatientContext("expand", "p1", nodeKey: "nonsense"),
+            patients.PatientContext("find", "p1", query: "8867-4"),
+        ];
+
+        foreach (CallToolResult result in lean)
+        {
+            JsonObject envelope = JsonNode.Parse(result.Content.OfType<TextContentBlock>().Single().Text)!.AsObject();
+            string[] keys = [.. envelope.Select(property => property.Key)];
+            keys.ShouldBeSubsetOf(TopLevel);
+            Always.ShouldBeSubsetOf(keys);
+            keys.ShouldNotContain("derived");
+            envelope["next"].ShouldBeOfType<JsonArray>();
+            if (envelope["absent"] is { } absent)
+            {
+                absent.AsArray().ShouldNotBeEmpty();
+            }
+
+            if (envelope["freshness"] is { } freshness)
+            {
+                freshness.AsObject().Select(property => property.Key).ShouldBe(Freshness, ignoreOrder: true);
+                ((int?)freshness["staleFiles"]).ShouldNotBe(0);
+            }
+        }
+
+        JsonNode.Parse(tools.SearchFhirResources("Patient").Content.OfType<TextContentBlock>().Single().Text)!.AsObject().ContainsKey("freshness").ShouldBeFalse("a folder with no changed file");
+        JsonNode.Parse(missingTools.SearchFhirResources("Patient").Content.OfType<TextContentBlock>().Single().Text)!.AsObject().ContainsKey("freshness").ShouldBeTrue("a folder that cannot be read");
     }
 
     [Fact]

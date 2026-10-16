@@ -71,7 +71,7 @@ public class McpInstructionsTests
     public void GivenTheInstructions_WhenMeasured_ThenTheyStayShort()
     {
         // Measured with LF line breaks, so the result does not depend on how the source file was checked out.
-        McpServerSetup.Instructions.ReplaceLineEndings("\n").Length.ShouldBeLessThan(1200);
+        McpServerSetup.Instructions.ReplaceLineEndings("\n").Length.ShouldBeLessThan(900);
     }
 
     [Fact]
@@ -131,12 +131,12 @@ public class McpInstructionsTests
         description.ShouldNotContain("folder_inspect first");
     }
 
-    // New at V2: the description steers to columns with resolve() and to fhirpath, and says where _sort goes.
+    // New at V2, shortened at V13: the description steers to columns with resolve() and to fhirpath, and says where _sort goes.
     [Theory]
-    [InlineData("columns={\"date\":\"authoredOn\"")]
+    [InlineData("columns: a table of FHIRPath values")]
     [InlineData("requester.resolve().name.first().family")]
     [InlineData("medication.ofType(Reference).resolve().code")]
-    [InlineData("'fhirpath'")]
+    [InlineData("fhirpath: one value")]
     [InlineData("_sort and _count included, goes inside 'query'")]
     public void GivenTheSearchTool_WhenDescribed_ThenItShowsColumnsAndFhirPathAndWhereSearchParametersGo(string mention)
     {

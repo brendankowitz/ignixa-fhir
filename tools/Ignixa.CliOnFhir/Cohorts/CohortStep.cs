@@ -11,7 +11,7 @@ namespace Ignixa.CliOnFhir.Cohorts;
 /// <param name="Criterion">Where the request has it: patients, living, age, gender, conditions[0], medications[0], ...</param>
 /// <param name="Rule">The rule applied, with its codes counted and its window; fixed text and request values only.</param>
 /// <param name="Remaining">Patients left after this criterion.</param>
-public sealed record CohortStep(string Criterion, string Rule, int Remaining)
+public sealed record CohortStep(string Criterion, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Rule, int Remaining)
 {
     /// <summary>Most codes a step lists.</summary>
     public const int CodesListed = 10;

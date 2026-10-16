@@ -24,8 +24,8 @@ internal static class TruncationCalls
     public static NextCall Trim(NextCall call, string? suggested) => With(
         call,
         suggested is null
-            ? "this page again with elements set to the top-level fields you need, so more fit"
-            : "this page again with elements limited to the usual fields; change them to the ones you need",
+            ? "same page, elements set to the fields you need"
+            : "same page, elements limited to the usual fields",
         offset: null,
         suggested,
         maxBytes: null);
@@ -33,7 +33,7 @@ internal static class TruncationCalls
     /// <summary>The same page with the largest response budget, <paramref name="ceiling"/>.</summary>
     public static NextCall Larger(NextCall call, int ceiling) => With(
         call,
-        $"this page again with the largest budget ({ceiling} bytes); narrowing the call is cheaper to read",
+        $"same page, largest budget ({ceiling} bytes); narrowing is cheaper",
         offset: null,
         elements: null,
         ceiling);

@@ -166,9 +166,9 @@ public static class ResourceFetcher
 
         string? hint = (elements is null, budget < ceiling) switch
         {
-            (true, true) => $"the references left out; set elements to the top-level fields you need so more fit, or raise maxBytes (up to {ceiling})",
-            (true, false) => "the references left out; set elements to the top-level fields you need so more fit",
-            (false, true) => $"the references left out; raise maxBytes (up to {ceiling}) to fit more",
+            (true, true) => $"the rest; set elements so more fit, or raise maxBytes (up to {ceiling})",
+            (true, false) => "the rest; set elements so more fit",
+            (false, true) => $"the rest; raise maxBytes (up to {ceiling})",
             _ => null,
         };
         return [new NextCall("read_resources", args, hint)];
