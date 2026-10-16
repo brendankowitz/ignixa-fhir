@@ -58,6 +58,8 @@ public class ProseValueTests
             ("get", OutsidePayloads(ResourceFetcher.Read(session, [$"Condition/{ProseCondition}", "Patient/p1", $"Encounter/{FhirIds.Digest("PROSEBENC")}"]))),
             ("patients", OutsidePayloads(PatientLister.List(session, sort: "latest"))),
             ("context", OutsidePayloads(ContextRoot.Get(session, "p1"))),
+            ("map", OutsidePayloads(PatientMap.Get(session, "p1"))),
+            ("patients lookup", OutsidePayloads(PatientLister.List(session, query: "p1"))),
             .. NodeKey.DomainKeys.Select(key => ($"node {key}", OutsidePayloads(ContextExpander.Expand(session, "p1", key)))),
             ("node problem", OutsidePayloads(ContextExpander.Expand(session, "p1", $"problem/Condition-{ProseCondition}"))),
             ("node encounter", OutsidePayloads(ContextExpander.Expand(session, "p1", $"encounter/Encounter-{FhirIds.Digest("PROSEENC e")}"))),

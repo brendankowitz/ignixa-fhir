@@ -60,6 +60,24 @@ internal static class SearchCommand
             Description = "With --check, also run the search and return its results beside the plan",
         };
 
+        var columnsOption = new Option<string?>("--columns")
+        {
+            Description = "Return a table instead of resources: a JSON object mapping each column name to a FHIRPath evaluated on every match, "
+                + "for example '{\"date\":\"authoredOn\",\"prescriber\":\"requester.resolve().name.first().family\"}'",
+        };
+
+        var fhirPathOption = new Option<string?>("--fhirpath")
+        {
+            Description = "One FHIRPath evaluated over a searchset Bundle of every match, returned in facts.value, for example 'entry.count()'",
+        };
+
+        var perPatientOption = new Option<string?>("--per-patient")
+        {
+            Description = "Keep one match per patient before paging, --columns, --fhirpath or --summary count: 'latest' or 'earliest' by the type's date, "
+                + "or 'first' in the query's _sort order. Patients are those whose Patient compartment the match is in",
+        };
+
+        Option<int?> maxBytesOption = CommonOptions.CreateMaxBytesOption();
         Option<string?> cacheDirOption = CommonOptions.CreateCacheDirOption();
         Option<bool> noCacheOption = CommonOptions.CreateNoCacheOption();
         Option<bool> prettyOption = CommonOptions.CreatePrettyOption();
@@ -77,6 +95,10 @@ internal static class SearchCommand
         command.Options.Add(compartmentOption);
         command.Options.Add(checkOption);
         command.Options.Add(executeOption);
+        command.Options.Add(columnsOption);
+        command.Options.Add(fhirPathOption);
+        command.Options.Add(perPatientOption);
+        command.Options.Add(maxBytesOption);
         command.Options.Add(prettyOption);
         command.Validators.Add(result =>
         {
@@ -91,6 +113,16 @@ internal static class SearchCommand
         {
             using ILoggerFactory loggerFactory = StandardErrorLogging.Create(LogLevel.Warning);
             FolderSession session = CommonOptions.CreateSession(parseResult, pathArgument, versionOption, cacheDirOption, noCacheOption, loggerFactory);
+            IReadOnlyList<SearchColumn>? columns;
+            try
+            {
+                columns = parseResult.GetValue(columnsOption) is { } json ? SearchColumn.FromJson(json) : null;
+            }
+            catch (ToolRequestException ex)
+            {
+                return Task.FromResult(EnvelopeOutput.Write(EnvelopeAssembler.Failure<SearchFacts>(session, ex.Issue, cancellationToken), parseResult.GetValue(prettyOption)));
+            }
+
             var request = new SearchRequest(
                 parseResult.GetValue(typeArgument)!,
                 parseResult.GetValue(queryArgument),
@@ -99,7 +131,11 @@ internal static class SearchCommand
                 parseResult.GetValue(summaryOption),
                 parseResult.GetValue(elementsOption),
                 parseResult.GetValue(lenientOption),
-                parseResult.GetValue(compartmentOption));
+                parseResult.GetValue(compartmentOption),
+                parseResult.GetValue(maxBytesOption),
+                columns,
+                parseResult.GetValue(fhirPathOption),
+                parseResult.GetValue(perPatientOption));
 
             bool pretty = parseResult.GetValue(prettyOption);
             return Task.FromResult(parseResult.GetValue(checkOption)

@@ -21,6 +21,7 @@ internal static class PatientsCommand
         var countOption = new Option<int?>("--count") { Description = $"Patients per page (default {ResourceSearcher.DefaultCount}, maximum {ResourceSearcher.MaxCount})" };
         var offsetOption = new Option<int>("--offset") { Description = "Patients to skip, in sort order" };
         var sortOption = new Option<string?>("--sort") { Description = $"'{PatientLister.ByName}' (default) or '{PatientLister.ByLatest}' (latest clinical date first)" };
+        var queryOption = new Option<string?>("--query") { Description = "Only patients whose id, name, identifier value (an MRN) or birthDate contain every whitespace-separated term, ignoring case" };
         Option<string?> cacheDirOption = CommonOptions.CreateCacheDirOption();
         Option<bool> noCacheOption = CommonOptions.CreateNoCacheOption();
         Option<bool> prettyOption = CommonOptions.CreatePrettyOption();
@@ -31,6 +32,7 @@ internal static class PatientsCommand
         command.Options.Add(countOption);
         command.Options.Add(offsetOption);
         command.Options.Add(sortOption);
+        command.Options.Add(queryOption);
         command.Options.Add(prettyOption);
         CommonOptions.AddCacheOptions(command, cacheDirOption, noCacheOption);
 
@@ -38,7 +40,7 @@ internal static class PatientsCommand
         {
             using ILoggerFactory loggerFactory = StandardErrorLogging.Create(LogLevel.Warning);
             FolderSession session = CommonOptions.CreateSession(parseResult, pathArgument, versionOption, cacheDirOption, noCacheOption, loggerFactory);
-            var envelope = PatientLister.List(session, parseResult.GetValue(countOption), parseResult.GetValue(offsetOption), parseResult.GetValue(sortOption), cancellationToken);
+            var envelope = PatientLister.List(session, parseResult.GetValue(countOption), parseResult.GetValue(offsetOption), parseResult.GetValue(sortOption), parseResult.GetValue(queryOption), cancellationToken);
             return Task.FromResult(EnvelopeOutput.Write(envelope, parseResult.GetValue(prettyOption)));
         });
 

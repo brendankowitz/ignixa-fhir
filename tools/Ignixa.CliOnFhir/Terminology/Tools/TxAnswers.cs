@@ -20,6 +20,7 @@ internal static class TxAnswers
 {
     public const string UsedCode = "tx-server-answered";
     public const string NotFoundOutcome = "not-found-by-tx-server";
+    public const string TotalUnknownCode = "tx-server-total-unknown";
 
     /// <summary>A <c>$validate-code</c> answer of <c>result: false</c> because the server does not have the code system or ValueSet.</summary>
     public const string NotCheckedOutcome = "not-checked-by-tx-server";
@@ -192,7 +193,7 @@ internal static class TxAnswers
         int? total = expansion["total"] is JsonValue count && count.GetValueKind() == JsonValueKind.Number ? count.GetValue<int>() : null;
         if (total is null)
         {
-            issues.Add(new IssueItem("information", "tx-server-total-unknown", "The terminology server did not say how many codes the expansion has; 'facts.total' counts only those up to this page, and more may follow.", Location: null));
+            issues.Add(new IssueItem("information", TotalUnknownCode, "The terminology server did not say how many codes the expansion has; 'facts.total' counts only those up to this page, and more may follow.", Location: null));
         }
 
         string? reported = TxParameters.String(expanded, "version");
@@ -208,11 +209,80 @@ internal static class TxAnswers
             }
 
             omitted.Add(new OmittedItem(total is { } all ? $"{all - offset - codes.Count} more codes" : "possibly more codes", "limit"));
-            next.Add(new NextCall("terminology_expand", args));
+            next.Add(TermNext.Call("expand", args));
         }
 
         return new TerminologyAnswer<TermExpandFacts>(facts, [], omitted, [], issues) { Next = next };
     }
+
+    /// <summary>
+    /// A text search on the server: <c>ValueSet/$expand</c> of <paramref name="valueSet"/>, else of the system's implicit
+    /// all-codes ValueSet (<see cref="ImplicitValueSet"/>), with the text as <c>filter</c>, paged by count and offset.
+    /// </summary>
+    public static async Task<TerminologyAnswer<TermSearchFacts>> SearchAsync(TxServerClient tx, string text, string? system, string? valueSet, int pageSize, int offset, string why, CancellationToken cancellationToken)
+    {
+        string url = valueSet ?? ImplicitValueSet(system!);
+        TerminologyAnswer<TermExpandFacts> expanded = await ExpandAsync(tx, url, text, pageSize, offset, why, cancellationToken);
+        string folded = TextFolding.Fold(text);
+        List<TermMatch> matches = [.. expanded.Facts.Codes
+            .Where(code => system is null || code.System == system)
+            .Select(code => new TermMatch(code.System, code.Version, code.Code, code.Display, "display", Kind(code.Display, folded), null, code.Inactive, "tx-server"))];
+        var facts = new TermSearchFacts(
+            text,
+            system,
+            valueSet,
+            TermSearch.Searched,
+            matches.Select(match => match.System).Distinct(StringComparer.Ordinal).Count(),
+            expanded.Facts.Total,
+            null,
+            expanded.Facts.Total,
+            offset,
+            matches.Count,
+            matches,
+            expanded.Facts.Source);
+        List<NextCall> next = [.. expanded.Next.Select(call =>
+        {
+            var args = new Dictionary<string, object>(StringComparer.Ordinal) { ["text"] = text, ["offset"] = call.Args["offset"], ["count"] = pageSize };
+            if (system is not null)
+            {
+                args["system"] = system;
+            }
+
+            if (valueSet is not null)
+            {
+                args["valueSet"] = valueSet;
+            }
+
+            return TermNext.Call("search", args);
+        })];
+        // $expand has no standard parameter that limits it to one system, so a ValueSet spanning several is narrowed here; the
+        // total and the offsets in next stay the server's, and the codes dropped from this page are reported.
+        List<OmittedItem> omitted = [.. expanded.Omitted];
+        int otherSystems = expanded.Facts.Codes.Count - matches.Count;
+        if (otherSystems > 0)
+        {
+            omitted.Add(new OmittedItem(
+                $"{otherSystems} of the {expanded.Facts.Codes.Count} codes on this page of the server's expansion are not from {system}; 'total' and the offsets in 'next' count the server's codes of every system",
+                "system-filter"));
+        }
+
+        return new TerminologyAnswer<TermSearchFacts>(facts, [], omitted, [], expanded.Issues) { Next = next };
+    }
+
+    /// <summary>
+    /// The ValueSet of every code of <paramref name="system"/>: LOINC's <c>http://loinc.org/vs</c>, else the implicit
+    /// <c>system?fhir_vs</c> form SNOMED CT defines (and servers such as tx.fhir.org accept for other systems).
+    /// </summary>
+    public static string ImplicitValueSet(string system) => system == "http://loinc.org" ? "http://loinc.org/vs" : system + "?fhir_vs";
+
+    // The server matched the filter its own way (words, designations); the kind says how the returned display relates to the text.
+    private static string Kind(string? display, string folded) => display is null ? "server" : TextFolding.Fold(display) switch
+    {
+        var value when value == folded => "exact",
+        var value when value.StartsWith(folded, StringComparison.Ordinal) => "prefix",
+        var value when value.Contains(folded, StringComparison.Ordinal) => "contains",
+        _ => "server",
+    };
 
     public static async Task<TerminologyAnswer<TermTranslateFacts>> TranslateAsync(TxServerClient tx, string system, string code, string? targetSystem, string? conceptMap, string why, CancellationToken cancellationToken)
     {

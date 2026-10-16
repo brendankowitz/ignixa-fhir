@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Ignixa.CliOnFhir.Commands;
 
-/// <summary><c>cli-on-fhir find &lt;path&gt; &lt;patientId&gt; &lt;query&gt;</c>: the CLI form of the <c>context_find</c> MCP tool.</summary>
+/// <summary><c>cli-on-fhir find &lt;path&gt; &lt;patientId&gt; &lt;query&gt;</c>: the CLI form of the <c>patient_context</c> MCP tool's find operation.</summary>
 internal static class FindCommand
 {
     public static Command Create()
@@ -23,6 +23,7 @@ internal static class FindCommand
         var countOption = new Option<int?>("--count") { Description = $"Matches per page (default {ResourceSearcher.DefaultCount}, maximum {ResourceSearcher.MaxCount})" };
         var offsetOption = new Option<int>("--offset") { Description = "Matches to skip" };
         var elementsOption = new Option<string?>("--elements") { Description = "Comma-separated top-level elements to keep in the returned resources" };
+        Option<int?> maxBytesOption = CommonOptions.CreateMaxBytesOption();
         Option<string?> cacheDirOption = CommonOptions.CreateCacheDirOption();
         Option<bool> noCacheOption = CommonOptions.CreateNoCacheOption();
         Option<bool> prettyOption = CommonOptions.CreatePrettyOption();
@@ -35,6 +36,7 @@ internal static class FindCommand
         command.Options.Add(countOption);
         command.Options.Add(offsetOption);
         command.Options.Add(elementsOption);
+        command.Options.Add(maxBytesOption);
         command.Options.Add(prettyOption);
         CommonOptions.AddCacheOptions(command, cacheDirOption, noCacheOption);
 
@@ -49,6 +51,7 @@ internal static class FindCommand
                 parseResult.GetValue(countOption),
                 parseResult.GetValue(offsetOption),
                 parseResult.GetValue(elementsOption),
+                parseResult.GetValue(maxBytesOption),
                 cancellationToken);
             return Task.FromResult(EnvelopeOutput.Write(envelope, parseResult.GetValue(prettyOption)));
         });

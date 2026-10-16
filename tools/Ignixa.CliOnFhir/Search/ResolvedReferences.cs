@@ -5,6 +5,7 @@
 
 using System.Text.Json.Nodes;
 using Ignixa.CliOnFhir.Catalog;
+using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Indexing;
 using Ignixa.CliOnFhir.Reading;
 
@@ -47,6 +48,29 @@ internal static class ResolvedReferences
 
         return candidates;
     }
+
+    /// <summary>
+    /// What listing a returned resource's resolutions adds to the serialized response, by the resource's index in
+    /// <paramref name="resources"/> and its JSON as returned (an <c>elements</c> projection drops references, and with them
+    /// their listing). The <see cref="Limit"/> is not applied, which can only overestimate, so a batch that charges each
+    /// resource this much keeps the response within its budget without reserving room for resolutions it never lists.
+    /// </summary>
+    public static Func<int, JsonObject, int> Charge(IReadOnlyList<IndexedResource> resources) =>
+        Charge([.. resources.Select(resource => (ResourceReader.Describe(resource.Entry), resource.BundleReferences.Resolved))]);
+
+    /// <summary><see cref="Charge(IReadOnlyList{IndexedResource})"/> over each resource's <c>Type/id</c> and resolutions.</summary>
+    public static Func<int, JsonObject, int> Charge(IReadOnlyList<(string Reference, IReadOnlyDictionary<string, string> Resolved)> resources) =>
+        (index, returned) =>
+        {
+            (string resource, IReadOnlyDictionary<string, string> resolved) = resources[index];
+            Dictionary<string, Dictionary<string, string>> shown = new(StringComparer.Ordinal);
+            foreach (string written in BundleReferenceResolver.References(returned).Where(resolved.ContainsKey).Distinct(StringComparer.Ordinal))
+            {
+                Add(shown, resource, written, resolved[written]);
+            }
+
+            return ToFacts(shown) is { } facts ? EnvelopeJson.SizeOf(facts) + 1 : 0;
+        };
 
     /// <summary>
     /// The resolutions of the resources <paramref name="batch"/> returned that their returned JSON shows (an <c>elements</c>

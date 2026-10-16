@@ -34,7 +34,7 @@ public class TerminologyValueSetTests
         Codes(result).ShouldBe(["heart", "mi"]);
         ((bool)result["facts"]!["complete"]!).ShouldBeTrue();
         ((string)result["facts"]!["source"]!["file"]!).ShouldBe("package/ValueSet-heart.json");
-        result["evidence"]!.AsArray().Select(item => (string)item!["reference"]!).ShouldBe(["ValueSet/heart", "CodeSystem/body"]);
+        EvidenceReferences(result).ShouldBe(["ValueSet/heart", "CodeSystem/body"]);
     }
 
     [Fact]

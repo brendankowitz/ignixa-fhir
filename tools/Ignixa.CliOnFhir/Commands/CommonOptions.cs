@@ -32,6 +32,11 @@ internal static class CommonOptions
         Description = "Indent the JSON output (default: compact, the size an MCP client would receive)",
     };
 
+    public static Option<int?> CreateMaxBytesOption() => new("--max-bytes")
+    {
+        Description = $"Response budget in bytes (default {Contracts.EnvelopeJson.DefaultBudget}, maximum {Contracts.EnvelopeJson.MaxBytes}); a page that does not fit is cut, with the rest in 'omitted' and 'next'",
+    };
+
     public static Option<string?> CreateCacheDirOption() => new("--cache-dir")
     {
         Description = "Root directory for the persisted index cache (default: the user cache directory, "

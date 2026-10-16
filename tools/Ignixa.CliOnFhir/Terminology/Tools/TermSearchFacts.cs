@@ -5,7 +5,7 @@
 
 namespace Ignixa.CliOnFhir.Terminology.Tools;
 
-/// <summary>Facts of <c>terminology_search</c>.</summary>
+/// <summary>Facts of <c>terminology</c> search.</summary>
 /// <param name="Text">The text searched for, as given.</param>
 /// <param name="System">The system searched within, when given.</param>
 /// <param name="ValueSet">The ValueSet searched within, when given.</param>
@@ -16,7 +16,8 @@ namespace Ignixa.CliOnFhir.Terminology.Tools;
 /// <param name="Total">Matches in all.</param>
 /// <param name="Offset">Matches skipped.</param>
 /// <param name="Returned">Matches in this page.</param>
-/// <param name="Matches">This page, ranked: exact before prefix before contains, then shorter display, then source precedence, system and code.</param>
+/// <param name="Matches">This page, ranked: exact before prefix before contains, then shorter display, then source precedence, system and code; from a terminology server, in the server's order.</param>
+/// <param name="Source">Where a terminology server answered (<c>kind</c> tx-server); absent when the local store did.</param>
 public sealed record TermSearchFacts(
     string Text,
     string? System,
@@ -28,4 +29,5 @@ public sealed record TermSearchFacts(
     int Total,
     int Offset,
     int Returned,
-    IReadOnlyList<TermMatch> Matches);
+    IReadOnlyList<TermMatch> Matches,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] AnswerSource? Source = null);

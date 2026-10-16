@@ -8,7 +8,7 @@ using System.Text.Json.Serialization;
 namespace Ignixa.CliOnFhir.Patients;
 
 /// <summary>One domain of the root digest: how much it holds, its first items and how to open it.</summary>
-/// <param name="NodeKey">The <c>context_expand</c> node listing the whole domain.</param>
+/// <param name="NodeKey">The <c>patient_context</c> expand node listing the whole domain.</param>
 /// <param name="Count">Items in the domain under its rule (active problems and medications, encounters in the window, lab codes).</param>
 /// <param name="Items">The first items, at most five, in the domain's order.</param>
 /// <param name="Rule">The rule that decided membership and order, as applied; absent when no rule applies.</param>

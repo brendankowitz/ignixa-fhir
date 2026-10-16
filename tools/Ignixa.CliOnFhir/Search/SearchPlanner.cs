@@ -92,7 +92,7 @@ public static class SearchPlanner
                 diagnosticsOmitted.Add(QueryEcho.NextLeftOut("the search this plan checks"));
             }
 
-            PlanFit fit = PlanFit.Within(session, facts, [.. issues, .. diagnostics], planIssues, diagnosticsOmitted, next, EnvelopeJson.MaxBytes);
+            PlanFit fit = PlanFit.Within(session, facts, [.. issues, .. diagnostics], planIssues, diagnosticsOmitted, next, session.MaxResponseBytes);
             return EnvelopeAssembler.Create<PlanFacts?>(session, fit.Facts, builtAt, [], fit.Omitted, [], fit.Issues, cancellationToken) with { Next = next };
         }
 
@@ -109,7 +109,7 @@ public static class SearchPlanner
     private static ToolEnvelope<PlanFacts?> WithResults(FolderSession session, SearchRequest request, PlanFacts facts, List<IssueItem> planIssues, List<OmittedItem> planOmitted, CancellationToken cancellationToken)
     {
         const int Slack = 1024;
-        int planBudget = EnvelopeJson.MaxBytes;
+        int planBudget = session.MaxResponseBytes;
         while (true)
         {
             PlanFit fit = PlanFit.Within(session, facts, [], planIssues, planOmitted, [], planBudget);
@@ -124,13 +124,13 @@ public static class SearchPlanner
             List<OmittedItem> searchOmitted = [.. search.Omitted.Select(item => item.What.StartsWith("facts.", StringComparison.Ordinal) ? item with { What = "facts.results." + item.What["facts.".Length..] } : item)];
             var envelope = new ToolEnvelope<PlanFacts?>(fit.Facts with { Results = results }, search.Evidence, [.. searchOmitted, .. fit.Omitted], search.Absent, [.. search.Issues, .. fit.Issues], search.Freshness) { Next = search.Next };
             int size = EnvelopeJson.SizeOf(envelope);
-            if (size <= EnvelopeJson.MaxBytes || planBudget <= Slack)
+            if (size <= session.MaxResponseBytes || planBudget <= Slack)
             {
                 return envelope;
             }
 
             // Each round the plan gets what the search's response leaves, and always less than the round before, so this ends.
-            planBudget = Math.Max(Slack, Math.Min(planBudget - Slack, EnvelopeJson.MaxBytes - EnvelopeJson.SizeOf(search) - Slack));
+            planBudget = Math.Max(Slack, Math.Min(planBudget - Slack, session.MaxResponseBytes - EnvelopeJson.SizeOf(search) - Slack));
         }
     }
 

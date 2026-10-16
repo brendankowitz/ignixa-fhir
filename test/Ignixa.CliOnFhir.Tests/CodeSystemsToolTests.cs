@@ -60,7 +60,7 @@ public class CodeSystemsToolTests
         result["facts"]!["systems"]!.AsArray().Single(system => (string)system!["system"]! == uri)!;
 
     private static async Task<JsonNode> List(FolderSession session, int? count = 50, int offset = 0, int? top = null) =>
-        Json(await new FolderTools(session).FolderCodeSystems(count, offset, top));
+        Json(await new FolderTools(session).FolderCodeSystems(count, offset, top, detail: "full"));
 
     [Theory]
     [InlineData("ndjson")]
@@ -150,7 +150,7 @@ public class CodeSystemsToolTests
         FolderSession session = OpenWithPackage(folder, store);
 
         JsonNode before = await List(session);
-        JsonNode after = Json(await new FolderTools(session).FolderCodeSystems(withTerminology: true));
+        JsonNode after = Json(await new FolderTools(session).FolderCodeSystems(withTerminology: true, detail: "full"));
 
         System(before, Body)["terminology"].ShouldBeNull();
         ((string)after["facts"]!["terminology"]!).ShouldBe("loaded");
@@ -169,7 +169,7 @@ public class CodeSystemsToolTests
         FolderSession session = Open(folder, Online(Registry([("pkg.real", "1.0.0", Archive(PackageFiles("pkg.real", "1.0.0", "4.0.1", CodeSystem("http://hl7.org/fhir/real", "1", "", "a"))), null)]), store, "pkg.real@1.0.0"));
 #pragma warning restore CA2000
 
-        JsonNode result = Json(await new FolderTools(session).FolderCodeSystems(withTerminology: true));
+        JsonNode result = Json(await new FolderTools(session).FolderCodeSystems(withTerminology: true, detail: "full"));
 
         JsonNode system = System(result, "http://hl7.org/fhir/CodeSystem/real");
         system["flags"]!.AsArray().Select(flag => (string)flag!).ShouldBe(["not-a-fhir-canonical"]);
@@ -186,7 +186,7 @@ public class CodeSystemsToolTests
         folder.Write("data.ndjson", """{"resourceType":"Observation","id":"o1","status":"final","code":{"coding":[{"system":"http://hl7.org/fhir/ValueSet/observation-codes","code":"x"}]}}""" + "\n");
         FolderSession session = OpenWithPackage(folder, store);
 
-        JsonNode result = Json(await new FolderTools(session).FolderCodeSystems(withTerminology: true));
+        JsonNode result = Json(await new FolderTools(session).FolderCodeSystems(withTerminology: true, detail: "full"));
 
         JsonNode system = System(result, "http://hl7.org/fhir/ValueSet/observation-codes");
         system["suggestedCanonical"].ShouldBeNull();
@@ -337,7 +337,7 @@ public class CodeSystemsToolTests
         int exitCode;
         try
         {
-            exitCode = await root.Parse(["systems", folder.Path, "--top", "2", "--no-cache"]).InvokeAsync();
+            exitCode = await root.Parse(["systems", folder.Path, "--top", "2", "--detail", "full", "--no-cache"]).InvokeAsync();
         }
         finally
         {

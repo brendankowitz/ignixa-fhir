@@ -36,8 +36,9 @@ public class TerminologyLookupTests
         ((bool)facts["inactive"]!).ShouldBeFalse();
         ((string)facts["source"]!["kind"]!).ShouldBe("local");
         ((string)facts["source"]!["package"]!).ShouldBe($"{PackageId}@{PackageVersion}");
-        ((string)result["evidence"]![0]!["file"]!).ShouldBe($"{PackageId}#{PackageVersion}/package/CodeSystem-body.json");
-        ((string)result["next"]![0]!["tool"]!).ShouldBe("terminology_navigate");
+        EvidenceFile(result, 0).ShouldBe($"{PackageId}#{PackageVersion}/package/CodeSystem-body.json");
+        ((string)result["next"]![0]!["tool"]!).ShouldBe("terminology");
+        ((string)result["next"]![0]!["args"]!["operation"]!).ShouldBe("navigate");
     }
 
     [Fact]
@@ -90,7 +91,7 @@ public class TerminologyLookupTests
 
         ((string)result["facts"]!["outcome"]!).ShouldBe("system-not-loaded");
         ((string)result["absent"]![0]!["checked"]!).ShouldContain("content 'not-present'");
-        ((string)result["evidence"]![0]!["file"]!).ShouldEndWith("package/CodeSystem-snomed.json");
+        EvidenceFile(result, 0).ShouldEndWith("package/CodeSystem-snomed.json");
     }
 
     [Fact]

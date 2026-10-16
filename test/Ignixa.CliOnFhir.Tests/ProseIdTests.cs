@@ -70,6 +70,8 @@ public class ProseIdTests
             ("get", OutsidePayloads(ResourceFetcher.Read(session, [$"Condition/{FhirIds.Digest(ConditionId)}", $"Encounter/{FhirIds.Digest("PROSE encounter")}", "Patient/~0000000000000000"]))),
             ("patients", OutsidePayloads(PatientLister.List(session, sort: "latest"))),
             ("context", OutsidePayloads(ContextRoot.Get(session, patient))),
+            ("map", OutsidePayloads(PatientMap.Get(session, patient))),
+            ("patients lookup", OutsidePayloads(PatientLister.List(session, query: "e"))),
             .. NodeKey.DomainKeys.Select(key => ($"node {key}", OutsidePayloads(ContextExpander.Expand(session, patient, key)))),
             ("node problem", OutsidePayloads(ContextExpander.Expand(session, patient, $"problem/Condition-{FhirIds.Digest(ConditionId)}"))),
             ("node unknown", OutsidePayloads(ContextExpander.Expand(session, patient, "problem/Condition-~0000000000000000"))),

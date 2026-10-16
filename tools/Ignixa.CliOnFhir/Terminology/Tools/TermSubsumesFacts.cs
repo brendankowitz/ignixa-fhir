@@ -5,7 +5,7 @@
 
 namespace Ignixa.CliOnFhir.Terminology.Tools;
 
-/// <summary>Facts of <c>terminology_subsumes</c>.</summary>
+/// <summary>Facts of <c>terminology</c> subsumes.</summary>
 /// <param name="Outcome">
 /// <c>equivalent</c>, <c>subsumes</c> (A is an ancestor of B), <c>subsumed-by</c> (B is an ancestor of A), <c>not-subsumed</c>
 /// (both codes are in a complete hierarchy and neither is an ancestor of the other); or, when that cannot be decided,

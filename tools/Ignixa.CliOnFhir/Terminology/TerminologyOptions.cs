@@ -32,5 +32,11 @@ public sealed record TerminologyOptions
     /// </summary>
     public TxServerClient? TxServer { get; init; }
 
+    /// <summary>
+    /// NLM RxClass, the source of drug classes (<c>--rxclass-server</c>); null (the default) when there is none, which
+    /// <c>--offline</c> also requires.
+    /// </summary>
+    public RxClassClient? RxClass { get; init; }
+
     public bool Offline => Registry is null;
 }

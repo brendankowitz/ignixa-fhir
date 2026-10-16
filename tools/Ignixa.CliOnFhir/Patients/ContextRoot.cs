@@ -9,7 +9,7 @@ using Ignixa.CliOnFhir.Session;
 
 namespace Ignixa.CliOnFhir.Patients;
 
-/// <summary><c>context_get_root</c>: the deterministic digest of one patient's context, one stub per domain.</summary>
+/// <summary><c>patient_context</c> root: the deterministic digest of one patient's context, one stub per domain.</summary>
 public static class ContextRoot
 {
     /// <summary>
@@ -66,8 +66,8 @@ public static class ContextRoot
         }
 
         Dictionary<string, int> otherTypes = context.Compartment.Members
-            .Where(member => !ClinicalDomains.StubTypes.Contains(member.Key.ResourceType))
-            .GroupBy(member => member.Key.ResourceType, StringComparer.Ordinal)
+            .Where(member => !ClinicalDomains.StubTypes.Contains(member.ResourceType))
+            .GroupBy(member => member.ResourceType, StringComparer.Ordinal)
             .OrderBy(group => group.Key, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
 
@@ -85,7 +85,7 @@ public static class ContextRoot
             otherTypes,
             context.Shapes.Membership);
 
-        List<EvidenceItem> evidence = Evidence([context.Compartment.Patient.Entry, .. shown.SelectMany(entry => entry.Sources)]);
+        List<EvidenceItem> evidence = Evidence([context.Compartment.Patient, .. shown.SelectMany(entry => entry.Sources)]);
         List<OmittedItem> omitted = [];
         List<IssueItem> issues = context.Issues(omitted, shown.SelectMany(entry => entry.Sources));
         List<NextCall> next =
@@ -93,22 +93,23 @@ public static class ContextRoot
             .. new[] { problems, medications, allergies, encounters, labs }
                 .Where(stub => stub.Count > 0 || stub.Excluded > 0)
                 .Select(stub => Expand(context, stub.NodeKey)),
-            .. otherTypes.Keys.Where(_ => FhirIds.IsValid(context.Compartment.Patient.Key.Id)).Select(type => new NextCall("search_fhir_resources", new Dictionary<string, object>(StringComparer.Ordinal)
+            .. otherTypes.Keys.Where(_ => FhirIds.IsValid(context.Compartment.Patient.Id)).Select(type => new NextCall("search_fhir_resources", new Dictionary<string, object>(StringComparer.Ordinal)
             {
                 ["resourceType"] = type,
                 ["compartment"] = context.PatientReference,
             })),
         ];
 
-        DateTimeOffset builtAt = context.Compartment.Folder.IndexesRead.Max(index => index.BuiltAt);
+        DateTimeOffset builtAt = context.Compartment.IndexBuiltAt;
         return EnvelopeAssembler.Create<RootDigestFacts?>(session, facts, builtAt, evidence, omitted, absent, issues, cancellationToken) with { Next = next };
     }
 
-    /// <summary>The <c>context_expand</c> call for <paramref name="nodeKey"/> of this patient.</summary>
+    /// <summary>The <c>patient_context</c> expand call for <paramref name="nodeKey"/> of this patient.</summary>
     internal static NextCall Expand(PatientContext context, string nodeKey, int? offset = null)
     {
         Dictionary<string, object> args = new(StringComparer.Ordinal)
         {
+            ["operation"] = "expand",
             ["patientId"] = context.PatientId,
             ["nodeKey"] = nodeKey,
         };
@@ -117,7 +118,7 @@ public static class ContextRoot
             args["offset"] = value;
         }
 
-        return new NextCall("context_expand", args);
+        return new NextCall("patient_context", args);
     }
 
     /// <summary>The evidence items of <paramref name="entries"/>, in order, each resource once, named as summaries name it (<see cref="FhirIds.Reference(CatalogEntry)"/>).</summary>
@@ -132,7 +133,7 @@ public static class ContextRoot
         FolderSession session = context.Session;
         IReadOnlyList<string> through = session.Compartments.Parameters("Patient", "AllergyIntolerance");
         int inFolder = session.Catalog.Entries.Count(entry => entry.ResourceType == "AllergyIntolerance");
-        DateTimeOffset builtAt = context.Compartment.Folder.IndexesRead.Max(index => index.BuiltAt);
+        DateTimeOffset builtAt = context.Compartment.IndexBuiltAt;
         return new AbsentItem(
             "AllergyIntolerance",
             $"{context.PatientReference} compartment ({context.Compartment.Members.Count} resources, via {string.Join(", ", through)}); {inFolder} in the folder's {session.Catalog.FilesScanned} files. No record, not 'no known allergies'",

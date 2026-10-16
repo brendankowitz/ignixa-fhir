@@ -11,7 +11,7 @@ namespace Ignixa.CliOnFhir.Patients;
 /// <summary>A CodeableConcept as the patient tools use it, read with FHIRPath.</summary>
 /// <param name="Key">The first coding with both a system and a code, as <c>system|code</c>; null when there is none.</param>
 /// <param name="Display">The first coding <c>display</c>; null when no coding has one. Never the concept's free <c>text</c>.</param>
-/// <param name="Text">The concept's <c>text</c>, free text that <c>context_find</c> matches but no summary shows.</param>
+/// <param name="Text">The concept's <c>text</c>, free text that <c>patient_context</c> find matches but no summary shows.</param>
 /// <param name="Codings">Every coding's system, code and display, in order.</param>
 internal sealed record CodedConcept(string? Key, string? Display, string? Text, IReadOnlyList<(string? System, string? Code, string? Display)> Codings)
 {

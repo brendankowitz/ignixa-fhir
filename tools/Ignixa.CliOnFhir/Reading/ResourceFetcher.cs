@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Json.Nodes;
 using Ignixa.CliOnFhir.Catalog;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Search;
@@ -21,7 +22,7 @@ public static class ResourceFetcher
     /// reference the catalog does not hold is reported in <c>absent</c>. A malformed reference fails the call: the
     /// result is an envelope with null facts and an <c>error</c> issue.
     /// </summary>
-    public static ToolEnvelope<ReadFacts?> Read(FolderSession session, IReadOnlyList<string> references, string? elements = null, CancellationToken cancellationToken = default)
+    public static ToolEnvelope<ReadFacts?> Read(FolderSession session, IReadOnlyList<string> references, string? elements = null, int? maxBytes = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(references);
@@ -33,7 +34,7 @@ public static class ResourceFetcher
 
         try
         {
-            return Execute(session, references, elements, cancellationToken);
+            return Execute(session, references, elements, maxBytes, cancellationToken);
         }
         catch (ToolRequestException ex)
         {
@@ -41,7 +42,7 @@ public static class ResourceFetcher
         }
     }
 
-    private static ToolEnvelope<ReadFacts?> Execute(FolderSession session, IReadOnlyList<string> references, string? elements, CancellationToken cancellationToken)
+    private static ToolEnvelope<ReadFacts?> Execute(FolderSession session, IReadOnlyList<string> references, string? elements, int? maxBytes, CancellationToken cancellationToken)
     {
         if (references.Count == 0)
         {
@@ -81,7 +82,9 @@ public static class ResourceFetcher
             issues.AddRange(projection?.Validate(type) ?? []);
         }
 
-        // The listed resolutions can only shrink once the resources are read, so reserving the candidates keeps the cap.
+        int budget = ResponseBudget.Resolve(maxBytes, session.MaxResponseBytes, issues);
+
+        // The listed resolutions can only shrink once the resources are read, so each resource is charged for its candidates.
         Dictionary<string, IReadOnlyDictionary<string, string>> resolutions = Resolutions(session, found);
         Dictionary<string, Dictionary<string, string>> candidates = ResolvedReferences.Candidates(
             found.Select(entry => (ResourceReader.Describe(entry), resolutions[ResourceReader.Describe(entry)])),
@@ -89,14 +92,25 @@ public static class ResourceFetcher
 
         // The closing omitted items name the first reference not returned and count unlisted resolutions, so reserve room for both.
         int longestReference = found.Select(entry => ResourceReader.Describe(entry).Length).DefaultIfEmpty(0).Max();
-        int reserved = EnvelopeJson.SizeOf(new ToolEnvelope<ReadFacts?>(
-            new ReadFacts(parsed.Count, [], ResolvedReferences.ToFacts(candidates)),
+        // The call in next, which lists the references left out, exists only when the budget cuts the response, so the
+        // resources are first read expecting that it does not and, when it does, again with room for that call.
+        int Reserved(bool cutBySize) => EnvelopeJson.SizeOf(new ToolEnvelope<ReadFacts?>(
+            new ReadFacts(parsed.Count, [], ResolvedReferences: null),
             [],
             [.. omitted, new OmittedItem(UnreadMessage(int.MaxValue, new string('x', longestReference)), "size-budget"), new OmittedItem(NotListedMessage(int.MaxValue), "limit")],
             absent,
             issues,
-            new FreshnessInfo(builtAt, StaleFiles: int.MaxValue)));
-        ResourceBatch batch = ResourceBatch.Collect(session.RootPath, found, projection, reserved, cancellationToken);
+            new FreshnessInfo(builtAt, StaleFiles: int.MaxValue))
+        {
+            Next = cutBySize && found.Count > 1 ? Remaining([.. found.Skip(1).Select(ResourceReader.Describe)], elements, maxBytes, budget, session.MaxResponseBytes) : [],
+        });
+        Func<int, JsonObject, int> costs = ResolvedReferences.Charge([.. found.Select(entry => (ResourceReader.Describe(entry), resolutions[ResourceReader.Describe(entry)]))]);
+        ResourceBatch batch = ResourceBatch.Collect(session.RootPath, found, projection, Reserved(cutBySize: false), budget, costs, cancellationToken);
+        if (batch.Consumed < found.Count)
+        {
+            batch = ResourceBatch.Collect(session.RootPath, found, projection, Reserved(cutBySize: true), budget, costs, cancellationToken);
+        }
+
         issues.AddRange(batch.Issues);
         omitted.AddRange(batch.Skipped);
         (Dictionary<string, Dictionary<string, string>> shown, int notListed) = ResolvedReferences.Shown(resolutions, batch, candidates);
@@ -105,31 +119,59 @@ public static class ResourceFetcher
             omitted.Add(new OmittedItem(NotListedMessage(notListed), "limit"));
         }
 
+        List<NextCall> next = [];
         if (batch.Consumed < found.Count)
         {
             omitted.Add(new OmittedItem(UnreadMessage(found.Count - batch.Consumed, ResourceReader.Describe(found[batch.Consumed])), "size-budget"));
+            next = Remaining([.. found.Skip(batch.Consumed).Select(ResourceReader.Describe)], elements, maxBytes, budget, session.MaxResponseBytes);
         }
 
-        return EnvelopeAssembler.Create<ReadFacts?>(session, new ReadFacts(parsed.Count, batch.Resources, ResolvedReferences.ToFacts(shown)), builtAt, batch.Evidence, omitted, absent, issues, cancellationToken);
+        return EnvelopeAssembler.Create<ReadFacts?>(session, new ReadFacts(parsed.Count, batch.Resources, ResolvedReferences.ToFacts(shown)), builtAt, batch.Evidence, omitted, absent, issues, cancellationToken) with { Next = next };
     }
 
     /// <summary>
     /// Each found resource's Bundle references and the <c>Type/id</c> they name, by <c>Type/id</c>, resolved as the index
-    /// resolves them (<see cref="Indexing.BundleReferenceResolver"/>) but without building any index. A folder without Bundle
-    /// entry fullUrls has no Bundle references, so nothing is read for it; a resource that cannot be read resolves nothing
-    /// here and is reported by the batch.
+    /// resolves them (<see cref="Indexing.BundleReferenceResolver"/>, conditional references included) but without building
+    /// any index; a resource that cannot be read resolves nothing here and is reported by the batch.
     /// </summary>
     private static Dictionary<string, IReadOnlyDictionary<string, string>> Resolutions(FolderSession session, List<CatalogEntry> found)
     {
         Dictionary<string, IReadOnlyDictionary<string, string>> resolutions = new(StringComparer.Ordinal);
         foreach (CatalogEntry entry in found)
         {
-            resolutions[ResourceReader.Describe(entry)] = session.Catalog.FullUrls.Count > 0 && ResourceReader.Read(session.RootPath, entry).Resource is { } resource
+            resolutions[ResourceReader.Describe(entry)] = ResourceReader.Read(session.RootPath, entry).Resource is { } resource
                 ? session.BundleReferences.Rewrite(entry, resource).Resolution.Resolved
                 : Indexing.ReferenceResolution.None.Resolved;
         }
 
         return resolutions;
+    }
+
+    /// <summary>
+    /// The call that reads the references a size-cut response left out. The references are listed once, so the way to fit
+    /// more is a hint on that call rather than a second call repeating them.
+    /// </summary>
+    private static List<NextCall> Remaining(string[] references, string? elements, int? maxBytes, int budget, int ceiling)
+    {
+        Dictionary<string, object> args = new(StringComparer.Ordinal) { ["references"] = references };
+        if (elements is not null)
+        {
+            args["elements"] = elements;
+        }
+
+        if (maxBytes is int requested)
+        {
+            args["maxBytes"] = requested;
+        }
+
+        string? hint = (elements is null, budget < ceiling) switch
+        {
+            (true, true) => $"the rest; set elements so more fit, or raise maxBytes (up to {ceiling})",
+            (true, false) => "the rest; set elements so more fit",
+            (false, true) => $"the rest; raise maxBytes (up to {ceiling})",
+            _ => null,
+        };
+        return [new NextCall("read_resources", args, hint)];
     }
 
     private static string NotListedMessage(int count) =>

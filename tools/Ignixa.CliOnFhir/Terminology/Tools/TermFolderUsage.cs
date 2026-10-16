@@ -5,7 +5,7 @@
 
 namespace Ignixa.CliOnFhir.Terminology.Tools;
 
-/// <summary>The terminology section of <c>folder_inspect</c> (and of <c>terminology_list</c> on request).</summary>
+/// <summary>The terminology section of <c>folder_inspect</c> (and of <c>terminology</c> list on request).</summary>
 /// <param name="Status"><c>loaded</c>, or <c>not loaded</c> when no terminology call has loaded the store yet (nothing else is then computed).</param>
 /// <param name="Rule">How the codes were collected and resolved.</param>
 /// <param name="SystemsUsed">Distinct systems with codes in the folder.</param>

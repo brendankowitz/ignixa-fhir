@@ -174,6 +174,14 @@ internal static class TerminologyFixture
     public static JsonNode Json<TFacts>(ToolEnvelope<TFacts> envelope) =>
         JsonNode.Parse(System.Text.Json.JsonSerializer.Serialize(envelope, EnvelopeJson.Compact))!;
 
+    /// <summary>The file named by the <paramref name="index"/>th item of a response's evidence, which names it by index into its file table.</summary>
+    public static string EvidenceFile(JsonNode response, int index) =>
+        (string)response["evidence"]!["files"]![(int)response["evidence"]!["items"]![index]!["file"]!]!;
+
+    /// <summary>The references of a response's evidence items, in order.</summary>
+    public static string[] EvidenceReferences(JsonNode response) =>
+        [.. response["evidence"]!["items"]!.AsArray().Select(item => (string)item!["reference"]!)];
+
     public static JsonNode Json(CallToolResult result) => JsonNode.Parse(result.Content.OfType<TextContentBlock>().Single().Text)!;
 
     private static (string Path, string Content) ValueSet(string id, string compose) =>

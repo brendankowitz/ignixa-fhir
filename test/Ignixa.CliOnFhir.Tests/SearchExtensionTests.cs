@@ -153,7 +153,7 @@ public class SearchExtensionTests
             .Write("obs.ndjson", string.Join('\n', Enumerable.Range(0, 60).Select(i =>
                 "{\"resourceType\":\"Observation\",\"id\":\"o" + i + "\",\"status\":\"final\",\"code\":{\"text\":\"x\"},\"subject\":{\"reference\":\"Patient/p1\"}}")));
 
-        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Patient", "_revinclude=Observation:subject"));
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Patient", "_revinclude=Observation:subject", MaxBytes: EnvelopeJson.MaxBytes));
 
         SearchFacts facts = envelope.Facts.ShouldNotBeNull();
         facts.Included.ShouldNotBeNull().Count.ShouldBe(ResourceSearcher.IncludeLimit);

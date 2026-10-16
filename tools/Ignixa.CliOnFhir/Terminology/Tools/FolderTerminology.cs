@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.CliOnFhir.Contracts;
+using Ignixa.CliOnFhir.Indexing;
 using Ignixa.CliOnFhir.Session;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
@@ -46,7 +47,83 @@ public static class FolderTerminology
         return (new TermFolderUsage(TermFolderUsage.LoadedStatus, Rule, systems.Count, [.. systems.Take(limit)]), omitted);
     }
 
-    private static bool OverIdentifier(SearchParameterInfo parameter) =>
+    /// <summary>
+    /// Per distinct code of <paramref name="system"/> in the token search-index entries of <paramref name="types"/> (by the
+    /// same rule as <see cref="Compute"/>), how many resources carry it. Types the folder does not hold are skipped.
+    /// </summary>
+    public static IReadOnlyDictionary<string, int> ResourcesPerCode(FolderSession session, string system, IEnumerable<string> types)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentException.ThrowIfNullOrEmpty(system);
+        ArgumentNullException.ThrowIfNull(types);
+
+        HashSet<string> held = [.. session.Catalog.Entries.Select(entry => entry.ResourceType)];
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (string type in types.Where(held.Contains))
+        {
+            foreach (IndexedResource resource in session.GetIndex(type).Resources)
+            {
+                IEnumerable<string> codes = Codings(resource)
+                    .Where(token => token.System == system)
+                    .Select(token => token.Code)
+                    .Distinct(StringComparer.Ordinal);
+                foreach (string code in codes)
+                {
+                    counts[code] = counts.GetValueOrDefault(code) + 1;
+                }
+            }
+        }
+
+        return counts;
+    }
+
+    /// <summary>
+    /// Which of <paramref name="wanted"/> (system to codes) the folder uses, by the same rule as <see cref="Compute"/>, over every
+    /// resource type it holds: per code the resources carrying it, and per resource type and search parameter the resources
+    /// carrying any of them, so a caller can name the search that finds them.
+    /// </summary>
+    public static FolderCodeUses Uses(FolderSession session, IReadOnlyDictionary<string, HashSet<string>> wanted)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(wanted);
+
+        var perCode = new Dictionary<(string System, string Code), int>();
+        var perSearch = new Dictionary<(string ResourceType, string Parameter), int>();
+        foreach (string type in session.Catalog.Entries.Select(entry => entry.ResourceType).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
+        {
+            foreach (IndexedResource resource in session.GetIndex(type).Resources)
+            {
+                List<(string Parameter, string System, string Code)> hits = [.. Codings(resource).Where(token => wanted.TryGetValue(token.System, out HashSet<string>? codes) && codes.Contains(token.Code))];
+                foreach ((string system, string code) in hits.Select(hit => (hit.System, hit.Code)).Distinct())
+                {
+                    perCode[(system, code)] = perCode.GetValueOrDefault((system, code)) + 1;
+                }
+
+                foreach (string parameter in hits.Select(hit => hit.Parameter).Distinct(StringComparer.Ordinal))
+                {
+                    perSearch[(type, parameter)] = perSearch.GetValueOrDefault((type, parameter)) + 1;
+                }
+            }
+        }
+
+        return new FolderCodeUses(
+            [.. perCode.Select(pair => new FolderCodeUse(pair.Key.System, pair.Key.Code, pair.Value))],
+            [.. perSearch
+                .Select(pair => new FolderCodeSearch(pair.Key.ResourceType, pair.Key.Parameter, pair.Value))
+                .OrderByDescending(search => search.Resources)
+                .ThenBy(search => search.Parameter == "code" ? 0 : 1)
+                .ThenBy(search => search.Parameter, StringComparer.Ordinal)
+                .ThenBy(search => search.ResourceType, StringComparer.Ordinal)]);
+    }
+
+    /// <summary>The coded token entries of a resource's index, leaving out parameters over Identifier elements.</summary>
+    private static IEnumerable<(string Parameter, string System, string Code)> Codings(IndexedResource resource) =>
+        resource.Index
+            .Where(entry => !OverIdentifier(entry.SearchParameter))
+            .Select(entry => entry.Value is TokenSearchValue { System: { Length: > 0 } system, Code: { Length: > 0 } code } ? (entry.SearchParameter.Code, system, code) : default)
+            .Where(token => token.code is not null);
+
+    internal static bool OverIdentifier(SearchParameterInfo parameter) =>
         parameter.Code == "identifier" || (parameter.Expression?.Contains("identifier", StringComparison.OrdinalIgnoreCase) ?? false);
 
     private static SystemUsage Resolve(TerminologyStore store, string system, HashSet<string> codes)

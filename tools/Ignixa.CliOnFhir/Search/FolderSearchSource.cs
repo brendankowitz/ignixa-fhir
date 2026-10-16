@@ -107,7 +107,7 @@ internal sealed class FolderSearchSource(FolderSession session) : IInMemorySearc
     }
 
     /// <summary>The ids of the <paramref name="compartmentType"/> compartments <paramref name="resource"/> could be in, each once.</summary>
-    private static IEnumerable<string> Candidates(IndexedResource resource, string compartmentType)
+    internal static IEnumerable<string> Candidates(IndexedResource resource, string compartmentType)
     {
         IEnumerable<string> referenced = resource.Index
             .Select(entry => entry.Value)

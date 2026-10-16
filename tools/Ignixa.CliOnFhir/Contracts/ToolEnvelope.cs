@@ -3,6 +3,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Json.Serialization;
+
 namespace Ignixa.CliOnFhir.Contracts;
 
 /// <summary>
@@ -11,14 +13,14 @@ namespace Ignixa.CliOnFhir.Contracts;
 /// </summary>
 /// <typeparam name="TFacts">Tool-specific deterministic values.</typeparam>
 /// <param name="Facts">Deterministic values; never model-written text.</param>
-/// <param name="Evidence">Resources the facts were read from.</param>
+/// <param name="Evidence">Resources the facts were read from; on the wire a table of files plus one item per resource naming its file by index (see <see cref="EvidenceJsonConverter"/>).</param>
 /// <param name="Omitted">Everything left out of the response, with the reason.</param>
 /// <param name="Absent">Things looked for and not found, each with the scope that was checked.</param>
 /// <param name="Issues">Problems with the request or the data in scope.</param>
 /// <param name="Freshness">When the index was built and whether files changed since.</param>
 public sealed record ToolEnvelope<TFacts>(
     TFacts Facts,
-    IReadOnlyList<EvidenceItem> Evidence,
+    [property: JsonConverter(typeof(EvidenceJsonConverter))] IReadOnlyList<EvidenceItem> Evidence,
     IReadOnlyList<OmittedItem> Omitted,
     IReadOnlyList<AbsentItem> Absent,
     IReadOnlyList<IssueItem> Issues,

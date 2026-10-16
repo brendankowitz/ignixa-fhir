@@ -73,8 +73,8 @@ public class ContextExpandTests
         first.Facts.Total.ShouldBe(4);
         first.Omitted.ShouldBe([new OmittedItem("1 more items (offset=3)", "limit")]);
         NextCall next = first.Next.ShouldHaveSingleItem();
-        next.Tool.ShouldBe("context_expand");
-        next.Args.ShouldBe(new Dictionary<string, object> { ["patientId"] = "p1", ["nodeKey"] = "labs/http://loinc.org|8867-4", ["offset"] = 3 }, ignoreOrder: true);
+        next.Tool.ShouldBe("patient_context");
+        next.Args.ShouldBe(new Dictionary<string, object> { ["operation"] = "expand", ["patientId"] = "p1", ["nodeKey"] = "labs/http://loinc.org|8867-4", ["offset"] = 3 }, ignoreOrder: true);
         second.Facts.ShouldNotBeNull().Items.ShouldHaveSingleItem().Reference.ShouldBe("Observation/o0");
         second.Next.ShouldBeEmpty();
         first.Evidence.Select(item => item.Reference).ShouldBe(["Observation/o3", "Observation/o2", "Observation/o1"]);

@@ -22,6 +22,10 @@ public class IndexCacheTests
 {
     private static readonly string[] FixtureTypes = ["Encounter", "Observation", "Patient"];
 
+    private static readonly string[] NotBuilds = ["0123456789abcdef-R4", "packages", "rxclass", "index-notabuild"];
+
+    private static readonly string[] StaleBuilds = ["index-v15-111111111111", "index-v15-222222222222", "index-v15-333333333333"];
+
     [Fact]
     public void GivenIndexBuiltAndPersisted_WhenReloadedInANewSession_ThenEveryEntryDiagnosticAndParameterIsIdentical()
     {
@@ -436,7 +440,7 @@ public class IndexCacheTests
     }
 
     [Fact]
-    public void GivenTwoFolders_WhenCached_ThenEachGetsItsOwnDirectoryUnderTheRoot()
+    public void GivenTwoFolders_WhenCached_ThenEachGetsItsOwnDirectoryUnderTheBuildsDirectory()
     {
         using TestFolder one = CreateFixture();
         using TestFolder two = CreateFixture();
@@ -450,7 +454,126 @@ public class IndexCacheTests
         string? second = secondSession.CacheDirectory;
 
         first.ShouldNotBe(second);
-        Directory.GetParent(first!)!.FullName.ShouldBe(cache.Path);
+        Directory.GetParent(first!)!.FullName.ShouldBe(Directory.GetParent(second!)!.FullName);
+        Directory.GetParent(first!)!.Parent!.FullName.ShouldBe(cache.Path);
+    }
+
+    // Regression: at 87543aa2 every build shared one directory per folder, so two builds used side by side discarded each
+    // other's cache on every first call ("tool version differs").
+    [Fact]
+    public void GivenAnotherBuildsCacheUnderTheRoot_WhenASessionOpens_ThenNeitherIsDiscarded()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        string ours = Directory.GetParent(first.CacheDirectory!)!.FullName;
+        string theirs = PlantBuild(cache, "index-v15-0123456789ab", DateTime.UtcNow.AddMinutes(-1));
+
+        FolderSession second = Open(folder, cache);
+
+        second.GetIndex("Patient").FromCache.ShouldBeTrue();
+        second.CacheIssues.ShouldBeEmpty();
+        Directory.Exists(theirs).ShouldBeTrue();
+        Directory.Exists(ours).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenMoreBuildsThanKept_WhenASessionOpens_ThenTheLeastRecentlyUsedAreEvicted()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        string newest = PlantBuild(cache, "index-v15-aaaaaaaaaaaa", DateTime.UtcNow.AddHours(-1));
+        string newer = PlantBuild(cache, "index-v15-bbbbbbbbbbbb", DateTime.UtcNow.AddHours(-2));
+        string older = PlantBuild(cache, "index-v14-cccccccccccc", DateTime.UtcNow.AddHours(-3));
+        string oldest = PlantBuild(cache, "index-v15-dddddddddddd", DateTime.UtcNow.AddHours(-4));
+
+        FolderSession session = Open(folder, cache);
+        session.GetIndex("Patient");
+
+        FolderIndexCache.KeptBuilds.ShouldBe(3);
+        Directory.Exists(Directory.GetParent(session.CacheDirectory!)!.FullName).ShouldBeTrue();
+        Directory.Exists(newest).ShouldBeTrue();
+        Directory.Exists(newer).ShouldBeTrue();
+        Directory.Exists(older).ShouldBeFalse();
+        Directory.Exists(oldest).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenTheEarlierLayoutAndOtherCaches_WhenASessionOpens_ThenTheyAreLeftAlone()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        string[] untouched = [.. NotBuilds.Select(name => PlantBuild(cache, name, DateTime.UtcNow.AddDays(-30)))];
+        foreach (string build in StaleBuilds)
+        {
+            PlantBuild(cache, build, DateTime.UtcNow.AddDays(-1));
+        }
+
+        Open(folder, cache).GetIndex("Patient");
+
+        untouched.ShouldAllBe(directory => Directory.Exists(directory));
+    }
+
+    // Regression: at 596c9c3d any directory under the root named index-v* beyond the three most recent was deleted, so a
+    // custom --cache-dir shared with the user's own directories could lose them.
+    [Fact]
+    public void GivenUserDirectoriesThatLookLikeBuilds_WhenOlderBuildsAreEvicted_ThenOnlyTheToolsOwnBuildsAreDeleted()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        string[] lookAlikes =
+        [
+            PlantBuild(cache, "index-vacation-photos", DateTime.UtcNow.AddDays(-30)),
+            PlantBuild(cache, "index-v15-0123456789AB", DateTime.UtcNow.AddDays(-30)),
+            PlantBuild(cache, "index-v15-0123456789abc", DateTime.UtcNow.AddDays(-30)),
+            PlantUserDirectory(cache, "index-v15-eeeeeeeeeeee", DateTime.UtcNow.AddDays(-30)),
+        ];
+        string[] stale = [.. StaleBuilds.Select(build => PlantBuild(cache, build, DateTime.UtcNow.AddDays(-1)))];
+
+        Open(folder, cache).GetIndex("Patient");
+
+        lookAlikes.ShouldAllBe(directory => Directory.Exists(directory));
+        stale.Count(directory => Directory.Exists(directory)).ShouldBe(FolderIndexCache.KeptBuilds - 1);
+    }
+
+    // New at V5: before it one patient's context read the index of every type that can be in a Patient compartment.
+    [Fact]
+    public void GivenCachedPatientCompartments_WhenANewSessionMapsAPatient_ThenNoIndexIsReadAndTheMapIsTheSame()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession writer = Open(folder, cache);
+        string built = System.Text.Json.JsonSerializer.Serialize(Patients.PatientMap.Get(writer, "p1").Facts!.Domains, EnvelopeJson.Compact);
+        writer.PatientCompartments.FromCache.ShouldBeFalse();
+        File.Exists(Path.Combine(writer.CacheDirectory!, "Patient.compartments.json")).ShouldBeTrue();
+
+        FolderSession reader = Open(folder, cache);
+        string loaded = System.Text.Json.JsonSerializer.Serialize(Patients.PatientMap.Get(reader, "p1").Facts!.Domains, EnvelopeJson.Compact);
+
+        reader.PatientCompartments.FromCache.ShouldBeTrue();
+        reader.BuiltIndexTypes.ShouldBeEmpty();
+        loaded.ShouldBe(built);
+        reader.PatientCompartments.MembersOf("p1").Select(member => $"{member.ResourceType}/{member.Id}")
+            .ShouldBe(writer.PatientCompartments.MembersOf("p1").Select(member => $"{member.ResourceType}/{member.Id}"));
+    }
+
+    [Fact]
+    public void GivenACorruptCompartmentFile_WhenASessionOpens_ThenTheCompartmentsAreWorkedOutAgainWithAWarning()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        _ = first.PatientCompartments;
+        File.WriteAllText(Path.Combine(first.CacheDirectory!, "Patient.compartments.json"), "{ not json");
+
+        FolderSession second = Open(folder, cache);
+
+        second.PatientCompartments.FromCache.ShouldBeFalse();
+        second.PatientCompartments.MembersOf("p1").ShouldNotBeEmpty();
+        IssueItem issue = second.CacheIssues.ShouldHaveSingleItem();
+        issue.Code.ShouldBe("index-cache-corrupt");
+        issue.Diagnostics.ShouldContain("Patient compartments");
     }
 
     [Fact]
@@ -1140,6 +1263,25 @@ public class IndexCacheTests
                 ? $"{path} {new FileInfo(path).Length} {File.GetLastWriteTimeUtc(path).Ticks}"
                 : path),
     ];
+
+    /// <summary>A directory under the cache root with one file, last used at <paramref name="lastUsed"/>.</summary>
+    private static string PlantBuild(TestFolder cache, string name, DateTime lastUsed)
+    {
+        string directory = Path.Combine(cache.Path, name);
+        Directory.CreateDirectory(Path.Combine(directory, "folder-R4"));
+        File.WriteAllText(Path.Combine(directory, "folder-R4", "manifest.json"), "{}");
+        Directory.SetLastWriteTimeUtc(directory, lastUsed);
+        return directory;
+    }
+
+    private static string PlantUserDirectory(TestFolder cache, string name, DateTime lastUsed)
+    {
+        string directory = Path.Combine(cache.Path, name);
+        Directory.CreateDirectory(Path.Combine(directory, "notes"));
+        File.WriteAllText(Path.Combine(directory, "notes", "todo.txt"), "mine");
+        Directory.SetLastWriteTimeUtc(directory, lastUsed);
+        return directory;
+    }
 
     private static FolderSession Open(TestFolder folder, TestFolder cache) =>
         new(folder.Path, new R4CoreSchemaProvider(), NullLoggerFactory.Instance, IndexCacheOptions.At(cache.Path));

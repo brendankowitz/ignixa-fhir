@@ -16,7 +16,8 @@ namespace Ignixa.CliOnFhir.CodeSystems;
 /// <c>folder_code_systems</c> / <c>cli-on-fhir systems</c>: which coding systems the folder uses (SNOMED CT, LOINC, ...),
 /// how much, where, and their most frequent codes, without terminology or network. Data-quality hints are information
 /// issues, never errors. Terminology already loaded in the session adds per-system resolution; it is never loaded here
-/// unless asked.
+/// unless asked. The default answer is compact (<see cref="ListCompactAsync"/>: per system its alias and counts, codes only
+/// when asked for); <see cref="ListAsync"/> is the full one (<c>detail=full</c>).
 /// </summary>
 public static partial class FolderCodeSystems
 {
@@ -63,19 +64,71 @@ public static partial class FolderCodeSystems
     /// <see cref="List"/> after loading the terminology store when <paramref name="withTerminology"/> is set, with the store's load
     /// problems (as warnings) after the answer's own issues.
     /// </summary>
-    public static async Task<ToolEnvelope<CodeSystemsFacts?>> ListAsync(FolderSession session, int? count, int offset, int? top, bool withTerminology, CancellationToken cancellationToken)
+    public static Task<ToolEnvelope<CodeSystemsFacts?>> ListAsync(FolderSession session, int? count, int offset, int? top, bool withTerminology, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
 
+        return WithTerminologyAsync(session, withTerminology, () => List(session, count, offset, top, cancellationToken), cancellationToken);
+    }
+
+    /// <summary>
+    /// The compact answer: per system of the page its URI, alias, name and distinct codes, codings and resources, and its most
+    /// frequent codes only when <paramref name="top"/> is given; the hints and calls of the full answer. Elements, implicit
+    /// codes and per-element counts are left to <see cref="ListAsync"/>.
+    /// </summary>
+    public static Task<ToolEnvelope<CodeSystemsCompactFacts?>> ListCompactAsync(FolderSession session, int? count, int offset, int? top, bool withTerminology, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        return WithTerminologyAsync(session, withTerminology, () => Guarded(session, () => AnswerCompact(session, count, offset, top, cancellationToken), cancellationToken), cancellationToken);
+    }
+
+    /// <summary>
+    /// <paramref name="list"/> after loading the terminology store when <paramref name="withTerminology"/> is set, with the
+    /// store's load problems (as warnings) after the answer's own issues.
+    /// </summary>
+    private static async Task<ToolEnvelope<TFacts?>> WithTerminologyAsync<TFacts>(FolderSession session, bool withTerminology, Func<ToolEnvelope<TFacts?>> list, CancellationToken cancellationToken)
+        where TFacts : class
+    {
         if (!withTerminology || EnvelopeAssembler.FolderProblem(session) is not null)
         {
-            return List(session, count, offset, top, cancellationToken);
+            return list();
         }
 
         TerminologyState state = await session.Terminology.GetAsync(cancellationToken);
-        ToolEnvelope<CodeSystemsFacts?> envelope = List(session, count, offset, top, cancellationToken);
+        ToolEnvelope<TFacts?> envelope = list();
         IEnumerable<IssueItem> load = state.IsUnusable ? state.FailureIssues().Select(issue => issue with { Severity = issue.Severity == "error" ? "warning" : issue.Severity }) : state.LoadIssues;
         return envelope with { Issues = [.. envelope.Issues, .. load] };
+    }
+
+    private static ToolEnvelope<TFacts?> Guarded<TFacts>(FolderSession session, Func<ToolEnvelope<TFacts?>> answer, CancellationToken cancellationToken)
+        where TFacts : class
+    {
+        if (EnvelopeAssembler.FolderProblem(session) is { } folderProblem)
+        {
+            return EnvelopeAssembler.Failure<TFacts>(session, folderProblem, cancellationToken);
+        }
+
+        try
+        {
+            return answer();
+        }
+        catch (ToolRequestException ex)
+        {
+            return EnvelopeAssembler.Failure<TFacts>(session, ex.Issue, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// The codes the folder uses whose display (or loaded designation) starts a word with any of the words of <paramref name="text"/>,
+    /// from the search indexes and without terminology or network; see <see cref="FolderCodeText"/>.
+    /// </summary>
+    public static ToolEnvelope<CodeTextFacts?> SearchText(FolderSession session, string text, string? resourceType, string? system, int? count, int offset, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(text);
+
+        return Guarded(session, () => FolderCodeText.Search(session, text, resourceType, system, count, offset, cancellationToken), cancellationToken);
     }
 
     /// <summary>The ten most used systems, for <c>folder_inspect</c>.</summary>
@@ -86,6 +139,50 @@ public static partial class FolderCodeSystems
         return [.. CodeSystemInventories.For(session.Catalog, session.Schema, cancellationToken).Systems
             .Take(limit)
             .Select(tally => new CodeSystemBrief(SafeSystem(tally.System), WellKnownSystems.Identify(tally.System).Name, tally.Codes.Count, tally.Codings))];
+    }
+
+    private static ToolEnvelope<CodeSystemsCompactFacts?> AnswerCompact(FolderSession session, int? count, int offset, int? top, CancellationToken cancellationToken)
+    {
+        List<IssueItem> issues = [];
+        int pageSize = Paging.Resolve(count, offset, issues);
+        int? topCodes = top is null ? null : Top(top, issues);
+        CodeSystemInventory inventory = CodeSystemInventories.For(session.Catalog, session.Schema, cancellationToken);
+        TerminologyState? terminology = session.Terminology.Current is { IsUnusable: false } loaded ? loaded : null;
+
+        List<SystemTally> page = [.. inventory.Systems.Skip(offset).Take(pageSize)];
+        int digested = page.Count(tally => SafeSystem(tally.System) != tally.System);
+
+        // The full usage decides the hints and the calls; its per-element omissions are not passed on, since the compact
+        // answer lists no elements at all (detail=full does).
+        List<CodeSystemUsage> usages = [.. page.Select(tally => Usage(tally, topCodes ?? 0, terminology, session.Terminology.Options.TxServer is not null, []))];
+        List<CodeSystemSummary> systems = [.. usages.Select(usage => new CodeSystemSummary(
+            usage.System,
+            CodeAliases.Of(usage.System) is var alias && alias != usage.System ? alias : null,
+            usage.Name,
+            usage.DistinctCodes,
+            usage.Codings,
+            usage.Resources,
+            topCodes is null ? null : [.. usage.TopCodes.Select(code => code with { Code = code.Code[(usage.System.Length + 1)..] })],
+            usage.Terminology?.Loaded))];
+
+        issues.AddRange(Hints(usages, inventory, digested));
+        issues.AddRange(Paging.BeyondTotal(offset, inventory.Systems.Count, "code systems"));
+        issues.AddRange(inventory.Problems);
+        if (TxHint(usages, session) is { } tx)
+        {
+            issues.Add(tx);
+        }
+
+        List<OmittedItem> omitted = [];
+        int remaining = inventory.Systems.Count - offset - systems.Count;
+        if (remaining > 0)
+        {
+            omitted.Add(new OmittedItem($"{remaining} more code systems", "limit"));
+        }
+
+        List<NextCall> next = Next(usages, terminology, session, offset, pageSize, inventory.Systems.Count, topCodes);
+        var facts = new CodeSystemsCompactFacts(inventory.Systems.Count, offset, systems.Count, systems, terminology is null ? "not loaded" : "loaded");
+        return EnvelopeAssembler.Create<CodeSystemsCompactFacts?>(session, facts, session.Catalog.BuiltAt, [], omitted, [], issues, cancellationToken) with { Next = next };
     }
 
     private static ToolEnvelope<CodeSystemsFacts?> Answer(FolderSession session, int? count, int offset, int? top, CancellationToken cancellationToken)
@@ -247,12 +344,18 @@ public static partial class FolderCodeSystems
     };
 
     // Built from structure only: tool names, paging, and package ids of the HL7 packages that carry FHIR and HL7 Terminology systems.
-    private static List<NextCall> Next(List<CodeSystemUsage> systems, TerminologyState? terminology, FolderSession session, int offset, int pageSize, int total, int top)
+    private static List<NextCall> Next(List<CodeSystemUsage> systems, TerminologyState? terminology, FolderSession session, int offset, int pageSize, int total, int? top)
     {
         List<NextCall> next = [];
         if (offset + systems.Count < total)
         {
-            next.Add(new NextCall("folder_code_systems", new Dictionary<string, object> { ["offset"] = offset + systems.Count, ["count"] = pageSize, ["top"] = top }));
+            var args = new Dictionary<string, object> { ["offset"] = offset + systems.Count, ["count"] = pageSize };
+            if (top is int listed)
+            {
+                args["top"] = listed;
+            }
+
+            next.Add(new NextCall("folder_code_systems", args));
         }
 
         bool Missing(CodeSystemUsage system) => system.Terminology is null or { Loaded: not "local" };

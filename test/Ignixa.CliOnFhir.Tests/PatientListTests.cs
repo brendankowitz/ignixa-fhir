@@ -34,7 +34,7 @@ public class PatientListTests
             new PatientSummary("p3", null, "other", null, 1, null, null, ["demographics"]),
         ], ignoreOrder: false, comparer: new SummaryComparer());
         facts.Sort.ShouldBe("name");
-        facts.DateRule["Encounter"].ShouldBe("period.start");
+        facts.DateRule.ShouldBeNull();
         envelope.Evidence.Select(item => item.Reference).ShouldBe(["Patient/p1", "Patient/p2", "Patient/p3"]);
         envelope.Issues.ShouldBeEmpty();
     }
@@ -61,7 +61,7 @@ public class PatientListTests
 
         envelope.Facts.ShouldNotBeNull().Patients.Select(patient => patient.Id).ShouldBe(["p1", "p2"]);
         envelope.Omitted.ShouldBe([new OmittedItem("1 more patients (offset=2)", "limit")]);
-        envelope.Next.Select(call => call.Tool).ShouldBe(["patient_list", "context_get_root"]);
+        envelope.Next.Select(call => call.Tool).ShouldBe(["patient_list", "patient_context"]);
         envelope.Next[0].Args.ShouldBe(new Dictionary<string, object> { ["offset"] = 2, ["sort"] = "latest" }, ignoreOrder: true);
     }
 
@@ -123,7 +123,7 @@ public class PatientListTests
     private sealed class SummaryComparer : IEqualityComparer<PatientSummary>
     {
         public bool Equals(PatientSummary? x, PatientSummary? y) =>
-            x is not null && y is not null && x with { Domains = [] } == y with { Domains = [] } && x.Domains.SequenceEqual(y.Domains);
+            x is not null && y is not null && x with { Domains = [] } == y with { Domains = [] } && (x.Domains ?? []).SequenceEqual(y.Domains ?? []);
 
         public int GetHashCode(PatientSummary obj) => obj.Id.GetHashCode(StringComparison.Ordinal);
     }

@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.CliOnFhir.Catalog;
 using Ignixa.CliOnFhir.Contracts;
@@ -133,8 +134,64 @@ public static class ResourceSearcher
     private static ToolEnvelope<SearchFacts?> Execute(FolderSession session, SearchRequest request, int extraBytes, CancellationToken cancellationToken)
     {
         ValidatePaging(request);
-        (ParsedSearch parsed, FolderSearchSource source, InMemorySearchEngine engine, List<IndexedResource> matches, List<IssueItem> issues, List<OmittedItem> parseOmitted) = MatchAll(session, request);
-        int count = EffectiveCount(request.Count ?? parsed.RequestedCount, issues);
+        (ParsedSearch parsed, List<IssueItem> issues, List<OmittedItem> parseOmitted) = Parse(session, request);
+        string? perPatientSort = null;
+        if (request.PerPatient is { } pick)
+        {
+            perPatientSort = PerPatient.SortFor(pick, request.ResourceType, parsed);
+            if (perPatientSort is not null)
+            {
+                (parsed, issues, parseOmitted) = Parse(session, request with { Query = PerPatient.WithSort(request.Query, perPatientSort) });
+            }
+        }
+
+        IReadOnlyList<ColumnSearch.CompiledColumn>? columns = null;
+        FhirPath.Expressions.Expression? expression = null;
+        if (request.Columns is not null && request.FhirPath is not null)
+        {
+            throw ToolRequestException.Error("invalid-parameter", "Pass either 'columns' (a row per match) or 'fhirpath' (one value over every match), not both.");
+        }
+
+        if (request.Columns is { } requested)
+        {
+            RefuseBesideProjection("columns", request, parsed);
+            columns = ColumnSearch.Compile(requested);
+        }
+        else if (request.FhirPath is { } text)
+        {
+            RefuseBesideProjection("fhirpath", request, parsed);
+            if (request.Count is not null || request.Offset != 0 || parsed.RequestedCount is not null)
+            {
+                throw ToolRequestException.Error("invalid-parameter", "'fhirpath' is evaluated once over every match, so 'count', '_count' and 'offset' do not apply; leave them out.");
+            }
+
+            expression = ExpressionSearch.Compile(text);
+        }
+
+        int count = columns is null
+            ? EffectiveCount(request.Count ?? parsed.RequestedCount, issues)
+            : EffectiveCount(request.Count ?? parsed.RequestedCount, ColumnSearch.DefaultRows, ColumnSearch.MaxRows, issues);
+        int requestedBudget = ResponseBudget.Resolve(request.MaxBytes, session.MaxResponseBytes, issues);
+        int? largerBudget = requestedBudget < session.MaxResponseBytes ? session.MaxResponseBytes : null;
+        int budget = Math.Min(requestedBudget, session.MaxResponseBytes - extraBytes);
+        var source = new FolderSearchSource(session);
+        var engine = new InMemorySearchEngine(source, Features, session.Compartments);
+        List<IndexedResource> matches = Match(engine, source, parsed);
+        PerPatientFacts? perPatient = null;
+        if (request.PerPatient is { } chosen)
+        {
+            (matches, perPatient) = PerPatient.Select(session, request.ResourceType, matches, chosen, perPatientSort);
+            budget -= PerPatient.SizeOf(perPatient);
+        }
+
+        // The selection's facts are added to whichever response the search gives; the budget above kept room for them.
+        ToolEnvelope<SearchFacts?> WithSelection(ToolEnvelope<SearchFacts?> envelope) =>
+            perPatient is null || envelope.Facts is null ? envelope : envelope with { Facts = envelope.Facts with { PerPatient = perPatient } };
+
+        if (expression is not null)
+        {
+            return WithSelection(ExpressionSearch.Evaluate(session, source, request, parsed, expression, matches, issues, budget, cancellationToken));
+        }
 
         string query = QueryEcho.Of(request.Query ?? string.Empty);
         List<OmittedItem> omitted = [.. parseOmitted];
@@ -147,12 +204,17 @@ public static class ResourceSearcher
             issues.AddRange(ReferenceFollowChecks.UnresolvedReferences(source, new SearchOptions(parsed.Options) { Include = [], RevInclude = [] }, []));
             AddDiagnostics(session, source, issues, omitted);
             var countFacts = new SearchFacts(request.ResourceType, query, request.Compartment, matches.Count, request.Offset, Returned: 0, Resources: null);
-            return Envelope(session, source, countFacts, [], omitted, issues, cancellationToken);
+            return WithSelection(Envelope(session, source, countFacts, [], omitted, issues, cancellationToken));
         }
 
         if (request.Offset > 0 && request.Offset >= matches.Count)
         {
             issues.Add(new IssueItem("information", "offset-beyond-total", $"offset {request.Offset} is at or beyond the {matches.Count} matches, so no resources are returned.", Location: null));
+        }
+
+        if (columns is not null)
+        {
+            return WithSelection(ColumnSearch.Page(session, source, request, parsed, columns, matches, count, issues, budget, largerBudget, cancellationToken));
         }
 
         List<IndexedResource> page = [.. matches.Skip(request.Offset).Take(count)];
@@ -168,10 +230,24 @@ public static class ResourceSearcher
         AddDiagnostics(session, source, issues, omitted);
         issues.AddRange(NameIssues.For([.. page.Select(match => match.Entry), .. (included ?? []).Take(IncludeLimit).Select(resource => resource.Entry)]));
 
-        // The listed resolutions can only shrink once the resources are read, so reserving the candidates keeps the cap.
+        // The listed resolutions can only shrink once the resources are read, so each resource is charged for its candidates.
         Dictionary<string, Dictionary<string, string>> pageCandidates = ResolvedReferences.Candidates(page, ResolvedReferences.Limit);
-        int reserved = ReservedBytes(request, query, matches.Count, included, issues, omitted, pageCandidates) + extraBytes;
-        ResourceBatch batch = ResourceBatch.Collect(session.RootPath, [.. page.Select(match => match.Entry)], parsed.Elements, reserved, cancellationToken);
+        // The calls in next depend on whether the budget cuts the page, so the page is first read expecting that it is not and,
+        // when it is cut, again with room kept for the longer set of calls a size-cut page needs.
+        int pageEnd = request.Offset + page.Count;
+        List<CatalogEntry> pageEntries = [.. page.Select(match => match.Entry)];
+        Func<int, JsonObject, int> pageCosts = ResolvedReferences.Charge(page);
+        List<NextCall> uncutNext = pageEnd < matches.Count ? SearchNarrowing.After(request, matches.Count, pageEnd, cutBySize: false, largerBudget) : [];
+        ResourceBatch batch = ResourceBatch.Collect(session.RootPath, pageEntries, parsed.Elements, ReservedBytes(request, query, matches.Count, included, issues, omitted, uncutNext), budget, pageCosts, cancellationToken);
+        if (batch.Consumed < page.Count)
+        {
+            List<NextCall> cutNext = SearchNarrowing.After(request, matches.Count, pageEnd, cutBySize: true, largerBudget);
+            batch = ResourceBatch.Collect(session.RootPath, pageEntries, parsed.Elements, ReservedBytes(request, query, matches.Count, included, issues, omitted, cutNext), budget, pageCosts, cancellationToken);
+        }
+
+        int resume = request.Offset + batch.Consumed;
+        bool cutBySize = batch.Consumed < page.Count;
+        List<NextCall> next = resume < matches.Count ? SearchNarrowing.After(request, matches.Count, resume, cutBySize, largerBudget) : [];
         issues.AddRange(batch.Issues);
         omitted.AddRange(batch.Skipped);
         List<EvidenceItem> evidence = [.. batch.Evidence];
@@ -182,8 +258,8 @@ public static class ResourceSearcher
         {
             List<IndexedResource> wanted = [.. included.Take(IncludeLimit)];
             Dictionary<string, Dictionary<string, string>> includedCandidates = ResolvedReferences.Candidates(wanted, ResolvedReferences.Limit - ResolvedReferences.Count(resolved));
-            var pageOnly = new SearchFacts(request.ResourceType, query, request.Compartment, matches.Count, request.Offset, batch.Resources.Count, batch.Resources, [], ResolvedReferences.ToFacts(ResolvedReferences.Merge(resolved, includedCandidates)));
-            ResourceBatch includedBatch = CollectIncluded(session, pageOnly, included, evidence, omitted, issues, extraBytes, cancellationToken);
+            var pageOnly = new SearchFacts(request.ResourceType, query, request.Compartment, matches.Count, request.Offset, batch.Resources.Count, batch.Resources, [], ResolvedReferences.ToFacts(resolved));
+            ResourceBatch includedBatch = CollectIncluded(session, pageOnly, included, evidence, omitted, issues, next, budget, ResolvedReferences.Charge(wanted), cancellationToken);
             includedResources = includedBatch.Resources;
             (Dictionary<string, Dictionary<string, string>> includedShown, int includedNotListed) = ResolvedReferences.Shown(wanted, includedBatch, includedCandidates);
             resolved = ResolvedReferences.Merge(resolved, includedShown);
@@ -195,15 +271,13 @@ public static class ResourceSearcher
             omitted.Add(new OmittedItem($"{notListed} more resolved Bundle references in the returned resources (resolvedReferences lists at most {ResolvedReferences.Limit})", "limit"));
         }
 
-        int next = request.Offset + batch.Consumed;
-        if (next < matches.Count)
+        if (resume < matches.Count)
         {
-            string why = batch.Consumed < page.Count ? "size-budget" : "limit";
-            omitted.Add(new OmittedItem($"{matches.Count - next} more matches (offset={next})", why));
+            omitted.Add(new OmittedItem($"{matches.Count - resume} more matches (offset={resume})", cutBySize ? "size-budget" : "limit"));
         }
 
         var facts = new SearchFacts(request.ResourceType, query, request.Compartment, matches.Count, request.Offset, batch.Resources.Count, batch.Resources, includedResources, ResolvedReferences.ToFacts(resolved));
-        return Envelope(session, source, facts, evidence, omitted, issues, cancellationToken);
+        return WithSelection(Envelope(session, source, facts, evidence, omitted, issues, cancellationToken) with { Next = next });
     }
 
     private static bool HasIncludes(SearchOptions options) => options.Include.Count > 0 || options.RevInclude.Count > 0;
@@ -219,7 +293,9 @@ public static class ResourceSearcher
         List<EvidenceItem> evidence,
         List<OmittedItem> omitted,
         List<IssueItem> issues,
-        int extraBytes,
+        List<NextCall> pageNext,
+        int budget,
+        Func<int, JsonObject, int> extraBytes,
         CancellationToken cancellationToken)
     {
         List<CatalogEntry> wanted = [.. included.Take(IncludeLimit).Select(resource => resource.Entry)];
@@ -229,9 +305,12 @@ public static class ResourceSearcher
             [.. omitted, Placeholder, Placeholder, Placeholder],
             [],
             issues,
-            new FreshnessInfo(DateTimeOffset.MaxValue, StaleFiles: int.MaxValue))) + extraBytes;
+            new FreshnessInfo(DateTimeOffset.MaxValue, StaleFiles: int.MaxValue))
+        {
+            Next = pageNext,
+        });
 
-        ResourceBatch batch = ResourceBatch.Collect(session.RootPath, wanted, projection: null, reserved, cancellationToken);
+        ResourceBatch batch = ResourceBatch.Collect(session.RootPath, wanted, projection: null, reserved, budget, extraBytes, cancellationToken);
         evidence.AddRange(batch.Evidence);
         issues.AddRange(batch.Issues);
         omitted.AddRange(batch.Skipped);
@@ -254,10 +333,13 @@ public static class ResourceSearcher
     /// whose unindexable resources a chain or include would otherwise miss without a trace; and, first, for each of those
     /// types, the duplicates the catalog dropped, which the search never saw.
     /// </summary>
-    internal static void AddDiagnostics(FolderSession session, FolderSearchSource source, List<IssueItem> issues, List<OmittedItem> omitted)
+    internal static void AddDiagnostics(FolderSession session, FolderSearchSource source, List<IssueItem> issues, List<OmittedItem> omitted) =>
+        AddDiagnostics(session, [.. source.IndexesRead.Select(index => index.ResourceType)], [.. source.IndexesRead.SelectMany(index => index.Diagnostics)], issues, omitted);
+
+    /// <summary>The duplicate-id warnings of <paramref name="resourceTypes"/> and the first <paramref name="diagnostics"/>, the rest counted in <paramref name="omitted"/>.</summary>
+    internal static void AddDiagnostics(FolderSession session, IReadOnlyList<string> resourceTypes, IReadOnlyList<CatalogDiagnostic> diagnostics, List<IssueItem> issues, List<OmittedItem> omitted)
     {
-        issues.AddRange(DuplicateIdIssues.For(session.Catalog, source.IndexesRead.Select(index => index.ResourceType)));
-        List<CatalogDiagnostic> diagnostics = [.. source.IndexesRead.SelectMany(index => index.Diagnostics)];
+        issues.AddRange(DuplicateIdIssues.For(session.Catalog, resourceTypes));
         issues.AddRange(diagnostics.Take(FolderInspector.DefaultIssueLimit).Select(EnvelopeAssembler.ToIssue));
         if (diagnostics.Count > FolderInspector.DefaultIssueLimit)
         {
@@ -265,10 +347,10 @@ public static class ResourceSearcher
         }
     }
 
-    private static ToolEnvelope<SearchFacts?> Envelope(
+    internal static ToolEnvelope<SearchFacts?> Envelope(
         FolderSession session,
         FolderSearchSource source,
-        SearchFacts facts,
+        SearchFacts? facts,
         IReadOnlyList<EvidenceItem> evidence,
         IReadOnlyList<OmittedItem> omitted,
         IReadOnlyList<IssueItem> issues,
@@ -286,15 +368,18 @@ public static class ResourceSearcher
         List<IndexedResource>? included,
         List<IssueItem> issues,
         List<OmittedItem> omitted,
-        Dictionary<string, Dictionary<string, string>> resolved)
+        List<NextCall> next)
     {
         var skeleton = new ToolEnvelope<SearchFacts?>(
-            new SearchFacts(request.ResourceType, query, request.Compartment, total, request.Offset, Returned: 0, Resources: [], included is null ? null : [], ResolvedReferences.ToFacts(resolved)),
+            new SearchFacts(request.ResourceType, query, request.Compartment, total, request.Offset, Returned: 0, Resources: [], included is null ? null : [], ResolvedReferences: null),
             [],
             [.. omitted, .. Enumerable.Repeat(Placeholder, included is null ? 2 : 3)],
             [],
             issues,
-            new FreshnessInfo(DateTimeOffset.MaxValue, StaleFiles: int.MaxValue));
+            new FreshnessInfo(DateTimeOffset.MaxValue, StaleFiles: int.MaxValue))
+        {
+            Next = next,
+        };
         return EnvelopeJson.SizeOf(skeleton);
     }
 
@@ -311,15 +396,41 @@ public static class ResourceSearcher
         }
     }
 
-    internal static int EffectiveCount(int? requested, List<IssueItem> issues)
+    internal static int EffectiveCount(int? requested, List<IssueItem> issues) => EffectiveCount(requested, DefaultCount, MaxCount, issues);
+
+    private static int EffectiveCount(int? requested, int defaultCount, int maxCount, List<IssueItem> issues)
     {
-        if (requested > MaxCount)
+        if (requested > maxCount)
         {
-            issues.Add(new IssueItem("warning", "count-clamped", $"count {requested} exceeds the maximum of {MaxCount}, so {MaxCount} were returned per page; use offset to read further.", Location: null));
-            return MaxCount;
+            issues.Add(new IssueItem("warning", "count-clamped", $"count {requested} exceeds the maximum of {maxCount}, so {maxCount} were returned per page; use offset to read further.", Location: null));
+            return maxCount;
         }
 
-        return requested ?? DefaultCount;
+        return requested ?? defaultCount;
+    }
+
+    /// <summary>
+    /// Fails a request that pairs <c>columns</c> or <c>fhirpath</c> with something that returns or trims resources: they replace
+    /// the resources, and a column (or <c>resolve()</c> in the expression) reaches referenced resources an include would add.
+    /// </summary>
+    private static void RefuseBesideProjection(string name, SearchRequest request, ParsedSearch parsed)
+    {
+        if (parsed.CountOnly)
+        {
+            throw ToolRequestException.Error("invalid-parameter", $"'{name}' and summary=count do not combine: summary=count returns only the total. Use one of them.");
+        }
+
+        if (parsed.Elements is not null || request.Elements is not null)
+        {
+            throw ToolRequestException.Error("invalid-parameter", $"'{name}' replaces the returned resources, so 'elements' (or _elements) does not apply; leave it out.");
+        }
+
+        if (HasIncludes(parsed.Options))
+        {
+            throw ToolRequestException.Error(
+                "invalid-parameter",
+                $"'{name}' does not return included resources; follow the reference inside the expression instead, for example requester.resolve().name.first().family for _include=MedicationRequest:requester, and leave _include/_revinclude out.");
+        }
     }
 
     /// <summary>The indexed resources matching the query, in <c>_sort</c> order or else catalog order.</summary>

@@ -34,27 +34,34 @@ public sealed record ResourceBatch(
     /// </summary>
     public const int HeadroomBytes = 1024;
 
+    /// <summary>What the member that holds the extra bytes of the entries takes on its own (its name and separator), an overestimate.</summary>
+    private const int ExtraMemberBytes = 32;
+
     /// <summary>
     /// Reads <paramref name="entries"/> in order until all are read or the next resource would push the whole serialized
-    /// response past <see cref="EnvelopeJson.MaxBytes"/>. A resource that cannot fit even in an otherwise empty response
+    /// response past <paramref name="budget"/>. A resource that cannot fit even in an otherwise empty response
     /// is skipped and reported in <see cref="Skipped"/>, so paging moves past it instead of stalling on it.
     /// </summary>
     /// <param name="projection">Trims each resource when given; the budget applies to the trimmed size.</param>
     /// <param name="reservedBytes">The serialized size of the response without any of the batch's resources, evidence or issues.</param>
-    public static ResourceBatch Collect(string rootPath, IReadOnlyList<CatalogEntry> entries, ElementsProjection? projection, int reservedBytes, CancellationToken cancellationToken)
+    /// <param name="budget">The most the whole serialized response may take (see <see cref="ResponseBudget"/>).</param>
+    /// <param name="extraBytes">What an entry, by its index in <paramref name="entries"/> and its resource as it will be returned, adds to the response beyond the resource and its evidence; null for none.</param>
+    public static ResourceBatch Collect(string rootPath, IReadOnlyList<CatalogEntry> entries, ElementsProjection? projection, int reservedBytes, int budget, Func<int, JsonObject, int>? extraBytes, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(entries);
 
-        int limit = EnvelopeJson.MaxBytes - HeadroomBytes;
+        int limit = budget - HeadroomBytes;
+        HashSet<string> files = new(StringComparer.Ordinal);
         List<JsonNode> resources = [];
         List<EvidenceItem> evidence = [];
         List<IssueItem> issues = [];
         List<OmittedItem> skipped = [];
-        int used = reservedBytes;
+        int used = reservedBytes + (extraBytes is null ? 0 : ExtraMemberBytes);
         int consumed = 0;
-        foreach (CatalogEntry entry in entries)
+        for (int index = 0; index < entries.Count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            CatalogEntry entry = entries[index];
 
             ResourceReadResult read = ResourceReader.Read(rootPath, entry);
             if (read.Resource is not { } source)
@@ -73,7 +80,7 @@ public sealed record ResourceBatch(
 
             JsonObject resource = projection?.Apply(source) ?? source;
             var item = new EvidenceItem(ResourceReader.Describe(entry), entry.FilePath, entry.Line, entry.Offset);
-            int cost = Encoding.UTF8.GetByteCount(resource.ToJsonString(EnvelopeJson.Compact)) + EnvelopeJson.SizeOf(item) + 2;
+            int cost = Encoding.UTF8.GetByteCount(resource.ToJsonString(EnvelopeJson.Compact)) + EvidenceBytes(item, files) + (extraBytes?.Invoke(index, resource) ?? 0) + 2;
             if (reservedBytes + cost > limit)
             {
                 var notice = new OmittedItem($"{item.Reference} is {cost} bytes and exceeds the size budget; read it with read_resources (CLI: get) and elements", "size-budget");
@@ -96,10 +103,19 @@ public sealed record ResourceBatch(
 
             used += cost;
             consumed++;
+            files.Add(item.File);
             resources.Add(resource);
             evidence.Add(item);
         }
 
         return new ResourceBatch(resources, evidence, issues, skipped, consumed);
     }
+
+    /// <summary>
+    /// What <paramref name="item"/> adds to the serialized evidence (see <see cref="EvidenceJsonConverter"/>): a fixed
+    /// allowance for its keys and numbers (an overestimate) plus its reference, and its file name when
+    /// <paramref name="filesSeen"/> does not hold it yet.
+    /// </summary>
+    private static int EvidenceBytes(EvidenceItem item, HashSet<string> filesSeen) =>
+        80 + Encoding.UTF8.GetByteCount(item.Reference) + (filesSeen.Contains(item.File) ? 0 : Encoding.UTF8.GetByteCount(item.File) + 8);
 }

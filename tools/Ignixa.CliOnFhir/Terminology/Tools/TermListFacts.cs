@@ -5,7 +5,7 @@
 
 namespace Ignixa.CliOnFhir.Terminology.Tools;
 
-/// <summary>Facts of <c>terminology_list</c>.</summary>
+/// <summary>Facts of <c>terminology</c> list.</summary>
 /// <param name="InitialLoadMilliseconds">Wall time of the first load (downloads included).</param>
 /// <param name="HeapBytes">Managed heap after the most recent load.</param>
 /// <param name="WorkingSetBytes">Process working set after the most recent load.</param>

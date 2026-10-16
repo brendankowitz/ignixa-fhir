@@ -70,7 +70,7 @@ internal static partial class NodeKey
         {
             throw ToolRequestException.Error(
                 "invalid-node-key",
-                $"'{nodeKey}' is not a node key. Use one returned by context_get_root, context_expand or context_find: {string.Join(", ", DomainKeys)}, {ProblemPrefix}<id>, {EncounterPrefix}<id> or {LabPrefix}<system>|<code>.");
+                $"'{nodeKey}' is not a node key. Use one patient_context returned: {string.Join(", ", DomainKeys)}, {ProblemPrefix}<id>, {EncounterPrefix}<id> or {LabPrefix}<system>|<code>.");
         }
     }
 

@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.CliOnFhir.Catalog;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Indexing;
 using Ignixa.Search.Expressions;
@@ -25,16 +26,17 @@ internal static class ReferenceFollowChecks
 
     /// <summary>
     /// One <c>information</c> issue per reference parameter a chain, <c>_has</c> or include followed whose index holds
-    /// references the engine cannot follow: not a local <c>Type/id</c> (an absolute URL no Bundle entry's fullUrl matches, or
-    /// a bare id), or a canonical, which a parameter that also selects references (R5 <c>RequestOrchestration-participant</c>)
-    /// or <c>_include=*</c> skips. Read from the index entries of the parameter followed, over every resource of a chain's
+    /// references the engine cannot follow: not a local <c>Type/id</c> (an absolute URL no Bundle entry's fullUrl matches, a
+    /// bare id, or an id that is not a FHIR id, which a single-target parameter types as its target), or a canonical, which
+    /// a parameter that also selects references (R5 <c>RequestOrchestration-participant</c>) or <c>_include=*</c> skips. Read from the index entries of the parameter followed, over every resource of a chain's
     /// referencing type, the page and its included resources for a forward include, and every resource of a reverse
     /// include's source type.
     /// </summary>
     /// <remarks>
-    /// A <c>urn:</c> the folder index reported for the resource (<see cref="ReferenceResolution.UnresolvedUrns"/>) is not
-    /// counted here: it is reported once per type index as <see cref="BundleReferenceResolver.UnresolvedCode"/>, which every
-    /// search reading that index carries. Every other <c>urn:</c> (one in a <c>uri</c> element) is counted as before.
+    /// A <c>urn:</c> or conditional reference the folder index reported for the resource
+    /// (<see cref="ReferenceResolution.ReportedUnresolved"/>) is not counted here: it is reported once per type index as
+    /// <see cref="BundleReferenceResolver.UnresolvedCode"/>, which every search reading that index carries, with its reason.
+    /// Every other <c>urn:</c> (one in a <c>uri</c> element) is counted as before.
     /// </remarks>
     public static IEnumerable<IssueItem> UnresolvedReferences(FolderSearchSource source, SearchOptions options, IReadOnlyCollection<IndexedResource> pageAndIncluded)
     {
@@ -62,7 +64,7 @@ internal static class ReferenceFollowChecks
             .Select(count => new IssueItem(
                 "information",
                 UnresolvedCode,
-                $"{count.Count} references through {count.Key.ResourceType}:{count.Key.Parameter} are not local 'Type/id' references (canonicals, absolute URLs, bare ids, or a urn: in a uri element) and were not followed, so the chain or include may be missing resources.",
+                $"{count.Count} references through {count.Key.ResourceType}:{count.Key.Parameter} are not local 'Type/id' references (canonicals, absolute URLs, bare ids, ids that are not FHIR ids, or a urn: in a uri element) and were not followed, so the chain or include may be missing resources.",
                 Location: null));
     }
 
@@ -141,22 +143,19 @@ internal static class ReferenceFollowChecks
             && entry.Value switch
             {
                 UriSearchValue => true,
-                ReferenceSearchValue reference => NotLocal(reference) && !ReportedAsUnresolvedBundleReference(resource, reference),
+                ReferenceSearchValue reference => NotLocal(reference) && !resource.BundleReferences.ReportedUnresolved(BundleReferenceResolver.WrittenOf(reference)),
                 _ => false,
             }));
 
+    /// <summary>
+    /// Whether <paramref name="reference"/> is not a local <c>Type/id</c>. The indexer types any text under a single-target
+    /// parameter (<c>Encounter.serviceProvider</c> holding <c>Organization?identifier=...</c> or a <c>urn:</c> is indexed as
+    /// <c>Organization/&lt;that text&gt;</c>), so a type and an id are not enough: the id must be a FHIR id.
+    /// </summary>
     private static bool NotLocal(ReferenceSearchValue reference) =>
         reference.BaseUri is not null
         || string.IsNullOrEmpty(reference.ResourceType)
-        || string.IsNullOrEmpty(reference.ResourceId)
-        || BundleReferenceResolver.UrnOf(reference) is not null;
-
-    /// <summary>
-    /// Whether <paramref name="reference"/> is a <c>urn:</c> the folder index already reported for <paramref name="resource"/>
-    /// as an unresolved Bundle reference; any other <c>urn:</c> (one in a <c>uri</c> element, R4 <c>ConceptMap.sourceUri</c>) is counted here.
-    /// </summary>
-    private static bool ReportedAsUnresolvedBundleReference(IndexedResource resource, ReferenceSearchValue reference) =>
-        BundleReferenceResolver.UrnOf(reference) is { } urn && resource.BundleReferences.UnresolvedUrns.Contains(urn, StringComparer.Ordinal);
+        || !FhirIds.IsValid(reference.ResourceId);
 
     private static IEnumerable<ChainedExpression> Chains(Expression? expression) =>
         expression switch

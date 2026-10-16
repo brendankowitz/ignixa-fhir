@@ -5,7 +5,7 @@
 
 namespace Ignixa.CliOnFhir.Terminology.Tools;
 
-/// <summary>Facts of <c>terminology_validate_code</c>.</summary>
+/// <summary>Facts of <c>terminology</c> validate.</summary>
 /// <param name="Result"><c>valid</c>, <c>invalid</c> or <c>unknown</c> (the loaded terminology cannot tell; <paramref name="Reason"/> says why).</param>
 /// <param name="Reason">
 /// <c>code-in-system</c>, <c>code-in-value-set</c>, <c>code-not-in-version</c>, <c>not-in-value-set</c>,

@@ -155,6 +155,12 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return EvaluateDefineVariable(expression, focusElements, context);
         }
 
+        if (context.HostFunctions is { } hostFunctions && hostFunctions.TryGetValue(expression.FunctionName, out var hostFunction))
+        {
+            List<IReadOnlyList<IElement>> arguments = [.. expression.Arguments.Select(argument => (IReadOnlyList<IElement>)[.. EvaluateExpression(context.Focus, argument, context)])];
+            return hostFunction([.. focusElements], arguments);
+        }
+
         return DispatchFunctionCall(expression.FunctionName, focusElements, expression.Arguments, context);
     }
 

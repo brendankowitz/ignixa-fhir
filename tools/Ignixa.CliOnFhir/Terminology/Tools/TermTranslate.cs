@@ -9,7 +9,7 @@ using Ignixa.CliOnFhir.Session;
 namespace Ignixa.CliOnFhir.Terminology.Tools;
 
 /// <summary>
-/// <c>terminology_translate</c> / <c>cli-on-fhir term translate</c>: source system and code to targets through the loaded
+/// <c>terminology</c> translate / <c>cli-on-fhir term translate</c>: source system and code to targets through the loaded
 /// ConceptMaps (one named map, or every map with a group from the system), with R4 equivalence or R5 relationship.
 /// A group's <c>unmapped</c> rule applies to codes it does not list: <c>provided</c> and <c>fixed</c> are answered, an
 /// <c>other-map</c> is reported, not followed. Reverse translation and dependsOn conditions are not evaluated.

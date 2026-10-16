@@ -41,10 +41,14 @@ public sealed class TerminologySession
 
         _folder = folder;
         _options = options;
-        _acquisition = new PackageAcquisition(options.Store, options.FhirPackageCache, options.Registry, new FolderOverlap(folder.RootPath));
+        Overlap = new FolderOverlap(folder.RootPath);
+        _acquisition = new PackageAcquisition(options.Store, options.FhirPackageCache, options.Registry, Overlap);
     }
 
     public TerminologyOptions Options => _options;
+
+    /// <summary>Refuses a terminology cache (packages, RxClass answers) inside the data folder.</summary>
+    internal FolderOverlap Overlap { get; }
 
     /// <summary>The current state; null until a terminology call loaded it.</summary>
     public TerminologyState? Current => _state;
@@ -175,7 +179,7 @@ public sealed class TerminologySession
             }
         }
 
-        // Canonical conflicts are reported by each answer that uses one, and listed by terminology_list.
+        // Canonical conflicts are reported by each answer that uses one, and listed by terminology list.
         TerminologyStore store = TerminologyStore.Build(sources, _folder.UtcNow());
         (long heap, long workingSet) = Memory();
         return new TerminologyState(store, issues, stopwatch.ElapsedMilliseconds, heap, workingSet);

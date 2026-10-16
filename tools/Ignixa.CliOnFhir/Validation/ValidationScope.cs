@@ -67,10 +67,10 @@ internal sealed record ValidationScope(ValidationScopeFacts Facts, IReadOnlyList
     private static ValidationScope Compartment(FolderSession session, string patient)
     {
         PatientCompartment compartment = PatientCompartment.Load(session, patient);
-        List<CatalogEntry> entries = [.. compartment.Members.Select(member => member.Entry)];
-        string reference = FhirIds.Reference(compartment.Patient.Entry);
+        List<CatalogEntry> entries = [.. compartment.Members];
+        string reference = FhirIds.Reference(compartment.Patient);
         IssueItem[] issues = compartment.UnevaluableIssue(reference) is { } unevaluable ? [unevaluable] : [];
-        DateTimeOffset builtAt = compartment.Folder.IndexesRead.Select(index => index.BuiltAt).DefaultIfEmpty(session.Catalog.BuiltAt).Max();
+        DateTimeOffset builtAt = compartment.IndexBuiltAt;
         return new ValidationScope(new ValidationScopeFacts("patient", null, null, reference, entries.Count), entries, issues, [], builtAt);
     }
 

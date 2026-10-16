@@ -466,7 +466,7 @@ public class SearchSemanticsTests
             + string.Join('\n', Enumerable.Range(0, 60).Select(i =>
                 "{\"resourceType\":\"Observation\",\"id\":\"big" + i + "\",\"status\":\"final\",\"code\":{\"text\":\"a\"},\"valueString\":\"" + huge + "\"}")));
 
-        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Observation", Count: 50));
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Observation", Count: 50, MaxBytes: EnvelopeJson.MaxBytes));
 
         EnvelopeJson.SizeOf(envelope).ShouldBeLessThanOrEqualTo(EnvelopeJson.MaxBytes);
         Ids(envelope).ShouldBe(["o1", "fill"]);
@@ -485,7 +485,7 @@ public class SearchSemanticsTests
             + string.Join('\n', ids.Select(id => "{\"resourceType\":\"MedicationRequest\",\"id\":\"" + id + "\",\"status\":\"active\",\"intent\":\"order\",\"subject\":{\"reference\":\"Patient/x\"},\"note\":[{\"text\":\"" + new string('s', 600) + "\"}]}")));
         string[] references = ["MedicationRequest/first", .. ids.Select(id => "MedicationRequest/" + id)];
 
-        ToolEnvelope<Reading.ReadFacts?> envelope = Reading.ResourceFetcher.Read(Open(folder), references);
+        ToolEnvelope<Reading.ReadFacts?> envelope = Reading.ResourceFetcher.Read(Open(folder), references, maxBytes: EnvelopeJson.MaxBytes);
 
         EnvelopeJson.SizeOf(envelope).ShouldBeLessThanOrEqualTo(EnvelopeJson.MaxBytes);
         envelope.Facts.ShouldNotBeNull().Resources.Count.ShouldBeLessThan(references.Length);

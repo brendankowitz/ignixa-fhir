@@ -13,7 +13,7 @@ namespace Ignixa.CliOnFhir.Terminology.Tools;
 /// <param name="AlreadyLoaded">True when the session already had it; nothing was read again.</param>
 /// <param name="Source">What the package provided.</param>
 /// <param name="ElapsedMilliseconds">Wall time of this call, download included (and, on the first terminology call, the initial load).</param>
-/// <param name="CodeSystems">The CodeSystems it provided (at most 50 here; terminology_list pages the rest).</param>
+/// <param name="CodeSystems">The CodeSystems it provided (at most 50 here; terminology list pages the rest).</param>
 public sealed record TermLoadFacts(
     string Package,
     string Requested,

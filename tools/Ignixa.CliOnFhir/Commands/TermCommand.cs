@@ -4,7 +4,9 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.CommandLine;
+using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Session;
+using Ignixa.CliOnFhir.Terminology.DrugClasses;
 using Ignixa.CliOnFhir.Terminology.Tools;
 using Microsoft.Extensions.Logging;
 
@@ -19,7 +21,7 @@ internal static class TermCommand
 {
     public static Command Create()
     {
-        var command = new Command("term", "Terminology: look up, search, validate, navigate, expand and translate codes from FHIR npm packages and the folder");
+        var command = new Command("term", "Terminology: look up, search, validate, navigate, expand and translate codes from FHIR npm packages and the folder; drug classes from RxClass");
         command.Subcommands.Add(List());
         command.Subcommands.Add(Lookup());
         command.Subcommands.Add(Search());
@@ -29,6 +31,9 @@ internal static class TermCommand
         command.Subcommands.Add(Expand());
         command.Subcommands.Add(Translate());
         command.Subcommands.Add(Load());
+        command.Subcommands.Add(ClassSearch());
+        command.Subcommands.Add(ClassMembers());
+        command.Subcommands.Add(Classes());
         return command;
     }
 
@@ -99,9 +104,15 @@ internal static class TermCommand
     {
         Argument<string> valueSet = Required("valueSet", "The ValueSet url or url|version");
         var filter = new Option<string?>("--filter") { Description = "Keep codes whose display contains this text or whose code starts with it" };
+        var scope = new Option<string?>("--scope") { Description = "all (default) or folder: only the codes the folder's resources carry, with counts and the searches that find them" };
         (Option<int?> count, Option<int> offset) = Paging();
-        return Verb("expand", "A ValueSet's codes over the loaded terminology", [valueSet], [filter, count, offset], (parse, session, token) =>
-            TermExpand.ExpandAsync(session, parse.GetValue(valueSet), parse.GetValue(filter), parse.GetValue(count), parse.GetValue(offset), token));
+        return Verb("expand", "A ValueSet's codes over the loaded terminology (isa/<code> for a SNOMED CT hierarchy)", [valueSet], [filter, scope, count, offset], (parse, session, token) =>
+            parse.GetValue(scope) switch
+            {
+                TermExpandInFolder.FolderScope => Untyped(TermExpandInFolder.ExpandAsync(session, parse.GetValue(valueSet), parse.GetValue(filter), parse.GetValue(count), parse.GetValue(offset), token)),
+                null or "all" => Untyped(TermExpand.ExpandAsync(session, parse.GetValue(valueSet), parse.GetValue(filter), parse.GetValue(count), parse.GetValue(offset), token)),
+                string other => Task.FromResult(EnvelopeAssembler.Failure<object>(session, new IssueItem("error", "invalid-parameter", $"--scope is 'all' or 'folder', not '{other}'.", Location: null), token)),
+            });
     }
 
     private static Command Translate()
@@ -120,6 +131,36 @@ internal static class TermCommand
         return Verb("load", "Load a FHIR npm package's terminology, downloading it from packages.fhir.org when it is not stored", [package], [], (parse, session, token) =>
             TermLoad.LoadAsync(session, parse.GetValue(package), token));
     }
+
+    private static Command ClassSearch()
+    {
+        Argument<string> text = Required("text", "Words of the class name, for example \"beta blocker\" or statin; matched locally, never sent");
+        Option<string?> source = Source("ATC, VA, EPC, MOA (default all), comma-separated");
+        (Option<int?> count, Option<int> offset) = Paging();
+        return Verb("class-search", "Drug classes by name, from NLM RxClass (needs --rxclass-server)", [text], [source, count, offset], (parse, session, token) =>
+            TermClassSearch.SearchAsync(session, parse.GetValue(text), parse.GetValue(source), parse.GetValue(count), parse.GetValue(offset), token));
+    }
+
+    private static Command ClassMembers()
+    {
+        Argument<string> classId = Required("classId", "The RxClass class id, for example C07AB");
+        Option<string?> source = Source("ATC, VA, EPC or MOA");
+        source.Required = true;
+        var scope = new Option<string?>("--scope") { Description = "folder (default: only codes the folder's medication resources carry) or all" };
+        (Option<int?> count, Option<int> offset) = Paging();
+        return Verb("class-members", "RxNorm codes of a drug class that the folder uses, from NLM RxClass (needs --rxclass-server)", [classId], [source, scope, count, offset], (parse, session, token) =>
+            TermClassMembers.MembersAsync(session, parse.GetValue(classId), parse.GetValue(source), parse.GetValue(scope), parse.GetValue(count), parse.GetValue(offset), token));
+    }
+
+    private static Command Classes()
+    {
+        Argument<string> code = Required("code", "An RxNorm code (RxCUI), for example 866412");
+        Option<string?> source = Source("ATC, VA, EPC, MOA (default ATC,VA), comma-separated");
+        return Verb("classes", "The drug classes of an RxNorm code, from NLM RxClass (needs --rxclass-server)", [code], [source], (parse, session, token) =>
+            TermClasses.ClassesAsync(session, parse.GetValue(code), parse.GetValue(source), token));
+    }
+
+    private static Option<string?> Source(string description) => new("--source") { Description = description };
 
     private static Command Verb<TFacts>(string name, string description, Argument[] arguments, Option[] options, Func<ParseResult, FolderSession, CancellationToken, Task<Contracts.ToolEnvelope<TFacts>>> run)
     {
@@ -154,6 +195,14 @@ internal static class TermCommand
         });
 
         return command;
+    }
+
+    /// <summary>A call's envelope with its facts typed as object, for a verb whose answer type depends on an option.</summary>
+    private static async Task<ToolEnvelope<object?>> Untyped<TFacts>(Task<ToolEnvelope<TFacts?>> call)
+        where TFacts : class
+    {
+        ToolEnvelope<TFacts?> envelope = await call;
+        return new ToolEnvelope<object?>(envelope.Facts, envelope.Evidence, envelope.Omitted, envelope.Absent, envelope.Issues, envelope.Freshness) { Next = envelope.Next };
     }
 
     private static Argument<string> Required(string name, string description) => new(name) { Description = description };

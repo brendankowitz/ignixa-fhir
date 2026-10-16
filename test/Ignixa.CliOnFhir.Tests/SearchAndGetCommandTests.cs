@@ -4,8 +4,11 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.CommandLine;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ignixa.CliOnFhir.Commands;
+using Ignixa.CliOnFhir.Contracts;
+using Ignixa.CliOnFhir.Search;
 using Shouldly;
 using static Ignixa.CliOnFhir.Tests.SearchFixture;
 
@@ -100,7 +103,7 @@ public class SearchAndGetCommandTests
 
         exitCode.ShouldBe(0);
         ((string)output["absent"]![0]!["what"]!).ShouldBe("Patient/none");
-        ((string)output["evidence"]![0]!["file"]!).ShouldBe(PatientsFile);
+        ((string)output["evidence"]!["files"]![(int)output["evidence"]!["items"]![0]!["file"]!]!).ShouldBe(PatientsFile);
     }
 
     [Fact]
@@ -124,6 +127,48 @@ public class SearchAndGetCommandTests
 
         compact.TrimEnd().ShouldNotContain('\n');
         pretty.TrimEnd().ShouldContain('\n');
+    }
+
+    // CLI parity: --columns and --fhirpath print what the MCP tool's columns and fhirpath return for the same search.
+    [Fact]
+    public async Task GivenColumnsOnTheCli_WhenRun_ThenTheTableMatchesTheSearchersAndResolvesTheRequester()
+    {
+        using TestFolder folder = ProjectionFixture.Synthea();
+        const string Columns = """{"date":"authoredOn","drug":"(medication.ofType(CodeableConcept) | medication.ofType(Reference).resolve().code).coding.first().display","prescriber":"requester.resolve().name.first().family"}""";
+        ToolEnvelope<SearchFacts?> direct = ResourceSearcher.Search(Open(folder), new SearchRequest("MedicationRequest", "_sort=authoredon", Compartment: "Patient/pa", Columns: SearchColumn.FromJson(Columns)));
+
+        (int exitCode, JsonNode output) = await RunAsync(SearchCommand.Create(), "search", folder.Path, "MedicationRequest", "_sort=authoredon", "--compartment", "Patient/pa", "--columns", Columns, "--no-cache");
+
+        exitCode.ShouldBe(0);
+        output["facts"]!.ToJsonString().ShouldBe(JsonSerializer.SerializeToNode(direct.Facts, EnvelopeJson.Compact)!.ToJsonString());
+        ((string)output["facts"]!["rows"]![0]![3]!).ShouldBe("Marquardt");
+    }
+
+    [Fact]
+    public async Task GivenFhirPathOnTheCli_WhenRun_ThenTheValueIsPrinted()
+    {
+        using TestFolder folder = ProjectionFixture.Synthea();
+
+        (int exitCode, JsonNode output) = await RunAsync(SearchCommand.Create(), "search", folder.Path, "Observation", "code=http://loinc.org|4548-4", "--compartment", "Patient/pa", "--fhirpath", "entry.resource.value.ofType(Quantity).value.min()", "--no-cache");
+
+        exitCode.ShouldBe(0);
+        output["facts"]!["value"]!.ToJsonString().ShouldBe("[6.2]");
+        ((string)output["facts"]!["valueFrom"]!).ShouldBe("result-elements");
+    }
+
+    [Theory]
+    [InlineData("--columns", "[\"status\"]")]
+    [InlineData("--columns", "{\"bad\":\"status.(\"}")]
+    [InlineData("--fhirpath", "entry.(")]
+    public async Task GivenAnInvalidProjectionOnTheCli_WhenRun_ThenInvalidParameterIsPrintedAndExitCodeIsNonZero(string option, string value)
+    {
+        using TestFolder folder = Clinic();
+
+        (int exitCode, JsonNode output) = await RunAsync(SearchCommand.Create(), "search", folder.Path, "Patient", option, value, "--no-cache");
+
+        exitCode.ShouldNotBe(0);
+        output["facts"].ShouldBeNull();
+        ((string)output["issues"]![0]!["code"]!).ShouldBe("invalid-parameter");
     }
 
     [Fact]

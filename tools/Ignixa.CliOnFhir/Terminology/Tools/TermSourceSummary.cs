@@ -5,7 +5,7 @@
 
 namespace Ignixa.CliOnFhir.Terminology.Tools;
 
-/// <summary>One loaded source in <c>terminology_list</c>.</summary>
+/// <summary>One loaded source in <c>terminology</c> list.</summary>
 /// <param name="Name"><c>id@version</c> or <c>folder</c>.</param>
 /// <param name="Origin"><c>package-store</c>, <c>fhir-package-cache</c>, <c>downloaded</c> or <c>folder</c>.</param>
 /// <param name="FhirVersions">The FHIR versions the package declares.</param>

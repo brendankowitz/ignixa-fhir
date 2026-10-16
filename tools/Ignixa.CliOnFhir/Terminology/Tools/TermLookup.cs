@@ -8,7 +8,7 @@ using Ignixa.CliOnFhir.Session;
 
 namespace Ignixa.CliOnFhir.Terminology.Tools;
 
-/// <summary><c>terminology_lookup</c> / <c>cli-on-fhir term lookup</c>: one concept's display, definition, status, properties, designations and parents.</summary>
+/// <summary><c>terminology</c> lookup / <c>cli-on-fhir term lookup</c>: one concept's display, definition, status, properties, designations and parents.</summary>
 public static class TermLookup
 {
     public static Task<ToolEnvelope<TermLookupFacts?>> LookupAsync(FolderSession session, string? system, string? code, string? version, CancellationToken cancellationToken)
@@ -83,7 +83,7 @@ public static class TermLookup
 
         // Arguments are the caller's own system and code, never content from the CodeSystem.
         List<NextCall> next = concept.Children.Count > 0 && TermNext.Echoable(system) && TerminologyNames.Code(code) == code
-            ? [new NextCall("terminology_navigate", new Dictionary<string, object> { ["system"] = system, ["code"] = code, ["direction"] = "descendants" })]
+            ? [TermNext.Call("navigate", new Dictionary<string, object> { ["system"] = system, ["code"] = code, ["direction"] = "descendants" })]
             : [];
         return new TerminologyAnswer<TermLookupFacts>(facts, [entry.Origin.ToEvidence()], omitted, [], issues) { Next = next };
     }

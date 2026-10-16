@@ -93,7 +93,7 @@ public sealed class FolderIndexBuilder
 
         var resources = new List<IndexedResource>(entries.Length);
         var diagnostics = new List<CatalogDiagnostic>();
-        var unresolved = new List<(IndexedResource Resource, string Reference)>();
+        var unresolved = new List<(IndexedResource Resource, string Reference, UnresolvedConditional? Conditional)>();
         var crossScope = new List<(IndexedResource Resource, string Reference)>();
         foreach (var (resource, entryDiagnostics, crossScopeReferences) in results)
         {
@@ -101,7 +101,8 @@ public sealed class FolderIndexBuilder
             if (resource is not null)
             {
                 resources.Add(resource);
-                unresolved.AddRange(resource.BundleReferences.UnresolvedUrns.Select(urn => (resource, urn)));
+                unresolved.AddRange(resource.BundleReferences.UnresolvedUrns.Select(urn => (resource, urn, (UnresolvedConditional?)null)));
+                unresolved.AddRange(resource.BundleReferences.UnresolvedConditionals.Select(conditional => (resource, conditional.Reference, (UnresolvedConditional?)conditional)));
                 crossScope.AddRange(crossScopeReferences.Select(reference => (resource, reference)));
             }
         }
@@ -111,8 +112,9 @@ public sealed class FolderIndexBuilder
             diagnostics.Add(BundleDiagnostic(
                 BundleReferenceResolver.UnresolvedCode,
                 unresolved,
-                $"{unresolved.Count} urn: references in {resourceType} resources name no Bundle entry fullUrl in the folder, or name more than one resource, so they are indexed as written and reference searches, chains, includes and compartments do not follow them",
-                item => $"{Describe(item.Resource)} -> {FhirIds.Written(item.Reference)}"));
+                item => item.Resource,
+                $"{UnresolvedSummary(resourceType, unresolved)}, so they are indexed as written and reference searches, chains, includes and compartments do not follow them",
+                item => $"{Describe(item.Resource)} -> {FhirIds.Written(item.Reference)}{(item.Conditional is { } conditional ? $" ({conditional.Failure.Code})" : string.Empty)}"));
         }
 
         if (crossScope.Count > 0)
@@ -120,6 +122,7 @@ public sealed class FolderIndexBuilder
             diagnostics.Add(BundleDiagnostic(
                 BundleReferenceResolver.CrossScopeCode,
                 crossScope,
+                item => item.Resource,
                 $"{crossScope.Count} references in {resourceType} resources were resolved through a fullUrl outside their own Bundle (FHIR resolves Bundle references only within the Bundle; this relies on the urn:uuid or URL being unique across the folder)",
                 item => $"{Describe(item.Resource)} -> {FhirIds.Written(item.Reference)} = {FhirIds.Target(item.Resource.BundleReferences.Resolved[item.Reference])}"));
         }
@@ -162,14 +165,38 @@ public sealed class FolderIndexBuilder
         return (new IndexedResource(new ResourceKey(entry.ResourceType, entry.Id), entry, index, resolution), diagnostics, crossScope);
     }
 
-    /// <summary>One diagnostic for a type's Bundle references of one kind: how many (distinct per resource), located at the first, naming the first few.</summary>
-    private static CatalogDiagnostic BundleDiagnostic(
-        string code,
-        List<(IndexedResource Resource, string Reference)> items,
-        string summary,
-        Func<(IndexedResource Resource, string Reference), string> sample)
+    /// <summary>How many <c>urn:</c> and conditional references were left unresolved, the conditional ones counted per reason code.</summary>
+    private static string UnresolvedSummary(string resourceType, List<(IndexedResource Resource, string Reference, UnresolvedConditional? Conditional)> unresolved)
     {
-        CatalogEntry first = items[0].Resource.Entry;
+        List<string> parts = [];
+        int urns = unresolved.Count(item => item.Conditional is null);
+        if (urns > 0)
+        {
+            parts.Add($"{urns} urn: references in {resourceType} resources name no Bundle entry fullUrl in the folder, or name more than one resource");
+        }
+
+        UnresolvedConditional[] conditionals = [.. unresolved.Select(item => item.Conditional).OfType<UnresolvedConditional>()];
+        if (conditionals.Length > 0)
+        {
+            IEnumerable<string> reasons = ConditionalReferenceFailure.All
+                .Select(failure => (Failure: failure, Count: conditionals.Count(conditional => conditional.Failure == failure)))
+                .Where(reason => reason.Count > 0)
+                .Select(reason => $"{reason.Count} {reason.Failure.Code}: {reason.Failure.Explanation}");
+            parts.Add($"{conditionals.Length} conditional references in {resourceType} resources were not resolved ({string.Join("; ", reasons)})");
+        }
+
+        return string.Join(", and ", parts);
+    }
+
+    /// <summary>One diagnostic for a type's Bundle references of one kind: how many (distinct per resource), located at the first, naming the first few.</summary>
+    private static CatalogDiagnostic BundleDiagnostic<TItem>(
+        string code,
+        List<TItem> items,
+        Func<TItem, IndexedResource> resource,
+        string summary,
+        Func<TItem, string> sample)
+    {
+        CatalogEntry first = resource(items[0]).Entry;
         string more = items.Count > BundleReferenceResolver.SampleLimit ? $" (first {BundleReferenceResolver.SampleLimit})" : string.Empty;
         return new CatalogDiagnostic(code, first.FilePath, first.Line, $"{summary}{more}: {string.Join(", ", items.Take(BundleReferenceResolver.SampleLimit).Select(sample))}.");
     }
