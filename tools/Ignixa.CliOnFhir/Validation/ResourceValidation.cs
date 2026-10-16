@@ -25,6 +25,9 @@ internal sealed record ResourceValidation(CatalogEntry Entry, string Verdict, IR
     /// <summary>References whose target type could not be told, so their target type was not checked.</summary>
     public int UndeterminableReferences { get; init; }
 
+    /// <summary>References with only a display, which name no target to check.</summary>
+    public int DisplayOnlyReferences { get; init; }
+
     /// <summary>The verdict the issues give: invalid on any failure, unknown when a check did not conclude, otherwise valid.</summary>
     public static string VerdictOf(IReadOnlyList<ClassifiedIssue> issues)
     {

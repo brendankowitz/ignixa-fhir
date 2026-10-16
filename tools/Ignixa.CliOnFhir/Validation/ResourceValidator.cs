@@ -100,6 +100,7 @@ public static class ResourceValidator
         }
 
         List<CatalogEntry> page = [.. inScope.Skip(request.Offset).Take(limit)];
+        session.Validators.Terminology.BeginCall();
         List<IssueItem> requestIssues = [.. PagingNotes(request, limit, page.Count, inScope.Count)];
         var check = new ResourceCheck(
             session.RootPath,
@@ -144,9 +145,9 @@ public static class ResourceValidator
             [.. terminology.Store.Sources.Select(source => source.Info.Name)],
             session.Terminology.Options.TxServer is not null,
             DisplaysChecked: false,
-            ChecksNotRun(depth, validations.Sum(validation => validation.UndeterminableReferences)));
+            ChecksNotRun(depth, validations.Sum(validation => validation.UndeterminableReferences), validations.Sum(validation => validation.DisplayOnlyReferences)));
         var facts = new ValidateFacts(scope.Facts with { Total = inScope.Count }, against, request.Offset, validations.Count, summary.Verdicts, summary.NotChecked, [], groups.Count);
-        List<NextCall> nextCalls = Next(request, next < inScope.Count ? next : null, groups);
+        List<NextCall> nextCalls = Next(request, next < inScope.Count ? next : null, groups, omitted);
         return Fit(session, scope, facts, groups, request.Detail ? validations : null, omitted, issues, nextCalls, cancellationToken);
     }
 
@@ -307,12 +308,16 @@ public static class ResourceValidator
     }
 
     // Built from structure only: the request's own arguments, the next offset, and sample references (shape-checked ids).
-    private static List<NextCall> Next(ValidateRequest request, int? nextOffset, IReadOnlyList<(IssueGroup Group, IReadOnlyList<CatalogEntry> Samples)> groups)
+    private static List<NextCall> Next(ValidateRequest request, int? nextOffset, IReadOnlyList<(IssueGroup Group, IReadOnlyList<CatalogEntry> Samples)> groups, List<OmittedItem> omitted)
     {
         List<NextCall> next = [];
-        if (nextOffset is { } offset)
+        if (nextOffset is { } offset && QueryEcho.IsCut(request.Query))
         {
-            next.Add(new NextCall("validate_resources", Arguments(request, offset)));
+            omitted.Add(QueryEcho.NextLeftOut($"the next page (offset {offset})"));
+        }
+        else if (nextOffset is { } nextPage)
+        {
+            next.Add(new NextCall("validate_resources", Arguments(request, nextPage)));
         }
 
         if (!request.Detail && groups.FirstOrDefault(group => group.Group.Severity is "error" or "fatal").Samples is [var first, ..])
@@ -403,9 +408,9 @@ public static class ResourceValidator
 
     /// <summary>
     /// The checks that do not run at <paramref name="depth"/>, as facts state them, and the reference target checks that could
-    /// not run because the target's type could not be told (they leave verdicts as they are).
+    /// not run because the target's type could not be told or the reference has only a display (they leave verdicts as they are).
     /// </summary>
-    private static IReadOnlyList<string> ChecksNotRun(ValidationDepth depth, int undeterminableReferences)
+    private static IReadOnlyList<string> ChecksNotRun(ValidationDepth depth, int undeterminableReferences, int displayOnlyReferences)
     {
         List<string> notRun = depth == ValidationDepth.Spec
             ? ["invariants", "slicing", "extensible-bindings", "complex-choice-variants", "extensions", "displays"]
@@ -413,6 +418,11 @@ public static class ResourceValidator
         if (undeterminableReferences > 0)
         {
             notRun.Add($"{ValidationRules.ReferenceTargetType} (undeterminable: {undeterminableReferences})");
+        }
+
+        if (displayOnlyReferences > 0)
+        {
+            notRun.Add($"{ValidationRules.ReferenceTargetType} (display-only: {displayOnlyReferences})");
         }
 
         return notRun;

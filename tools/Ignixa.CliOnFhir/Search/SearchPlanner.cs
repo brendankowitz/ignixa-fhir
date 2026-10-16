@@ -77,20 +77,27 @@ public static class SearchPlanner
             planIssues.Add(new IssueItem("information", "invalid-value", $"{population.DigestedValues} top values are shown as digests ('~' and 16 hex digits): their system is not an http(s) or urn URI, or their code is not shaped as one. A search cannot use a digest.", Location: null));
         }
 
-        var facts = new PlanFacts(request.ResourceType, request.Query ?? string.Empty, request.Compartment, population.Indexed(request.ResourceType), parameters, execute);
+        var facts = new PlanFacts(request.ResourceType, QueryEcho.Of(request.Query ?? string.Empty), request.Compartment, population.Indexed(request.ResourceType), parameters, execute);
+        bool queryCut = QueryEcho.IsCut(request.Query);
         List<OmittedItem> diagnosticsOmitted = [.. parseOmitted];
         List<IssueItem> diagnostics = [];
         ResourceSearcher.AddDiagnostics(session, population.Source, diagnostics, diagnosticsOmitted);
         if (!execute)
         {
             DateTimeOffset builtAt = population.Source.IndexesRead.Select(index => index.BuiltAt).DefaultIfEmpty(session.Catalog.BuiltAt).Max();
-            List<NextCall> next = [Search(request)];
+            List<NextCall> next = queryCut ? [] : [Search(request)];
+            if (queryCut)
+            {
+                diagnosticsOmitted.Add(QueryEcho.Cut(request.Query!, "facts.query"));
+                diagnosticsOmitted.Add(QueryEcho.NextLeftOut("the search this plan checks"));
+            }
+
             PlanFit fit = PlanFit.Within(session, facts, [.. issues, .. diagnostics], planIssues, diagnosticsOmitted, next, EnvelopeJson.MaxBytes);
             return EnvelopeAssembler.Create<PlanFacts?>(session, fit.Facts, builtAt, [], fit.Omitted, [], fit.Issues, cancellationToken) with { Next = next };
         }
 
         // The search reports its own parse warnings and the diagnostics of the indexes it reads.
-        return WithResults(session, request, facts, planIssues, [], cancellationToken);
+        return WithResults(session, request, facts, planIssues, queryCut ? [QueryEcho.Cut(request.Query!, "facts.query")] : [], cancellationToken);
     }
 
     /// <summary>
@@ -113,14 +120,17 @@ public static class SearchPlanner
                 return new ToolEnvelope<PlanFacts?>(null, search.Evidence, search.Omitted, search.Absent, search.Issues, search.Freshness);
             }
 
-            var envelope = new ToolEnvelope<PlanFacts?>(fit.Facts with { Results = results }, search.Evidence, [.. search.Omitted, .. fit.Omitted], search.Absent, [.. search.Issues, .. fit.Issues], search.Freshness) { Next = search.Next };
+            // The search's own items name its facts, which are facts.results here.
+            List<OmittedItem> searchOmitted = [.. search.Omitted.Select(item => item.What.StartsWith("facts.", StringComparison.Ordinal) ? item with { What = "facts.results." + item.What["facts.".Length..] } : item)];
+            var envelope = new ToolEnvelope<PlanFacts?>(fit.Facts with { Results = results }, search.Evidence, [.. searchOmitted, .. fit.Omitted], search.Absent, [.. search.Issues, .. fit.Issues], search.Freshness) { Next = search.Next };
             int size = EnvelopeJson.SizeOf(envelope);
             if (size <= EnvelopeJson.MaxBytes || planBudget <= Slack)
             {
                 return envelope;
             }
 
-            planBudget = Math.Max(Slack, Math.Min(planBudget / 2, EnvelopeJson.MaxBytes - EnvelopeJson.SizeOf(search) - Slack));
+            // Each round the plan gets what the search's response leaves, and always less than the round before, so this ends.
+            planBudget = Math.Max(Slack, Math.Min(planBudget - Slack, EnvelopeJson.MaxBytes - EnvelopeJson.SizeOf(search) - Slack));
         }
     }
 

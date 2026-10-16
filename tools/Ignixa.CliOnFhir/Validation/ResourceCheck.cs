@@ -85,9 +85,8 @@ internal sealed class ResourceCheck(string rootPath, ProfileSet profiles, Valida
             applied.Add((profile, named));
         }
 
-        (IReadOnlyList<(ValidationIssue Raw, ClassifiedIssue Classified)> gaps, int undeterminable) =
-            ValidatorGapDetectors.Detect(element, coreUrl, applied, profiles.TypeOf, resourceTypes, bundleReferences(entry, resource));
-        foreach ((ValidationIssue gap, ClassifiedIssue summary) in gaps)
+        GapFindings gaps = ValidatorGapDetectors.Detect(element, coreUrl, applied, profiles.TypeOf, resourceTypes, bundleReferences(entry, resource));
+        foreach ((ValidationIssue gap, ClassifiedIssue summary) in gaps.Issues)
         {
             raw.Add(gap);
             classified.Add(summary);
@@ -100,7 +99,7 @@ internal sealed class ResourceCheck(string rootPath, ProfileSet profiles, Valida
             classified.Add(new ClassifiedIssue("information", coreUrl, ValidationRules.DepthSpec, null, null, entry.ResourceType));
         }
 
-        return new ResourceValidation(entry, ResourceValidation.VerdictOf(classified), classified, raw, null) { UndeterminableReferences = undeterminable };
+        return new ResourceValidation(entry, ResourceValidation.VerdictOf(classified), classified, raw, null) { UndeterminableReferences = gaps.UndeterminableReferences, DisplayOnlyReferences = gaps.DisplayOnlyReferences };
     }
 
     /// <summary>The requested profile, or else the resource's <c>meta.profile</c> canonicals, each once, without its core definition.</summary>

@@ -3,7 +3,6 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Collections.Concurrent;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Session;
 using Ignixa.CliOnFhir.Terminology.Tools;
@@ -39,7 +38,10 @@ internal sealed class StoreTerminologyService(FolderSession session) : ITerminol
 
     public const string TxUnavailableReason = "tx-server-unavailable";
 
-    private readonly ConcurrentDictionary<(string ValueSet, string? System, string Code, string? Version), Task<(string Result, string Reason)>> _remote = new();
+    private readonly RemoteBindingAnswers _remote = new();
+
+    /// <summary>Starts a validate call: terminology server questions that failed transiently may be asked again.</summary>
+    public void BeginCall() => _remote.BeginCall();
 
     /// <summary>Every rule token this adapter's messages start with.</summary>
     public static IReadOnlyList<string> Rules { get; } = [NotCheckedRule, ExtensibleNotCheckedRule, NotInValueSetRule, NotInExtensibleValueSetRule];
@@ -104,47 +106,9 @@ internal sealed class StoreTerminologyService(FolderSession session) : ITerminol
             return (local.Facts.Result, local.Facts.Reason);
         }
 
-        // One remote question per ValueSet, system and code for the session's lifetime: a folder repeats the same codes. Only
-        // a definitive answer stays cached: a failed or unavailable server is asked again (once more in this call), and a
-        // question another caller cancelled is asked again with this caller's token.
+        // One remote question per ValueSet, system and code: see RemoteBindingAnswers for what is kept and what is asked again.
         string why = TxFallback.Why(local.Absent, local.Facts.Reason);
-        (string, string?, string, string?) key = (valueSetUrl, system, code, version);
-        bool retried = false;
-        while (true)
-        {
-            Task<(string Result, string Reason)>? created = null;
-            Task<(string Result, string Reason)> asked = _remote.GetOrAdd(key, _ => created = AskRemoteAsync(tx, valueSetUrl, system, code, version, why, cancellationToken));
-            bool mine = ReferenceEquals(asked, created);
-            (string Result, string Reason) answer;
-            try
-            {
-                answer = await asked;
-            }
-            catch (OperationCanceledException) when (!mine && !cancellationToken.IsCancellationRequested)
-            {
-                // Another caller's question, cancelled by that caller's token: ask again with this one.
-                _remote.TryRemove(KeyValuePair.Create(key, asked));
-                continue;
-            }
-            catch (Exception)
-            {
-                _remote.TryRemove(KeyValuePair.Create(key, asked));
-                throw;
-            }
-
-            if (!answer.Reason.StartsWith(TxUnavailableReason, StringComparison.Ordinal))
-            {
-                return answer;
-            }
-
-            _remote.TryRemove(KeyValuePair.Create(key, asked));
-            if (retried)
-            {
-                return answer;
-            }
-
-            retried = true;
-        }
+        return await _remote.AnswerAsync(new BindingQuestion(valueSetUrl, system, code, version), token => AskRemoteAsync(tx, valueSetUrl, system, code, version, why, token), cancellationToken);
     }
 
     /// <summary>
@@ -167,17 +131,17 @@ internal sealed class StoreTerminologyService(FolderSession session) : ITerminol
 
     public Task<SubsumesResult> SubsumesAsync(SubsumesParameters parameters, CancellationToken cancellationToken) => throw NotProvided("$subsumes");
 
-    private async Task<(string Result, string Reason)> AskRemoteAsync(Remote.TxServerClient tx, string valueSet, string? system, string code, string? version, string why, CancellationToken cancellationToken)
+    private async Task<RemoteBindingAnswer> AskRemoteAsync(Remote.TxServerClient tx, string valueSet, string? system, string code, string? version, string why, CancellationToken cancellationToken)
     {
         try
         {
             TerminologyAnswer<TermValidateFacts> remote = await TxAnswers.ValidateAsync(tx, code, system, display: null, valueSet, version, why, session.UtcNow(), cancellationToken);
-            return (remote.Facts.Result, remote.Facts.Reason);
+            return new RemoteBindingAnswer(remote.Facts.Result, remote.Facts.Reason, TransientFailure.None);
         }
         catch (ToolRequestException ex)
         {
             // An unreachable or failing server decides nothing; the binding stays unchecked, with the server's issue code.
-            return (TermValidate.Unknown, $"{TxUnavailableReason} ({TerminologyNames.Token(ex.Issue.Code)})");
+            return new RemoteBindingAnswer(TermValidate.Unknown, $"{TxUnavailableReason} ({TerminologyNames.Token(ex.Issue.Code)})", ex.Transient);
         }
     }
 

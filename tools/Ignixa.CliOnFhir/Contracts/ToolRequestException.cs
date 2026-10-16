@@ -13,5 +13,9 @@ public sealed class ToolRequestException(IssueItem issue) : Exception(issue?.Dia
 {
     public IssueItem Issue { get; } = issue ?? throw new ArgumentNullException(nameof(issue));
 
-    public static ToolRequestException Error(string code, string diagnostics) => new(new IssueItem("error", code, diagnostics, Location: null));
+    /// <summary>For a remote request, whether asking again may succeed; <see cref="TransientFailure.None"/> otherwise.</summary>
+    public TransientFailure Transient { get; init; }
+
+    public static ToolRequestException Error(string code, string diagnostics, TransientFailure transient = TransientFailure.None) =>
+        new(new IssueItem("error", code, diagnostics, Location: null)) { Transient = transient };
 }

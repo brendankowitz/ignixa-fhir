@@ -136,8 +136,12 @@ public static class ResourceSearcher
         (ParsedSearch parsed, FolderSearchSource source, InMemorySearchEngine engine, List<IndexedResource> matches, List<IssueItem> issues, List<OmittedItem> parseOmitted) = MatchAll(session, request);
         int count = EffectiveCount(request.Count ?? parsed.RequestedCount, issues);
 
-        string query = request.Query ?? string.Empty;
+        string query = QueryEcho.Of(request.Query ?? string.Empty);
         List<OmittedItem> omitted = [.. parseOmitted];
+        if (QueryEcho.IsCut(request.Query))
+        {
+            omitted.Add(QueryEcho.Cut(request.Query!, "facts.query"));
+        }
         if (parsed.CountOnly)
         {
             issues.AddRange(ReferenceFollowChecks.UnresolvedReferences(source, new SearchOptions(parsed.Options) { Include = [], RevInclude = [] }, []));

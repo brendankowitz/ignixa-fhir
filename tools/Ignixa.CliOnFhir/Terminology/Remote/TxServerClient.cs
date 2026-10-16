@@ -164,7 +164,9 @@ public sealed class TxServerClient : IDisposable
 
             if (response.StatusCode != HttpStatusCode.OK)
             {
-                throw Error($"{what} answered HTTP {(int)response.StatusCode}{Outcome(resource)}{((int)response.StatusCode is >= 300 and < 400 ? "; redirects are not followed" : string.Empty)}");
+                throw Error(
+                    $"{what} answered HTTP {(int)response.StatusCode}{Outcome(resource)}{((int)response.StatusCode is >= 300 and < 400 ? "; redirects are not followed" : string.Empty)}",
+                    (int)response.StatusCode >= 500 ? TransientFailure.Unavailable : TransientFailure.None);
             }
 
             string? type = resource?["resourceType"]?.GetValueKind() == JsonValueKind.String ? (string)resource["resourceType"]! : null;
@@ -179,11 +181,11 @@ public sealed class TxServerClient : IDisposable
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw ToolRequestException.Error(UnavailableCode, $"The terminology server did not answer {what} within {_timeout.TotalSeconds:0} s; nothing was concluded from it.");
+            throw ToolRequestException.Error(UnavailableCode, $"The terminology server did not answer {what} within {_timeout.TotalSeconds:0} s; nothing was concluded from it.", TransientFailure.Timeout);
         }
         catch (HttpRequestException ex)
         {
-            throw ToolRequestException.Error(UnavailableCode, $"The terminology server could not be reached for {what} ({ex.HttpRequestError}); nothing was concluded from it.");
+            throw ToolRequestException.Error(UnavailableCode, $"The terminology server could not be reached for {what} ({ex.HttpRequestError}); nothing was concluded from it.", TransientFailure.Unavailable);
         }
     }
 
@@ -244,8 +246,8 @@ public sealed class TxServerClient : IDisposable
                 .Distinct(StringComparer.Ordinal)
             : [];
 
-    private static ToolRequestException Error(string reason) =>
-        ToolRequestException.Error(ErrorCode, $"The terminology server did not give a usable answer: {reason}. Nothing was concluded from it.");
+    private static ToolRequestException Error(string reason, TransientFailure transient = TransientFailure.None) =>
+        ToolRequestException.Error(ErrorCode, $"The terminology server did not give a usable answer: {reason}. Nothing was concluded from it.", transient);
 
     private static Uri WithTrailingSlash(Uri uri) => uri.AbsolutePath.EndsWith('/') ? uri : new Uri(uri.AbsoluteUri + "/");
 }

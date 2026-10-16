@@ -44,6 +44,9 @@ internal static class ValidationRules
     /// <summary>The resource has extensions, which Ignixa.Validation does not validate (see <see cref="ValidatorGapDetectors"/>).</summary>
     public const string ExtensionsNotValidated = "extensions-not-validated";
 
+    /// <summary>A reference whose <c>type</c> names another resource type than its <c>reference</c> does (see <see cref="ValidatorGapDetectors"/>).</summary>
+    public const string ReferenceTypeMismatch = "reference-type-mismatch";
+
     /// <summary>A reference to a resource type the element does not allow (see <see cref="ValidatorGapDetectors"/>).</summary>
     public const string ReferenceTargetType = "reference-target-type";
 

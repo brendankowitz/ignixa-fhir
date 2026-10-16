@@ -91,7 +91,13 @@ internal sealed record ValidationScope(ValidationScopeFacts Facts, IReadOnlyList
         string? patientReference = patient is null ? null : session.FindByName("Patient", patient) is { } owner ? FhirIds.Reference(owner) : $"Patient/{patient}";
         string kind = query is null ? (patient is null ? "type" : "patient") : "search";
         DateTimeOffset builtAt = match.Source.IndexesRead.Select(index => index.BuiltAt).DefaultIfEmpty(session.Catalog.BuiltAt).Max();
-        return new ValidationScope(new ValidationScopeFacts(kind, type, query, patientReference, entries.Count), entries, issues, [], builtAt) { Omitted = match.Omitted };
+        List<OmittedItem> omitted = [.. match.Omitted];
+        if (QueryEcho.IsCut(query))
+        {
+            omitted.Add(QueryEcho.Cut(query!, "facts.scope.query"));
+        }
+
+        return new ValidationScope(new ValidationScopeFacts(kind, type, query is null ? null : QueryEcho.Of(query), patientReference, entries.Count), entries, issues, [], builtAt) { Omitted = omitted };
     }
 
     private static ValidationScope References(FolderSession session, IReadOnlyList<string> references)

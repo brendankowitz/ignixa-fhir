@@ -25,6 +25,8 @@ internal sealed partial class ValidatorGapDetectors
     private readonly Func<string, string?> _profileType;
     private readonly IReadOnlySet<string> _resourceTypes;
     private readonly IReadOnlyDictionary<string, string> _resolved;
+    private readonly string _rootType;
+    private readonly Dictionary<string, string> _contained = new(StringComparer.Ordinal);
     private readonly List<(ValidationIssue Raw, ClassifiedIssue Classified)> _found = [];
 
     /// <param name="coreUrl">The core StructureDefinition core issues are attributed to.</param>
@@ -32,20 +34,32 @@ internal sealed partial class ValidatorGapDetectors
     /// <param name="profileType">The resource type a target profile canonical constrains, or null when it cannot be told.</param>
     /// <param name="resourceTypes">The FHIR version's resource type names.</param>
     /// <param name="resolved">The resource's Bundle references as written and the <c>Type/id</c> they resolve to in the folder.</param>
-    private ValidatorGapDetectors(string coreUrl, IReadOnlyList<(LoadedProfile Profile, string Name)> profiles, Func<string, string?> profileType, IReadOnlySet<string> resourceTypes, IReadOnlyDictionary<string, string> resolved)
+    /// <param name="resource">The resource, whose contained resources <c>#id</c> references name.</param>
+    private ValidatorGapDetectors(IElement resource, string coreUrl, IReadOnlyList<(LoadedProfile Profile, string Name)> profiles, Func<string, string?> profileType, IReadOnlySet<string> resourceTypes, IReadOnlyDictionary<string, string> resolved)
     {
         _coreUrl = coreUrl;
         _profiles = profiles;
         _profileType = profileType;
         _resourceTypes = resourceTypes;
         _resolved = resolved;
+        _rootType = resource.InstanceType ?? resource.Name;
+        foreach (IElement contained in resource.Children("contained"))
+        {
+            if (contained.Children("id") is [{ Value: string id }, ..] && contained.InstanceType is { } type && resourceTypes.Contains(type))
+            {
+                _contained.TryAdd(id, type);
+            }
+        }
     }
 
-    /// <summary>References whose target type could not be told (an unresolved urn, a contained <c>#</c>, an identifier only): not checked.</summary>
+    /// <summary>References whose target type could not be told (an unresolved urn, an identifier only): not checked.</summary>
     public int UndeterminableReferences { get; private set; }
 
+    /// <summary>References with only a <c>display</c>: nothing to check.</summary>
+    public int DisplayOnlyReferences { get; private set; }
+
     /// <summary>The skipped-check issues of <paramref name="resource"/>, each with its summary form, and the references it could not check.</summary>
-    public static (IReadOnlyList<(ValidationIssue Raw, ClassifiedIssue Classified)> Issues, int UndeterminableReferences) Detect(
+    public static GapFindings Detect(
         IElement resource,
         string coreUrl,
         IReadOnlyList<(LoadedProfile Profile, string Name)> profiles,
@@ -55,9 +69,9 @@ internal sealed partial class ValidatorGapDetectors
     {
         ArgumentNullException.ThrowIfNull(resource);
 
-        var detectors = new ValidatorGapDetectors(coreUrl, profiles, profileType, resourceTypes, resolved);
-        detectors.Walk(resource, resource.InstanceType ?? resource.Name);
-        return (detectors._found, detectors.UndeterminableReferences);
+        var detectors = new ValidatorGapDetectors(resource, coreUrl, profiles, profileType, resourceTypes, resolved);
+        detectors.Walk(resource, detectors._rootType);
+        return new GapFindings(detectors._found, detectors.UndeterminableReferences, detectors.DisplayOnlyReferences);
     }
 
     /// <summary>Visits every element with its definition path (indexes dropped, a choice variant as <c>value[x]</c>).</summary>
@@ -142,15 +156,78 @@ internal sealed partial class ValidatorGapDetectors
     }
 
     /// <summary>
-    /// Task 9b gap (reference-target-types): Ignixa.Validation has no reference target check (<c>ElementDefinition.type.targetProfile</c> is never evaluated),
-    /// so <c>Observation.subject</c> referencing an Organization passes. Here a reference whose target type can be told (a
-    /// relative <c>Type/id</c>, an absolute RESTful URL, a <c>urn:</c> the folder's Bundles resolve, or <c>Reference.type</c>) and
-    /// that the element's allowed types (the core definition's, narrowed by each profile's target profiles) do not include is
-    /// <c>reference-target-type</c>, an error. One whose type cannot be told (an unresolved urn, a contained <c>#</c>, an
-    /// identifier only) is counted in <see cref="UndeterminableReferences"/> and leaves the verdict as it is: no validator can
-    /// check it without the target.
+    /// Task 9b gap (reference-target-types): Ignixa.Validation has no reference target check (<c>ElementDefinition.type.targetProfile</c>
+    /// is never evaluated), so <c>Observation.subject</c> referencing an Organization passes. Here:
+    /// <list type="bullet">
+    /// <item>The reference's own type is told from <c>reference</c>: a relative <c>Type/id</c>, an absolute URL ending in
+    /// <c>Type/id</c> (any id, for a foreign server), a <c>urn:</c> the folder's Bundles resolve, or a <c>#id</c> naming one of
+    /// the resource's contained resources. When it is told and <c>Reference.type</c> names another type, the reference is
+    /// <c>reference-type-mismatch</c>, an error.</item>
+    /// <item>The type checked against the element's allowed types (the core definition's, narrowed by each profile's target
+    /// profiles) is the reference's own, else <c>Reference.type</c>; one not allowed is <c>reference-target-type</c>, an error.</item>
+    /// <item>A reference whose type cannot be told (an unresolved urn, an identifier only, a profile target the session cannot
+    /// map) is counted in <see cref="UndeterminableReferences"/>, one with only a
+    /// <c>display</c> in <see cref="DisplayOnlyReferences"/>; either leaves the verdict as it is, since no validator can check it
+    /// without the target.</item>
+    /// </list>
     /// </summary>
     private void ReferenceTarget(IElement element, string definitionPath)
+    {
+        string? written = element.Children("reference") is [{ Value: string text }, ..] ? text : null;
+        string? own = written is null ? null : TypeOfReference(written);
+        string? declared = element.Children("type") is [{ Value: string type }, ..] ? TypeName(type) : null;
+        if (own is not null && declared is not null && own != declared)
+        {
+            var mismatch = new ValidationIssue(
+                IssueSeverity.Error,
+                ValidationRules.ReferenceTypeMismatch,
+                element.Location,
+                $"{ValidationRules.ReferenceTypeMismatch}: the reference is to a {own}, but its type says {declared}");
+            _found.Add((mismatch, new ClassifiedIssue("error", _coreUrl, ValidationRules.ReferenceTypeMismatch, null, null, IssuePath.Normalize(element.Location))));
+        }
+
+        List<(IReadOnlyCollection<string>? Allowed, string Profile)> constraints = Constraints(element, definitionPath);
+        if (constraints.Count == 0 || constraints.All(constraint => constraint.Allowed is null))
+        {
+            return;
+        }
+
+        if (own is null && written is ['#', ..])
+        {
+            // A #id naming nothing contained: the validator reports it (ref-resolve), so it is not counted here.
+            return;
+        }
+
+        string? target = own ?? declared;
+        if (target is null && written is null && element.Children("identifier").Count == 0 && element.Children("display").Count > 0)
+        {
+            DisplayOnlyReferences++;
+            return;
+        }
+
+        if (target is null || constraints.Any(constraint => constraint.Allowed is { Count: 0 }))
+        {
+            // The target's type, or what a profile allows, cannot be told.
+            UndeterminableReferences++;
+            return;
+        }
+
+        if (constraints.FirstOrDefault(constraint => constraint.Allowed is not null && !constraint.Allowed.Contains(target)) is ({ } allowed, { } profile))
+        {
+            var raw = new ValidationIssue(
+                IssueSeverity.Error,
+                ValidationRules.ReferenceTargetType,
+                element.Location,
+                $"{ValidationRules.ReferenceTargetType}: the reference is to a {target}, which this element does not allow ({string.Join(", ", allowed.Order(StringComparer.Ordinal))})");
+            _found.Add((raw, new ClassifiedIssue("error", profile, ValidationRules.ReferenceTargetType, null, null, IssuePath.Normalize(element.Location))));
+        }
+    }
+
+    /// <summary>
+    /// What each definition lets the reference at <paramref name="definitionPath"/> point to: null for anything, empty when a
+    /// profile's target profiles cannot all be mapped to a type.
+    /// </summary>
+    private List<(IReadOnlyCollection<string>? Allowed, string Profile)> Constraints(IElement element, string definitionPath)
     {
         List<(IReadOnlyCollection<string>? Allowed, string Profile)> constraints = [];
         if (element.Type is ITypeExtended { ReferenceTargets: { Count: > 0 } core } && !core.Contains("Resource"))
@@ -169,61 +246,44 @@ internal sealed partial class ValidatorGapDetectors
             constraints.Add((types.Contains("Resource") ? null : types.Any(type => type is null) ? [] : [.. types.OfType<string>()], profileName));
         }
 
-        if (constraints.Count == 0 || constraints.All(constraint => constraint.Allowed is null))
-        {
-            return;
-        }
-
-        List<string> written = [.. TypesOf(element)];
-        if (written.Count == 0 || constraints.Any(constraint => constraint.Allowed is { Count: 0 }))
-        {
-            // The target's type, or what a profile allows, cannot be told.
-            UndeterminableReferences++;
-            return;
-        }
-
-        foreach ((IReadOnlyCollection<string>? allowed, string profile) in constraints.Where(constraint => constraint.Allowed is not null))
-        {
-            if (written.FirstOrDefault(type => !allowed!.Contains(type)) is { } wrong)
-            {
-                var raw = new ValidationIssue(
-                    IssueSeverity.Error,
-                    ValidationRules.ReferenceTargetType,
-                    element.Location,
-                    $"{ValidationRules.ReferenceTargetType}: the reference is to a {wrong}, which this element does not allow ({string.Join(", ", allowed!.Order(StringComparer.Ordinal))})");
-                _found.Add((raw, new ClassifiedIssue("error", profile, ValidationRules.ReferenceTargetType, null, null, IssuePath.Normalize(element.Location))));
-                return;
-            }
-        }
+        return constraints;
     }
 
-    /// <summary>The resource types the reference names: by its <c>reference</c> and by its <c>type</c>; empty when neither tells.</summary>
-    private IEnumerable<string> TypesOf(IElement reference)
-    {
-        if (reference.Children("reference") is [{ Value: string written }, ..] && TypeOfReference(written) is { } byReference)
-        {
-            yield return byReference;
-        }
-
-        if (reference.Children("type") is [{ Value: string declared }, ..] && TypeName(declared) is { } byType)
-        {
-            yield return byType;
-        }
-    }
-
+    /// <summary>The resource type <paramref name="written"/> names, or null when it cannot be told.</summary>
     private string? TypeOfReference(string written)
     {
+        if (written.StartsWith('#'))
+        {
+            // "#" alone is the container itself; "#id" one of its contained resources.
+            return written.Length == 1 ? _rootType : _contained.GetValueOrDefault(written[1..]);
+        }
+
         string target = _resolved.GetValueOrDefault(written) ?? written;
-        Match match = Restful().Match(target);
-        return match.Success && _resourceTypes.Contains(match.Groups["type"].Value) ? match.Groups["type"].Value : null;
+        Match relative = Relative().Match(target);
+        if (relative.Success)
+        {
+            return Known(relative.Groups["type"].Value);
+        }
+
+        return Uri.TryCreate(target, UriKind.Absolute, out Uri? uri) && uri.Scheme is "http" or "https" ? TypeOfUrl(uri) : null;
     }
+
+    /// <summary>An absolute URL's type: the segment before the id, or before <c>id/_history/vid</c>; the id may be any segment.</summary>
+    private string? TypeOfUrl(Uri uri)
+    {
+        string[] segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        int typeIndex = segments.Length >= 4 && segments[^2] == "_history" ? segments.Length - 4 : segments.Length - 2;
+        return typeIndex >= 0 && uri.Query.Length == 0 && uri.Fragment.Length == 0 ? Known(segments[typeIndex]) : null;
+    }
+
+    private string? Known(string type) => _resourceTypes.Contains(type) ? type : null;
 
     /// <summary><c>Reference.type</c>: a resource type name, or the core StructureDefinition url of one.</summary>
     private string? TypeName(string declared)
     {
         const string CorePrefix = "http://hl7.org/fhir/StructureDefinition/";
         string name = declared.StartsWith(CorePrefix, StringComparison.Ordinal) ? declared[CorePrefix.Length..] : declared;
-        return _resourceTypes.Contains(name) ? name : null;
+        return Known(name);
     }
 
     private static string Named(string canonical)
@@ -232,7 +292,7 @@ internal sealed partial class ValidatorGapDetectors
         return TerminologyNames.Canonical(url, version);
     }
 
-    // A relative Type/id or an absolute RESTful URL ending in Type/id, optionally with /_history/vid.
-    [GeneratedRegex("^(?:https?://[^\\s]+/)?(?<type>[A-Z][A-Za-z]{1,63})/[A-Za-z0-9\\-\\.]{1,64}(?:/_history/[A-Za-z0-9\\-\\.]{1,64})?$")]
-    private static partial Regex Restful();
+    // A relative Type/id (a FHIR id), optionally with /_history/vid.
+    [GeneratedRegex("^(?<type>[A-Z][A-Za-z]{1,63})/[A-Za-z0-9\\-\\.]{1,64}(?:/_history/[A-Za-z0-9\\-\\.]{1,64})?$")]
+    private static partial Regex Relative();
 }

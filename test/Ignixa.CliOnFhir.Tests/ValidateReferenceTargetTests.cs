@@ -27,7 +27,6 @@ public class ValidateReferenceTargetTests
     [InlineData("""{"resourceType":"Observation","id":"r","status":"final","code":{"text":"x"},"subject":{"reference":"Organization/o1"}}""", "Observation.subject")]
     [InlineData("""{"resourceType":"Patient","id":"r","managingOrganization":{"reference":"Patient/p2"}}""", "Patient.managingOrganization")]
     [InlineData("""{"resourceType":"Patient","id":"r","managingOrganization":{"reference":"https://example.org/fhir/Patient/p2/_history/3"}}""", "Patient.managingOrganization")]
-    [InlineData("""{"resourceType":"Patient","id":"r","managingOrganization":{"reference":"Organization/o1","type":"Patient"}}""", "Patient.managingOrganization")]
     public async Task GivenAReferenceToATypeTheElementDoesNotAllow_WhenValidated_ThenTheResourceIsInvalidUnderReferenceTargetType(string resource, string path)
     {
         using var folder = new TestFolder();
@@ -70,15 +69,14 @@ public class ValidateReferenceTargetTests
         folder.Write("r.ndjson", """
             {"resourceType":"Patient","id":"urn","managingOrganization":{"reference":"urn:uuid:9b1f6c1e-0000-4000-8000-000000000001"}}
             {"resourceType":"Patient","id":"logical","managingOrganization":{"identifier":{"system":"http://example.org/orgs","value":"o1"}}}
-            {"resourceType":"Patient","id":"contained","contained":[{"resourceType":"Organization","id":"org","name":"x"}],"managingOrganization":{"reference":"#org"}}
             """);
         using var store = new TestFolder();
 
         JsonNode result = Json(await ResourceValidator.ValidateAsync(WithTerminology(folder, store), new ValidateRequest(Depth: "full")));
 
-        ((int)result["facts"]!["verdicts"]!["valid"]!).ShouldBe(3);
+        ((int)result["facts"]!["verdicts"]!["valid"]!).ShouldBe(2);
         Rules(result).ShouldNotContain(Rule);
-        Strings(result["facts"]!["against"]!["checksNotRun"]!).ShouldContain("reference-target-type (undeterminable: 3)");
+        Strings(result["facts"]!["against"]!["checksNotRun"]!).ShouldContain("reference-target-type (undeterminable: 2)");
     }
 
     // Regression: at 29aa44d the urn naming the Bundle's Organization entry was not resolved, so the Observation was not invalid.
