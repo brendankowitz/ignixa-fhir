@@ -138,10 +138,11 @@ internal sealed class ProfileSet
 
     /// <summary>
     /// Gives each profile without a snapshot the rules it inherits: those of its <c>baseDefinition</c>, followed through the
-    /// loaded profiles, each overriding its parent's per element, up to a core definition or a profile with a snapshot (which
-    /// states every inherited rule). A chain with a link that is not loaded (or a cycle) cannot have a snapshot generated, so
-    /// Ignixa's layering leaves that profile unusable and resources claiming it are <c>profile-not-loaded</c>; it is never
-    /// applied with the rules it has.
+    /// loaded profiles, each overriding its parent's per element, up to a definition with a snapshot (which states every
+    /// inherited rule) or one that is not loaded. A core canonical is followed like any other when it is loaded (a core
+    /// package's vitalsigns, say); a resource type's own definition comes from a core package with its snapshot, so it ends the walk.
+    /// A chain with a link that is not loaded (or a cycle) cannot have a snapshot generated, so Ignixa's layering leaves that
+    /// profile unusable and resources claiming it are <c>profile-not-loaded</c>; it is never applied with the rules it has.
     /// </summary>
     private static void InheritRules(List<LoadedProfile> profiles, IReadOnlyList<(string? BaseDefinition, bool HasSnapshot)> links)
     {
@@ -161,7 +162,7 @@ internal sealed class ProfileSet
             List<IReadOnlyDictionary<string, ProfileElementRule>> chain = [own[index].Elements];
             HashSet<int> visited = [index];
             int current = index;
-            while (!links[current].HasSnapshot && links[current].BaseDefinition is { } parent && !parent.StartsWith(CorePrefix, StringComparison.Ordinal)
+            while (!links[current].HasSnapshot && links[current].BaseDefinition is { } parent
                 && (byCanonical.TryGetValue(parent, out int next) || byCanonical.TryGetValue(TerminologyStore.SplitCanonical(parent).Url, out next)) && visited.Add(next))
             {
                 chain.Add(own[next].Elements);

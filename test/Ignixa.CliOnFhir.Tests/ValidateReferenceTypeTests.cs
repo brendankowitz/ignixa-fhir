@@ -97,6 +97,25 @@ public class ValidateReferenceTypeTests
         Strings(result["facts"]!["against"]!["checksNotRun"]!).ShouldNotContain(item => item.StartsWith(TargetType, StringComparison.Ordinal));
     }
 
+    // Regression (round 4, 406a06e): an absolute URL whose last segment is a page (.html), or an id longer than FHIR allows,
+    // was typed by the segment before it and reported as a reference to that type.
+    [Fact]
+    public async Task GivenAbsoluteUrlsWhoseLastSegmentIsNotAnId_WhenValidated_ThenTheirTypeIsNotToldFromThePath()
+    {
+        using var folder = new TestFolder();
+        folder.Write("r.ndjson", $$$"""
+            {"resourceType":"Patient","id":"page","managingOrganization":{"reference":"https://portal.example.org/Practitioner/profile.html"}}
+            {"resourceType":"Patient","id":"long","managingOrganization":{"reference":"https://portal.example.org/Practitioner/{{{new string('a', 65)}}}"}}
+            """);
+        using var store = new TestFolder();
+
+        JsonNode result = await ValidateAsync(folder, store);
+
+        ((int)result["facts"]!["verdicts"]!["valid"]!).ShouldBe(2);
+        Rules(result).ShouldNotContain(TargetType);
+        Strings(result["facts"]!["against"]!["checksNotRun"]!).ShouldContain("reference-target-type (undeterminable: 2)");
+    }
+
     // Regression: at a5cace5 a display-only reference was counted as undeterminable.
     [Fact]
     public async Task GivenADisplayOnlyReference_WhenValidated_ThenItIsCountedAsDisplayOnlyNotUndeterminable()

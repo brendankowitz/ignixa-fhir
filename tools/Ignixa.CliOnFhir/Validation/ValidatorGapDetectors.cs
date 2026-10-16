@@ -268,13 +268,20 @@ internal sealed partial class ValidatorGapDetectors
         return Uri.TryCreate(target, UriKind.Absolute, out Uri? uri) && uri.Scheme is "http" or "https" ? TypeOfUrl(uri) : null;
     }
 
-    /// <summary>An absolute URL's type: the segment before the id, or before <c>id/_history/vid</c>; the id may be any segment.</summary>
+    /// <summary>
+    /// An absolute URL's type: the segment before the id, or before <c>id/_history/vid</c>. The id need not be a FHIR id (a
+    /// foreign server's <c>abc_def</c> is one), but a URL with a query, a fragment, a page (<c>.html</c>) or an id longer than
+    /// FHIR allows is not a reference to a resource, so its type is not told.
+    /// </summary>
     private string? TypeOfUrl(Uri uri)
     {
         string[] segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
         int typeIndex = segments.Length >= 4 && segments[^2] == "_history" ? segments.Length - 4 : segments.Length - 2;
-        return typeIndex >= 0 && uri.Query.Length == 0 && uri.Fragment.Length == 0 ? Known(segments[typeIndex]) : null;
+        return typeIndex >= 0 && uri.Query.Length == 0 && uri.Fragment.Length == 0 && PlausibleId(segments[typeIndex + 1]) ? Known(segments[typeIndex]) : null;
     }
+
+    private static bool PlausibleId(string segment) =>
+        segment.Length <= 64 && !segment.EndsWith(".html", StringComparison.OrdinalIgnoreCase) && !segment.EndsWith(".htm", StringComparison.OrdinalIgnoreCase);
 
     private string? Known(string type) => _resourceTypes.Contains(type) ? type : null;
 

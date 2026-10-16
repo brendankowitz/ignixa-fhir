@@ -18,8 +18,10 @@ namespace Ignixa.CliOnFhir.Terminology;
 /// once, then the failure stands for the rest of the validate call (<see cref="BeginCall"/>), so a failing question costs at
 /// most two requests per call, never two per resource. A timeout is not asked again in the call: it already waited the
 /// full timeout.</item>
-/// <item>After <see cref="BreakerThreshold"/> transient failures in a row (a timeout counts as all of them) the server is not
-/// asked again in the call: every question not already answered is <c>tx-server-unavailable (not-asked)</c> at once.</item>
+/// <item>After <see cref="BreakerThreshold"/> different questions have failed transiently in a row, with no success between
+/// them, or after one timeout, the server is not asked again in the call: every question not already answered is
+/// <c>tx-server-unavailable (not-asked)</c> at once. A question's retry is the same question, so one question that fails
+/// twice costs the call its two requests and nothing more; a success closes the breaker again.</item>
 /// <item>A caller waiting on a question another caller cancelled asks it again with its own token.</item>
 /// </list>
 /// Safe to use concurrently; concurrent validate calls share it, so one call's <see cref="BeginCall"/> lets the other ask
@@ -27,7 +29,7 @@ namespace Ignixa.CliOnFhir.Terminology;
 /// </summary>
 internal sealed class RemoteBindingAnswers
 {
-    /// <summary>Transient failures in a row after which the server is not asked again in the call.</summary>
+    /// <summary>Different questions failing transiently in a row after which the server is not asked again in the call.</summary>
     public const int BreakerThreshold = 2;
 
     /// <summary>The reason given for a question not asked because the server failed repeatedly in this call.</summary>
@@ -35,13 +37,17 @@ internal sealed class RemoteBindingAnswers
 
     private readonly ConcurrentDictionary<BindingQuestion, Task<RemoteBindingAnswer>> _asked = new();
     private readonly ConcurrentDictionary<BindingQuestion, (string Result, string Reason)> _failedThisCall = new();
-    private int _consecutiveFailures;
+
+    // The questions that failed transiently since the last success (a set: a question's retry adds nothing), and whether
+    // one of them timed out, which opens the breaker by itself.
+    private readonly ConcurrentDictionary<BindingQuestion, byte> _failingSinceSuccess = new();
+    private int _timedOutSinceSuccess;
 
     /// <summary>Starts a validate call: questions that failed transiently are asked again, and the breaker closes.</summary>
     public void BeginCall()
     {
         _failedThisCall.Clear();
-        Interlocked.Exchange(ref _consecutiveFailures, 0);
+        CloseBreaker();
     }
 
     /// <summary>The answer to <paramref name="question"/>, asking the server with <paramref name="ask"/> when needed.</summary>
@@ -63,7 +69,7 @@ internal sealed class RemoteBindingAnswers
             }
 
             Task<RemoteBindingAnswer>? created = null;
-            Task<RemoteBindingAnswer> asked = _asked.GetOrAdd(question, _ => created = CountedAsync(ask, cancellationToken));
+            Task<RemoteBindingAnswer> asked = _asked.GetOrAdd(question, _ => created = CountedAsync(question, ask, cancellationToken));
             bool mine = ReferenceEquals(asked, created);
             RemoteBindingAnswer answer;
             try
@@ -98,18 +104,28 @@ internal sealed class RemoteBindingAnswers
         }
     }
 
-    private bool BreakerOpen => Volatile.Read(ref _consecutiveFailures) >= BreakerThreshold;
+    private bool BreakerOpen => Volatile.Read(ref _timedOutSinceSuccess) == 1 || _failingSinceSuccess.Count >= BreakerThreshold;
 
-    private async Task<RemoteBindingAnswer> CountedAsync(Func<CancellationToken, Task<RemoteBindingAnswer>> ask, CancellationToken cancellationToken)
+    private void CloseBreaker()
+    {
+        _failingSinceSuccess.Clear();
+        Volatile.Write(ref _timedOutSinceSuccess, 0);
+    }
+
+    private async Task<RemoteBindingAnswer> CountedAsync(BindingQuestion question, Func<CancellationToken, Task<RemoteBindingAnswer>> ask, CancellationToken cancellationToken)
     {
         RemoteBindingAnswer answer = await ask(cancellationToken);
-        if (answer.Failure == TransientFailure.None)
+        switch (answer.Failure)
         {
-            Interlocked.Exchange(ref _consecutiveFailures, 0);
-        }
-        else
-        {
-            Interlocked.Add(ref _consecutiveFailures, answer.Failure == TransientFailure.Timeout ? BreakerThreshold : 1);
+            case TransientFailure.None:
+                CloseBreaker();
+                break;
+            case TransientFailure.Timeout:
+                Volatile.Write(ref _timedOutSinceSuccess, 1);
+                break;
+            default:
+                _failingSinceSuccess[question] = 0;
+                break;
         }
 
         return answer;
