@@ -42,6 +42,29 @@ public class LabValueDisagreementTests
     }
 
     [Fact]
+    public void GivenUrineAndSerumGlucose_WhenMapped_ThenTheyAreDifferentTestsAndAreNeitherPairedNorSaidToDisagree()
+    {
+        IReadOnlyList<string> quirks = Quirks(
+            Creatinine("g1", "2345-7", "Glucose [Mass/volume] in Serum or Plasma", "2026-08-16T10:00:00Z", "67"),
+            Creatinine("g2", "25428-4", "Glucose [Mass/volume] in Urine by Test strip", "2026-08-16T10:00:00Z", "1.8"),
+            Creatinine("g3", "2339-0", "Glucose [Mass/volume] in Blood", "2026-08-16T10:00:00Z", "70"));
+
+        quirks.ShouldContain(quirk => quirk.StartsWith("Glucose: ", StringComparison.Ordinal) && quirk.Contains("loinc|2339-0", StringComparison.Ordinal) && quirk.Contains("loinc|2345-7", StringComparison.Ordinal) && quirk.EndsWith("(2026-08-16: 70 vs 67 mg/dL); check which code the question means", StringComparison.Ordinal));
+        quirks.ShouldNotContain(quirk => quirk.Contains("25428-4", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void GivenTwoUrineGlucoseCodes_WhenMapped_ThenTheyAreGroupedAmongThemselvesAsUrine()
+    {
+        IReadOnlyList<string> quirks = Quirks(
+            Creatinine("g1", "5792-7", "Glucose [Mass/volume] in Urine by Test strip", "2026-08-16T10:00:00Z", "1"),
+            Creatinine("g2", "25428-4", "Glucose [Mass/volume] in Urine", "2026-08-15T10:00:00Z", "1"),
+            Creatinine("g3", "2345-7", "Glucose [Mass/volume] in Serum or Plasma", "2026-08-16T10:00:00Z", "67"));
+
+        quirks.Count(quirk => quirk.StartsWith("Glucose (urine): ", StringComparison.Ordinal) && quirk.Contains("5792-7", StringComparison.Ordinal) && quirk.Contains("25428-4", StringComparison.Ordinal)).ShouldBe(1);
+    }
+
+    [Fact]
     public void GivenTheSameValuesAtTheSameInstant_WhenMapped_ThenTheQuirkOnlyNamesTheCodes()
     {
         IReadOnlyList<string> quirks = Quirks(

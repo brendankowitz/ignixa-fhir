@@ -93,6 +93,8 @@ public class CodeSystemNotInFolderTests
     [InlineData("Patient", "_id=nobody")]
     [InlineData("Patient", "gender=http://hl7.org/fhir/administrative-gender|male")]
     [InlineData("Patient", "gender=male")]
+    [InlineData("Condition", "clinical-status=entered")]
+    [InlineData("Condition", "verification-status=entered")]
     [InlineData("Condition", "code:text=nothing")]
     [InlineData("Condition", "subject:Patient.name=nobody")]
     public void GivenAParameterThatIsNotACodingLookup_WhenSearchedAndEmpty_ThenThereIsNoIssue(string type, string query)
@@ -148,6 +150,16 @@ public class CodeSystemNotInFolderTests
 
         envelope.Facts!.Total.ShouldBe(0);
         envelope.Issues.ShouldNotContain(issue => issue.Code == Code);
+    }
+
+    [Fact]
+    public void GivenAnUnusedSystemArgumentAndNoType_WhenNothingMatches_ThenTheSentenceReadsWithALowerCaseFolder()
+    {
+        using TestFolder folder = SnomedConditions();
+
+        ToolEnvelope<CodeTextFacts?> envelope = FolderCodeSystems.SearchText(SearchFixture.Open(folder), "heart", resourceType: null, system: Icd10, patient: null, count: null, offset: 0, CancellationToken.None);
+
+        envelope.Issues.Single(issue => issue.Code == Code).Diagnostics.ShouldContain("; the folder's resources use ");
     }
 
     [Fact]

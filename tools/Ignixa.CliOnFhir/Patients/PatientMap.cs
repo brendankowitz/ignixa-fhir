@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Globalization;
+using System.Text.RegularExpressions;
 using Ignixa.Abstractions;
 using Ignixa.CliOnFhir.Catalog;
 using Ignixa.CliOnFhir.Contracts;
@@ -17,7 +18,7 @@ namespace Ignixa.CliOnFhir.Patients;
 /// agent the whole record's shape (domains with counts and their first items, what is absent, how the data is coded) and the
 /// cheapest call for each kind of question. The domains follow the same rules as the full digest (<see cref="ContextRoot"/>).
 /// </summary>
-public static class PatientMap
+public static partial class PatientMap
 {
     // Each line costs about 110 bytes with its resource reference, so these hold a typical record's map near 4 KB.
 
@@ -248,7 +249,7 @@ public static class PatientMap
         // The codes that disagree at the same instant come first: they are what a question can silently get wrong.
         IEnumerable<string> analytes = context.Labs
             .Where(series => Analyte(series.Summary.Item.Display) is not null)
-            .GroupBy(series => Analyte(series.Summary.Item.Display)!, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(series => AnalyteGroup(series.Summary.Item.Display!), StringComparer.OrdinalIgnoreCase)
             .Where(group => group.Count() > 1)
             .Select(group => (Group: group, Disagreement: Disagreement(group.ToList())))
             .OrderBy(analyte => analyte.Disagreement.Length == 0)
@@ -338,6 +339,17 @@ public static class PatientMap
         string analyte = (bracket > 0 ? display[..bracket] : display).Trim();
         return analyte.Length == 0 ? null : Cut(analyte);
     }
+
+    /// <summary>
+    /// The key codes are grouped under as one test: the analyte, with " (urine)" when the display names a urine specimen
+    /// ("in Urine", "in Urine by Test strip"). A urine test and a blood-derived one (Blood, Serum, Plasma) are different tests
+    /// and are never grouped; any other specimen groups as before.
+    /// </summary>
+    private static string AnalyteGroup(string display) =>
+        Analyte(display)! + (UrineSpecimen().IsMatch(display) ? " (urine)" : string.Empty);
+
+    [GeneratedRegex(@"\bin\s+urine\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex UrineSpecimen();
 
     /// <summary>A display as a line shows it: without SNOMED CT's trailing semantic tag ("(disorder)"), cut to <see cref="MaxDisplay"/>.</summary>
     private static string Shown(string display, string? code)

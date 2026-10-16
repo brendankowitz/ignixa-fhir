@@ -25,6 +25,9 @@ internal sealed class CodedParameterUse
     {
     }
 
+    /// <summary>The FHIRPath expression of the search parameter, as the first indexed coding's parameter states it; null when none is indexed.</summary>
+    public string? Expression { get; private set; }
+
     /// <summary>Whether any resource holds a coding with a system in the parameter; otherwise it is not a coded parameter.</summary>
     public bool IsCoded => _systemCodings.Count > 0;
 
@@ -59,6 +62,7 @@ internal sealed class CodedParameterUse
                     continue;
                 }
 
+                use.Expression ??= entry.SearchParameter.Expression;
                 use._codes.Add(code);
                 string? system = token.System is { Length: > 0 } written ? written : null;
                 if (use._codings.Add((system, code)) && system is not null)

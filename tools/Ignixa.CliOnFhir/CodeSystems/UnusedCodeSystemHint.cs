@@ -50,7 +50,7 @@ internal static class UnusedCodeSystemHint
         }
 
         CodeSystemInventory inventory = CodeSystemInventories.For(session.Catalog, session.Schema, cancellationToken);
-        return CodeHeld(inventory, code) || OnlyImpliedSystems(inventory, resourceType, use)
+        return CodeHeld(inventory, code) || OnlyImpliedSystems(inventory, resourceType, use) || RequiredBinding.Covers(session.Schema, use.Expression)
             ? null
             : Issue($"No {resourceType} in this folder has the code {Cut(code)} in any coding system; {resourceType}s here use {Listed(use.Systems)}. {Advice}");
     }
@@ -78,7 +78,7 @@ internal static class UnusedCodeSystemHint
             .Where(tally => tally.Elements.Any(element => InType(element.Element)))
             .Select(tally => tally.System)];
         string whose = resourceType ?? "resource";
-        string where = resourceType is null ? "The folder's resources use" : $"{resourceType}s here use";
+        string where = resourceType is null ? "the folder's resources use" : $"{resourceType}s here use";
         return Issue($"No {whose} in this folder is coded in {Cut(system)}; {where} {Listed(systemsHere)}. {Advice}");
     }
 
