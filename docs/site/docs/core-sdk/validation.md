@@ -191,7 +191,8 @@ Checks (includes Minimal, plus):
   no coding from the ValueSet)
 - Fixed value constraints
 - Pattern constraints
-- Coding.system must be absolute URI
+- Coding.system must be absolute URI, wherever the Coding appears (a choice variant such as `valueCodeableConcept`
+  and an extension value included; before these were validated, a relative system there was accepted)
 - Every extension, wherever it appears (including a primitive's `_field` shadow), as the Extension datatype: `url`
   present, one `value[x]` of an allowed type, its value's datatype rules
 

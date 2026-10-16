@@ -208,6 +208,18 @@ definitions. Selecting a lower tier does not disable logical-ID validation. See
 [Validation depths](/docs/core-sdk/validation#validation-depths) for what each tier
 checks and reports.
 
+:::note Behaviour change: checks now reach choice variants and extensions
+Spec-tier rules that already applied to a plain element now also apply inside a
+choice variant (`valueCodeableConcept`, `valueQuantity`, ...) and an extension's value,
+where they were previously skipped. A write the server accepted before can now be
+rejected at the default `Spec` depth: for example, an Observation whose
+`valueCodeableConcept.coding.system` is a relative reference such as `"system1"` now
+fails `coding-system-absolute`, as `Observation.code.coding.system = "system1"` always
+did and as the HL7 validator reports it. A CodeableConcept with text only under a
+required binding, and a reference to a resource type its element does not allow, are
+also rejected at `Spec`. `Compatibility` depth keeps accepting all three.
+:::
+
 Logical IDs must contain 1–64 ASCII letters, digits, hyphens, or periods. Narrative
 `text.div` must be a well-formed XHTML `div` in the XHTML namespace, using FHIR's
 permitted formatting subset without active content. Escaped markup and ordinary
