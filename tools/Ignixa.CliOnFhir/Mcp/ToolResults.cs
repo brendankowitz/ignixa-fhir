@@ -33,7 +33,14 @@ internal static class ToolResults
     /// <c>freshness</c> when no file changed since the index was built. A call that could not be answered, or whose folder is
     /// stale or unreadable, keeps its freshness.
     /// </summary>
-    public static CallToolResult Lean<TFacts>(ToolEnvelope<TFacts> envelope)
+    public static CallToolResult Lean<TFacts>(ToolEnvelope<TFacts> envelope) => new()
+    {
+        Content = [new TextContentBlock { Text = LeanJson(envelope) }],
+        IsError = envelope.Facts is null,
+    };
+
+    /// <summary>The JSON <see cref="Lean{TFacts}"/> puts in its text content.</summary>
+    public static string LeanJson<TFacts>(ToolEnvelope<TFacts> envelope)
     {
         ArgumentNullException.ThrowIfNull(envelope);
 
@@ -49,10 +56,6 @@ internal static class ToolResults
             node.Remove("freshness");
         }
 
-        return new CallToolResult
-        {
-            Content = [new TextContentBlock { Text = node.ToJsonString(EnvelopeJson.Compact) }],
-            IsError = envelope.Facts is null,
-        };
+        return node.ToJsonString(EnvelopeJson.Compact);
     }
 }

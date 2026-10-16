@@ -15,12 +15,22 @@ namespace Ignixa.CliOnFhir.Mcp;
 
 /// <summary>MCP tools that search and read resources in the folder this server was started on.</summary>
 [McpServerToolType]
-public sealed class ResourceTools(FolderSession session)
+public sealed class ResourceTools(FolderSession session, McpToolset toolset = McpToolset.All)
 {
+    private const string QuerySearchDescription = """
+        FHIR search over one resource type. Every search parameter, _sort and _count included, goes inside 'query': 'code=http://loinc.org|4548-4&date=ge2020&_sort=-date'.
+        - compartment=Patient/<id>: one patient, no lookup first.
+        - columns: a table of FHIRPath values per match; .resolve() follows references: {"drug":"medication.ofType(Reference).resolve().code.coding.first().display","by":"requester.resolve().name.first().family"}
+        - summary=count: how many.
+        - MedicationRequest code= matches medicationCodeableConcept only; medicationReference: 'medication:Medication.code=...'.
+        Check 'issues'. help: search, columns, paging, issues.
+        """;
+
     /// <summary>The argument names <c>search_fhir_resources</c> takes, as the client sends them.</summary>
     private static readonly IReadOnlySet<string> SearchArguments = ToolArguments.Names(typeof(ResourceTools).GetMethod(nameof(SearchFhirResources))!);
 
     [McpServerTool(Name = "search_fhir_resources", ReadOnly = true, Idempotent = true)]
+    [QueryToolset(Description = QuerySearchDescription, HiddenArguments = ["fhirpath", "maxBytes"])]
     [Description("""
         FHIR search over one resource type. Every search parameter, _sort and _count included, goes inside 'query': 'code=http://loinc.org|4548-4&date=ge2020&_sort=-date'.
         - compartment=Patient/<id>: one patient, no lookup first.
@@ -47,7 +57,26 @@ public sealed class ResourceTools(FolderSession session)
         CancellationToken cancellationToken = default)
     {
         var request = new SearchRequest(resourceType, query, count, offset, summary, elements, lenient, compartment, maxBytes, columns is null ? null : SearchColumn.From(columns), fhirpath, perPatient);
-        return ToolResults.Lean(ToolArguments.CheckSearch(session, SearchArguments, context?.Params?.Arguments?.Keys, lenient, () => ResourceSearcher.Search(session, request, cancellationToken), cancellationToken));
+        if (toolset == McpToolset.Query && OutsideQueryToolset(request) is { } outside)
+        {
+            return ToolResults.Lean(EnvelopeAssembler.Failure<SearchFacts>(session, new IssueItem("error", "invalid-parameter", outside, Location: null), cancellationToken));
+        }
+
+        ToolEnvelope<SearchFacts?> envelope = ToolArguments.CheckSearch(session, SearchArguments, context?.Params?.Arguments?.Keys, lenient, () => ResourceSearcher.Search(session, request, cancellationToken), cancellationToken);
+        return ToolResults.Lean(toolset == McpToolset.Query ? envelope with { Next = [.. envelope.Next.Where(call => !call.Args.ContainsKey("fhirpath"))] } : envelope);
+    }
+
+    /// <summary>Why <paramref name="request"/> needs <see cref="McpToolset.All"/>: the <c>fhirpath</c> mode, or <c>patientSearch()</c> in a column.</summary>
+    private static string? OutsideQueryToolset(SearchRequest request)
+    {
+        if (request.FhirPath is not null && request.Columns is null)
+        {
+            return "'fhirpath' is offered with --toolset all. Use columns (a row per match), summary=count, or patient_cohort for population counts.";
+        }
+
+        return request.Columns?.Any(column => column.Path.Contains(PatientSearch.FunctionName + "(", StringComparison.Ordinal)) == true
+            ? $"{PatientSearch.FunctionName}() is offered with --toolset all. patient_cohort counts populations in one call."
+            : null;
     }
 
     [McpServerTool(Name = "plan_fhir_search", ReadOnly = true, Idempotent = true)]
@@ -68,6 +97,7 @@ public sealed class ResourceTools(FolderSession session)
         ToolResults.From(SearchPlanner.Plan(session, new SearchRequest(resourceType, query, count, offset, summary, elements, lenient, compartment), execute, cancellationToken));
 
     [McpServerTool(Name = "read_resources", ReadOnly = true, Idempotent = true)]
+    [QueryToolset(HiddenArguments = ["maxBytes"])]
     [Description("""
         Reads up to 50 resources by reference ('Type/id') with file evidence; 'absent' lists those not held. 'elements' keeps responses small.
         """)]

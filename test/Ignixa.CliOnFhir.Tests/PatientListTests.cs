@@ -61,7 +61,7 @@ public class PatientListTests
 
         envelope.Facts.ShouldNotBeNull().Patients.Select(patient => patient.Id).ShouldBe(["p1", "p2"]);
         envelope.Omitted.ShouldBe([new OmittedItem("1 more patients (offset=2)", "limit")]);
-        envelope.Next.Select(call => call.Tool).ShouldBe(["patient_list", "patient_context"]);
+        envelope.Next.Select(call => call.Tool).ShouldBe(["patient_list", "patient_summary"]);
         envelope.Next[0].Args.ShouldBe(new Dictionary<string, object> { ["offset"] = 2, ["sort"] = "latest" }, ignoreOrder: true);
     }
 

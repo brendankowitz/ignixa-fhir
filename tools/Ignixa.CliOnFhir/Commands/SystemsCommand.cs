@@ -25,6 +25,7 @@ internal static class SystemsCommand
         var textOption = new Option<string?>("--text") { Description = "Instead list the codes the folder holds whose display has a word starting with one of these words or alternatives ('diabet|glyc'), with their resource and patient counts; no terminology or network" };
         var resourceTypeOption = new Option<string?>("--resource-type") { Description = "With --text: only codes on this resource type" };
         var systemOption = new Option<string?>("--system") { Description = "With --text: only codes of this system (URI or alias such as sct)" };
+        var patientOption = new Option<string?>("--patient") { Description = "With --text: only the codes of this Patient's compartment (a Patient id)" };
         var withTerminologyOption = new Option<bool>("--with-terminology")
         {
             Description = "Load terminology first (the --terminology packages, else the core package; this may download it unless --offline) and report how each system's codes resolve. Implied by --terminology",
@@ -45,6 +46,7 @@ internal static class SystemsCommand
         command.Options.Add(textOption);
         command.Options.Add(resourceTypeOption);
         command.Options.Add(systemOption);
+        command.Options.Add(patientOption);
         command.Options.Add(withTerminologyOption);
         command.Options.Add(prettyOption);
         CommonOptions.AddCacheOptions(command, cacheDirOption, noCacheOption);
@@ -61,14 +63,15 @@ internal static class SystemsCommand
             string? text = parseResult.GetValue(textOption);
             string? resourceType = parseResult.GetValue(resourceTypeOption);
             string? system = parseResult.GetValue(systemOption);
+            string? patient = parseResult.GetValue(patientOption);
             if (text is not null)
             {
-                return EnvelopeOutput.Write(FolderCodeSystems.SearchText(session, text, resourceType, system, count, offset, cancellationToken), pretty);
+                return EnvelopeOutput.Write(FolderCodeSystems.SearchText(session, text, resourceType, system, patient, count, offset, cancellationToken), pretty);
             }
 
-            if (resourceType is not null || system is not null)
+            if (resourceType is not null || system is not null || patient is not null)
             {
-                return EnvelopeOutput.Write(EnvelopeAssembler.Failure<object>(session, new IssueItem("error", "invalid-parameter", "--resource-type and --system narrow a --text search; give --text too.", Location: null), cancellationToken), pretty);
+                return EnvelopeOutput.Write(EnvelopeAssembler.Failure<object>(session, new IssueItem("error", "invalid-parameter", "--resource-type, --system and --patient narrow a --text search; give --text too.", Location: null), cancellationToken), pretty);
             }
 
             return parseResult.GetValue(detailOption) switch

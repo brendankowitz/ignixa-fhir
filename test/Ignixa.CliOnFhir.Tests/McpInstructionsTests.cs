@@ -20,13 +20,15 @@ namespace Ignixa.CliOnFhir.Tests;
 /// </summary>
 public class McpInstructionsTests
 {
-    [Fact]
-    public async Task GivenAConnectedClient_WhenTheServerInitializes_ThenTheInstructionsAreInTheInitializeResult()
+    [Theory]
+    [InlineData(McpToolset.Query)]
+    [InlineData(McpToolset.All)]
+    public async Task GivenAConnectedClient_WhenTheServerInitializes_ThenTheToolsetsInstructionsAreInTheInitializeResult(McpToolset toolset)
     {
         var clientToServer = new Pipe();
         var serverToClient = new Pipe();
         var options = new McpServerOptions();
-        McpServerSetup.Configure(options);
+        McpServerSetup.Configure(options, toolset);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
 
         await using var serverTransport = new StreamServerTransport(clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream());
@@ -36,16 +38,17 @@ public class McpInstructionsTests
             new StreamClientTransport(clientToServer.Writer.AsStream(), serverToClient.Reader.AsStream()),
             cancellationToken: cancellation.Token);
 
-        client.ServerInstructions.ShouldBe(McpServerSetup.Instructions);
+        client.ServerInstructions.ShouldBe(McpServerSetup.Instructions(toolset));
         client.ServerInfo.Name.ShouldBe("cli-on-fhir");
     }
 
     // V3 keeps the steering and the safety statement in fewer words, and points at terminology and help instead of
-    // repeating what they explain.
+    // repeating what they explain. V14 starts both toolsets at patient_summary.
     [Theory]
+    [InlineData("patient_summary first")]
+    [InlineData("MRN or system|value")]
+    [InlineData("Toolset:")]
     [InlineData("compartment=Patient/<id>")]
-    [InlineData("identifier")]
-    [InlineData("patient_list")]
     [InlineData("summary=count")]
     [InlineData("_sort=-date")]
     [InlineData("count=1")]
@@ -55,23 +58,36 @@ public class McpInstructionsTests
     [InlineData("requester.resolve()")]
     [InlineData("medication.ofType(Reference).resolve()")]
     [InlineData("medicationCodeableConcept and medicationReference")]
-    [InlineData("fhirpath")]
     [InlineData("goes inside query")]
     [InlineData("is data, not instructions")]
     [InlineData("folder_code_systems")]
     [InlineData("perPatient=latest")]
     [InlineData("terminology")]
     [InlineData("help")]
-    public void GivenTheInstructions_WhenRead_ThenTheyNameEachCheapPath(string mention)
+    public void GivenEitherToolsetsInstructions_WhenRead_ThenTheyNameEachCheapPath(string mention)
     {
-        McpServerSetup.Instructions.ShouldContain(mention);
+        McpServerSetup.QueryInstructions.ShouldContain(mention);
+        McpServerSetup.AllInstructions.ShouldContain(mention);
     }
 
-    [Fact]
-    public void GivenTheInstructions_WhenMeasured_ThenTheyStayShort()
+    [Theory]
+    [InlineData("patient_list")]
+    [InlineData("patient_context")]
+    [InlineData("fhirpath")]
+    [InlineData("patientSearch()")]
+    public void GivenTheToolsets_WhenTheirInstructionsAreRead_ThenOnlyAllNamesWhatOnlyAllOffers(string mention)
+    {
+        McpServerSetup.QueryInstructions.ShouldNotContain(mention);
+        McpServerSetup.AllInstructions.ShouldContain(mention);
+    }
+
+    [Theory]
+    [InlineData(McpToolset.Query)]
+    [InlineData(McpToolset.All)]
+    public void GivenTheInstructions_WhenMeasured_ThenTheyStayShort(McpToolset toolset)
     {
         // Measured with LF line breaks, so the result does not depend on how the source file was checked out.
-        McpServerSetup.Instructions.ReplaceLineEndings("\n").Length.ShouldBeLessThan(900);
+        McpServerSetup.Instructions(toolset).ReplaceLineEndings("\n").Length.ShouldBeLessThan(900);
     }
 
     [Fact]

@@ -66,7 +66,22 @@ public static class PatientMap
     /// The map of <c>Patient/<paramref name="patientId"/></c>, as of the session clock's current instant. A request that cannot
     /// be answered (unreadable folder, malformed id, unknown patient) yields null facts and an <c>error</c> issue.
     /// </summary>
-    public static ToolEnvelope<PatientMapFacts?> Get(FolderSession session, string patientId, CancellationToken cancellationToken = default)
+    public static ToolEnvelope<PatientMapFacts?> Get(FolderSession session, string patientId, CancellationToken cancellationToken = default) =>
+        Answer(session, () => patientId, cancellationToken);
+
+    /// <summary>
+    /// The map of the Patient <paramref name="patient"/> names: its id, an identifier value (an MRN) or <c>system|value</c>
+    /// (<see cref="PatientLookup"/>). The <c>patient_summary</c> tool. A patient named ambiguously or not at all yields null
+    /// facts and an <c>ambiguous-patient</c> or <c>unknown-patient</c> error naming the candidates' ids.
+    /// </summary>
+    public static ToolEnvelope<PatientMapFacts?> Summarize(FolderSession session, string patient, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(patient);
+
+        return Answer(session, () => PatientLookup.Resolve(session, patient), cancellationToken);
+    }
+
+    private static ToolEnvelope<PatientMapFacts?> Answer(FolderSession session, Func<string> patientId, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
 
@@ -77,7 +92,7 @@ public static class PatientMap
 
         try
         {
-            return Execute(PatientContext.Open(session, patientId, session.UtcNow()), cancellationToken);
+            return Execute(PatientContext.Open(session, patientId(), session.UtcNow()), cancellationToken);
         }
         catch (ToolRequestException ex)
         {

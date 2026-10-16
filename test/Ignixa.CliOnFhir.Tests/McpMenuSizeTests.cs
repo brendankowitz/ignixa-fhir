@@ -3,13 +3,9 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Text;
-using System.Text.Json;
 using Ignixa.CliOnFhir.Mcp;
 using Microsoft.Extensions.DependencyInjection;
-using ModelContextProtocol;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Shouldly;
 using Xunit.Abstractions;
@@ -24,55 +20,50 @@ namespace Ignixa.CliOnFhir.Tests;
 /// </summary>
 public class McpMenuSizeTests(ITestOutputHelper output)
 {
-    // V13 cut the menu and instructions from 16,384 characters (4,096 tokens) to about 11,900 (2,984): every request of a model
-    // carries them. 4,100 had held the twelve tools of V12.
-    private const int TokenBudget = 3000;
+    // V13 cut the menu and instructions from 16,384 characters (4,096 tokens) to about 11,900 (2,984) for twelve tools. V14
+    // (ADR 2610) serves the query toolset by default, held well under that; all keeps every tool and adds patient_summary.
+    private const int QueryTokenBudget = 2000;
 
-    [Fact]
-    public async Task GivenEveryTool_WhenListedOverMcp_ThenTheMenuAndInstructionsStayUnderTheirBudget()
+    private const int AllTokenBudget = 3300;
+
+    [Theory]
+    [InlineData(McpToolset.Query, QueryTokenBudget)]
+    [InlineData(McpToolset.All, AllTokenBudget)]
+    public async Task GivenAToolset_WhenListedOverMcp_ThenTheMenuAndInstructionsStayUnderItsBudget(McpToolset toolset, int budget)
     {
-        await using InProcessMcp mcp = await InProcessMcp.StartAsync(McpServerSetup.ToolTypes, [null]);
+        await using InProcessMcp mcp = await InProcessMcp.StartAsync(toolset, McpServerSetup.ToolTypes, [null]);
         IList<McpClientTool> tools = await mcp.Client.ListToolsAsync(cancellationToken: mcp.CancellationToken);
-        string instructions = mcp.Client.ServerInstructions!;
 
-        var report = new StringBuilder();
-        int total = instructions.Length;
-        report.AppendLine($"{"tool",-28} {"bytes",7} {"chars",7} {"~tokens",8}");
-        foreach (Tool tool in tools.Select(tool => tool.ProtocolTool).OrderBy(tool => tool.Name, StringComparer.Ordinal))
-        {
-            string json = JsonSerializer.Serialize(tool, McpJsonUtilities.DefaultOptions);
-            total += json.Length;
-            report.AppendLine($"{tool.Name,-28} {Encoding.UTF8.GetByteCount(json),7} {json.Length,7} {json.Length / 4,8}");
-        }
+        int total = MenuSize.Measure(tools, mcp.Client.ServerInstructions!, output);
 
-        report.AppendLine($"{"(instructions)",-28} {Encoding.UTF8.GetByteCount(instructions),7} {instructions.Length,7} {instructions.Length / 4,8}");
-        report.AppendLine($"{"TOTAL (" + tools.Count + " tools)",-28} {"",7} {total,7} {total / 4,8}");
-        output.WriteLine(report.ToString());
-
-        (total / 4).ShouldBeLessThan(TokenBudget);
+        (total / 4).ShouldBeLessThan(budget);
     }
 
     // Guards the registration the mcp verb uses: an unnamed WithTools(ToolTypes) bound to WithTools<T>(T target) and served no
     // tools at all.
-    [Fact]
-    public void GivenTheServerRegistration_WhenItsServicesAreBuilt_ThenEveryToolIsRegistered()
+    [Theory]
+    [InlineData(McpToolset.Query, new[] { "folder_code_systems", "help", "patient_cohort", "patient_summary", "read_resources", "search_fhir_resources", "terminology" })]
+    [InlineData(
+        McpToolset.All,
+        new[] { "folder_code_systems", "folder_inspect", "help", "patient_cohort", "patient_context", "patient_list", "patient_summary", "plan_fhir_search", "read_resources", "search_fhir_resources", "terminology", "terminology_load_package", "validate_resources" })]
+    public void GivenTheServerRegistration_WhenItsServicesAreBuilt_ThenTheToolsetsToolsAreRegistered(McpToolset toolset, string[] expected)
     {
         var services = new ServiceCollection();
-        McpServerSetup.AddTools(services.AddMcpServer());
+        McpServerSetup.AddTools(services.AddMcpServer(), toolset);
         using ServiceProvider provider = services.BuildServiceProvider();
 
-        provider.GetServices<McpServerTool>().Select(tool => tool.ProtocolTool.Name).Order(StringComparer.Ordinal).ShouldBe(
-        [
-            "folder_code_systems", "folder_inspect", "help", "patient_cohort", "patient_context", "patient_list", "plan_fhir_search", "read_resources",
-            "search_fhir_resources", "terminology", "terminology_load_package", "validate_resources",
-        ]);
+        provider.GetServices<McpServerTool>().Select(tool => tool.ProtocolTool.Name).Order(StringComparer.Ordinal).ShouldBe(expected);
+        provider.GetServices<McpServerResource>().Select(resource => resource.ProtocolResourceTemplate.UriTemplate).ShouldBe([McpServerSetup.PatientSummaryTemplate]);
+        provider.GetRequiredService<McpToolset>().ShouldBe(toolset);
     }
 
     [Fact]
     public void GivenTheAssembly_WhenItsToolTypesAreCollected_ThenTheServerOffersEveryOne()
     {
         Type[] declared = [.. typeof(McpServerSetup).Assembly.GetTypes().Where(type => type.IsDefined(typeof(McpServerToolTypeAttribute), inherit: false))];
+        Type[] resources = [.. typeof(McpServerSetup).Assembly.GetTypes().Where(type => type.IsDefined(typeof(McpServerResourceTypeAttribute), inherit: false))];
 
         McpServerSetup.ToolTypes.ShouldBe(declared, ignoreOrder: true);
+        McpServerSetup.ResourceTypes.ShouldBe(resources, ignoreOrder: true);
     }
 }
