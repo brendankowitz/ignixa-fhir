@@ -57,6 +57,11 @@ internal static partial class ViewCompiler
             throw Invalid($"The ViewDefinition has a property '{ViewIssues.Word(property)}'{(parent.Length == 0 ? string.Empty : $" in {parent}")} that a ViewDefinition does not define; the evaluator would ignore it. Check its spelling.");
         }
 
+        if (ViewExpressionGuards.Violation(view.Json) is var (where, reason))
+        {
+            throw Invalid($"The ViewDefinition's {where} {reason}.");
+        }
+
         ViewDefinitionExpression expression = Parse(view, view.Json);
         if (!session.Schema.ResourceTypeNames.Contains(expression.Resource))
         {
@@ -84,6 +89,11 @@ internal static partial class ViewCompiler
     // The extra filter is a where clause of the view itself, so the engine evaluates, type-checks and combines it like the others.
     private static CompiledView WithWhere(FolderSession session, LoadedView view, string extraWhere, IReadOnlyList<ColumnSchema> columns)
     {
+        if (ViewExpressionGuards.Violation(extraWhere) is { } reason)
+        {
+            throw ToolRequestException.Error("invalid-parameter", $"'where' {reason}.");
+        }
+
         FolderFhirPath.Compile("'where'", extraWhere);
         JsonObject filtered = (JsonObject)view.Json.DeepClone();
         JsonArray clauses = filtered["where"] as JsonArray ?? [];

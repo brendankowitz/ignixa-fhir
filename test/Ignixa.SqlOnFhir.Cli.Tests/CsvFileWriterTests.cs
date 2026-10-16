@@ -22,6 +22,21 @@ public class CsvFileWriterTests : IAsyncDisposable
         System.Text.Encoding.UTF8.GetString(bytes).ShouldStartWith("id,name");
     }
 
+    [Fact]
+    public async Task GivenAStream_WhenRowsAreWritten_ThenTheyGoToThatStreamAndItIsClosed()
+    {
+        var stream = new FileStream(_outputPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+        await using (var writer = new CsvFileWriter(stream, NullLogger.Instance))
+        {
+            await writer.WriteRowAsync(new Dictionary<string, object?> { ["id"] = "p1" });
+            await writer.FlushAsync();
+            writer.BytesWritten.ShouldBe(stream.Length);
+        }
+
+        (await File.ReadAllTextAsync(_outputPath)).ShouldBe("id" + Environment.NewLine + "p1" + Environment.NewLine);
+        stream.CanWrite.ShouldBeFalse();
+    }
+
     public ValueTask DisposeAsync()
     {
         if (File.Exists(_outputPath)) File.Delete(_outputPath);

@@ -70,10 +70,11 @@ internal sealed record OutputTarget(string Path, string Format, bool Overwrite, 
     }
 
     /// <summary>
-    /// Creates the directories the file needs and an empty file beside it to write into, checking again, now that they exist, that
-    /// neither can lead into the data folder: a link may have replaced a directory since <see cref="Resolve"/> looked. The rows are
-    /// written to that file, and <see cref="OutputFile.Commit"/> renames it to <see cref="Path"/>, so a file already there is
-    /// replaced only by a complete result.
+    /// Creates the directories the file needs and a new file beside the target to write into, and returns it open. The directory is
+    /// resolved again once it exists, since a link may have replaced a part of it since <see cref="Resolve"/> looked, and the file
+    /// is created exclusively (<c>CreateNew</c>: never an existing file, never one a link names) and checked. The writers are given
+    /// that open stream and never reopen it by path, so what they write goes to this file whatever happens to its path meanwhile;
+    /// <see cref="OutputFile.Commit"/> renames it to <see cref="Path"/>, so a file already there is replaced only by a complete result.
     /// </summary>
     /// <exception cref="ToolRequestException">The path now leads into the data folder, or the file cannot be created.</exception>
     public OutputFile Begin()
@@ -81,38 +82,85 @@ internal sealed record OutputTarget(string Path, string Format, bool Overwrite, 
         string directory = System.IO.Path.GetDirectoryName(Path)!;
         List<string> created = MissingDirectories(directory);
         string temp = System.IO.Path.Combine(directory, $".{System.IO.Path.GetFileName(Path)}.{Guid.NewGuid():N}.tmp");
-        var file = new OutputFile(temp, Path, Overwrite, created);
         try
         {
             Directory.CreateDirectory(directory);
 
             // Resolve() looked at this very string; if the directory now resolves to anything else, a link has replaced a part of it.
-            if (!string.Equals(Canonical(directory), directory, StringComparison.Ordinal))
+            if (!DirectoryUnchanged(directory))
             {
                 throw ToolRequestException.Error("out-refused", $"The directory '{directory}' of the output file is now reached through a link; run it again.");
             }
 
-            // CreateNew never opens an existing file or follows a link planted at that name.
-            using (new FileStream(temp, FileMode.CreateNew, FileAccess.Write))
+            var stream = new FileStream(temp, new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.ReadWrite, Share = FileShare.None });
+            var file = new OutputFile(this, stream, temp, created);
+            try
             {
+                Check(FolderPath, Canonical(temp));
+                return file;
             }
-
-            Check(FolderPath, Canonical(temp));
-            return file;
+            catch
+            {
+                file.Discard();
+                throw;
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            file.Discard();
+            RemoveCreated(created);
             throw ToolRequestException.Error("out-write-failed", $"Cannot create the output file in '{directory}': {ex.Message}");
         }
-        catch
+        catch (ToolRequestException)
         {
-            file.Discard();
+            RemoveCreated(created);
             throw;
         }
     }
 
-    private static string Canonical(string path)
+    /// <summary>Whether <paramref name="directory"/>, a path already resolved, still resolves to itself: no link has replaced a part of it.</summary>
+    internal static bool DirectoryUnchanged(string directory)
+    {
+        try
+        {
+            return string.Equals(CanonicalPath.Resolve(directory), directory, StringComparison.Ordinal);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// After the rename: the file's own canonical path must be outside the data folder. If it is not, the error names it and the
+    /// file is left; nothing is deleted inside the data folder.
+    /// </summary>
+    internal void CheckFinal()
+    {
+        string resolved = Canonical(Path);
+        if (new FolderOverlap(FolderPath).Reason(resolved, "output file", Remedy) is { } reason)
+        {
+            throw ToolRequestException.Error("out-refused", $"The output file ended up inside the data folder at '{resolved}' and was not removed; delete it yourself: {reason}.");
+        }
+    }
+
+    /// <summary>Removes the directories in <paramref name="created"/> (deepest first) that are still plain, empty directories this run made.</summary>
+    internal static void RemoveCreated(IReadOnlyList<string> created)
+    {
+        if (created.Count == 0 || !DirectoryUnchanged(created[0]))
+        {
+            return;
+        }
+
+        foreach (string directory in created)
+        {
+            if (Directory.Exists(directory) && !Directory.EnumerateFileSystemEntries(directory).Any())
+            {
+                Directory.Delete(directory);
+            }
+        }
+    }
+
+    internal static string Canonical(string path)
     {
         try
         {
@@ -124,7 +172,7 @@ internal sealed record OutputTarget(string Path, string Format, bool Overwrite, 
         }
     }
 
-    private static void Check(string folderPath, string resolvedPath)
+    internal static void Check(string folderPath, string resolvedPath)
     {
         if (new FolderOverlap(folderPath).Reason(resolvedPath, "output file", Remedy) is { } reason)
         {

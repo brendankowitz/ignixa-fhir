@@ -8,6 +8,7 @@ using System.Security.Cryptography;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Session;
 using Ignixa.CliOnFhir.Views;
+using Ignixa.SqlOnFhir.Evaluation;
 using Ignixa.Specification.Generated;
 using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
@@ -119,6 +120,79 @@ public class SqlViewOutputSafetyTests
 
         refused.Issue.Code.ShouldBe("out-refused");
         Directory.GetFileSystemEntries(elsewhere).ShouldBeEmpty();
+    }
+
+    // After Begin the writers hold the open file; replacing its directory with a link then changes where the path leads, not where the
+    // bytes go. Commit must notice, move nothing, and leave the file; Discard must not delete through the link.
+    [Theory]
+    [InlineData("ndjson", true)]
+    [InlineData("ndjson", false)]
+    [InlineData("parquet", true)]
+    [InlineData("parquet", false)]
+    [InlineData("csv", false)]
+    public async Task GivenTheDirectoryReplacedByALinkAfterBegin_WhenCommitted_ThenNothingLandsInTheDataFolderAndNothingIsDeletedThroughTheLink(string format, bool swapBeforeTheFirstWrite)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TestFolder root = new TestFolder().Write("data/patients.ndjson", PatientsData);
+        string data = Path.Combine(root.Path, "data");
+        string inner = Directory.CreateDirectory(Path.Combine(data, "inner")).FullName;
+        var session = new FolderSession(data, new R4CoreSchemaProvider(), NullLoggerFactory.Instance);
+        string output = Path.Combine(root.Path, "out");
+        OutputTarget target = OutputTarget.Resolve(session, new ViewRequest(PatientView, Out: Path.Combine(output, $"rows.{format}"))).ShouldNotBeNull();
+        OutputFile file = target.Begin();
+        string decoy = Path.Combine(inner, Path.GetFileName(file.TempPath));
+
+        void Swap()
+        {
+            Directory.Move(output, output + ".old");
+            Directory.CreateSymbolicLink(output, inner);
+            File.WriteAllText(decoy, "decoy");
+        }
+
+        if (swapBeforeTheFirstWrite)
+        {
+            Swap();
+        }
+
+        ViewFileSink sink = ViewFileSink.Create(file.Stream, format, [new ColumnSchema("id", "string", false), new ColumnSchema("gender", "string", false)]);
+        await sink.WriteAsync(["p1", "female"], CancellationToken.None);
+        await sink.WriteAsync(["p2", "male"], CancellationToken.None);
+        await sink.CompleteAsync(CancellationToken.None);
+        if (!swapBeforeTheFirstWrite)
+        {
+            Swap();
+        }
+
+        await sink.DisposeAsync();
+        ToolRequestException refused = Should.Throw<ToolRequestException>(() => file.Commit());
+        IssueItem left = file.Discard().ShouldNotBeNull();
+
+        refused.Issue.Code.ShouldBe("out-refused");
+        left.Code.ShouldBe("out-temp-left");
+        left.Severity.ShouldBe("information");
+        left.Diagnostics.ShouldContain(file.TempPath);
+        Directory.GetFileSystemEntries(inner).ShouldBe([decoy]);
+        (await File.ReadAllTextAsync(decoy)).ShouldBe("decoy");
+        new FileInfo(Path.Combine(output + ".old", Path.GetFileName(file.TempPath))).Length.ShouldBeGreaterThan(0);
+        File.Exists(Path.Combine(output + ".old", $"rows.{format}")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenAFileThatLandedInTheDataFolder_WhenCheckedAfterTheRename_ThenItIsNamedAndLeftInPlace()
+    {
+        using TestFolder root = new TestFolder().Write("data/patients.ndjson", PatientsData).Write("data/landed.csv", "x");
+        string data = Path.Combine(root.Path, "data");
+        var target = new OutputTarget(Path.Combine(data, "landed.csv"), "csv", false, data);
+
+        ToolRequestException error = Should.Throw<ToolRequestException>(() => target.CheckFinal());
+
+        error.Issue.Code.ShouldBe("out-refused");
+        error.Issue.Diagnostics.ShouldContain(Path.Combine(data, "landed.csv"));
+        File.Exists(Path.Combine(data, "landed.csv")).ShouldBeTrue();
     }
 
     [Fact]

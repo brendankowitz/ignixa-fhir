@@ -22,7 +22,7 @@ public partial class ParquetFileWriter : IAsyncDisposable
     private readonly Dictionary<string, string> _columnTypeMap;
     private readonly int _rowsPerBatch;
     private readonly List<Dictionary<string, object?>> _rowBuffer;
-    private FileStream? _fileStream;
+    private Stream? _fileStream;
     private ParquetWriter? _parquetWriter;
     private bool _disposed;
 
@@ -55,6 +55,24 @@ public partial class ParquetFileWriter : IAsyncDisposable
         _columnTypeMap = columnTypeMap ?? new Dictionary<string, string>();
         _rowsPerBatch = rowsPerBatch;
         _rowBuffer = new List<Dictionary<string, object?>>(_rowsPerBatch);
+    }
+
+    /// <summary>
+    /// Writes to <paramref name="stream"/>, which must be seekable and writable. The caller opened it and the writer owns it from
+    /// here: it is finished and disposed by <see cref="FlushAsync"/> (or by <see cref="DisposeAsync"/>), and the file is never
+    /// reopened by path, which matters because the footer is only written then.
+    /// </summary>
+    public ParquetFileWriter(
+        Stream stream,
+        ParquetSchema schema,
+        ILogger logger,
+        Dictionary<string, string>? columnTypeMap = null,
+        int rowsPerBatch = DefaultRowsPerBatch)
+        : this("(stream)", schema, logger, columnTypeMap, rowsPerBatch)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+
+        _fileStream = stream;
     }
 
     /// <summary>
@@ -191,7 +209,7 @@ public partial class ParquetFileWriter : IAsyncDisposable
     private async Task InitializeWriterAsync(CancellationToken cancellationToken)
     {
         // Create file stream
-        _fileStream = File.Create(_outputPath);
+        _fileStream ??= File.Create(_outputPath);
 
         // Create Parquet writer
         _parquetWriter = await ParquetWriter.CreateAsync(_schema, _fileStream, cancellationToken: cancellationToken);

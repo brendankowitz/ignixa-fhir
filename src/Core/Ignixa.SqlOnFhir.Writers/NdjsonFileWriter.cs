@@ -7,6 +7,7 @@ namespace Ignixa.SqlOnFhir.Writers;
 public partial class NdjsonFileWriter : IAsyncDisposable
 {
     private readonly string _outputPath;
+    private readonly Stream? _stream;
     private readonly ILogger _logger;
     private StreamWriter? _writer;
     private bool _disposed;
@@ -23,11 +24,24 @@ public partial class NdjsonFileWriter : IAsyncDisposable
         _logger = logger;
     }
 
+    /// <summary>
+    /// Writes to <paramref name="stream"/>, which the caller opened and which the writer owns from here: it is written, flushed
+    /// and disposed by this writer, and never reopened by path.
+    /// </summary>
+    public NdjsonFileWriter(Stream stream, ILogger logger)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        ArgumentNullException.ThrowIfNull(logger);
+        _outputPath = "(stream)";
+        _stream = stream;
+        _logger = logger;
+    }
+
     public async Task WriteRowAsync(Dictionary<string, object?> row, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
         // No byte order mark: every line of NDJSON must itself be JSON, and a BOM makes the first one not.
-        _writer ??= new StreamWriter(new FileStream(_outputPath, FileMode.Create, FileAccess.Write, FileShare.Read), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        _writer ??= new StreamWriter(_stream ?? new FileStream(_outputPath, FileMode.Create, FileAccess.Write, FileShare.Read), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         var json = JsonSerializer.Serialize(row);
         await _writer.WriteLineAsync(json.AsMemory(), cancellationToken);
         _rowsWritten++;
@@ -39,7 +53,7 @@ public partial class NdjsonFileWriter : IAsyncDisposable
         if (_writer != null)
         {
             await _writer.FlushAsync(cancellationToken);
-            BytesWritten = new FileInfo(_outputPath).Exists ? new FileInfo(_outputPath).Length : 0;
+            BytesWritten = _stream?.Length ?? (new FileInfo(_outputPath).Exists ? new FileInfo(_outputPath).Length : 0);
             LogNdjsonFileWritten(_logger, _rowsWritten, BytesWritten, _outputPath);
         }
     }
@@ -56,6 +70,11 @@ public partial class NdjsonFileWriter : IAsyncDisposable
             try { await w.FlushAsync(); }
             catch (Exception ex) { _logger.LogWarning(ex, "Error during final flush on dispose"); }
             finally { await w.DisposeAsync(); }
+        }
+
+        if (_stream != null)
+        {
+            await _stream.DisposeAsync();
         }
     }
 

@@ -16,6 +16,7 @@ namespace Ignixa.SqlOnFhir.Writers;
 public partial class CsvFileWriter : IAsyncDisposable
 {
     private readonly string _outputPath;
+    private readonly Stream? _stream;
     private readonly ILogger _logger;
     private StreamWriter? _writer;
     private bool _headerWritten;
@@ -32,6 +33,21 @@ public partial class CsvFileWriter : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(logger);
 
         _outputPath = outputPath;
+        _logger = logger;
+    }
+
+    /// <summary>
+    /// Writes to <paramref name="stream"/>, which the caller opened and which the writer owns from here: it is written, flushed
+    /// and disposed by this writer, and never reopened by path, so a caller that created the file exclusively writes to exactly
+    /// that file whatever happens to its path meanwhile.
+    /// </summary>
+    public CsvFileWriter(Stream stream, ILogger logger)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        ArgumentNullException.ThrowIfNull(logger);
+
+        _outputPath = "(stream)";
+        _stream = stream;
         _logger = logger;
     }
 
@@ -86,8 +102,15 @@ public partial class CsvFileWriter : IAsyncDisposable
             await _writer.FlushAsync(cancellationToken);
             
             // Get file size
-            var fileInfo = new FileInfo(_outputPath);
-            BytesWritten = fileInfo.Exists ? fileInfo.Length : 0;
+            if (_stream is not null)
+            {
+                BytesWritten = _stream.Length;
+            }
+            else
+            {
+                var fileInfo = new FileInfo(_outputPath);
+                BytesWritten = fileInfo.Exists ? fileInfo.Length : 0;
+            }
 
             LogCsvFileWritten(_logger, _rowsWritten, BytesWritten, _outputPath);
         }
@@ -115,6 +138,11 @@ public partial class CsvFileWriter : IAsyncDisposable
                 await _writer.DisposeAsync();
             }
 
+            if (_stream != null)
+            {
+                await _stream.DisposeAsync();
+            }
+
             _disposed = true;
             GC.SuppressFinalize(this);
         }
@@ -122,7 +150,7 @@ public partial class CsvFileWriter : IAsyncDisposable
 
     private void InitializeWriter()
     {
-        var fileStream = File.Create(_outputPath);
+        var fileStream = _stream ?? File.Create(_outputPath);
         // No byte order mark: a file that is read back as CSV text or fed to other tools should start with its first header.
         _writer = new StreamWriter(fileStream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 

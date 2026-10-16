@@ -8,49 +8,94 @@ using Ignixa.CliOnFhir.Contracts;
 namespace Ignixa.CliOnFhir.Views;
 
 /// <summary>
-/// The file a run writes into, beside its target: the rows go to <see cref="TempPath"/> and <see cref="Commit"/> renames it
-/// over the target, which is atomic, so the target is never half written, a file already there is replaced only by a complete
-/// result, and a hard link to another file (a data file) is replaced, not written through. A run that does not commit
-/// <see cref="Discard"/>s, which removes the temporary file and the directories this run created, and nothing else.
+/// The file a run writes into, beside its target. <see cref="Stream"/> is the file, created exclusively and open: the writers write
+/// to it and never reopen it by path. <see cref="Commit"/> renames it over the target, which is atomic, so the target is never
+/// half written, a file already there is replaced only by a complete result, and a hard link to another file (a data file) is
+/// replaced, not written through. A run that does not commit <see cref="Discard"/>s, which removes the temporary file and the
+/// directories this run created, and nothing else, and only while their directory still resolves to the path that was checked:
+/// nothing is ever deleted through a link that has replaced it.
 /// </summary>
-/// <param name="TempPath">The file being written, which this run created.</param>
-/// <param name="TargetPath">The file it becomes.</param>
-/// <param name="Overwrite">Whether an existing target may be replaced.</param>
-/// <param name="CreatedDirectories">The directories this run created, the deepest last.</param>
-internal sealed record OutputFile(string TempPath, string TargetPath, bool Overwrite, IReadOnlyList<string> CreatedDirectories)
+/// <remarks>
+/// Residual: between the last check before the rename and the rename itself (microseconds) a process with write access to the
+/// output's parent directory could still swap it for a link. That needs such a process on the same machine; the data folder
+/// is checked again after the rename and a file that landed in it is reported by name, never deleted.
+/// </remarks>
+internal sealed class OutputFile
 {
-    /// <summary>Renames the written file over the target.</summary>
-    /// <exception cref="ToolRequestException">A file appeared at the target since it was checked and <c>overwrite</c> was not given, or the rename failed.</exception>
+    private readonly OutputTarget _target;
+    private readonly IReadOnlyList<string> _createdDirectories;
+
+    /// <param name="target">The checked target.</param>
+    /// <param name="stream">The temporary file, open for writing.</param>
+    /// <param name="tempPath">Its path, as checked.</param>
+    /// <param name="createdDirectories">The directories this run created, deepest first.</param>
+    public OutputFile(OutputTarget target, FileStream stream, string tempPath, IReadOnlyList<string> createdDirectories)
+    {
+        _target = target;
+        Stream = stream;
+        TempPath = tempPath;
+        _createdDirectories = createdDirectories;
+    }
+
+    /// <summary>The temporary file, open; the writers own it once they are given it.</summary>
+    public FileStream Stream { get; }
+
+    /// <summary>The temporary file's path, for reporting.</summary>
+    public string TempPath { get; }
+
+    /// <summary>
+    /// Closes the file and renames it over the target, after checking once more that the target's directory is still the one
+    /// that was checked; the data folder is checked again afterwards.
+    /// </summary>
+    /// <exception cref="ToolRequestException">
+    /// The directory changed (nothing was moved), a file appeared at the target and <c>overwrite</c> was not given, the rename
+    /// failed, or the file is now inside the data folder (it is named and left).
+    /// </exception>
     public void Commit()
     {
+        Stream.Dispose();
+        string directory = Path.GetDirectoryName(_target.Path)!;
+        if (!OutputTarget.DirectoryUnchanged(directory))
+        {
+            throw ToolRequestException.Error("out-refused", $"The directory '{directory}' of the output file was replaced by a link while the view was running, so nothing was moved.");
+        }
+
         try
         {
-            File.Move(TempPath, TargetPath, Overwrite);
+            File.Move(TempPath, _target.Path, _target.Overwrite);
         }
-        catch (IOException ex) when (!Overwrite && File.Exists(TargetPath))
+        catch (IOException ex) when (!_target.Overwrite && File.Exists(_target.Path))
         {
-            throw ToolRequestException.Error("out-refused", $"The output file '{TargetPath}' appeared while the view was running ({ex.GetType().Name}); choose another path, or set overwrite to replace it.");
+            throw ToolRequestException.Error("out-refused", $"The output file '{_target.Path}' appeared while the view was running ({ex.GetType().Name}); choose another path, or set overwrite to replace it.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            throw ToolRequestException.Error("out-write-failed", $"Writing '{TargetPath}' failed: {ex.Message}");
+            throw ToolRequestException.Error("out-write-failed", $"Writing '{_target.Path}' failed: {ex.Message}");
         }
+
+        _target.CheckFinal();
     }
 
-    /// <summary>Removes the temporary file and the directories this run created (deepest first, only while empty).</summary>
-    public void Discard()
+    /// <summary>
+    /// Closes the file and removes it and the directories this run created, unless their directory no longer resolves to the path
+    /// that was checked, in which case nothing is deleted.
+    /// </summary>
+    /// <returns>An <c>out-temp-left</c> information issue naming the temporary file when it was left; otherwise null.</returns>
+    public IssueItem? Discard()
     {
-        if (File.Exists(TempPath))
+        Stream.Dispose();
+        string directory = Path.GetDirectoryName(_target.Path)!;
+        if (!OutputTarget.DirectoryUnchanged(directory))
         {
-            File.Delete(TempPath);
+            return new IssueItem(
+                "information",
+                "out-temp-left",
+                $"The temporary file '{TempPath}' was left where it was written: its directory '{directory}' no longer resolves to the path that was checked, so nothing was deleted through it.",
+                Location: null);
         }
 
-        foreach (string directory in CreatedDirectories)
-        {
-            if (Directory.Exists(directory) && !Directory.EnumerateFileSystemEntries(directory).Any())
-            {
-                Directory.Delete(directory);
-            }
-        }
+        File.Delete(TempPath);
+        OutputTarget.RemoveCreated(_createdDirectories);
+        return null;
     }
 }

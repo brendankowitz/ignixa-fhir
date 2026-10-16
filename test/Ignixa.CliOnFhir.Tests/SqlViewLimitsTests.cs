@@ -30,6 +30,30 @@ public class SqlViewLimitsTests
         error.Diagnostics.ShouldContain("5 Observation resources");
         error.Diagnostics.ShouldContain("limit of 4");
         error.Diagnostics.ShouldContain("compartment Patient/<id>");
+        error.Diagnostics.ShouldNotContain("memory");
+    }
+
+    [Fact]
+    public async Task GivenAUnionAllThatNeedsEveryResourceAtOnce_WhenOverTheLimit_ThenTheErrorSaysSoAndOnlyThen()
+    {
+        using TestFolder folder = Clinic();
+        const string view = """{"resourceType":"ViewDefinition","resource":"Patient","select":[{"unionAll":[{"column":[{"name":"v","path":"id"}]},{"column":[{"name":"v","path":"gender"}]}]}]}""";
+
+        IssueItem error = Error(await RunAsync(folder, new ViewRequest(view, MaxResources: 2)));
+
+        error.Code.ShouldBe("too-many-resources");
+        error.Diagnostics.ShouldContain("holds all of them in memory");
+    }
+
+    [Fact]
+    public async Task GivenACompartmentAndATimeout_WhenTheRunIsStopped_ThenTheErrorDoesNotSuggestACompartment()
+    {
+        using TestFolder folder = ManyPatients(3000);
+
+        IssueItem error = Error(await RunInAsync(folder.Path, new ViewRequest(PatientView, Compartment: "Patient/p1"), timeout: TimeSpan.FromMilliseconds(1)));
+
+        error.Code.ShouldBe("view-timeout");
+        error.Diagnostics.ShouldNotContain("compartment Patient/");
     }
 
     [Fact]
@@ -85,7 +109,7 @@ public class SqlViewLimitsTests
         using var cancelled = new CancellationTokenSource();
         await cancelled.CancelAsync();
 
-        await Should.ThrowAsync<OperationCanceledException>(() => Ignixa.CliOnFhir.Views.ViewRunner.RunAsync(Open(folder), new ViewRequest(PatientView), cancelled.Token));
+        await Should.ThrowAsync<OperationCanceledException>(() => ViewRunner.RunAsync(Open(folder), new ViewRequest(PatientView), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, cancelled.Token));
     }
 
     [Fact]

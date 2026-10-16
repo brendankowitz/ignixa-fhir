@@ -17,6 +17,21 @@ namespace Ignixa.CliOnFhir.Views;
 internal sealed record ViewScope(IReadOnlyList<CatalogEntry> Entries, DateTimeOffset BuiltAt)
 {
     /// <summary>
+    /// <see cref="Resolve"/>, abandoned when <paramref name="cancellationToken"/> is cancelled. Working out the patient compartments
+    /// for the first time (a cold cache builds every search index they need) cannot be interrupted, so it runs off the calling
+    /// thread and is awaited; a timeout is then reported when it is due, and the build is left to finish and persist what it can
+    /// (it is shared by the session, and the process ends with the verb).
+    /// </summary>
+    public static Task<ViewScope> ResolveAsync(FolderSession session, string resourceType, string? compartment, List<IssueItem> issues, List<OmittedItem> omitted, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        return compartment is null
+            ? Task.FromResult(Resolve(session, resourceType, compartment, issues, omitted))
+            : Task.Run(() => Resolve(session, resourceType, compartment, issues, omitted), CancellationToken.None).WaitAsync(cancellationToken);
+    }
+
+    /// <summary>
     /// The resources of <paramref name="resourceType"/>, limited to the compartment <paramref name="compartment"/> names when
     /// given. A compartment is the per-patient one the session persists (<see cref="FolderSession.PatientCompartments"/>), so no
     /// search index is read for one patient. The issues that qualify the scope are added to <paramref name="issues"/> and

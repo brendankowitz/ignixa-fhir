@@ -36,42 +36,51 @@ public static class ViewRunner
     /// path in the folder, an unknown compartment, a run that takes too long) is an envelope with null facts and an
     /// <c>error</c> issue. A failure of the tool itself is the same, as <c>view-internal-error</c>, and is logged in full.
     /// </summary>
-    /// <param name="logger">Receives the details of a <c>view-internal-error</c>.</param>
-    public static Task<ToolEnvelope<ViewFacts?>> RunAsync(FolderSession session, ViewRequest request, CancellationToken cancellationToken, ILogger? logger = null) =>
+    /// <param name="logger">Receives the details of a <c>view-internal-error</c>; required, so that no caller can drop them.</param>
+    public static Task<ToolEnvelope<ViewFacts?>> RunAsync(FolderSession session, ViewRequest request, ILogger logger, CancellationToken cancellationToken) =>
         RunAsync(session, request, timeout: null, logger, cancellationToken);
 
     /// <param name="timeout">How long the run may take; null for the request's own, in seconds (a test passes a span no real run keeps).</param>
-    internal static async Task<ToolEnvelope<ViewFacts?>> RunAsync(FolderSession session, ViewRequest request, TimeSpan? timeout, ILogger? logger, CancellationToken cancellationToken)
+    internal static async Task<ToolEnvelope<ViewFacts?>> RunAsync(FolderSession session, ViewRequest request, TimeSpan? timeout, ILogger logger, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(logger);
 
         if (EnvelopeAssembler.FolderProblem(session) is { } folderProblem)
         {
             return EnvelopeAssembler.Failure<ViewFacts>(session, folderProblem, cancellationToken);
         }
 
+        List<IssueItem> notes = [];
         try
         {
-            return await WithinTimeAsync(session, request, timeout, cancellationToken);
+            return await WithinTimeAsync(session, request, timeout, notes, cancellationToken);
         }
         catch (ToolRequestException ex)
         {
-            return EnvelopeAssembler.Failure<ViewFacts>(session, ex.Issue, cancellationToken);
+            return Failure(session, ex.Issue, notes, cancellationToken);
         }
 #pragma warning disable CA1031 // The boundary of the verb: anything unexpected is logged in full and reported as an error, never as a success.
         catch (Exception ex) when (ex is not OperationCanceledException)
 #pragma warning restore CA1031
         {
-            logger?.LogError(ex, "The view run failed unexpectedly.");
-            return EnvelopeAssembler.Failure<ViewFacts>(
+            logger.LogError(ex, "The view run failed unexpectedly.");
+            return Failure(
                 session,
                 new IssueItem("error", "view-internal-error", $"The view run failed unexpectedly with {ex.GetType().Name} (digest {FhirIds.Digest(ex.Message)}); this is a defect of the tool, not of the request, and its details are in the log on stderr.", Location: null),
+                notes,
                 cancellationToken);
         }
     }
 
-    private static async Task<ToolEnvelope<ViewFacts?>> WithinTimeAsync(FolderSession session, ViewRequest request, TimeSpan? limit, CancellationToken cancellationToken)
+    // A failure still reports what it left behind (a temporary file it could not safely delete).
+    private static ToolEnvelope<ViewFacts?> Failure(FolderSession session, IssueItem error, List<IssueItem> notes, CancellationToken cancellationToken) =>
+        EnvelopeAssembler.FolderProblem(session) is not null || notes.Count == 0
+            ? EnvelopeAssembler.Failure<ViewFacts>(session, error, cancellationToken)
+            : EnvelopeAssembler.Create<ViewFacts?>(session, null, session.Catalog.BuiltAt, [], [], [], [error, .. notes], cancellationToken);
+
+    private static async Task<ToolEnvelope<ViewFacts?>> WithinTimeAsync(FolderSession session, ViewRequest request, TimeSpan? limit, List<IssueItem> notes, CancellationToken cancellationToken)
     {
         int seconds = request.TimeoutSeconds ?? DefaultTimeoutSeconds;
         if (seconds is < 1 or > MaxTimeoutSeconds)
@@ -83,15 +92,16 @@ public static class ViewRunner
         timeout.CancelAfter(limit ?? TimeSpan.FromSeconds(seconds));
         try
         {
-            return await ExecuteAsync(session, request, timeout.Token);
+            return await ExecuteAsync(session, request, notes, timeout.Token);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeout.IsCancellationRequested)
         {
-            throw ToolRequestException.Error("view-timeout", $"The view did not finish within {limit?.TotalSeconds ?? seconds} seconds and was stopped. Limit it to one patient's resources with compartment Patient/<id>, or raise the timeout (up to {MaxTimeoutSeconds}).");
+            string narrower = request.Compartment is null ? "Limit it to one patient's resources with compartment Patient/<id>, or raise" : "Raise";
+            throw ToolRequestException.Error("view-timeout", $"The view did not finish within {limit?.TotalSeconds ?? seconds} seconds and was stopped. {narrower} the timeout (up to {MaxTimeoutSeconds}).");
         }
     }
 
-    private static async Task<ToolEnvelope<ViewFacts?>> ExecuteAsync(FolderSession session, ViewRequest request, CancellationToken cancellationToken)
+    private static async Task<ToolEnvelope<ViewFacts?>> ExecuteAsync(FolderSession session, ViewRequest request, List<IssueItem> notes, CancellationToken cancellationToken)
     {
         List<IssueItem> issues = [];
         List<OmittedItem> omitted = [];
@@ -105,7 +115,7 @@ public static class ViewRunner
         issues.AddRange(ViewVariables.Undeclared(variables, view.Expression));
         issues.AddRange(ViewIssues.ResolveUse(loaded.Json));
         int? distinctColumn = DistinctColumn(view, request.Distinct);
-        ViewScope scope = ViewScope.Resolve(session, view.Resource, request.Compartment, issues, omitted);
+        ViewScope scope = await ViewScope.ResolveAsync(session, view.Resource, request.Compartment, issues, omitted, cancellationToken);
         CheckResourceLimit(request, view, scope);
 
         var evaluation = new ViewEvaluation(session, view, variables, JsonSourceNodeFactory.Parse(new JsonObject { ["resourceType"] = view.Resource }).ToElement(session.Schema));
@@ -115,7 +125,8 @@ public static class ViewRunner
             evaluation.EvaluateOnEmpty(loaded.FromFolder);
         }
 
-        (ViewPass pass, ViewFileFacts? file) = await PassAsync(session, evaluation, scope, loaded, view, paging, distinctColumn, target, cancellationToken);
+        (ViewPass pass, ViewFileFacts? file) = await PassAsync(evaluation, scope, loaded, view, paging, distinctColumn, target, notes, cancellationToken);
+        issues.AddRange(notes);
         issues.AddRange(EmptyColumnIssues(view, pass));
         issues.AddRange(NameIssues.For(scope.Entries));
         issues.AddRange(evaluation.Problems);
@@ -146,14 +157,17 @@ public static class ViewRunner
 
         if (scope.Entries.Count > limit)
         {
-            throw ToolRequestException.Error("too-many-resources", $"The view would read {scope.Entries.Count} {view.Resource} resources, more than the limit of {limit}, and every one is read into memory to evaluate it. Limit it to one patient's resources with compartment Patient/<id>, or raise maxResources.");
+            string memory = view.OrdersAcrossResources ? " (and a view like this one, a top-level unionAll of plain branches, holds all of them in memory while it runs)" : string.Empty;
+            string narrower = request.Compartment is null ? "Limit it to one patient's resources with compartment Patient/<id>, or raise" : "Raise";
+            throw ToolRequestException.Error("too-many-resources", $"The view would read {scope.Entries.Count} {view.Resource} resources, more than the limit of {limit}{memory}. {narrower} maxResources.");
         }
     }
 
-    // One pass over the rows. With an output file every row is written to a temporary file beside it, and only a complete,
-    // non-empty result is renamed over the target; a run that fails or produces nothing removes what it created and touches nothing else.
+    // One pass over the rows. With an output file every row is written to a temporary file beside it, which is open and handed to the
+    // writer, and only a complete, non-empty result is renamed over the target; a run that fails or produces nothing removes what it
+    // created and touches nothing else. What it could not safely remove is reported in notes.
     private static async Task<(ViewPass Pass, ViewFileFacts? File)> PassAsync(
-        FolderSession session, ViewEvaluation evaluation, ViewScope scope, LoadedView loaded, CompiledView view, ViewPaging paging, int? distinctColumn, OutputTarget? target, CancellationToken cancellationToken)
+        ViewEvaluation evaluation, ViewScope scope, LoadedView loaded, CompiledView view, ViewPaging paging, int? distinctColumn, OutputTarget? target, List<IssueItem> notes, CancellationToken cancellationToken)
     {
         IEnumerable<ViewRow> rows = evaluation.Rows(scope.Entries, loaded.FromFolder, cancellationToken);
         if (target is null)
@@ -162,44 +176,54 @@ public static class ViewRunner
         }
 
         OutputFile file = target.Begin();
-        ViewFileSink sink = ViewFileSink.Create(file.TempPath, target.Format, view.Columns);
+        ViewFileSink sink = ViewFileSink.Create(file.Stream, target.Format, view.Columns);
         ViewPass pass;
         long bytes;
-        bool written = false;
         try
         {
             // The rows kept are the first ones, which evidence cites.
             pass = await ViewPass.RunAsync(rows, view.Columns.Count, new ViewPaging(ViewResponse.EvidenceRows, Offset: 0), distinctColumn, sink, cancellationToken);
             bytes = await sink.CompleteAsync(cancellationToken);
-            written = sink.Rows > 0;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            await sink.DisposeAsync();
+            Note(file.Discard(), notes);
             throw ToolRequestException.Error("out-write-failed", $"Writing '{target.Path}' failed: {ex.Message}. The partial file was removed.");
         }
-        finally
+        catch
         {
             await sink.DisposeAsync();
-            if (!written)
-            {
-                file.Discard();
-            }
+            Note(file.Discard(), notes);
+            throw;
         }
 
-        if (written)
+        await sink.DisposeAsync();
+        if (sink.Rows == 0)
         {
-            try
-            {
-                file.Commit();
-            }
-            catch (ToolRequestException)
-            {
-                file.Discard();
-                throw;
-            }
+            Note(file.Discard(), notes);
+            return (pass, new ViewFileFacts(target.Path, target.Format, 0, 0, Created: false));
         }
 
-        return (pass, new ViewFileFacts(target.Path, target.Format, sink.Rows, bytes, Created: written));
+        try
+        {
+            file.Commit();
+        }
+        catch (ToolRequestException)
+        {
+            Note(file.Discard(), notes);
+            throw;
+        }
+
+        return (pass, new ViewFileFacts(target.Path, target.Format, sink.Rows, bytes, Created: true));
+    }
+
+    private static void Note(IssueItem? left, List<IssueItem> notes)
+    {
+        if (left is not null)
+        {
+            notes.Add(left);
+        }
     }
 
     // A cell holds a primitive: the engine gives a complex element (a name, a CodeableConcept) as null, as it does a misspelt path,

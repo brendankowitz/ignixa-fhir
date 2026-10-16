@@ -38,26 +38,26 @@ internal sealed class ViewFileSink : IAsyncDisposable
     /// <summary>Rows written so far.</summary>
     public long Rows { get; private set; }
 
-    /// <summary>A sink writing <paramref name="format"/> rows to <paramref name="path"/>, which the caller owns (it is a temporary file).</summary>
-    public static ViewFileSink Create(string path, string format, IReadOnlyList<ColumnSchema> columns)
+    /// <summary>A sink writing <paramref name="format"/> rows to <paramref name="stream"/>, which the writer owns from here (the caller opened it exclusively).</summary>
+    public static ViewFileSink Create(Stream stream, string format, IReadOnlyList<ColumnSchema> columns)
     {
-        ArgumentException.ThrowIfNullOrEmpty(path);
+        ArgumentNullException.ThrowIfNull(stream);
         ArgumentNullException.ThrowIfNull(columns);
 
         if (format == OutputTarget.Csv)
         {
-            var csv = new CsvFileWriter(path, NullLogger.Instance);
+            var csv = new CsvFileWriter(stream, NullLogger.Instance);
             return new ViewFileSink(columns, new bool[columns.Count], csv.WriteRowAsync, csv.FlushAsync, () => csv.BytesWritten, csv);
         }
 
         if (format == OutputTarget.Ndjson)
         {
-            var ndjson = new NdjsonFileWriter(path, NullLogger.Instance);
+            var ndjson = new NdjsonFileWriter(stream, NullLogger.Instance);
             return new ViewFileSink(columns, new bool[columns.Count], ndjson.WriteRowAsync, ndjson.FlushAsync, () => ndjson.BytesWritten, ndjson);
         }
 
         (ParquetSchema schema, Dictionary<string, string> types) = ParquetSchemaOf(columns);
-        var parquet = new ParquetFileWriter(path, schema, NullLogger.Instance, types);
+        var parquet = new ParquetFileWriter(stream, schema, NullLogger.Instance, types);
         bool[] text = [.. columns.Select(column => types[column.Name] == "STRING")];
         return new ViewFileSink(columns, text, parquet.WriteRowAsync, parquet.FlushAsync, () => parquet.BytesWritten, parquet);
     }

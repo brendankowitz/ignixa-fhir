@@ -45,7 +45,7 @@ internal static class ViewFixture
         """);
 
     public static async Task<ToolEnvelope<ViewFacts?>> RunAsync(TestFolder folder, ViewRequest request) =>
-        await ViewRunner.RunAsync(Open(folder), request, CancellationToken.None);
+        await ViewRunner.RunAsync(Open(folder), request, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, CancellationToken.None);
 
     /// <summary>A run over the folder at <paramref name="folderPath"/>, for a folder that is not a whole <see cref="TestFolder"/>.</summary>
     public static async Task<ToolEnvelope<ViewFacts?>> RunInAsync(string folderPath, ViewRequest request, Microsoft.Extensions.Logging.ILogger? logger = null, TimeSpan? timeout = null) =>
@@ -53,7 +53,7 @@ internal static class ViewFixture
             new Ignixa.CliOnFhir.Session.FolderSession(folderPath, new Ignixa.Specification.Generated.R4CoreSchemaProvider(), Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance),
             request,
             timeout,
-            logger,
+            logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
             CancellationToken.None);
 
     public static ViewFacts Facts(ToolEnvelope<ViewFacts?> envelope)

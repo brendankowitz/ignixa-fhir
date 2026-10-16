@@ -62,7 +62,7 @@ internal static class ViewCommand
                 parseResult.GetValue(maxBytesOption),
                 parseResult.GetValue(timeoutOption),
                 parseResult.GetValue(maxResourcesOption));
-            return EnvelopeOutput.Write(await ViewRunner.RunAsync(session, request, cancellationToken, loggerFactory.CreateLogger("view")), parseResult.GetValue(prettyOption));
+            return EnvelopeOutput.Write(await ViewRunner.RunAsync(session, request, loggerFactory.CreateLogger("view"), cancellationToken), parseResult.GetValue(prettyOption));
         });
 
         return command;
