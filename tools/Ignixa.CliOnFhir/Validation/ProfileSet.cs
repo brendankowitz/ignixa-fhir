@@ -67,6 +67,21 @@ internal sealed class ProfileSet
     /// <summary>The loaded profile <paramref name="canonical"/> (<c>url</c> or <c>url|version</c>) names; null when none is loaded.</summary>
     public LoadedProfile? Find(string canonical) => _byCanonical.GetValueOrDefault(canonical);
 
+    /// <summary>
+    /// The resource type a target profile canonical constrains: the core definition's own type, or a loaded profile's type; null
+    /// when the canonical names neither, so the type cannot be told.
+    /// </summary>
+    public string? TypeOf(string targetProfile)
+    {
+        ArgumentNullException.ThrowIfNull(targetProfile);
+
+        const string CorePrefix = "http://hl7.org/fhir/StructureDefinition/";
+        string url = TerminologyStore.SplitCanonical(targetProfile).Url;
+        return url.StartsWith(CorePrefix, StringComparison.Ordinal) && url[CorePrefix.Length..] is { Length: > 0 } name && !name.Contains('/', StringComparison.Ordinal)
+            ? name
+            : Find(targetProfile)?.Type ?? Find(url)?.Type;
+    }
+
     /// <param name="core">The session's core schema.</param>
     /// <param name="rootPath">The folder, for reading its StructureDefinitions.</param>
     /// <param name="folderDefinitions">The folder's catalogued StructureDefinitions.</param>
@@ -79,7 +94,7 @@ internal sealed class ProfileSet
         ArgumentNullException.ThrowIfNull(packages);
 
         List<IssueItem> problems = [];
-        List<(ExtractedResource Resource, string Type, string Source, EvidenceItem Evidence)> definitions = [];
+        List<(ExtractedResource Resource, string Type, string Source, EvidenceItem Evidence, IReadOnlyDictionary<string, ProfileElementRule> Elements)> definitions = [];
         foreach (CatalogEntry entry in folderDefinitions)
         {
             (byte[]? json, IssueItem? problem) = ResourceReader.ReadBytes(rootPath, entry);
@@ -105,10 +120,10 @@ internal sealed class ProfileSet
         // cannot adapt is dropped there, so it is found here by asking for it back.
         ISchema schema = definitions.Count == 0 ? core : new ProfileLayeredSchemaProvider(core, [.. definitions.Select(definition => definition.Resource)]);
         List<LoadedProfile> profiles = [];
-        foreach ((ExtractedResource resource, string type, string source, EvidenceItem evidence) in definitions)
+        foreach ((ExtractedResource resource, string type, string source, EvidenceItem evidence, IReadOnlyDictionary<string, ProfileElementRule> elements) in definitions)
         {
             bool usable = schema.GetTypeDefinition(resource.Canonical) is not null;
-            profiles.Add(new LoadedProfile(resource.Canonical, resource.Version, type, source, usable, evidence));
+            profiles.Add(new LoadedProfile(resource.Canonical, resource.Version, type, source, usable, evidence, elements));
             if (!usable)
             {
                 problems.Add(new IssueItem("warning", UnusableCode, $"StructureDefinition {TerminologyNames.Canonical(resource.Canonical, resource.Version)} from {source} could not be built into validation checks (no snapshot, or one that cannot be generated from its differential); resources claiming it are reported as profile-not-loaded.", evidence.File));
@@ -119,12 +134,13 @@ internal sealed class ProfileSet
         return new ProfileSet(schema, resolver, profiles, [.. packages.Select(package => $"{package.Id}@{package.Version}")], problems);
     }
 
-    private static void Add(List<(ExtractedResource, string, string, EvidenceItem)> definitions, List<IssueItem> problems, byte[] json, string fhirVersion, string source, EvidenceItem evidence)
+    private static void Add(List<(ExtractedResource, string, string, EvidenceItem, IReadOnlyDictionary<string, ProfileElementRule>)> definitions, List<IssueItem> problems, byte[] json, string fhirVersion, string source, EvidenceItem evidence)
     {
         string? url;
         string? version;
         string? type;
         string? id;
+        IReadOnlyDictionary<string, ProfileElementRule> elements;
         try
         {
             using var document = JsonDocument.Parse(json);
@@ -133,6 +149,7 @@ internal sealed class ProfileSet
             version = String(root, "version");
             type = String(root, "type");
             id = String(root, "id");
+            elements = ElementRules(root);
         }
         catch (JsonException)
         {
@@ -155,7 +172,48 @@ internal sealed class ProfileSet
             ResourceJson = Encoding.UTF8.GetString(json),
             FhirVersion = fhirVersion,
         };
-        definitions.Add((resource, type, source, evidence));
+        definitions.Add((resource, type, source, evidence, elements));
+    }
+
+    /// <summary>The required bindings and reference target profiles of the definition's elements: the snapshot's, then the differential's over them; slices are left out.</summary>
+    private static Dictionary<string, ProfileElementRule> ElementRules(JsonElement root)
+    {
+        var rules = new Dictionary<string, ProfileElementRule>(StringComparer.Ordinal);
+        foreach (string part in new[] { "snapshot", "differential" })
+        {
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty(part, out JsonElement container) || container.ValueKind != JsonValueKind.Object
+                || !container.TryGetProperty("element", out JsonElement elements) || elements.ValueKind != JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            foreach (JsonElement element in elements.EnumerateArray())
+            {
+                if (String(element, "path") is not { } path || (String(element, "id") is { } id && id.Contains(':', StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+
+                string? required = element.ValueKind == JsonValueKind.Object && element.TryGetProperty("binding", out JsonElement binding)
+                    && string.Equals(String(binding, "strength"), "required", StringComparison.Ordinal) ? String(binding, "valueSet") : null;
+                List<string> targets = [];
+                if (element.ValueKind == JsonValueKind.Object && element.TryGetProperty("type", out JsonElement types) && types.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (JsonElement typeRef in types.EnumerateArray().Where(typeRef => String(typeRef, "code") == "Reference"))
+                    {
+                        if (typeRef.TryGetProperty("targetProfile", out JsonElement profiles) && profiles.ValueKind == JsonValueKind.Array)
+                        {
+                            targets.AddRange(profiles.EnumerateArray().Where(profile => profile.ValueKind == JsonValueKind.String).Select(profile => profile.GetString()!));
+                        }
+                    }
+                }
+
+                ProfileElementRule? existing = rules.GetValueOrDefault(path);
+                rules[path] = new ProfileElementRule(required ?? existing?.RequiredValueSet, targets.Count > 0 ? targets : existing?.TargetProfiles);
+            }
+        }
+
+        return rules;
     }
 
     private static string? String(JsonElement element, string name) =>

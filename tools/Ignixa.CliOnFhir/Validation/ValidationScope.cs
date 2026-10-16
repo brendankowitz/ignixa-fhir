@@ -24,6 +24,9 @@ namespace Ignixa.CliOnFhir.Validation;
 /// <param name="BuiltAt">When the catalog, or the newest index the scope was read from, was built.</param>
 internal sealed record ValidationScope(ValidationScopeFacts Facts, IReadOnlyList<CatalogEntry> Entries, IReadOnlyList<IssueItem> Issues, IReadOnlyList<AbsentItem> Absent, DateTimeOffset BuiltAt)
 {
+    /// <summary>The search's warnings left out of <see cref="Issues"/> (a search scope's capped <c>parameter-ignored</c> warnings).</summary>
+    public IReadOnlyList<OmittedItem> Omitted { get; init; } = [];
+
     /// <exception cref="ToolRequestException">The scope arguments contradict each other, or name something that cannot be resolved.</exception>
     public static ValidationScope Resolve(FolderSession session, ValidateRequest request)
     {
@@ -88,7 +91,7 @@ internal sealed record ValidationScope(ValidationScopeFacts Facts, IReadOnlyList
         string? patientReference = patient is null ? null : session.FindByName("Patient", patient) is { } owner ? FhirIds.Reference(owner) : $"Patient/{patient}";
         string kind = query is null ? (patient is null ? "type" : "patient") : "search";
         DateTimeOffset builtAt = match.Source.IndexesRead.Select(index => index.BuiltAt).DefaultIfEmpty(session.Catalog.BuiltAt).Max();
-        return new ValidationScope(new ValidationScopeFacts(kind, type, query, patientReference, entries.Count), entries, issues, [], builtAt);
+        return new ValidationScope(new ValidationScopeFacts(kind, type, query, patientReference, entries.Count), entries, issues, [], builtAt) { Omitted = match.Omitted };
     }
 
     private static ValidationScope References(FolderSession session, IReadOnlyList<string> references)

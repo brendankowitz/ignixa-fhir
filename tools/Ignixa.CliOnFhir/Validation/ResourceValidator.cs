@@ -19,7 +19,7 @@ namespace Ignixa.CliOnFhir.Validation;
 /// <c>validate_resources</c> / <c>cli-on-fhir validate</c>: validates resources in the folder with <c>Ignixa.Validation</c>
 /// against their core definition and loaded profiles, binding checks answered by the session's terminology store, and
 /// summarizes the result for an agent: verdict counts, checks that did not conclude, and the issues grouped by severity,
-/// profile, rule, path and message template with sample resources. A resource is <c>valid</c> only when every check ran;
+/// profile, rule, constraint, ValueSet and path with the tool's own rule description and sample resources. A resource is <c>valid</c> only when every check ran;
 /// one whose bindings could not be checked or whose profile is not loaded is <c>unknown</c>. Nothing from the data reaches
 /// the summary, the issue messages or <c>next</c> except shape-checked ids, paths and canonicals; full OperationOutcomes,
 /// which quote the data, come only with <c>detail</c>.
@@ -84,7 +84,7 @@ public static class ResourceValidator
         bool byReference = request.References is { Count: > 0 };
         ValidationScope scope = ValidationScope.Resolve(session, byReference ? request : request with { ResourceType = request.ResourceType ?? requested?.Type });
         List<CatalogEntry> inScope = [.. scope.Entries];
-        List<OmittedItem> omitted = [];
+        List<OmittedItem> omitted = [.. scope.Omitted];
         if (requested is not null && byReference)
         {
             int others = inScope.RemoveAll(entry => entry.ResourceType != requested.Type);
@@ -101,7 +101,13 @@ public static class ResourceValidator
 
         List<CatalogEntry> page = [.. inScope.Skip(request.Offset).Take(limit)];
         List<IssueItem> requestIssues = [.. PagingNotes(request, limit, page.Count, inScope.Count)];
-        var check = new ResourceCheck(session.RootPath, profiles, new ValidationSettings { Depth = depth, TerminologyService = session.Validators.Terminology }, requested);
+        var check = new ResourceCheck(
+            session.RootPath,
+            profiles,
+            new ValidationSettings { Depth = depth, TerminologyService = session.Validators.Terminology },
+            requested,
+            session.Schema.ResourceTypeNames,
+            (entry, resource) => BundleReferences(session, entry, resource));
         List<ResourceValidation> validations = [.. page.Select(entry =>
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -138,7 +144,7 @@ public static class ResourceValidator
             [.. terminology.Store.Sources.Select(source => source.Info.Name)],
             session.Terminology.Options.TxServer is not null,
             DisplaysChecked: false,
-            ChecksNotRun(depth));
+            ChecksNotRun(depth, validations.Sum(validation => validation.UndeterminableReferences)));
         var facts = new ValidateFacts(scope.Facts with { Total = inScope.Count }, against, request.Offset, validations.Count, summary.Verdicts, summary.NotChecked, [], groups.Count);
         List<NextCall> nextCalls = Next(request, next < inScope.Count ? next : null, groups);
         return Fit(session, scope, facts, groups, request.Detail ? validations : null, omitted, issues, nextCalls, cancellationToken);
@@ -395,8 +401,26 @@ public static class ResourceValidator
         }
     }
 
-    /// <summary>The checks that do not run at <paramref name="depth"/>, as facts state them.</summary>
-    private static IReadOnlyList<string> ChecksNotRun(ValidationDepth depth) => depth == ValidationDepth.Spec
-        ? ["invariants", "slicing", "extensible-bindings", "complex-choice-variants", "extensions", "displays"]
-        : ["extensions", "displays"];
+    /// <summary>
+    /// The checks that do not run at <paramref name="depth"/>, as facts state them, and the reference target checks that could
+    /// not run because the target's type could not be told (they leave verdicts as they are).
+    /// </summary>
+    private static IReadOnlyList<string> ChecksNotRun(ValidationDepth depth, int undeterminableReferences)
+    {
+        List<string> notRun = depth == ValidationDepth.Spec
+            ? ["invariants", "slicing", "extensible-bindings", "complex-choice-variants", "extensions", "displays"]
+            : ["extensions", "displays"];
+        if (undeterminableReferences > 0)
+        {
+            notRun.Add($"{ValidationRules.ReferenceTargetType} (undeterminable: {undeterminableReferences})");
+        }
+
+        return notRun;
+    }
+
+    /// <summary>The resource's Bundle references as written and the <c>Type/id</c> they resolve to; read from a copy, which the resolver rewrites.</summary>
+    private static IReadOnlyDictionary<string, string> BundleReferences(FolderSession session, CatalogEntry entry, JsonObject resource) =>
+        session.Catalog.FullUrls.Count > 0 && resource.DeepClone() is JsonObject copy
+            ? session.BundleReferences.Rewrite(entry, copy).Resolution.Resolved
+            : Indexing.ReferenceResolution.None.Resolved;
 }

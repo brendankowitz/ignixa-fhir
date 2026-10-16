@@ -15,4 +15,5 @@ namespace Ignixa.CliOnFhir.Search;
 /// <param name="Engine">The engine that evaluated it, for resolving includes.</param>
 /// <param name="Matches">The matches, in <c>_sort</c> order or else catalog order.</param>
 /// <param name="Issues">The parser's warnings and the compartment's notes; the caller adds to it.</param>
-internal sealed record SearchMatch(ParsedSearch Parsed, FolderSearchSource Source, InMemorySearchEngine Engine, List<IndexedResource> Matches, List<IssueItem> Issues);
+/// <param name="Omitted">The <c>parameter-ignored</c> warnings left out of <paramref name="Issues"/>, counted.</param>
+internal sealed record SearchMatch(ParsedSearch Parsed, FolderSearchSource Source, InMemorySearchEngine Engine, List<IndexedResource> Matches, List<IssueItem> Issues, List<OmittedItem> Omitted);

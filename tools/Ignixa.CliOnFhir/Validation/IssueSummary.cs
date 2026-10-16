@@ -72,7 +72,7 @@ internal sealed class IssueSummary
                     pair.Key.Constraint,
                     pair.Key.ValueSet,
                     pair.Key.Path,
-                    RuleDescriptions.Describe(pair.Key.Rule, pair.Key.Constraint),
+                    RuleDescriptions.Describe(pair.Key.Rule, pair.Key.Constraint, pair.Key.Profile),
                     pair.Value.Count,
                     pair.Value.Resources.Count,
                     [.. pair.Value.Samples.Select(FhirIds.Reference)]),

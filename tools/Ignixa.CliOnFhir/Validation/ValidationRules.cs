@@ -44,6 +44,9 @@ internal static class ValidationRules
     /// <summary>The resource has extensions, which Ignixa.Validation does not validate (see <see cref="ValidatorGapDetectors"/>).</summary>
     public const string ExtensionsNotValidated = "extensions-not-validated";
 
+    /// <summary>A reference to a resource type the element does not allow (see <see cref="ValidatorGapDetectors"/>).</summary>
+    public const string ReferenceTargetType = "reference-target-type";
+
     /// <summary>A failed FHIRPath invariant; the group names its key in <c>constraint</c>.</summary>
     public const string Invariant = "invariant";
 

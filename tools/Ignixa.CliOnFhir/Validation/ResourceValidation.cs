@@ -22,6 +22,9 @@ internal sealed record ResourceValidation(CatalogEntry Entry, string Verdict, IR
     public const string Unknown = "unknown";
     public const string Unreadable = "unreadable";
 
+    /// <summary>References whose target type could not be told, so their target type was not checked.</summary>
+    public int UndeterminableReferences { get; init; }
+
     /// <summary>The verdict the issues give: invalid on any failure, unknown when a check did not conclude, otherwise valid.</summary>
     public static string VerdictOf(IReadOnlyList<ClassifiedIssue> issues)
     {

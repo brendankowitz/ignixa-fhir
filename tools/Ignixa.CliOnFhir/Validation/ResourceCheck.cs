@@ -24,7 +24,7 @@ namespace Ignixa.CliOnFhir.Validation;
 /// <see cref="ValidatorGapDetectors"/>, and at depth <c>spec</c> a <see cref="ValidationRules.DepthSpec"/> note keeps every
 /// verdict from reading <c>valid</c>.
 /// </summary>
-internal sealed class ResourceCheck(string rootPath, ProfileSet profiles, ValidationSettings settings, LoadedProfile? requested)
+internal sealed class ResourceCheck(string rootPath, ProfileSet profiles, ValidationSettings settings, LoadedProfile? requested, IReadOnlySet<string> resourceTypes, Func<CatalogEntry, JsonObject, IReadOnlyDictionary<string, string>> bundleReferences)
 {
     private const string CorePrefix = "http://hl7.org/fhir/StructureDefinition/";
 
@@ -64,6 +64,7 @@ internal sealed class ResourceCheck(string rootPath, ProfileSet profiles, Valida
         }
 
         Run(core, coreUrl, element, classified, raw, seen);
+        List<(LoadedProfile Profile, string Name)> applied = [];
         foreach (string canonical in ProfilesOf(resource, coreUrl))
         {
             LoadedProfile? profile = profiles.Find(canonical);
@@ -81,9 +82,12 @@ internal sealed class ResourceCheck(string rootPath, ProfileSet profiles, Valida
             }
 
             Run(schema, named, element, classified, raw, seen);
+            applied.Add((profile, named));
         }
 
-        foreach ((ValidationIssue gap, ClassifiedIssue summary) in ValidatorGapDetectors.Detect(element, coreUrl))
+        (IReadOnlyList<(ValidationIssue Raw, ClassifiedIssue Classified)> gaps, int undeterminable) =
+            ValidatorGapDetectors.Detect(element, coreUrl, applied, profiles.TypeOf, resourceTypes, bundleReferences(entry, resource));
+        foreach ((ValidationIssue gap, ClassifiedIssue summary) in gaps)
         {
             raw.Add(gap);
             classified.Add(summary);
@@ -96,7 +100,7 @@ internal sealed class ResourceCheck(string rootPath, ProfileSet profiles, Valida
             classified.Add(new ClassifiedIssue("information", coreUrl, ValidationRules.DepthSpec, null, null, entry.ResourceType));
         }
 
-        return new ResourceValidation(entry, ResourceValidation.VerdictOf(classified), classified, raw, null);
+        return new ResourceValidation(entry, ResourceValidation.VerdictOf(classified), classified, raw, null) { UndeterminableReferences = undeterminable };
     }
 
     /// <summary>The requested profile, or else the resource's <c>meta.profile</c> canonicals, each once, without its core definition.</summary>

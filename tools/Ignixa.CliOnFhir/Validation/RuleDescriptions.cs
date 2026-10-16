@@ -62,6 +62,7 @@ internal static class RuleDescriptions
         [ValidationRules.SlicingDeferred] = "A slicing could not be evaluated (its discriminator could not be read), so it was not enforced.",
         [ValidationRules.NestingLimit] = "The element is nested deeper than the validator descends, so it was not validated.",
         [ValidationRules.DepthSpec] = "Validated at depth spec, which does not run invariants, slicing, extensible bindings or complex choice variants; validate at depth full for a verdict.",
+        [ValidationRules.ReferenceTargetType] = "A reference points at a resource type the element does not allow (by the core definition or a profile's target profiles).",
         [ValidationRules.ExtensionsNotValidated] = "The resource has extensions, which the validator does not check (definitions, value types, bindings), so its verdict is unknown.",
     }.ToFrozenDictionary(StringComparer.Ordinal);
 
@@ -82,8 +83,21 @@ internal static class RuleDescriptions
     /// <summary>Whether <paramref name="code"/> is one of the rules this table describes (so it is not a constraint key).</summary>
     public static bool IsKnownRule(string code) => Rules.ContainsKey(code);
 
-    /// <summary>The description of <paramref name="rule"/> (for an invariant, of its <paramref name="constraint"/> when it is a core one); null for a rule not listed.</summary>
-    public static string? Describe(string rule, string? constraint) => rule == ValidationRules.Invariant
-        ? constraint is not null && CoreInvariants.TryGetValue(constraint, out string? known) ? known : GenericInvariant
-        : Rules.GetValueOrDefault(rule);
+    /// <summary>
+    /// The description of <paramref name="rule"/>; for an invariant, its core meaning only when the StructureDefinition that
+    /// raised it (<paramref name="profile"/>) is a core one, since a profile may define a key of the same name; null for a rule
+    /// not listed.
+    /// </summary>
+    public static string? Describe(string rule, string? constraint, string profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+
+        if (rule != ValidationRules.Invariant)
+        {
+            return Rules.GetValueOrDefault(rule);
+        }
+
+        bool core = profile.StartsWith("http://hl7.org/fhir/StructureDefinition/", StringComparison.Ordinal);
+        return core && constraint is not null && CoreInvariants.TryGetValue(constraint, out string? known) ? known : GenericInvariant;
+    }
 }

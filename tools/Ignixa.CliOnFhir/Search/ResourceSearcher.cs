@@ -25,6 +25,9 @@ public static class ResourceSearcher
 
     public const int MaxCount = 50;
 
+    /// <summary>Most <c>parameter-ignored</c> warnings listed per response; the rest are counted in <c>omitted</c>.</summary>
+    public const int MaxIgnoredListed = 20;
+
     /// <summary>Most included resources returned with one page.</summary>
     public const int IncludeLimit = 50;
 
@@ -76,21 +79,34 @@ public static class ResourceSearcher
     /// <exception cref="ToolRequestException">The query cannot be parsed or evaluated.</exception>
     internal static SearchMatch MatchAll(FolderSession session, SearchRequest request)
     {
-        (ParsedSearch parsed, List<IssueItem> issues) = Parse(session, request);
+        (ParsedSearch parsed, List<IssueItem> issues, List<OmittedItem> omitted) = Parse(session, request);
         var source = new FolderSearchSource(session);
         var engine = new InMemorySearchEngine(source, Features, session.Compartments);
-        return new SearchMatch(parsed, source, engine, Match(engine, source, parsed), issues);
+        return new SearchMatch(parsed, source, engine, Match(engine, source, parsed), issues, omitted);
     }
 
     /// <summary>
     /// Parses <paramref name="request"/> as a search does, digest ids rewritten and the compartment applied, without evaluating
-    /// it; the parser's warnings and the compartment's notes are returned with it.
+    /// it; the parser's warnings (at most <see cref="MaxIgnoredListed"/> <c>parameter-ignored</c> ones, the rest counted in the
+    /// returned omitted items) and the compartment's notes are returned with it.
     /// </summary>
     /// <exception cref="ToolRequestException">The query cannot be parsed.</exception>
-    internal static (ParsedSearch Parsed, List<IssueItem> Issues) Parse(FolderSession session, SearchRequest request)
+    internal static (ParsedSearch Parsed, List<IssueItem> Issues, List<OmittedItem> Omitted) Parse(FolderSession session, SearchRequest request)
     {
         ParsedSearch parsed = session.QueryParser.Parse(request with { Query = DigestIdQuery.Rewrite(session, request.ResourceType, request.Query) });
-        List<IssueItem> issues = [.. parsed.Warnings];
+        List<IssueItem> issues = [];
+        int ignored = 0;
+        foreach (IssueItem warning in parsed.Warnings)
+        {
+            if (warning.Code != "parameter-ignored" || ++ignored <= MaxIgnoredListed)
+            {
+                issues.Add(warning);
+            }
+        }
+
+        List<OmittedItem> omitted = ignored > MaxIgnoredListed
+            ? [new OmittedItem($"{ignored - MaxIgnoredListed} more parameter-ignored warnings (those parameters did not filter the results)", "size-budget")]
+            : [];
         if (request.Compartment is { } compartment)
         {
             (SearchOptions scoped, IReadOnlyList<IssueItem> compartmentIssues) = CompartmentArgument.Apply(session, parsed.Options, compartment);
@@ -98,7 +114,7 @@ public static class ResourceSearcher
             issues.AddRange(compartmentIssues);
         }
 
-        return (parsed, issues);
+        return (parsed, issues, omitted);
     }
 
     /// <summary>
@@ -117,11 +133,11 @@ public static class ResourceSearcher
     private static ToolEnvelope<SearchFacts?> Execute(FolderSession session, SearchRequest request, int extraBytes, CancellationToken cancellationToken)
     {
         ValidatePaging(request);
-        (ParsedSearch parsed, FolderSearchSource source, InMemorySearchEngine engine, List<IndexedResource> matches, List<IssueItem> issues) = MatchAll(session, request);
+        (ParsedSearch parsed, FolderSearchSource source, InMemorySearchEngine engine, List<IndexedResource> matches, List<IssueItem> issues, List<OmittedItem> parseOmitted) = MatchAll(session, request);
         int count = EffectiveCount(request.Count ?? parsed.RequestedCount, issues);
 
         string query = request.Query ?? string.Empty;
-        List<OmittedItem> omitted = [];
+        List<OmittedItem> omitted = [.. parseOmitted];
         if (parsed.CountOnly)
         {
             issues.AddRange(ReferenceFollowChecks.UnresolvedReferences(source, new SearchOptions(parsed.Options) { Include = [], RevInclude = [] }, []));

@@ -104,19 +104,46 @@ internal sealed class StoreTerminologyService(FolderSession session) : ITerminol
             return (local.Facts.Result, local.Facts.Reason);
         }
 
-        // One remote question per ValueSet, system and code for the session's lifetime: a folder repeats the same codes.
+        // One remote question per ValueSet, system and code for the session's lifetime: a folder repeats the same codes. Only
+        // a definitive answer stays cached: a failed or unavailable server is asked again (once more in this call), and a
+        // question another caller cancelled is asked again with this caller's token.
         string why = TxFallback.Why(local.Absent, local.Facts.Reason);
         (string, string?, string, string?) key = (valueSetUrl, system, code, version);
-        Task<(string Result, string Reason)> asked = _remote.GetOrAdd(key, _ => AskRemoteAsync(tx, valueSetUrl, system, code, version, why, cancellationToken));
-        try
+        bool retried = false;
+        while (true)
         {
-            return await asked;
-        }
-        catch (Exception)
-        {
-            // A cancelled or failed question is not an answer: the next check asks again.
+            Task<(string Result, string Reason)>? created = null;
+            Task<(string Result, string Reason)> asked = _remote.GetOrAdd(key, _ => created = AskRemoteAsync(tx, valueSetUrl, system, code, version, why, cancellationToken));
+            bool mine = ReferenceEquals(asked, created);
+            (string Result, string Reason) answer;
+            try
+            {
+                answer = await asked;
+            }
+            catch (OperationCanceledException) when (!mine && !cancellationToken.IsCancellationRequested)
+            {
+                // Another caller's question, cancelled by that caller's token: ask again with this one.
+                _remote.TryRemove(KeyValuePair.Create(key, asked));
+                continue;
+            }
+            catch (Exception)
+            {
+                _remote.TryRemove(KeyValuePair.Create(key, asked));
+                throw;
+            }
+
+            if (!answer.Reason.StartsWith(TxUnavailableReason, StringComparison.Ordinal))
+            {
+                return answer;
+            }
+
             _remote.TryRemove(KeyValuePair.Create(key, asked));
-            throw;
+            if (retried)
+            {
+                return answer;
+            }
+
+            retried = true;
         }
     }
 

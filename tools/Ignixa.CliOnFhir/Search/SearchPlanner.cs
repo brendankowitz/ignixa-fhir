@@ -52,7 +52,7 @@ public static class SearchPlanner
     {
         // The search's own request checks, in the search's order, so a request the search refuses the plan refuses too.
         ResourceSearcher.ValidatePaging(request);
-        (ParsedSearch parsed, List<IssueItem> issues) = ResourceSearcher.Parse(session, request);
+        (ParsedSearch parsed, List<IssueItem> issues, List<OmittedItem> parseOmitted) = ResourceSearcher.Parse(session, request);
         _ = ResourceSearcher.EffectiveCount(request.Count ?? parsed.RequestedCount, issues);
         ResourceSearcher.Compile(session, parsed);
         issues.AddRange(ReferenceFollowChecks.InapplicableIncludes(parsed.Options));
@@ -78,7 +78,7 @@ public static class SearchPlanner
         }
 
         var facts = new PlanFacts(request.ResourceType, request.Query ?? string.Empty, request.Compartment, population.Indexed(request.ResourceType), parameters, execute);
-        List<OmittedItem> diagnosticsOmitted = [];
+        List<OmittedItem> diagnosticsOmitted = [.. parseOmitted];
         List<IssueItem> diagnostics = [];
         ResourceSearcher.AddDiagnostics(session, population.Source, diagnostics, diagnosticsOmitted);
         if (!execute)
@@ -89,20 +89,23 @@ public static class SearchPlanner
             return EnvelopeAssembler.Create<PlanFacts?>(session, fit.Facts, builtAt, [], fit.Omitted, [], fit.Issues, cancellationToken) with { Next = next };
         }
 
-        return WithResults(session, request, facts, planIssues, cancellationToken);
+        // The search reports its own parse warnings and the diagnostics of the indexes it reads.
+        return WithResults(session, request, facts, planIssues, [], cancellationToken);
     }
 
     /// <summary>
     /// The search's own envelope with the plan added to its facts and the plan's own warnings to its issues. The plan is fitted
-    /// first (to half the cap, then less if the two together still do not fit), and the search is told to leave the plan's
-    /// size unused, so the page it returns, and its <c>omitted</c>, are sized for the combined response.
+    /// first, to the whole cap, and the search is told to leave the plan's size unused, so the page fills what the plan leaves
+    /// and nothing of the plan is cut while there is room. Only when the two together still exceed the cap is the plan fitted
+    /// to what the search's response leaves, and the search asked again.
     /// </summary>
-    private static ToolEnvelope<PlanFacts?> WithResults(FolderSession session, SearchRequest request, PlanFacts facts, List<IssueItem> planIssues, CancellationToken cancellationToken)
+    private static ToolEnvelope<PlanFacts?> WithResults(FolderSession session, SearchRequest request, PlanFacts facts, List<IssueItem> planIssues, List<OmittedItem> planOmitted, CancellationToken cancellationToken)
     {
-        int planBudget = EnvelopeJson.MaxBytes / 2;
+        const int Slack = 1024;
+        int planBudget = EnvelopeJson.MaxBytes;
         while (true)
         {
-            PlanFit fit = PlanFit.Within(session, facts, [], planIssues, [], [], planBudget);
+            PlanFit fit = PlanFit.Within(session, facts, [], planIssues, planOmitted, [], planBudget);
             int extra = EnvelopeJson.SizeOf(fit.Facts) + EnvelopeJson.SizeOf(fit.Issues) + EnvelopeJson.SizeOf(fit.Omitted);
             ToolEnvelope<SearchFacts?> search = ResourceSearcher.Search(session, request, extra, cancellationToken);
             if (search.Facts is not { } results)
@@ -111,12 +114,13 @@ public static class SearchPlanner
             }
 
             var envelope = new ToolEnvelope<PlanFacts?>(fit.Facts with { Results = results }, search.Evidence, [.. search.Omitted, .. fit.Omitted], search.Absent, [.. search.Issues, .. fit.Issues], search.Freshness) { Next = search.Next };
-            if (EnvelopeJson.SizeOf(envelope) <= EnvelopeJson.MaxBytes || planBudget < 1024)
+            int size = EnvelopeJson.SizeOf(envelope);
+            if (size <= EnvelopeJson.MaxBytes || planBudget <= Slack)
             {
                 return envelope;
             }
 
-            planBudget /= 2;
+            planBudget = Math.Max(Slack, Math.Min(planBudget / 2, EnvelopeJson.MaxBytes - EnvelopeJson.SizeOf(search) - Slack));
         }
     }
 
