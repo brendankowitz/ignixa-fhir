@@ -13,10 +13,11 @@ namespace Ignixa.CliOnFhir.Patients;
 public static class ContextRoot
 {
     /// <summary>
-    /// The root digest of <c>Patient/<paramref name="patientId"/></c>, as of the session clock's current instant. A request that
-    /// cannot be answered (unreadable folder, malformed id, unknown patient) yields null facts and an <c>error</c> issue.
+    /// The root digest of <c>Patient/<paramref name="patientId"/></c>, as of <paramref name="asOf"/>, else as of the patient's
+    /// latest dated resource (<see cref="PatientContext.Open"/>). A request that cannot be answered (unreadable folder,
+    /// malformed id, unknown patient) yields null facts and an <c>error</c> issue.
     /// </summary>
-    public static ToolEnvelope<RootDigestFacts?> Get(FolderSession session, string patientId, CancellationToken cancellationToken = default)
+    public static ToolEnvelope<RootDigestFacts?> Get(FolderSession session, string patientId, DateTimeOffset? asOf = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(session);
 
@@ -27,7 +28,7 @@ public static class ContextRoot
 
         try
         {
-            return Execute(PatientContext.Open(session, patientId, session.UtcNow()), cancellationToken);
+            return Execute(PatientContext.Open(session, patientId, asOf), cancellationToken);
         }
         catch (ToolRequestException ex)
         {

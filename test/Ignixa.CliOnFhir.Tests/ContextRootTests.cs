@@ -103,12 +103,12 @@ public class ContextRootTests
     }
 
     [Fact]
-    public void GivenAnEarlierClock_WhenTheRootIsRead_ThenTheTimeDependentDomainsAreAnchoredToIt()
+    public void GivenAnEarlierAsOf_WhenTheRootIsRead_ThenTheTimeDependentDomainsAreAnchoredToIt()
     {
         using TestFolder folder = Ndjson();
         var earlier = new DateTimeOffset(2024, 6, 1, 8, 30, 15, 500, TimeSpan.FromHours(2));
 
-        RootDigestFacts facts = ContextRoot.Get(Open(folder, earlier), "p1").Facts.ShouldNotBeNull();
+        RootDigestFacts facts = ContextRoot.Get(Open(folder), "p1", earlier).Facts.ShouldNotBeNull();
 
         // Truncated to the second, in UTC.
         facts.AsOf.ShouldBe(new DateTimeOffset(2024, 6, 1, 6, 30, 15, TimeSpan.Zero));
@@ -116,6 +116,20 @@ public class ContextRootTests
         facts.Labs.Items[0].Reference.ShouldBe("Observation/o2");
         facts.Labs.Items[0].Trend.ShouldBe("up");
         facts.Encounters.Window!.To.ShouldBe(facts.AsOf);
+    }
+
+    [Fact]
+    public void GivenNoAsOf_WhenTheRootIsRead_ThenItIsAnchoredToThePatientsLatestDatedResourceNotTheClock()
+    {
+        // The clock reads 2026-10-15; e8 (planned) starts 2027-01-01 and o10 is dated 2026-12-01. Regression: at V15 the clock
+        // was asOf, so data dated after it (MIMIC's, shifted to the 2100s) was left out.
+        using TestFolder folder = Ndjson();
+
+        RootDigestFacts facts = ContextRoot.Get(Open(folder), "p1").Facts.ShouldNotBeNull();
+
+        facts.AsOf.ShouldBe(new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        facts.Labs.Items.Single(item => item.Code == "http://loinc.org|2339-0").Reference.ShouldBe("Observation/o10");
+        facts.Encounters.Items.Select(item => item.Reference).ShouldNotContain("Encounter/e8");
     }
 
     [Fact]
@@ -270,7 +284,8 @@ public class ContextRootTests
         envelope.Issues[1].Diagnostics.ShouldStartWith("Provenance resources in the folder were not considered for Patient/p1's compartment");
     }
 
-    private static RootDigestFacts Root(TestFolder folder) => ContextRoot.Get(Open(folder), "p1").Facts.ShouldNotBeNull();
+    /// <summary>p1's root as of the fixture's <see cref="AsOf"/>, so e8 and o10 fall after it.</summary>
+    private static RootDigestFacts Root(TestFolder folder) => ContextRoot.Get(Open(folder), "p1", AsOf).Facts.ShouldNotBeNull();
 
     private static string Uuid(string name) => new Guid(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(name)).AsSpan(0, 16)).ToString();
 

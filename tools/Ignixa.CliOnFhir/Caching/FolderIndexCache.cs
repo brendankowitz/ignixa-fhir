@@ -193,14 +193,14 @@ internal sealed partial class FolderIndexCache
                 [.. resource.Index.Select(entry => new CachedEntry(entry.SearchParameter.Code, entry.Value))],
                 resource.BundleReferences))]);
 
-        // A value type the format does not know throws here (a programmer error). Ignixa's compact value format is
-        // lossless for every value the indexer produces (Ignixa.Search.Tests' CompactSearchValueFormatTests), so what is
-        // written reloads as it was built; a file that does not read back is reported as corrupt and rebuilt.
-        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(cached, JsonOptions);
-
+        // A value type the format does not know throws while writing (a programmer error; the partial file is deleted).
+        // Ignixa's compact value format is lossless for every value the indexer produces (Ignixa.Search.Tests'
+        // CompactSearchValueFormatTests), so what is written reloads as it was built; a file that does not read back is
+        // reported as corrupt and rebuilt. Serialized straight to the file: a type index can be gigabytes of JSON
+        // (MIMIC's 813K Observations write 1.5 GB), which as one array doubled the build's peak memory.
         try
         {
-            WriteAtomically(TypeFilePath(index.ResourceType), stream => stream.Write(bytes));
+            WriteAtomically(TypeFilePath(index.ResourceType), stream => JsonSerializer.Serialize(stream, cached, JsonOptions));
             return stopwatch.ElapsedMilliseconds;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

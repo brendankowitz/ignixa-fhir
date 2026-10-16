@@ -11,7 +11,9 @@ namespace Ignixa.CliOnFhir.Patients;
 /// <param name="Resources">The Patient and every resource in its compartment.</param>
 /// <param name="From">The earliest main date among the domains' resources, as a date; absent when none has one.</param>
 /// <param name="To">The latest main date among them, as a date; absent when none has one.</param>
+/// <param name="AsOf">The asOf the call gave; absent when the map is read as of the patient's latest dated resource.</param>
 public sealed record MapRecord(
     int Resources,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? From,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? To);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? To,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? AsOf = null);

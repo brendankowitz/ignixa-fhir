@@ -1244,6 +1244,28 @@ public class SchemaAwareElementTests
         Assert.All(observed, type => Assert.Same(expected, type));
     }
 
+    [Fact]
+    public void GivenAFreshElement_WhenSeveralNamesAreNavigatedConcurrently_ThenEachNameYieldsOneSharedChildList()
+    {
+        // Arrange - nothing navigated yet, so every first call races to publish its list.
+        var element = ParseObservation("\"valueString\": \"foo\"");
+        string[] names = ["status", "code", "value", null];
+
+        // Act
+        var observed = new IReadOnlyList<IElement>[names.Length * 64];
+        Parallel.For(0, observed.Length, i => observed[i] = element.Children(names[i % names.Length]));
+
+        // Assert - one instance per name, and the names do not overwrite one another.
+        for (var n = 0; n < names.Length; n++)
+        {
+            var expected = element.Children(names[n]);
+            Assert.All(Enumerable.Range(0, 64).Select(i => observed[(i * names.Length) + n]), list => Assert.Same(expected, list));
+        }
+
+        Assert.Equal("final", element.Children("status").Single().Value);
+        Assert.Equal(4, element.Children(null).Count);
+    }
+
     private IElement ParseObservation(string discriminatingProperty, ISchema schema)
     {
         var observationJson = $$"""

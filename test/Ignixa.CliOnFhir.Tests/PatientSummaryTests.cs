@@ -126,7 +126,7 @@ public class PatientSummaryTests
 
         result.IsError.ShouldBe(true);
         JsonNode envelope = JsonNode.Parse(result.Content.OfType<TextContentBlock>().Single().Text)!;
-        ((string)envelope["issues"]![0]!["diagnostics"]!).ShouldBe("'patientId' is not an argument of this tool. Its arguments are patient.");
+        ((string)envelope["issues"]![0]!["diagnostics"]!).ShouldBe("'patientId' is not an argument of this tool. Its arguments are asOf, patient.");
     }
 
     [Fact]

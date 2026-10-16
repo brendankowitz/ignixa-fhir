@@ -24,12 +24,14 @@ internal static class SummaryCommand
         Option<string?> cacheDirOption = CommonOptions.CreateCacheDirOption();
         Option<bool> noCacheOption = CommonOptions.CreateNoCacheOption();
         Option<bool> prettyOption = CommonOptions.CreatePrettyOption();
+        var asOfOption = new Option<string?>("--as-of") { Description = "The date the question is asked on (YYYY-MM-DD or a dateTime); default: the patient's latest dated resource" };
 
         var command = new Command("summary", "One patient's map, as the patient_summary MCP tool returns it. Exits non-zero, with the problem in 'issues', when the patient is unknown or the identifier names several");
         command.Arguments.Add(pathArgument);
         command.Arguments.Add(patientArgument);
         command.Options.Add(versionOption);
         command.Options.Add(prettyOption);
+        command.Options.Add(asOfOption);
         CommonOptions.AddCacheOptions(command, cacheDirOption, noCacheOption);
 
         command.SetAction((parseResult, cancellationToken) =>
@@ -37,7 +39,7 @@ internal static class SummaryCommand
             using ILoggerFactory loggerFactory = StandardErrorLogging.Create(LogLevel.Warning);
             FolderSession session = CommonOptions.CreateSession(parseResult, pathArgument, versionOption, cacheDirOption, noCacheOption, loggerFactory);
             string patient = parseResult.GetValue(patientArgument)!;
-            return Task.FromResult(EnvelopeOutput.Write(PatientMap.Summarize(session, patient, cancellationToken), parseResult.GetValue(prettyOption)));
+            return Task.FromResult(EnvelopeOutput.Write(PatientMap.Summarize(session, patient, parseResult.GetValue(asOfOption), cancellationToken), parseResult.GetValue(prettyOption)));
         });
 
         return command;

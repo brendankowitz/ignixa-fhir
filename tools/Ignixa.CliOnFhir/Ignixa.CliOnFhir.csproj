@@ -10,6 +10,9 @@
     <NoWarn>$(NoWarn);CA1303;CA1848;CA2007</NoWarn>
     <!-- Opts into Ignixa.Search's experimental in-memory search engine API ([Experimental("IGNIXAEXP001")]). -->
     <NoWarn>$(NoWarn);IGNIXAEXP001</NoWarn>
+    <!-- Index builds extract in parallel and allocate heavily; under workstation GC the threads mostly wait on collections
+         (813K MIMIC Observations: 72 s workstation, 14 s server, similar peak working set). DATAS keeps server heaps sized to use. -->
+    <ServerGarbageCollection>true</ServerGarbageCollection>
   </PropertyGroup>
 
   <!-- NuGet Package & Tool Configuration -->

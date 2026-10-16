@@ -74,8 +74,8 @@ internal static class ContextCommand
             int exitCode = parseResult.GetValue(nodeOption) is { } nodeKey
                 ? EnvelopeOutput.Write(ContextExpander.Expand(session, patientId, nodeKey, parseResult.GetValue(countOption), parseResult.GetValue(offsetOption), parseResult.GetValue(elementsOption), parseResult.GetValue(maxBytesOption), cancellationToken), pretty)
                 : parseResult.GetValue(compactOption)
-                    ? EnvelopeOutput.Write(PatientMap.Get(session, patientId, cancellationToken), pretty)
-                    : EnvelopeOutput.Write(ContextRoot.Get(session, patientId, cancellationToken), pretty);
+                    ? EnvelopeOutput.Write(PatientMap.Get(session, patientId, cancellationToken: cancellationToken), pretty)
+                    : EnvelopeOutput.Write(ContextRoot.Get(session, patientId, cancellationToken: cancellationToken), pretty);
             return Task.FromResult(exitCode);
         });
 

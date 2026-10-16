@@ -15,7 +15,7 @@ namespace Ignixa.CliOnFhir.Patients;
 /// </summary>
 /// <param name="Demographics">From the Patient resource; its reference names the patient.</param>
 /// <param name="Record">The record's size and date span.</param>
-/// <param name="Domains">problems, medications, allergies, encounters, labs, immunizations and procedures, always all present (a count of 0 is an absence, also in <c>absent</c>).</param>
+/// <param name="Domains">problems, medications, administrations, allergies, encounters, labs, immunizations and procedures, always all present (a count of 0 is an absence, also in <c>absent</c>).</param>
 /// <param name="Other">Compartment resources of types no domain covers, counted by type (search them with the compartment argument).</param>
 /// <param name="CodeSystems">Each code system the domains use, as <c>alias=system url</c>, most used first.</param>
 /// <param name="Quirks">How this patient's data is coded in ways a search must allow for: one test under several codes, medications named by reference, a domain coded in several systems.</param>

@@ -38,6 +38,7 @@ public sealed class PatientTools(FolderSession session)
         """)]
     public CallToolResult Summary(
         [Description("Patient id, MRN or 'system|value'")] string patient,
+        [Description("The date the question is asked on (YYYY-MM-DD); default: the patient's latest dated resource")] string? asOf = null,
         RequestContext<CallToolRequestParams>? context = null,
         CancellationToken cancellationToken = default)
     {
@@ -46,7 +47,7 @@ public sealed class PatientTools(FolderSession session)
             return ToolResults.Lean(EnvelopeAssembler.Failure<object>(session, new Contracts.IssueItem("error", "invalid-parameter", unknown, Location: null), cancellationToken));
         }
 
-        return ToolResults.Lean(PatientMap.Summarize(session, patient, cancellationToken));
+        return ToolResults.Lean(PatientMap.Summarize(session, patient, asOf, cancellationToken));
     }
 
     [McpServerTool(Name = "patient_cohort", ReadOnly = true, Idempotent = true)]
@@ -131,8 +132,8 @@ public sealed class PatientTools(FolderSession session)
 
     private CallToolResult Root(string patientId, string? detail, CancellationToken cancellationToken) => detail switch
     {
-        null or "map" => ToolResults.Lean(PatientMap.Get(session, patientId, cancellationToken)),
-        "full" => ToolResults.Lean(ContextRoot.Get(session, patientId, cancellationToken)),
+        null or "map" => ToolResults.Lean(PatientMap.Get(session, patientId, cancellationToken: cancellationToken)),
+        "full" => ToolResults.Lean(ContextRoot.Get(session, patientId, cancellationToken: cancellationToken)),
         _ => ToolResults.Lean(EnvelopeAssembler.Failure<object>(
             session,
             new Contracts.IssueItem("error", "invalid-parameter", $"'detail' must be 'map' (the default) or 'full', not '{detail}'.", Location: null),
