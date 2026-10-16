@@ -1,195 +1,74 @@
-# FHIR Structure Definition Provider Code Generator
+# FHIR Specification Code Generators
 
-This folder contains the code generation infrastructure for creating `IStructureDefinitionSummaryProvider` implementations for different FHIR versions (R4, R4B, R5, STU3).
-
-## Overview
-
-The code generator uses Microsoft's [fhir-codegen](https://github.com/microsoft/fhir-codegen) tool with a custom `ILanguage` implementation to generate reliable, correct structure definition providers from official FHIR packages.
-
-### Architecture
+This folder generates the FHIR specification artifacts Ignixa checks in (schema providers, reference metadata, code-system
+mappings, search parameter and compartment definitions, ValueSets, typed models) from the official FHIR core packages
+(STU3, R4, R4B, R5, R6). It uses Microsoft's [fhir-codegen](https://github.com/microsoft/fhir-codegen) to load the
+packages and custom `ILanguage` implementations in `Ignixa.Specification.Generators` to write the C#.
 
 ```
 codegen/
-├── IgnixaCodegen.sln               # Separate solution for code generation
-├── Ignixa.Specification.Generators/ # Custom ILanguage implementation
-│   └── CSharpStructureProviderLanguage.cs
-├── fhir-codegen/                   # Git submodule (Microsoft fhir-codegen)
-├── generate.ps1                    # PowerShell generation script
-├── generate.sh                     # Bash generation script
-└── Directory.Build.props           # Disables CPM for codegen
+├── IgnixaCodegen.sln                    # Separate solution for code generation
+├── Ignixa.Specification.Generators/     # The generator console app: Program.cs picks a mode, one *Language.cs per mode
+├── fhir-codegen/                        # Git submodule (Microsoft fhir-codegen)
+├── generate.sh                          # Regenerates what every version needs (see below)
+├── generate-search-parameters.ps1       # PowerShell wrapper for search-parameter generation through the fhir-codegen CLI
+├── Directory.Build.props                # Disables CPM for codegen
+└── Directory.Packages.props
 ```
 
-### Why a Separate Solution?
+### Why a separate solution?
 
-The main `All.sln` uses Central Package Management (CPM), which conflicts with the fhir-codegen submodule's explicit package versions. By isolating code generation in `IgnixaCodegen.sln`, we:
+The main `All.sln` uses Central Package Management (CPM), which conflicts with the fhir-codegen submodule's explicit
+package versions. Isolating code generation in `IgnixaCodegen.sln` keeps the main build fast, avoids the CPM conflicts,
+and generates files on demand rather than on every build.
 
-1. Keep the main solution simple and fast to build
-2. Avoid CPM conflicts with third-party dependencies
-3. Generate files on-demand rather than on every build
-4. Make the build process more transparent
+## Prerequisites
 
-## Usage
+- The submodule: `git submodule update --init codegen/fhir-codegen`.
+- A .NET SDK. The generator targets `net8.0`; with only a newer runtime installed, run with `DOTNET_ROLL_FORWARD=Major`.
+- Bash. There is no PowerShell equivalent of `generate.sh`; on Windows run it from Git Bash or WSL.
+- Network access to `https://packages.fhir.org/` on first use; packages are cached in `~/.fhir/packages/`.
 
-### Prerequisites
-
-- .NET 8 SDK or later
-- PowerShell 7+ (for `generate.ps1`) or Bash (for `generate.sh`)
-
-### Generating Providers
-
-#### Generate all FHIR versions:
-
-**PowerShell:**
-```powershell
-cd codegen
-./generate.ps1
-```
-
-**Bash:**
-```bash
-cd codegen
-./generate.sh
-```
-
-#### Generate a specific version:
-
-**PowerShell:**
-```powershell
-./generate.ps1 -FhirVersion R4
-```
-
-**Bash:**
-```bash
-./generate.sh R4
-```
-
-Supported versions: `R4`, `R4B`, `R5`, `STU3`, `All`
-
-### Output
-
-Generated files are placed in:
-```
-src/Ignixa.Specification/Generated/
-├── R4StructureDefinitionSummaryProvider.g.cs
-├── R4BStructureDefinitionSummaryProvider.g.cs
-├── R5StructureDefinitionSummaryProvider.g.cs
-└── STU3StructureDefinitionSummaryProvider.g.cs
-```
-
-These files are marked as `linguist-generated=true` in `.gitattributes`.
-
-## Development
-
-### Building the Code Generator
+## Regenerating
 
 ```bash
 cd codegen
-dotnet build IgnixaCodegen.sln -c Release
+./generate.sh          # every version
+./generate.sh R4       # one of R4, R4B, R5, R6, STU3
 ```
 
-### Modifying the Generator
+For each version `generate.sh` runs three generator modes:
 
-1. Edit `Ignixa.Specification.Generators/CSharpStructureProviderLanguage.cs`
-2. Build: `dotnet build IgnixaCodegen.sln`
-3. Run generation scripts to test changes
+| Step | Mode | Output |
+|------|------|--------|
+| `structure` | default | `src/Core/Ignixa.Specification/Generated/{R4,R4B,R5,R6,STU3}ReferenceMetadata.g.cs` |
+| `coreschema` | `coreschema` | `src/Core/Ignixa.Specification/Generated/*CoreSchemaProvider.g.cs` |
+| `codesystem` | `codesystem` | `src/Core/Ignixa.Search/Generated/*CodeSystemMappings.g.cs` |
 
-### Key Classes
+A step that fails stops its version and names the step (`✗ R4: the coreschema step failed`); the script goes on to the
+other versions and exits non-zero. On success the outputs overwrite the checked-in files, so `git status` shows exactly
+what changed, and nothing else.
 
-- **CSharpStructureProviderLanguage**: Implements `ILanguage` interface from fhir-codegen
-- **CSharpStructureProviderConfig**: Configuration for output directory and namespace
-- **GenerateProviderCode**: Generates the actual C# code from `DefinitionCollection`
+The other modes are run directly, with an optional output directory as the last argument:
 
-### How It Works
+```bash
+dotnet run --project Ignixa.Specification.Generators -c Release -- <mode> <version> [outputDir]
+```
 
-1. Scripts build both fhir-codegen and Ignixa.Specification.Generators
-2. fhir-codegen downloads and parses FHIR packages (e.g., `hl7.fhir.r4.core`)
-3. fhir-codegen creates a `DefinitionCollection` with all FHIR structures
-4. Our custom `CSharpStructureProviderLanguage` traverses the collection
-5. Generated C# code is written to `src/Ignixa.Specification/Generated/`
+Modes: `search`, `compartment` (both to `src/Core/Ignixa.Search/Generated`), `valueset`, `valueset-provider`,
+`invariant`, `validation-terminology`, `narrative-template`, and `typed-model` (multi-version; it owns its output paths).
+
+## Code-system mappings
+
+`codesystem` mode gives each resource element of type `code` the code system its binding implies, which the search
+indexer attaches to the element's values (`Patient.gender` → `http://hl7.org/fhir/administrative-gender`). It maps an
+element only when its binding is required or extensible, or has a required `elementdefinition-maxValueSet`, and the
+ValueSet that names includes exactly one system. Every other element is left without a system, and the run logs it with
+the reason: a ValueSet that is not in the package, includes another ValueSet, or draws on several code systems.
 
 ## Troubleshooting
 
-### Build Errors
-
-If you encounter build errors, ensure:
-1. The fhir-codegen submodule is initialized: `git submodule update --init --recursive`
-2. .NET 8 SDK is installed
-3. You're building from the `codegen/` directory
-
-### CPM Conflicts
-
-If you see NU1008 errors about package versions:
-- These should only occur when building from the root directory
-- Always build IgnixaCodegen.sln from within the `codegen/` folder
-- The `codegen/Directory.Build.props` and `codegen/Directory.Packages.props` files disable CPM for this folder
-
-### Missing Packages
-
-If fhir-codegen fails to download packages:
-- Ensure you have internet connectivity
-- The tool automatically downloads from `https://packages.fhir.org/`
-- Packages are cached in `~/.fhir/packages/`
-
-## Implementation Details
-
-### Complete IStructureDefinitionSummaryProvider Generation
-
-The generator now produces **complete, production-ready** implementations with:
-
-1. **Full Type Dictionary** (~210 types: 148 resources + 41 complex types + 20 primitives)
-   - Lazy element initialization for memory efficiency
-   - Accurate IsAbstract, IsResource flags from StructureDefinition
-
-2. **Complete Element Definitions** (~59,000 lines of generated code)
-   - All `IElementDefinitionSummary` properties mapped correctly:
-     - **Cardinality**: Accurate min/max from ElementDefinition (not binary guesses)
-     - **InSummary**: Actual `IsSummary` flag (not guessed from `IsRequired`)
-     - **IsModifier**: Actual `IsModifier` flag (was always false in old implementation)
-     - **IsRequired**: Accurate `Min >= 1` (not just binary required/optional)
-     - **IsCollection**: Accurate `Max != "1"` (supports max constraints like "0..5")
-   - Choice types with all type options (e.g., Observation.value[x] has 11 types)
-   - XML representation detection (XmlAttr for id/lang, XHtml for div, XmlElement default)
-   - Proper field ordering from StructureDefinition
-
-3. **Memory-Efficient Design**
-   - Lazy initialization: Elements not created until first `GetElements()` call
-   - Shared type instances: All references to same type share one instance
-   - Immutable collections: `IReadOnlyCollection` for safety
-
-4. **Nested Implementation Classes**
-   - `GeneratedStructureDefinitionSummary`: Implements `IStructureDefinitionSummary`
-   - `GeneratedElementDefinitionSummary`: Implements `IElementDefinitionSummary`
-   - Both are private sealed classes within the generated provider
-
-### Data Source Comparison
-
-See `src/Ignixa.Specification/Schema/gaps.md` for a detailed analysis of improvements over the old JSON schema-based implementation.
-
-| Feature | JSON Schema (Old) | fhir-codegen (New) |
-|---------|------------------|---------------------|
-| **Cardinality** | ⚠️ Binary (0/1 or */1) | ✅ Full (0..*, 1..5, etc.) |
-| **Reference Targets** | ❌ Missing | ✅ Full list per type |
-| **Modifier Elements** | ❌ Always false | ✅ Accurate from FHIR |
-| **Summary Flag** | ⚠️ Guessed | ✅ Accurate from FHIR |
-| **Bindings** | ❌ Missing | ✅ ValueSet + strength |
-| **Constraints** | ❌ Missing | ✅ FHIRPath invariants |
-| **Maintenance** | ⚠️ Manual updates | ✅ Auto-regenerate |
-
-### Generated Code Stats (R4)
-
-- **Total Lines**: ~59,318 lines
-- **Resources**: 148 types
-- **Complex Types**: 41 types
-- **Primitive Types**: 20 types
-- **Element Methods**: 209 type-specific methods
-- **Build Time**: ~12 seconds (generation) + ~11 seconds (compile)
-- **File Size**: ~3.5 MB
-
-## Future Enhancements
-
-- [x] ~~Generate full `IStructureDefinitionSummary` implementations~~ **COMPLETE**
-- [x] ~~Generate `IElementDefinitionSummary` for each property~~ **COMPLETE**
-- [x] ~~Include cardinality, data types, and reference targets~~ **COMPLETE**
-- [ ] Support for profiles and extensions (Phase 4)
-- [ ] ValueSet bindings and constraint metadata (Phase 4)
-- [ ] Validation rule generation (Tier 1 validator, Phase 5)
+- **Build errors:** check the submodule is initialized and that you build `IgnixaCodegen.sln` from within `codegen/`.
+- **NU1008 (CPM) errors:** these only occur when building from the repository root; `codegen/Directory.Build.props` and
+  `codegen/Directory.Packages.props` disable CPM for this folder.
+- **Package download failures:** check connectivity to `https://packages.fhir.org/`, or pre-populate `~/.fhir/packages/`.

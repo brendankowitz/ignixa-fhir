@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Generate FHIR IStructureDefinitionSummaryProvider implementations
-# This script uses Ignixa.Specification.Generators to generate providers and metadata
+# Generate the FHIR specification artifacts Ignixa checks in: per version, the reference metadata
+# (src/Core/Ignixa.Specification/Generated/*ReferenceMetadata.g.cs), the runtime core schema providers
+# (*CoreSchemaProvider.g.cs) and the code-system mappings (src/Core/Ignixa.Search/Generated/*CodeSystemMappings.g.cs).
 
 set -e
 
@@ -14,30 +15,36 @@ FHIR_VERSION="${1:-All}"
 echo -e "\033[0;36mBuilding Ignixa.Specification.Generators...\033[0m"
 dotnet build -c Release "$GENERATORS_DIR/Ignixa.Specification.Generators.csproj"
 
+# Runs one generator mode for one version and names the step when it fails. generate_version runs
+# under `if !`, where `set -e` is off, so every step must return its own failure.
+run_step() {
+    local version=$1
+    local step=$2
+    shift 2
+    if ! dotnet run --project "$GENERATORS_DIR/Ignixa.Specification.Generators.csproj" --configuration Release -- "$@"; then
+        echo -e "\033[0;31m✗ $version: the $step step failed\033[0m" >&2
+        return 1
+    fi
+}
+
 # Function to generate for a specific version
 generate_version() {
     local version=$1
     echo -e "\n\033[0;32mGenerating $version provider...\033[0m"
 
-    # Structure mode (default): reference metadata + structure-definition summary providers.
-    dotnet run --project "$GENERATORS_DIR/Ignixa.Specification.Generators.csproj" --configuration Release -- "$version"
+    # Structure mode (default): the reference metadata.
+    run_step "$version" structure "$version" || return 1
 
     # Core-schema mode: the runtime *CoreSchemaProvider.g.cs (element schemas, invariants, slicing
     # metadata). This is a SEPARATE generator mode from "structure" — omitting it silently leaves the
     # runtime providers stale after a CSharpCoreSchemaLanguage change (see PR #310 slicing metadata).
-    dotnet run --project "$GENERATORS_DIR/Ignixa.Specification.Generators.csproj" --configuration Release -- coreschema "$version"
+    run_step "$version" coreschema coreschema "$version" || return 1
 
     # Code-system mode: src/Core/Ignixa.Search/Generated/*CodeSystemMappings.g.cs, the implicit system of each
     # resource `code` element (read by CodeSystemResolver when indexing token search values).
-    dotnet run --project "$GENERATORS_DIR/Ignixa.Specification.Generators.csproj" --configuration Release -- codesystem "$version"
+    run_step "$version" codesystem codesystem "$version" || return 1
 
-    if [ $? -eq 0 ]; then
-        echo -e "\033[0;32m✓ Generated $version provider\033[0m"
-        return 0
-    else
-        echo -e "\033[0;31m✗ Failed to generate $version provider\033[0m"
-        return 1
-    fi
+    echo -e "\033[0;32m✓ Generated $version provider\033[0m"
 }
 
 # Generate requested versions
