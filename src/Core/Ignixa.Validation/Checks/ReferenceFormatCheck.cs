@@ -75,10 +75,7 @@ public class ReferenceFormatCheck : IValidationCheck
 
         if (!IsValidReferenceFormat(reference))
         {
-            issues.Add(ValidationIssue.InvariantFailure(
-                "ref-1",
-                $"Reference '{reference}' is not a valid FHIR reference format",
-                referenceChild.Location));
+            issues.Add(ValidationIssue.FromTemplate(IssueSeverity.Error, "ref-1", referenceChild.Location, IssueTemplates.ReferenceFormat, reference));
         }
     }
 

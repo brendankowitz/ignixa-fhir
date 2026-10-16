@@ -90,10 +90,14 @@ public class TypeCheck : IValidationCheck
                 else
                 {
                     return ValidationResult.Failure(
-                        ValidationIssue.InvariantFailure(
+                        ValidationIssue.FromTemplate(
+                            IssueSeverity.Error,
                             "type-1",
-                            $"JSON type mismatch: expected {GetExpectedJsonTypeDescription(_expectedType)} for FHIR type '{_expectedType}', but got {jsonKind}",
-                            location));
+                            location,
+                            IssueTemplates.TypeJsonKind,
+                            GetExpectedJsonTypeDescription(_expectedType),
+                            _expectedType,
+                            jsonKind.ToString()));
                 }
             }
         }
@@ -119,10 +123,12 @@ public class TypeCheck : IValidationCheck
         if (IsStringFamily(_expectedType) && Encoding.UTF8.GetByteCount(text) > MaxStringByteLength)
         {
             return ValidationResult.Failure(
-                ValidationIssue.InvariantFailure(
+                ValidationIssue.FromTemplate(
+                    IssueSeverity.Error,
                     "type-1",
-                    $"Value is longer than permitted maximum length of 1 MB ({MaxStringByteLength} bytes)",
-                    location));
+                    location,
+                    IssueTemplates.TypeTooLong,
+                    MaxStringByteLength.ToString(CultureInfo.InvariantCulture)));
         }
 
         // Element-name-based validation: Some FHIR types inherit from base types but have specialized rules.
@@ -136,26 +142,21 @@ public class TypeCheck : IValidationCheck
             // Use element name in error message if validation was element-name-based, otherwise use type
             var validationType = elementNameValidation != null ? _elementName : _expectedType;
             return ValidationResult.Failure(
-                ValidationIssue.InvariantFailure(
-                    "type-1",
-                    $"Value '{text}' is not a valid '{validationType}'",
-                    location));
+                ValidationIssue.FromTemplate(IssueSeverity.Error, "type-1", location, IssueTemplates.TypeInvalidValue, text, validationType));
         }
 
-        // Delegate value-content validation to the strict shared validator so non-choice primitives
-        // get the same always-invalid rules as choice elements (empty-string rejection, calendar-date
-        // validity, component ranges, integer range, JSON-kind). TypeCheck retains the
-        // id/uri/url/oid/uuid/canonical format checks above, which FhirPrimitiveValidator does not cover.
+        // Delegate value-content validation to the shared validator so non-choice primitives get the
+        // same rules as choice elements (empty-string rejection, calendar-date validity, component
+        // ranges, integer range, JSON-kind). TypeCheck retains the id/uri/url/oid/uuid/canonical format
+        // checks above, which FhirPrimitiveValidator does not cover.
         //
-        // dateTime carries a documented depth-graded format leniency (bug #210-4): loose timezone
-        // precision is accepted at Spec/Compatibility and rejected only at Full. TypeCheck already
-        // applied that depth-aware dateTime format check above, so suppress the delegate's strict
-        // dateTime format regex except at Full depth; calendar validity still applies at every depth.
-        var enforceStrictDateFormat = _expectedType != "dateTime" || settings.Depth == ValidationDepth.Full;
-        if (!FhirPrimitiveValidator.TryValidate(fieldNode, _expectedType, enforceStrictDateFormat, out var primitiveReason))
+        // dateTime carries a documented depth-graded format leniency (bug #210-4): a missing timezone
+        // after a time, or one after a date, is accepted below Full and rejected at Full. The shared
+        // validator applies it by depth, for this path and the choice path alike.
+        if (!FhirPrimitiveValidator.TryValidate(fieldNode, _expectedType, settings.Depth, out var primitiveReason))
         {
             return ValidationResult.Failure(
-                ValidationIssue.InvariantFailure("type-1", primitiveReason!, location));
+                ValidationIssue.FromTemplate(IssueSeverity.Error, "type-1", location, IssueTemplates.TypePrimitiveRule, primitiveReason!));
         }
 
         return ValidationResult.Success();
@@ -187,6 +188,10 @@ public class TypeCheck : IValidationCheck
             // datatype (Resource.id) carries the [A-Za-z0-9\-\.]{1,64} rule; Element.id is a plain
             // System.String and accepts values like "/foobar==". The regex is applied by type in
             // GetValidationByType ("id" => IdPattern), reached when _expectedType == "id".
+
+            // Extension.url is System.String-typed in the core definitions but is a uri, which may be
+            // relative (a complex extension names its sub-extensions so), not an http(s) url.
+            "url" when _expectedType == "string" => null,
 
             // URI-like types
             "uri" => UriPattern.IsMatch(text),

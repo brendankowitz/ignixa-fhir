@@ -291,18 +291,33 @@ public class ValidationPipelineRegistrationTests
         harness.Writes.ShouldBe(accepted ? 1 : 0);
     }
 
+    // The choice path follows the same depth-graded dateTime policy as the non-choice path (bug #210-4): the loose timezone
+    // form is accepted at Spec and rejected at Full, so one rule applies whether or not the element is a choice.
     [Theory]
-    [InlineData(FhirVersion.Stu3)]
-    [InlineData(FhirVersion.R4)]
-    [InlineData(FhirVersion.R4B)]
-    [InlineData(FhirVersion.R5)]
-    public async Task GivenInvalidChoiceDateTime_WhenSendingAtSpecDepth_ThenRejectsBeforeWriting(FhirVersion version)
+    [InlineData(FhirVersion.Stu3, ValidationDepth.Spec, true)]
+    [InlineData(FhirVersion.R4, ValidationDepth.Spec, true)]
+    [InlineData(FhirVersion.R4B, ValidationDepth.Spec, true)]
+    [InlineData(FhirVersion.R5, ValidationDepth.Spec, true)]
+    [InlineData(FhirVersion.Stu3, ValidationDepth.Full, false)]
+    [InlineData(FhirVersion.R4, ValidationDepth.Full, false)]
+    [InlineData(FhirVersion.R4B, ValidationDepth.Full, false)]
+    [InlineData(FhirVersion.R5, ValidationDepth.Full, false)]
+    public async Task GivenLooseChoiceDateTime_WhenSelectingDepth_ThenFollowsTheNonChoicePolicy(FhirVersion version, ValidationDepth depth, bool accepted)
     {
         using var harness = new WriteHarness(version);
-        await Should.ThrowAsync<ValidationException>(() => harness.SendAsync("""
+        const string resource = """
             {"resourceType":"Observation","status":"final","code":{"text":"test"},"effectiveDateTime":"2021-10-13+02:00"}
-            """));
-        harness.Writes.ShouldBe(0);
+            """;
+        if (accepted)
+        {
+            await harness.SendAsync(resource, depth);
+        }
+        else
+        {
+            await Should.ThrowAsync<ValidationException>(() => harness.SendAsync(resource, depth));
+        }
+
+        harness.Writes.ShouldBe(accepted ? 1 : 0);
     }
 
     [Theory]

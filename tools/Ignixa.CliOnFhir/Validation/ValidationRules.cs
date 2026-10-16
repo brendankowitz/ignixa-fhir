@@ -50,6 +50,9 @@ internal static class ValidationRules
     /// <summary>A reference to a resource type the element does not allow (see <see cref="ValidatorGapDetectors"/>).</summary>
     public const string ReferenceTargetType = "reference-target-type";
 
+    /// <summary>A CodeableConcept with text only under a required binding: it carries no coding from the ValueSet.</summary>
+    public const string BindingRequiredTextOnly = "binding-required-text-only";
+
     /// <summary>A failed FHIRPath invariant; the group names its key in <c>constraint</c>.</summary>
     public const string Invariant = "invariant";
 

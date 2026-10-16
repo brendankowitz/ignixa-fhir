@@ -200,9 +200,13 @@ with a FHIR `OperationOutcome`; a rejected update does not create a new version.
 `Prefer: validation=minimal|spec|full` request header overrides that tenant default.
 `Minimal` is **not** a validation-off switch: it runs the schema's universal
 structural checks, including required fields, primitive types, and narrative checks.
-`Spec` adds schema checks and required terminology bindings. `Full` additionally
-evaluates profile invariants, slicing, and advanced terminology checks. Selecting a
-lower tier does not disable logical-ID validation.
+`Spec` adds schema checks and required terminology bindings, reference target types,
+and every nested datatype, whether it is a plain element, a complex choice variant
+(`valueQuantity`) or an extension's value. `Full` additionally evaluates profile
+invariants, slicing, extensible bindings, and extensions against their loaded
+definitions. Selecting a lower tier does not disable logical-ID validation. See
+[Validation depths](/docs/core-sdk/validation#validation-depths) for what each tier
+checks and reports.
 
 Logical IDs must contain 1–64 ASCII letters, digits, hyphens, or periods. Narrative
 `text.div` must be a well-formed XHTML `div` in the XHTML namespace, using FHIR's
@@ -215,12 +219,14 @@ is preserved, not rewritten or sanitized. Narrative validation is not a
 replacement for the [FHIR rendering security guidance](https://hl7.org/fhir/R4/security.html#narrative).
 
 Validation depth is not a claim that every possible FHIR constraint is checked.
-In particular, existing non-choice `dateTime` validation accepts loose timezone
-precision at `Spec` (for example, `Period.start = "2021-10-13+02:00"`), but rejects
-it at `Full`. Choice-valued dateTimes such as `Observation.effectiveDateTime` use
-strict primitive syntax, including at `Spec`. The loose form is **not conformant
-FHIR dateTime**; this is a compatibility policy, not a change to the FHIR grammar.
-Use `Full` when strict non-choice dateTime syntax is required.
+In particular, `dateTime` validation accepts loose timezone precision below `Full`
+(for example, `Period.start = "2021-10-13+02:00"` or
+`Observation.effectiveDateTime = "2023-01-01T12:00:00"`), and rejects it at `Full`.
+The rule is the same for a plain element and a choice variant. The loose form is
+**not conformant R4 dateTime**; this is a compatibility policy (bug #210-4: real-world
+data, and the R5 grammar, carry it), not a change to the FHIR grammar. Every other
+dateTime rule (component ranges, calendar validity) applies at every depth. Use `Full`
+when strict dateTime syntax is required.
 
 Installed FHIR packages and their StructureDefinitions supply profile rules.
 The write pipeline resolves schemas and typed elements for the current request

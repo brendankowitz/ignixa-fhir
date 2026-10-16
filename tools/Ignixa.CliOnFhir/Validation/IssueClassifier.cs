@@ -40,6 +40,13 @@ internal static partial class IssueClassifier
 
     private static (string Rule, string? Constraint, string? ValueSet) Rule(ValidationIssue issue)
     {
+        // Keyed on the validator's template, whose only argument is the binding's ValueSet canonical (definition content).
+        if (issue.TemplateId == IssueTemplates.BindingRequiredTextOnly.Id && issue.TemplateArguments is [var valueSet])
+        {
+            (string url, string? version) = TerminologyStore.SplitCanonical(valueSet);
+            return (ValidationRules.BindingRequiredTextOnly, null, TerminologyNames.Canonical(url, version));
+        }
+
         // The terminology adapter starts each of its messages with its rule name and names only the (shape-checked) ValueSet.
         if (issue.Code is "code-invalid" or "terminology-validation-warning" or "terminology-unavailable"
             && StoreTerminologyService.Rules.FirstOrDefault(rule => issue.Message.StartsWith(rule + ":", StringComparison.Ordinal)) is { } adapterRule)

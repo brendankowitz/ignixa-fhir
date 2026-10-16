@@ -158,9 +158,10 @@ public class ValidateReferenceTypeTests
         Strings(group["samples"]!).ShouldBe(["Patient/c1"]);
     }
 
-    // Regression: at a5cace5 obs-child (an empty differential over obs-parent) had no binding rule, so a text-only code passed unchecked.
+    // Regression: at a5cace5 obs-child (an empty differential over obs-parent) had no binding rule, so a text-only code passed
+    // unchecked. Since Task 9b the validator applies the inherited required binding itself, and a text-only concept fails it.
     [Fact]
-    public async Task GivenADifferentialOnlyProfileOverAProfileRequiringABinding_WhenATextOnlyConceptIsValidated_ThenTheInheritedBindingIsNotChecked()
+    public async Task GivenADifferentialOnlyProfileOverAProfileRequiringABinding_WhenATextOnlyConceptIsValidated_ThenTheInheritedBindingRejectsIt()
     {
         using var folder = new TestFolder();
         folder.Write("sd-parent.json", Profile("obs-parent", "Observation", "http://hl7.org/fhir/StructureDefinition/Observation", """[{"id":"Observation.code","path":"Observation.code","binding":{"strength":"required","valueSet":"http://hl7.org/fhir/ValueSet/observation-codes"}}]"""));
@@ -170,7 +171,9 @@ public class ValidateReferenceTypeTests
 
         JsonNode result = await ValidateAsync(folder, store, "Observation");
 
-        JsonNode group = Groups(result).Single(item => (string)item!["rule"]! == "binding-not-checked" && (string)item["path"]! == "Observation.code")!;
+        ((int)result["facts"]!["verdicts"]!["invalid"]!).ShouldBe(1);
+        JsonNode group = Groups(result).Single(item => (string)item!["rule"]! == "binding-required-text-only" && (string)item["path"]! == "Observation.code")!;
+        ((string)group["severity"]!).ShouldBe("error");
         ((string)group["valueSet"]!).ShouldBe("http://hl7.org/fhir/ValueSet/observation-codes");
         ((string)group["profile"]!).ShouldBe("http://example.org/fhir/StructureDefinition/obs-child");
     }

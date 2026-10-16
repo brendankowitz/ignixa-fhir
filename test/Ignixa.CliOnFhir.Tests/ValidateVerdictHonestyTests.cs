@@ -44,8 +44,10 @@ public class ValidateVerdictHonestyTests
         ((int)full["facts"]!["verdicts"]!["valid"]!).ShouldBe(1);
     }
 
+    // Since Task 9b the validator itself rejects a text-only concept under a required binding (it carries no coding from the
+    // ValueSet), where the tool's own detector could only say the binding was not checked.
     [Fact]
-    public async Task GivenATextOnlyConceptUnderARequiredBinding_WhenValidatedAtEitherDepth_ThenItsBindingIsNotCheckedAndTheVerdictUnknown()
+    public async Task GivenATextOnlyConceptUnderARequiredBinding_WhenValidatedAtEitherDepth_ThenItIsInvalidAndNamesTheValueSet()
     {
         using var folder = new TestFolder();
         folder.Write("conditions.ndjson", """{"resourceType":"Condition","id":"cstext","clinicalStatus":{"text":"active"},"subject":{"reference":"Patient/p"},"code":{"text":"x"}}""");
@@ -56,8 +58,9 @@ public class ValidateVerdictHonestyTests
         {
             JsonNode result = Json(await ResourceValidator.ValidateAsync(session, new ValidateRequest(Depth: depth)));
 
-            ((int)result["facts"]!["verdicts"]!["unknown"]!).ShouldBe(1, depth);
-            JsonNode group = Groups(result).Single(item => (string)item!["rule"]! == "binding-not-checked" && (string)item["path"]! == "Condition.clinicalStatus")!;
+            ((int)result["facts"]!["verdicts"]!["invalid"]!).ShouldBe(1, depth);
+            JsonNode group = Groups(result).Single(item => (string)item!["rule"]! == "binding-required-text-only" && (string)item["path"]! == "Condition.clinicalStatus")!;
+            ((string)group["severity"]!).ShouldBe("error", depth);
             ((string)group["valueSet"]!).ShouldBe("http://hl7.org/fhir/ValueSet/condition-clinical|4.0.1");
         }
     }

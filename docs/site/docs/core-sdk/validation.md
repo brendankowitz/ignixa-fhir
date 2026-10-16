@@ -139,6 +139,24 @@ public class CustomCheck : IValidationCheck
 
 ## Validation Depths
 
+### Depth policy
+
+An element is validated according to its **type**, not according to how it is declared. A complex datatype is
+validated through its own schema at Spec and above, whether it is a plain element (`Observation.referenceRange.low`), a
+complex choice variant (`Observation.valueQuantity`) or an extension's value (`extension.valueQuantity`). A
+Reference, CodeableConcept or Coding gets the same dedicated checks (reference format and target type, coding
+structure, bindings) in all three positions. What a tier adds is a kind of rule, never more of the instance:
+
+- **Spec** checks what the core definitions and the profiles' snapshots state element by element: structure,
+  cardinality, primitive types, fixed values and patterns, required bindings and reference target types.
+- **Full** adds the rules that need evaluation beyond one element: FHIRPath invariants, slicing, extensible
+  bindings, and extensions against their loaded definitions.
+
+A check that applies but cannot conclude is reported, never passed: a reference whose target type cannot be told,
+an extension whose definition is not loaded, a binding the terminology service cannot decide, a constraint the
+FHIRPath engine cannot evaluate. Each is a non-failing `Information` or `Warning` issue, so a consumer can tell
+"checked and conformant" from "not checked".
+
 ### Minimal
 
 Structural validation only - fastest option:
@@ -163,13 +181,19 @@ var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
 
 Checks (includes Minimal, plus):
 - Cardinality constraints (min/max)
-- Type checking
+- Type checking, including every nested datatype: backbone elements, complex datatypes, complex choice variants
+  (`valueQuantity`, `valueAttachment`) and extension values
 - Reference format validation
+- Reference target types (`ElementDefinition.type.targetProfile`, the core definition's and each profile's); a
+  `Reference.type` that disagrees with the reference is `reference-type-mismatch`
 - Choice element validation
-- Required terminology bindings
+- Required terminology bindings; a CodeableConcept with text only under a required binding is an error (it carries
+  no coding from the ValueSet)
 - Fixed value constraints
 - Pattern constraints
 - Coding.system must be absolute URI
+- Every extension, wherever it appears (including a primitive's `_field` shadow), as the Extension datatype: `url`
+  present, one `value[x]` of an allowed type, its value's datatype rules
 
 ### Compatibility
 
@@ -182,13 +206,15 @@ var settings = new ValidationSettings { Depth = ValidationDepth.Compatibility };
 Checks (similar to Spec, but more lenient):
 - All Minimal checks
 - Cardinality constraints (min/max)
-- Type checking
+- Type checking, including nested datatypes, complex choice variants and extension values
 - Reference format validation
 - Choice element validation
 - Required terminology bindings
 - Fixed value constraints
 - Pattern constraints
 - **Accepts relative URIs in Coding.system** (e.g., `"internal-tags"`) - relaxed from Spec
+- **Accepts a text-only CodeableConcept under a required binding** - relaxed from Spec
+- **Does not check reference target types** - relaxed from Spec
 
 Use when:
 - Migrating from Microsoft FHIR Server (Firely SDK validation)
@@ -206,10 +232,43 @@ var settings = new ValidationSettings { Depth = ValidationDepth.Full };
 Checks (includes Spec, plus):
 - FHIRPath invariants
 - Slice matching
-- Extension validation
+- Extensions against their definitions, when the schema the resolver builds from has them loaded (a package layered
+  over the core schema): value types narrowed, bindings, cardinalities, a complex extension's sub-extension slices
 - Extensible terminology bindings
 - Display name validation
 - Advanced profile constraints
+
+At Full an extension whose definition is not loaded is validated as the Extension datatype and reported as
+`extension-definition-unchecked` (Information), as the HL7 validator reports an unknown extension. So is a
+sub-extension of a loaded complex extension: the rules a definition gives its sub-extension slices (their value types
+and bindings) are not modelled, only the slices' cardinalities. An extension's context (where its definition allows
+it) is not checked at any depth.
+
+### dateTime timezone leniency
+
+Below Full, a `dateTime` may omit its timezone after a time (`2023-01-01T12:00:00`) or carry one after a date
+(`2021-10-13+02:00`); Full applies the strict R4 grammar, which requires a timezone whenever a time is present and
+allows none after a date. This is a deliberate compatibility policy (bug #210-4: real-world data carries these forms,
+and the R5 grammar admits them), and it applies to every dateTime, a plain element and a choice variant alike. Every
+other dateTime rule (component ranges, calendar validity) applies at every depth.
+
+### Reference target types
+
+A reference's target type is told from, in order: a contained resource its `#id` names; the host's
+`ValidationSettings.ReferenceTypeResolver`; an entry of the enclosing Bundle or Parameters; a relative `Type/id`; an
+absolute URL ending in `Type/id` (an id of at most 64 characters, not a page such as `.html`). A reference whose type
+cannot be told (an unresolved `urn:uuid:`, an identifier only), one with only a display, and one at an element whose
+target profile is not loaded are reported as `reference-target-unchecked` (Information), never passed. A host that
+validates resources extracted from a Bundle can resolve their `urn:uuid:` references by setting a resolver on that
+resource's settings:
+
+```csharp
+var settings = new ValidationSettings
+{
+    Depth = ValidationDepth.Spec,
+    ReferenceTypeResolver = new MyBundleUrnResolver(bundleEntriesByFullUrl),
+};
+```
 
 ## Validation Settings
 
@@ -253,6 +312,29 @@ public sealed record ValidationIssue
     public string Path { get; }
     public string Message { get; }
     public CodeableConceptJsonNode? Details { get; }
+    public string? TemplateId { get; }
+    public IReadOnlyList<string> TemplateArguments { get; }
+}
+```
+
+### Message templates
+
+`Message` interpolates instance and definition content (a value, a property name, a constraint's `human` text). An
+issue rendered from one of the validator's templates also carries the template's stable `TemplateId` and the values it
+was filled with, in placeholder order, as `TemplateArguments`, so a consumer can render its own text, or redact, without
+parsing `Message`. `IssueTemplates` lists every template (`IssueTemplates.All`); `IssueTemplate.Render(arguments)`
+reproduces `Message`. An issue built from free text (a custom check) has a null `TemplateId`. Treat every argument as
+untrusted content.
+
+```csharp
+foreach (var issue in result.Issues)
+{
+    var text = issue.TemplateId switch
+    {
+        "binding-required-text-only" => $"Text-only concept; a coding from {issue.TemplateArguments[0]} is required",
+        null => issue.Code,
+        _ => issue.TemplateId,
+    };
 }
 ```
 
@@ -534,12 +616,12 @@ The `Compatibility` validation depth is specifically designed for migration scen
 
 ### Validation Depth Comparison
 
-| Validation Depth | Coding.system Absolute URI | Terminology Bindings | FHIRPath Invariants | Use Case |
-|-----------------|---------------------------|---------------------|---------------------|----------|
-| `Minimal` | Not checked | Not checked | Not checked | Bulk ingestion, high throughput |
-| `Compatibility` | **Not enforced** (accepts relative URIs) | Required only | Not checked | **Microsoft FHIR Server migration** |
-| `Spec` | **Enforced** (absolute URI required) | Required only | Not checked | Standard API operations |
-| `Full` | **Enforced** (absolute URI required) | All bindings | Checked | Compliance testing, IG validation |
+| Validation Depth | Coding.system Absolute URI | Terminology Bindings | Reference Targets | Extensions | FHIRPath Invariants | Use Case |
+|-----------------|---------------------------|---------------------|-------------------|------------|---------------------|----------|
+| `Minimal` | Not checked | Not checked | Not checked | Not checked | Not checked | Bulk ingestion, high throughput |
+| `Compatibility` | **Not enforced** (accepts relative URIs) | Required only (text-only accepted) | Not checked | As a datatype | Not checked | **Microsoft FHIR Server migration** |
+| `Spec` | **Enforced** (absolute URI required) | Required only | Checked | As a datatype | Not checked | Standard API operations |
+| `Full` | **Enforced** (absolute URI required) | All bindings | Checked | Against loaded definitions | Checked | Compliance testing, IG validation |
 
 ### Key Differences: Compatibility vs Spec
 

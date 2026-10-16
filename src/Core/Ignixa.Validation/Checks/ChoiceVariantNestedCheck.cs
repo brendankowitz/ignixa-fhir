@@ -15,13 +15,15 @@ namespace Ignixa.Validation.Checks;
 /// into primitive variants, leaving complex-variant subtrees dark; this closes that gap.
 /// </summary>
 /// <remarks>
-/// The variant subtree is validated at the caller's depth, exactly as
-/// <see cref="NestedComplexTypeCheck"/> validates a non-polymorphic element's subtree. A datatype's
+/// Registered in the Spec tier, as <see cref="NestedComplexTypeCheck"/> is, so the variant subtree is
+/// validated at every depth a non-polymorphic element's subtree is (Spec, Full and Compatibility), at
+/// the caller's depth. An element's type, not whether it is a choice, decides how deeply it is checked. A datatype's
 /// invariants do not become optional because the element carrying it happens to be a choice:
 /// <c>Dosage.timing</c> and <c>ServiceRequest.occurrence[x]</c> both hold a <c>Timing</c>, and tim-9
 /// binds to <c>Timing.repeat</c> in both.
 /// <para>
-/// This previously ran the subtree at <see cref="ValidationDepth.Spec"/> to keep FHIRPath invariants
+/// This check once ran only at <see cref="ValidationDepth.Full"/>, leaving complex variants unchecked at Spec while a
+/// non-choice element of the same type was checked. Before that it ran the subtree at <see cref="ValidationDepth.Spec"/> to keep FHIRPath invariants
 /// dark, because R4's tim-9 is ill-formed for a repeating <c>Timing.repeat.when</c> and the engine's
 /// refusal to evaluate it surfaced as a resource error on conformant data. That is now fixed at the
 /// source: <see cref="FhirPathInvariantCheck"/> routes <c>FhirPathEvaluationException</c> to a
@@ -51,11 +53,9 @@ public sealed class ChoiceVariantNestedCheck : IValidationCheck
     /// <inheritdoc />
     public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
-        // Registered in the profile tier, which ValidationSchema only runs at Full (Compatibility
-        // runs the ICompatibilityConformanceCheck subset, which this is not). The equality test
-        // states that contract rather than relying on the enum's ordering, where Compatibility
-        // happens to sort above Full.
-        if (settings.Depth != ValidationDepth.Full)
+        // Registered in the spec tier, which ValidationSchema does not run at Minimal; the guard keeps
+        // a direct caller to the same contract.
+        if (settings.Depth == ValidationDepth.Minimal)
         {
             return ValidationResult.Success();
         }

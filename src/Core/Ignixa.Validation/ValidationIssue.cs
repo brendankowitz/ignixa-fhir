@@ -3,8 +3,9 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
-using Ignixa.Models;
+using System.Globalization;
 using System.Text.Json.Nodes;
+using Ignixa.Models;
 
 namespace Ignixa.Validation;
 
@@ -79,6 +80,41 @@ public sealed record ValidationIssue
     public CodeableConcept? Details { get; init; }
 
     /// <summary>
+    /// Gets the stable identifier of the <see cref="IssueTemplate"/> <see cref="Message"/> was rendered from, or null when the
+    /// issue was built from free text. Consumers that render their own text, or must not echo instance or definition content,
+    /// key on this rather than parsing <see cref="Message"/>. The validator's templates are listed in <see cref="IssueTemplates"/>.
+    /// </summary>
+    public string? TemplateId { get; init; }
+
+    /// <summary>
+    /// Gets the values the template's placeholders were filled with, in placeholder order; empty when <see cref="TemplateId"/>
+    /// is null. Each argument may be instance or definition content and is untrusted.
+    /// </summary>
+    public IReadOnlyList<string> TemplateArguments { get; init; } = [];
+
+    /// <summary>
+    /// Creates an issue whose message is rendered from <paramref name="template"/>, recording the template and its arguments.
+    /// </summary>
+    /// <param name="severity">The severity of the issue.</param>
+    /// <param name="code">The constraint key or issue code.</param>
+    /// <param name="path">The element path where the issue was found.</param>
+    /// <param name="template">The message template.</param>
+    /// <param name="arguments">The template's arguments, in placeholder order.</param>
+    /// <returns>The issue.</returns>
+    /// <exception cref="ArgumentException">The number of arguments differs from the template's.</exception>
+    public static ValidationIssue FromTemplate(IssueSeverity severity, string code, string path, IssueTemplate template, params string[] arguments)
+    {
+        ArgumentNullException.ThrowIfNull(template);
+        ArgumentNullException.ThrowIfNull(arguments);
+
+        return new ValidationIssue(severity, code, path, template.Render(arguments))
+        {
+            TemplateId = template.Id,
+            TemplateArguments = arguments,
+        };
+    }
+
+    /// <summary>
     /// Creates an invariant failure issue with HAPI-compatible formatting.
     /// </summary>
     /// <param name="constraintKey">The constraint key (e.g., "bdl-7", "ele-1").</param>
@@ -92,11 +128,7 @@ public sealed record ValidationIssue
         string location,
         IssueSeverity severity = IssueSeverity.Error)
     {
-        return new ValidationIssue(
-            severity: severity,
-            code: constraintKey,
-            path: location,
-            message: $"{constraintKey}: {description}");
+        return FromTemplate(severity, constraintKey, location, IssueTemplates.Invariant, constraintKey, description);
     }
 
     /// <summary>
@@ -110,11 +142,13 @@ public sealed record ValidationIssue
     /// <returns>A non-failing validation issue describing the truncated traversal.</returns>
     public static ValidationIssue NestingLimitExceeded(string location, string elementName)
     {
-        return new ValidationIssue(
-            severity: IssueSeverity.Warning,
-            code: "validation-nesting-limit",
-            path: string.IsNullOrEmpty(location) ? elementName : $"{location}.{elementName}",
-            message: $"'{elementName}' was not validated: nesting depth limit of {ValidationState.MaxNestingDepth} reached");
+        return FromTemplate(
+            IssueSeverity.Warning,
+            "validation-nesting-limit",
+            string.IsNullOrEmpty(location) ? elementName : $"{location}.{elementName}",
+            IssueTemplates.NestingLimit,
+            elementName,
+            ValidationState.MaxNestingDepth.ToString(CultureInfo.InvariantCulture));
     }
 
     /// <summary>
@@ -130,11 +164,7 @@ public sealed record ValidationIssue
     /// <returns>A failing validation issue explaining an otherwise-unexplained nested rejection.</returns>
     public static ValidationIssue UnexplainedNestedFailure(string location, string subject)
     {
-        return new ValidationIssue(
-            severity: IssueSeverity.Error,
-            code: "validation-nested-unexplained",
-            path: location,
-            message: $"{subject} failed validation but reported no issues explaining why");
+        return FromTemplate(IssueSeverity.Error, "validation-nested-unexplained", location, IssueTemplates.NestedUnexplained, subject);
     }
 
     /// <summary>
@@ -153,9 +183,10 @@ public sealed record ValidationIssue
         string location,
         string issueType = "not-in-vs")
     {
-        var message = valueSet != null
-            ? $"The provided code '{system}#{code}' was not found in the value set '{valueSet}'"
-            : $"Unknown code '{code}' in the CodeSystem '{system}'";
+        (IssueTemplate template, string[] arguments) = valueSet is { } named
+            ? (IssueTemplates.CodeNotInValueSet, new[] { system, code, named })
+            : (IssueTemplates.CodeUnknownInSystem, new[] { code, system });
+        var message = template.Render(arguments);
 
         var details = new CodeableConcept()
         {
@@ -175,7 +206,9 @@ public sealed record ValidationIssue
             path: location,
             message: message)
         {
-            Details = details
+            Details = details,
+            TemplateId = template.Id,
+            TemplateArguments = arguments,
         };
     }
 
@@ -193,24 +226,15 @@ public sealed record ValidationIssue
         int? max,
         int actual)
     {
-        string message;
-        if (min.HasValue && actual < min.Value)
+        var culture = CultureInfo.InvariantCulture;
+        var found = actual.ToString(culture);
+        (IssueTemplate template, string[] arguments) = (min, max) switch
         {
-            message = $"{elementPath} must have at least {min.Value} occurrence(s), but found {actual}";
-        }
-        else if (max.HasValue && actual > max.Value)
-        {
-            message = $"{elementPath} must have at most {max.Value} occurrence(s), but found {actual}";
-        }
-        else
-        {
-            message = $"{elementPath} cardinality violation: expected {min}..{max}, found {actual}";
-        }
+            ({ } atLeast, _) when actual < atLeast => (IssueTemplates.CardinalityBelowMinimum, new[] { elementPath, atLeast.ToString(culture), found }),
+            (_, { } atMost) when actual > atMost => (IssueTemplates.CardinalityAboveMaximum, new[] { elementPath, atMost.ToString(culture), found }),
+            _ => (IssueTemplates.CardinalityViolation, new[] { elementPath, min?.ToString(culture) ?? string.Empty, max?.ToString(culture) ?? string.Empty, found }),
+        };
 
-        return new ValidationIssue(
-            severity: IssueSeverity.Error,
-            code: "cardinality-violation",
-            path: elementPath,
-            message: message);
+        return FromTemplate(IssueSeverity.Error, "cardinality-violation", elementPath, template, arguments);
     }
 }

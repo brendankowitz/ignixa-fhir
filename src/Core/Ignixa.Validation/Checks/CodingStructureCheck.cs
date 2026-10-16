@@ -13,17 +13,42 @@ namespace Ignixa.Validation.Checks;
 /// Ensures Coding has at least system or code.
 /// Tier 1 (Fast) validator.
 /// </summary>
+/// <remarks>
+/// Constructed with the element's declared type (<c>Coding</c> or <c>CodeableConcept</c>), the check knows which it is
+/// looking at. A CodeableConcept is checked through its <c>coding</c> entries only, so a text-only concept, which is valid
+/// FHIR, raises nothing. Constructed without one (the original constructor) it guesses from the instance, treating an
+/// element with no <c>coding</c> child as a Coding; that guess flags a text-only CodeableConcept, so the schema builder
+/// always passes the declared type.
+/// </remarks>
 public class CodingStructureCheck : IValidationCheck
 {
     private readonly string _fieldName;
+    private readonly string? _declaredType;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="CodingStructureCheck"/> class.
+    /// Initializes a new instance of the <see cref="CodingStructureCheck"/> class that infers Coding or CodeableConcept from the instance.
     /// </summary>
     /// <param name="fieldName">The name of the Coding or CodeableConcept field (e.g., "code", "category").</param>
     public CodingStructureCheck(string fieldName)
     {
         _fieldName = fieldName;
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="CodingStructureCheck"/> class for an element of a declared type.
+    /// </summary>
+    /// <param name="fieldName">The name of the Coding or CodeableConcept field (e.g., "code", "valueCodeableConcept").</param>
+    /// <param name="declaredType">The element's declared type: <c>Coding</c> or <c>CodeableConcept</c>.</param>
+    /// <exception cref="ArgumentException"><paramref name="declaredType"/> is neither.</exception>
+    public CodingStructureCheck(string fieldName, string declaredType)
+    {
+        if (declaredType is not ("Coding" or "CodeableConcept"))
+        {
+            throw new ArgumentException($"A coding structure check applies to Coding or CodeableConcept, not '{declaredType}'.", nameof(declaredType));
+        }
+
+        _fieldName = fieldName;
+        _declaredType = declaredType;
     }
 
     /// <summary>
@@ -40,20 +65,17 @@ public class CodingStructureCheck : IValidationCheck
         var fieldNodes = element.Children(_fieldName);
         foreach (var fieldNode in fieldNodes)
         {
-            // Check if this is a CodeableConcept (has 'coding' child) or a Coding directly
-            var codingChildren = fieldNode.Children("coding").ToList();
-            if (codingChildren.Count > 0)
+            var codingChildren = fieldNode.Children("coding");
+            if (IsCodeableConcept(codingChildren))
             {
-                // This is a CodeableConcept - validate each Coding in the array
                 foreach (var coding in codingChildren)
                 {
-                    ValidateSingleCoding($"{_fieldName}.coding", coding, issues, settings);
+                    ValidateSingleCoding(PathOf(coding, $"{_fieldName}.coding"), coding, issues, settings);
                 }
             }
             else
             {
-                // This is a Coding directly
-                ValidateSingleCoding(_fieldName, fieldNode, issues, settings);
+                ValidateSingleCoding(PathOf(fieldNode, _fieldName), fieldNode, issues, settings);
             }
         }
 
@@ -64,6 +86,14 @@ public class CodingStructureCheck : IValidationCheck
 
         return ValidationResult.Success();
     }
+
+    private bool IsCodeableConcept(IReadOnlyList<IElement> codingChildren) =>
+        _declaredType is { } declared ? declared == "CodeableConcept" : codingChildren.Count > 0;
+
+    // The declared-type form reports the node's own location (resource-rooted, indexed); the inferring form keeps its
+    // original field-relative path.
+    private string PathOf(IElement node, string fieldRelative) =>
+        _declaredType is not null && !string.IsNullOrEmpty(node.Location) ? node.Location : fieldRelative;
 
     private static void ValidateSingleCoding(
         string path,
@@ -76,11 +106,7 @@ public class CodingStructureCheck : IValidationCheck
 
         if (!hasSystem && !hasCode)
         {
-            issues.Add(new ValidationIssue(
-                IssueSeverity.Warning,
-                "coding-1",
-                path,
-                "Coding should have at least a system or code"));
+            issues.Add(ValidationIssue.FromTemplate(IssueSeverity.Warning, "coding-1", path, IssueTemplates.CodingWithoutSystemOrCode));
         }
 
         // Validate that Coding.system is an absolute URI if present
@@ -94,10 +120,11 @@ public class CodingStructureCheck : IValidationCheck
                 string? systemValue = systemNode.Value?.ToString();
                 if (!string.IsNullOrEmpty(systemValue) && !IsAbsoluteUri(systemValue))
                 {
-                    issues.Add(ValidationIssue.InvariantFailure(
+                    issues.Add(ValidationIssue.FromTemplate(
+                        IssueSeverity.Error,
                         "coding-system-absolute",
-                        "Coding.system must be an absolute reference, not a local reference",
-                        systemNode.Location ?? $"{path}.system"));
+                        systemNode.Location ?? $"{path}.system",
+                        IssueTemplates.CodingSystemNotAbsolute));
                 }
             }
         }

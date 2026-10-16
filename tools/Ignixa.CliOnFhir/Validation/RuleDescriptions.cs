@@ -65,6 +65,7 @@ internal static class RuleDescriptions
         [ValidationRules.ReferenceTypeMismatch] = "A reference's 'type' names a different resource type than its 'reference' does.",
         [ValidationRules.ReferenceTargetType] = "A reference points at a resource type the element does not allow (by the core definition or a profile's target profiles).",
         [ValidationRules.ExtensionsNotValidated] = "The resource has extensions, which the validator does not check (definitions, value types, bindings), so its verdict is unknown.",
+        [ValidationRules.BindingRequiredTextOnly] = "A CodeableConcept under a required binding has text only: it carries no coding from the ValueSet (named in 'valueSet').",
     }.ToFrozenDictionary(StringComparer.Ordinal);
 
     private static readonly FrozenDictionary<string, string> CoreInvariants = new Dictionary<string, string>(StringComparer.Ordinal)

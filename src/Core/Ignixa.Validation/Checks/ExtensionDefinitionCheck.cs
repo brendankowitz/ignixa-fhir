@@ -117,10 +117,7 @@ public sealed class ExtensionDefinitionCheck : IValidationCheck, ISingletonCheck
                 && urlValue.ToString() is { Length: > 0 } url
                 && IsReservedExampleUrl(url))
             {
-                issues.Add(ValidationIssue.InvariantFailure(
-                    "ext-example-url",
-                    $"Example URLs are not allowed in this context ({url})",
-                    $"{path}[{i}].url"));
+                issues.Add(ValidationIssue.FromTemplate(IssueSeverity.Error, "ext-example-url", $"{path}[{i}].url", IssueTemplates.ExtensionExampleUrl, url));
             }
 
             WalkObject(item, $"{path}[{i}]", onPrimitiveShadow, issues);

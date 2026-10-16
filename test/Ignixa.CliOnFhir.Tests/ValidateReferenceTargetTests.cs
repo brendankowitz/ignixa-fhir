@@ -127,8 +127,9 @@ public class ValidateReferenceTargetTests
     }
 
     // Regression: at 29aa44d only the core binding (example, for Observation.code) was read, so pb1 had no binding-not-checked.
+    // Since Task 9b the validator rejects a text-only concept under the profile's required binding itself.
     [Fact]
-    public async Task GivenAFolderProfileMakingABindingRequired_WhenATextOnlyConceptIsValidated_ThenItsBindingIsNotCheckedAndNamesTheProfileValueSet()
+    public async Task GivenAFolderProfileMakingABindingRequired_WhenATextOnlyConceptIsValidated_ThenItIsInvalidAndNamesTheProfileValueSet()
     {
         using var folder = new TestFolder();
         folder.Write("sd.json", """
@@ -141,8 +142,8 @@ public class ValidateReferenceTargetTests
 
         JsonNode result = Json(await ResourceValidator.ValidateAsync(WithTerminology(folder, store), new ValidateRequest(ResourceType: "Observation", Depth: "full")));
 
-        ((int)result["facts"]!["verdicts"]!["unknown"]!).ShouldBe(1);
-        JsonNode group = Groups(result).Single(item => (string)item!["rule"]! == "binding-not-checked" && (string)item["path"]! == "Observation.code")!;
+        ((int)result["facts"]!["verdicts"]!["invalid"]!).ShouldBe(1);
+        JsonNode group = Groups(result).Single(item => (string)item!["rule"]! == "binding-required-text-only" && (string)item["path"]! == "Observation.code")!;
         ((string)group["valueSet"]!).ShouldBe("http://hl7.org/fhir/ValueSet/observation-codes");
         ((string)group["profile"]!).ShouldBe("http://example.org/fhir/StructureDefinition/obsbind");
     }

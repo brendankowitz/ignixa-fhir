@@ -105,14 +105,9 @@ public class UnknownPropertyCheck : IValidationCheck, ISingletonCheck
                 // Check if this might be a choice type property (e.g., "valueQuantity" where "value[x]" is allowed)
                 if (!IsChoiceTypeProperty(property))
                 {
-                    var message = string.IsNullOrEmpty(_resourceTypeName)
-                        ? $"Property '{property}' is not defined in the FHIR StructureDefinition for this resource type"
-                        : $"Property '{property}' is not defined in the FHIR StructureDefinition for {_resourceTypeName}";
-                    issues.Add(new ValidationIssue(
-                        IssueSeverity.Error,
-                        "unknown-property",
-                        $"{location}.{property}",
-                        message));
+                    issues.Add(string.IsNullOrEmpty(_resourceTypeName)
+                        ? ValidationIssue.FromTemplate(IssueSeverity.Error, "unknown-property", $"{location}.{property}", IssueTemplates.UnknownPropertyUntyped, property)
+                        : ValidationIssue.FromTemplate(IssueSeverity.Error, "unknown-property", $"{location}.{property}", IssueTemplates.UnknownProperty, property, _resourceTypeName));
                 }
             }
         }
