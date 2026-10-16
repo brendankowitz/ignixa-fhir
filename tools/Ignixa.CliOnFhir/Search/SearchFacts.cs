@@ -71,4 +71,11 @@ public sealed record SearchFacts(
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ValueFrom { get; init; }
+
+    /// <summary>
+    /// With <c>perPatient</c>: the matches and patients before the selection and the matches kept, one per patient. <see cref="Total"/>,
+    /// paging, <c>fhirpath</c> and <c>summary=count</c> then see only the kept matches. Absent otherwise.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PerPatientFacts? PerPatient { get; init; }
 }

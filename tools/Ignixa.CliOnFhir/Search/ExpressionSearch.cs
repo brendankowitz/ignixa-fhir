@@ -59,7 +59,7 @@ internal static partial class ExpressionSearch
         {
             throw ToolRequestException.Error(
                 "too-many-matches",
-                $"'fhirpath' is evaluated over every match, and this search matches {matches.Count} {request.ResourceType} resources (at most {MaxMatches}); narrow it with compartment=Patient/<id>, a code or a date range, or use summary=count for the number alone.");
+                $"'fhirpath' is evaluated over every match, and this search matches {matches.Count} {request.ResourceType} resources (at most {MaxMatches}); narrow it with compartment=Patient/<id>, a code or a date range, keep one match per patient with perPatient, or use summary=count for the number alone.");
         }
 
         List<OmittedItem> omitted = [];

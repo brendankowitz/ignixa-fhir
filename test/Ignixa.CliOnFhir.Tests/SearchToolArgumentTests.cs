@@ -71,7 +71,7 @@ public class SearchToolArgumentTests
         JsonNode properties = JsonNode.Parse(tool.ProtocolTool.InputSchema.GetRawText())!["properties"]!;
 
         properties.AsObject().Select(property => property.Key).ShouldBe(
-            ["resourceType", "query", "count", "offset", "summary", "elements", "lenient", "compartment", "maxBytes", "columns", "fhirpath"],
+            ["resourceType", "query", "count", "offset", "summary", "elements", "lenient", "compartment", "maxBytes", "columns", "fhirpath", "perPatient"],
             ignoreOrder: true);
         properties["columns"]!["type"]!.ToJsonString().ShouldContain("\"object\"");
     }

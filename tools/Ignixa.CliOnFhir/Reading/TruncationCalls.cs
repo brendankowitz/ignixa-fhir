@@ -30,13 +30,13 @@ internal static class TruncationCalls
         suggested,
         maxBytes: null);
 
-    /// <summary>The same page with the largest response budget.</summary>
-    public static NextCall Larger(NextCall call) => With(
+    /// <summary>The same page with the largest response budget, <paramref name="ceiling"/>.</summary>
+    public static NextCall Larger(NextCall call, int ceiling) => With(
         call,
-        $"this page again with the largest budget ({EnvelopeJson.MaxBytes} bytes); narrowing the call is cheaper to read",
+        $"this page again with the largest budget ({ceiling} bytes); narrowing the call is cheaper to read",
         offset: null,
         elements: null,
-        EnvelopeJson.MaxBytes);
+        ceiling);
 
     /// <summary>A copy of <paramref name="call"/> with <paramref name="hint"/>, and each argument given (not null) set; offset 0 is the default and is left out.</summary>
     public static NextCall With(NextCall call, string? hint, int? offset, string? elements, int? maxBytes)

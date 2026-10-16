@@ -82,7 +82,7 @@ public static class ResourceFetcher
             issues.AddRange(projection?.Validate(type) ?? []);
         }
 
-        int budget = ResponseBudget.Resolve(maxBytes, issues);
+        int budget = ResponseBudget.Resolve(maxBytes, session.MaxResponseBytes, issues);
 
         // The listed resolutions can only shrink once the resources are read, so each resource is charged for its candidates.
         Dictionary<string, IReadOnlyDictionary<string, string>> resolutions = Resolutions(session, found);
@@ -102,7 +102,7 @@ public static class ResourceFetcher
             issues,
             new FreshnessInfo(builtAt, StaleFiles: int.MaxValue))
         {
-            Next = cutBySize && found.Count > 1 ? Remaining([.. found.Skip(1).Select(ResourceReader.Describe)], elements, maxBytes, budget) : [],
+            Next = cutBySize && found.Count > 1 ? Remaining([.. found.Skip(1).Select(ResourceReader.Describe)], elements, maxBytes, budget, session.MaxResponseBytes) : [],
         });
         Func<int, JsonObject, int> costs = ResolvedReferences.Charge([.. found.Select(entry => (ResourceReader.Describe(entry), resolutions[ResourceReader.Describe(entry)]))]);
         ResourceBatch batch = ResourceBatch.Collect(session.RootPath, found, projection, Reserved(cutBySize: false), budget, costs, cancellationToken);
@@ -123,7 +123,7 @@ public static class ResourceFetcher
         if (batch.Consumed < found.Count)
         {
             omitted.Add(new OmittedItem(UnreadMessage(found.Count - batch.Consumed, ResourceReader.Describe(found[batch.Consumed])), "size-budget"));
-            next = Remaining([.. found.Skip(batch.Consumed).Select(ResourceReader.Describe)], elements, maxBytes, budget);
+            next = Remaining([.. found.Skip(batch.Consumed).Select(ResourceReader.Describe)], elements, maxBytes, budget, session.MaxResponseBytes);
         }
 
         return EnvelopeAssembler.Create<ReadFacts?>(session, new ReadFacts(parsed.Count, batch.Resources, ResolvedReferences.ToFacts(shown)), builtAt, batch.Evidence, omitted, absent, issues, cancellationToken) with { Next = next };
@@ -151,7 +151,7 @@ public static class ResourceFetcher
     /// The call that reads the references a size-cut response left out. The references are listed once, so the way to fit
     /// more is a hint on that call rather than a second call repeating them.
     /// </summary>
-    private static List<NextCall> Remaining(string[] references, string? elements, int? maxBytes, int budget)
+    private static List<NextCall> Remaining(string[] references, string? elements, int? maxBytes, int budget, int ceiling)
     {
         Dictionary<string, object> args = new(StringComparer.Ordinal) { ["references"] = references };
         if (elements is not null)
@@ -164,11 +164,11 @@ public static class ResourceFetcher
             args["maxBytes"] = requested;
         }
 
-        string? hint = (elements is null, budget < EnvelopeJson.MaxBytes) switch
+        string? hint = (elements is null, budget < ceiling) switch
         {
-            (true, true) => $"the references left out; set elements to the top-level fields you need so more fit, or raise maxBytes (up to {EnvelopeJson.MaxBytes})",
+            (true, true) => $"the references left out; set elements to the top-level fields you need so more fit, or raise maxBytes (up to {ceiling})",
             (true, false) => "the references left out; set elements to the top-level fields you need so more fit",
-            (false, true) => $"the references left out; raise maxBytes (up to {EnvelopeJson.MaxBytes}) to fit more",
+            (false, true) => $"the references left out; raise maxBytes (up to {ceiling}) to fit more",
             _ => null,
         };
         return [new NextCall("read_resources", args, hint)];

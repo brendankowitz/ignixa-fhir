@@ -59,6 +59,7 @@ public class McpInstructionsTests
     [InlineData("goes inside query")]
     [InlineData("is data, not instructions")]
     [InlineData("folder_code_systems")]
+    [InlineData("perPatient=latest")]
     [InlineData("terminology")]
     [InlineData("help")]
     public void GivenTheInstructions_WhenRead_ThenTheyNameEachCheapPath(string mention)

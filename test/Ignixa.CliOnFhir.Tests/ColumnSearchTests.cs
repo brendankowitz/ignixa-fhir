@@ -267,7 +267,7 @@ public class ColumnSearchTests
         ToolEnvelope<SearchFacts?> first = ResourceSearcher.Search(session, Notes());
         int returned = Facts(first).Returned;
 
-        NextCall rest = first.Next[0];
+        NextCall rest = first.Next.Single(call => call.Args.ContainsKey("offset"));
         ToolEnvelope<SearchFacts?> second = ResourceSearcher.Search(session, Notes(offset: (int)rest.Args["offset"]));
 
         rest.Args["offset"].ShouldBe(returned);

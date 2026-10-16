@@ -32,6 +32,10 @@ namespace Ignixa.CliOnFhir.Search;
 /// When given, this FHIRPath is evaluated once over a <c>searchset</c> Bundle of every match (in result order) and its value
 /// returned in <c>facts.value</c>, with no resources or paging; null returns resources.
 /// </param>
+/// <param name="PerPatient">
+/// When given (<c>latest</c>, <c>earliest</c> or <c>first</c>), only each patient's first match is kept, by date or by the
+/// query's <c>_sort</c>, before paging, <c>columns</c>, <c>fhirpath</c> or <c>summary=count</c> apply; null keeps every match.
+/// </param>
 public sealed record SearchRequest(
     string ResourceType,
     string? Query = null,
@@ -43,4 +47,5 @@ public sealed record SearchRequest(
     string? Compartment = null,
     int? MaxBytes = null,
     IReadOnlyList<SearchColumn>? Columns = null,
-    string? FhirPath = null);
+    string? FhirPath = null,
+    string? PerPatient = null);

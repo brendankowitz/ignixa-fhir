@@ -22,6 +22,7 @@ public static class McpServerSetup
         - Find a patient: search Patient with identifier=<MRN> or name=<text>, or patient_list with query. With an id, use compartment=Patient/<id> directly.
         - Lookup: search with compartment and code, _sort=-date and count=1.
         - Filter, count, trend: search_fhir_resources with fhirpath (one value) or columns (rows; requester.resolve() and medication.ofType(Reference).resolve() follow references, so _include is rarely needed); summary=count for how many. Every search parameter goes inside query.
+        - Cohorts: perPatient=latest with fhirpath or summary=count, one call; never page rows.
         - Classes and hierarchies: terminology (class-search, class-members with --rxclass-server; expand, navigate). Code systems in use: folder_code_systems.
         - Medications come in two shapes, medicationCodeableConcept and medicationReference; read both.
         - When a response is cut, 'next' has the exact call for the rest. Check 'issues' every time. Absent means not recorded. In-depth: help.

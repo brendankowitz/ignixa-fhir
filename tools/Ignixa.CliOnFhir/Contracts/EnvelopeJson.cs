@@ -16,8 +16,15 @@ namespace Ignixa.CliOnFhir.Contracts;
 /// </summary>
 public static class EnvelopeJson
 {
-    /// <summary>The hard cap on a serialized MCP response (50 KB, see tool-design.md); a caller can raise a call's budget up to it.</summary>
+    /// <summary>The hard cap on a serialized response (50 KB, see tool-design.md); the CLI lets a call raise its budget up to it.</summary>
     public const int MaxBytes = 50 * 1024;
+
+    /// <summary>
+    /// The MCP server's default cap on a response (<c>--max-response-bytes</c>). Agent clients move a larger tool result to a
+    /// file (Copilot from about 14 to 20 KB), which an agent with only these tools cannot read back, so a larger budget buys
+    /// nothing over MCP.
+    /// </summary>
+    public const int McpMaxBytes = 16 * 1024;
 
     /// <summary>
     /// The default budget of a response that returns resources. It sits below the point where common agent clients move a

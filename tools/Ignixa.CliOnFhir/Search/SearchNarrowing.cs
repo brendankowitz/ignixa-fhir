@@ -45,8 +45,8 @@ internal static class SearchNarrowing
         ["Immunization"] = [new("date", "occurrence.ofType(dateTime)"), new("vaccine", "vaccineCode.coding.first().display")],
     };
 
-    /// <summary>The search parameter that limits a type to a date range.</summary>
-    private static readonly Dictionary<string, string> DateParameters = new(StringComparer.Ordinal)
+    /// <summary>The search parameter that limits a type to a date range, and that <c>perPatient</c> orders it by.</summary>
+    public static IReadOnlyDictionary<string, string> DateParameters { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["Observation"] = "date",
         ["Encounter"] = "date",
@@ -86,6 +86,11 @@ internal static class SearchNarrowing
             args["columns"] = AsArgument(request.Columns);
         }
 
+        if (request.PerPatient is not null)
+        {
+            args["perPatient"] = request.PerPatient;
+        }
+
         if (request.Lenient)
         {
             args["lenient"] = true;
@@ -105,21 +110,24 @@ internal static class SearchNarrowing
     }
 
     /// <summary>
-    /// The calls that follow a page cut at <paramref name="resume"/>: that rest of the matches first, then the same page with
-    /// <c>elements</c>, a date range, only the total, or the largest budget, each only where it could help. A page the caller
-    /// asked to be small, or that left only a few matches, gets just the call for the rest.
+    /// The calls that follow a page cut at <paramref name="resume"/>. First those that answer over every match in one response
+    /// instead of more pages (<c>fhirpath</c>, <c>perPatient</c>, <c>summary=count</c>), then the rest of the matches, then the
+    /// same page with <c>elements</c>, as a table, with a date range or with the largest budget, each only where it could help.
+    /// A page the caller asked to be small, or that left only a few matches, gets just the call for the rest.
     /// </summary>
     /// <param name="cutBySize">Whether the response budget, rather than the page size, ended the page.</param>
-    public static List<NextCall> After(SearchRequest request, int total, int resume, bool cutBySize, int budget)
+    /// <param name="largerBudget">The largest budget the server allows, when it is more than this call had; null otherwise.</param>
+    public static List<NextCall> After(SearchRequest request, int total, int resume, bool cutBySize, int? largerBudget)
     {
         NextCall current = Call(request, request.Offset);
-        List<NextCall> calls = [Call(request, resume)];
+        NextCall rest = Call(request, resume);
         bool askedForFew = resume - request.Offset < CountWorthwhile;
         if (!cutBySize && (askedForFew || total - resume < CountWorthwhile))
         {
-            return calls;
+            return [rest];
         }
 
+        List<NextCall> calls = [.. WholeAnswers(request, total), rest];
         if (request.Columns is null && request.Elements is null)
         {
             calls.Add(TruncationCalls.Trim(current, Elements.GetValueOrDefault(request.ResourceType)));
@@ -145,19 +153,47 @@ internal static class SearchNarrowing
                 maxBytes: null));
         }
 
-        if (total - request.Offset > CountWorthwhile)
+        if (cutBySize && largerBudget is int larger)
         {
-            calls.Add(Count(request));
-        }
-
-        if (cutBySize && budget < EnvelopeJson.MaxBytes)
-        {
-            calls.Add(TruncationCalls.Larger(current));
+            calls.Add(TruncationCalls.Larger(current, larger));
         }
 
         return calls;
     }
 
+    /// <summary>
+    /// The calls that answer over every match in one response rather than page by page: one FHIRPath value, one match per
+    /// patient (outside a single patient's compartment), and the count.
+    /// </summary>
+    private static IEnumerable<NextCall> WholeAnswers(SearchRequest request, int total)
+    {
+        if (total <= ExpressionSearch.MaxMatches)
+        {
+            Dictionary<string, object> args = Whole(request);
+            args["fhirpath"] = "entry.count()";
+            yield return new NextCall(
+                Tool,
+                args,
+                $"all {total} matches in one value instead of pages: set fhirpath to what the question needs, e.g. entry.resource.where(value.ofType(Quantity).value >= 130).count()");
+        }
+
+        if (request.PerPatient is null && request.Compartment is null && DateParameters.TryGetValue(request.ResourceType, out string? date))
+        {
+            bool sorted = request.Query?.Contains("_sort=", StringComparison.Ordinal) == true;
+            NextCall perPatient = Call(request with { PerPatient = sorted ? PerPatient.First : PerPatient.Latest }, offset: 0);
+            yield return perPatient with
+            {
+                Hint = sorted
+                    ? "one match per patient, the first in this _sort order; add fhirpath or summary=count for a cohort answer"
+                    : $"one match per patient, the latest by {date}; add fhirpath or summary=count for a cohort answer",
+            };
+        }
+
+        if (total - request.Offset > CountWorthwhile)
+        {
+            yield return Count(request);
+        }
+    }
     /// <summary>Columns as the tool takes them: an object mapping each name to its FHIRPath, in column order.</summary>
     private static Dictionary<string, string> AsArgument(IReadOnlyList<SearchColumn> columns)
     {
@@ -172,7 +208,15 @@ internal static class SearchNarrowing
 
     private static NextCall Count(SearchRequest request)
     {
-        Dictionary<string, object> args = new(StringComparer.Ordinal) { ["resourceType"] = request.ResourceType, ["summary"] = "count" };
+        Dictionary<string, object> args = Whole(request);
+        args["summary"] = "count";
+        return new NextCall(Tool, args, request.PerPatient is null ? "only the number of matches, no resources" : "only the number of patients, no resources");
+    }
+
+    /// <summary>The arguments that choose the matches (type, query, compartment, perPatient, lenient), without paging or projection.</summary>
+    private static Dictionary<string, object> Whole(SearchRequest request)
+    {
+        Dictionary<string, object> args = new(StringComparer.Ordinal) { ["resourceType"] = request.ResourceType };
         if (!string.IsNullOrEmpty(request.Query))
         {
             args["query"] = request.Query;
@@ -183,6 +227,16 @@ internal static class SearchNarrowing
             args["compartment"] = request.Compartment;
         }
 
-        return new NextCall(Tool, args, "only the number of matches, no resources");
+        if (request.PerPatient is not null)
+        {
+            args["perPatient"] = request.PerPatient;
+        }
+
+        if (request.Lenient)
+        {
+            args["lenient"] = true;
+        }
+
+        return args;
     }
 }

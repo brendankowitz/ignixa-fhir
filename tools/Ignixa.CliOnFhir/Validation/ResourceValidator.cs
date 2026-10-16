@@ -199,7 +199,7 @@ public static class ResourceValidator
             ValidateFacts shown = facts with { Groups = [.. listed.Select(group => group.Group)], Outcomes = outcomes?.Take(listedOutcomes).ToList() };
             List<AbsentItem> absent = [.. scope.Absent.Take(listedAbsent)];
             List<IssueItem> listedIssueItems = [.. issues.Take(listedIssues)];
-            if (EnvelopeAssembler.MaxSize<ValidateFacts?>(session, shown, evidence, allOmitted, absent, listedIssueItems, next) <= EnvelopeJson.MaxBytes
+            if (EnvelopeAssembler.MaxSize<ValidateFacts?>(session, shown, evidence, allOmitted, absent, listedIssueItems, next) <= session.MaxResponseBytes
                 || (listedGroups == 0 && listedOutcomes == 0 && listedIssues == 0 && listedAbsent == 0))
             {
                 return EnvelopeAssembler.Create<ValidateFacts?>(session, shown, scope.BuiltAt, evidence, allOmitted, absent, listedIssueItems, cancellationToken) with { Next = next };

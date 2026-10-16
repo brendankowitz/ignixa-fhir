@@ -53,11 +53,21 @@ public sealed class FolderSession
     /// anchored to; the system clock by default.
     /// </param>
     /// <param name="terminology">How to find terminology for the terminology tools; <see cref="TerminologyOptions.None"/> (only the folder's own) by default.</param>
-    public FolderSession(string rootPath, IFhirSchemaProvider schema, ILoggerFactory loggerFactory, IndexCacheOptions? cacheOptions = null, TimeProvider? timeProvider = null, TerminologyOptions? terminology = null)
+    /// <param name="maxResponseBytes">
+    /// The most one response may take however large a <c>maxBytes</c> a call asks for; <see cref="EnvelopeJson.MaxBytes"/> by
+    /// default. The MCP server lowers it (<see cref="EnvelopeJson.McpMaxBytes"/>), because agent clients move larger results
+    /// out of the model's context.
+    /// </param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxResponseBytes"/> is below <see cref="EnvelopeJson.MinBudget"/> or above <see cref="EnvelopeJson.MaxBytes"/>.</exception>
+    public FolderSession(string rootPath, IFhirSchemaProvider schema, ILoggerFactory loggerFactory, IndexCacheOptions? cacheOptions = null, TimeProvider? timeProvider = null, TerminologyOptions? terminology = null, int maxResponseBytes = EnvelopeJson.MaxBytes)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
         ArgumentNullException.ThrowIfNull(schema);
         ArgumentNullException.ThrowIfNull(loggerFactory);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxResponseBytes, EnvelopeJson.MinBudget);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(maxResponseBytes, EnvelopeJson.MaxBytes);
+
+        MaxResponseBytes = maxResponseBytes;
 
         _timeProvider = timeProvider ?? TimeProvider.System;
         RootPath = Path.GetFullPath(rootPath);
@@ -120,6 +130,9 @@ public sealed class FolderSession
     }
 
     public string RootPath { get; }
+
+    /// <summary>The most one response may take; a larger <c>maxBytes</c> is clamped to it.</summary>
+    public int MaxResponseBytes { get; }
 
     public IFhirSchemaProvider Schema { get; }
 

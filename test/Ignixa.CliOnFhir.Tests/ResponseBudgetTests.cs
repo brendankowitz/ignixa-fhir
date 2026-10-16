@@ -56,7 +56,7 @@ public class ResponseBudgetTests
         ToolEnvelope<SearchFacts?> first = ResourceSearcher.Search(session, Observations());
         int returned = first.Facts.ShouldNotBeNull().Returned;
 
-        NextCall rest = first.Next[0];
+        NextCall rest = first.Next.Single(call => call.Args.ContainsKey("offset"));
         ToolEnvelope<SearchFacts?> second = ResourceSearcher.Search(session, Request(rest.Args));
 
         rest.Tool.ShouldBe("search_fhir_resources");

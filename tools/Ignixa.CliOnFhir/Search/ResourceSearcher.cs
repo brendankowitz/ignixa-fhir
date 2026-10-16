@@ -135,6 +135,16 @@ public static class ResourceSearcher
     {
         ValidatePaging(request);
         (ParsedSearch parsed, List<IssueItem> issues, List<OmittedItem> parseOmitted) = Parse(session, request);
+        string? perPatientSort = null;
+        if (request.PerPatient is { } pick)
+        {
+            perPatientSort = PerPatient.SortFor(pick, request.ResourceType, parsed);
+            if (perPatientSort is not null)
+            {
+                (parsed, issues, parseOmitted) = Parse(session, request with { Query = PerPatient.WithSort(request.Query, perPatientSort) });
+            }
+        }
+
         IReadOnlyList<ColumnSearch.CompiledColumn>? columns = null;
         FhirPath.Expressions.Expression? expression = null;
         if (request.Columns is not null && request.FhirPath is not null)
@@ -161,14 +171,26 @@ public static class ResourceSearcher
         int count = columns is null
             ? EffectiveCount(request.Count ?? parsed.RequestedCount, issues)
             : EffectiveCount(request.Count ?? parsed.RequestedCount, ColumnSearch.DefaultRows, ColumnSearch.MaxRows, issues);
-        int budget = Math.Min(ResponseBudget.Resolve(request.MaxBytes, issues), EnvelopeJson.MaxBytes - extraBytes);
+        int requestedBudget = ResponseBudget.Resolve(request.MaxBytes, session.MaxResponseBytes, issues);
+        int? largerBudget = requestedBudget < session.MaxResponseBytes ? session.MaxResponseBytes : null;
+        int budget = Math.Min(requestedBudget, session.MaxResponseBytes - extraBytes);
         var source = new FolderSearchSource(session);
         var engine = new InMemorySearchEngine(source, Features, session.Compartments);
         List<IndexedResource> matches = Match(engine, source, parsed);
+        PerPatientFacts? perPatient = null;
+        if (request.PerPatient is { } chosen)
+        {
+            (matches, perPatient) = PerPatient.Select(session, request.ResourceType, matches, chosen, perPatientSort);
+            budget -= PerPatient.SizeOf(perPatient);
+        }
+
+        // The selection's facts are added to whichever response the search gives; the budget above kept room for them.
+        ToolEnvelope<SearchFacts?> WithSelection(ToolEnvelope<SearchFacts?> envelope) =>
+            perPatient is null || envelope.Facts is null ? envelope : envelope with { Facts = envelope.Facts with { PerPatient = perPatient } };
 
         if (expression is not null)
         {
-            return ExpressionSearch.Evaluate(session, source, request, parsed, expression, matches, issues, budget, cancellationToken);
+            return WithSelection(ExpressionSearch.Evaluate(session, source, request, parsed, expression, matches, issues, budget, cancellationToken));
         }
 
         string query = QueryEcho.Of(request.Query ?? string.Empty);
@@ -182,7 +204,7 @@ public static class ResourceSearcher
             issues.AddRange(ReferenceFollowChecks.UnresolvedReferences(source, new SearchOptions(parsed.Options) { Include = [], RevInclude = [] }, []));
             AddDiagnostics(session, source, issues, omitted);
             var countFacts = new SearchFacts(request.ResourceType, query, request.Compartment, matches.Count, request.Offset, Returned: 0, Resources: null);
-            return Envelope(session, source, countFacts, [], omitted, issues, cancellationToken);
+            return WithSelection(Envelope(session, source, countFacts, [], omitted, issues, cancellationToken));
         }
 
         if (request.Offset > 0 && request.Offset >= matches.Count)
@@ -192,7 +214,7 @@ public static class ResourceSearcher
 
         if (columns is not null)
         {
-            return ColumnSearch.Page(session, source, request, parsed, columns, matches, count, issues, budget, cancellationToken);
+            return WithSelection(ColumnSearch.Page(session, source, request, parsed, columns, matches, count, issues, budget, largerBudget, cancellationToken));
         }
 
         List<IndexedResource> page = [.. matches.Skip(request.Offset).Take(count)];
@@ -215,17 +237,17 @@ public static class ResourceSearcher
         int pageEnd = request.Offset + page.Count;
         List<CatalogEntry> pageEntries = [.. page.Select(match => match.Entry)];
         Func<int, JsonObject, int> pageCosts = ResolvedReferences.Charge(page);
-        List<NextCall> uncutNext = pageEnd < matches.Count ? SearchNarrowing.After(request, matches.Count, pageEnd, cutBySize: false, budget) : [];
+        List<NextCall> uncutNext = pageEnd < matches.Count ? SearchNarrowing.After(request, matches.Count, pageEnd, cutBySize: false, largerBudget) : [];
         ResourceBatch batch = ResourceBatch.Collect(session.RootPath, pageEntries, parsed.Elements, ReservedBytes(request, query, matches.Count, included, issues, omitted, uncutNext), budget, pageCosts, cancellationToken);
         if (batch.Consumed < page.Count)
         {
-            List<NextCall> cutNext = SearchNarrowing.After(request, matches.Count, pageEnd, cutBySize: true, budget);
+            List<NextCall> cutNext = SearchNarrowing.After(request, matches.Count, pageEnd, cutBySize: true, largerBudget);
             batch = ResourceBatch.Collect(session.RootPath, pageEntries, parsed.Elements, ReservedBytes(request, query, matches.Count, included, issues, omitted, cutNext), budget, pageCosts, cancellationToken);
         }
 
         int resume = request.Offset + batch.Consumed;
         bool cutBySize = batch.Consumed < page.Count;
-        List<NextCall> next = resume < matches.Count ? SearchNarrowing.After(request, matches.Count, resume, cutBySize, budget) : [];
+        List<NextCall> next = resume < matches.Count ? SearchNarrowing.After(request, matches.Count, resume, cutBySize, largerBudget) : [];
         issues.AddRange(batch.Issues);
         omitted.AddRange(batch.Skipped);
         List<EvidenceItem> evidence = [.. batch.Evidence];
@@ -255,7 +277,7 @@ public static class ResourceSearcher
         }
 
         var facts = new SearchFacts(request.ResourceType, query, request.Compartment, matches.Count, request.Offset, batch.Resources.Count, batch.Resources, includedResources, ResolvedReferences.ToFacts(resolved));
-        return Envelope(session, source, facts, evidence, omitted, issues, cancellationToken) with { Next = next };
+        return WithSelection(Envelope(session, source, facts, evidence, omitted, issues, cancellationToken) with { Next = next });
     }
 
     private static bool HasIncludes(SearchOptions options) => options.Include.Count > 0 || options.RevInclude.Count > 0;

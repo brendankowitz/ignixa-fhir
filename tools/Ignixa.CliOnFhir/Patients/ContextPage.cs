@@ -14,7 +14,7 @@ using Ignixa.CliOnFhir.Session;
 namespace Ignixa.CliOnFhir.Patients;
 
 /// <summary>
-/// One page of a node's or a find's items, with the page's resources read within the 50 KB budget the way search reads them
+/// One page of a node's or a find's items, with the page's resources read within the response budget the way search reads them
 /// (<see cref="ResourceBatch"/>): items stop where the resources stop, a resource too large to ever fit is named in
 /// <c>omitted</c>, and <c>resolvedReferences</c> lists the Bundle references the returned resources show
 /// (<see cref="ResolvedReferences"/>, same cap and omitted rules).
@@ -65,7 +65,7 @@ internal static class ContextPage
         ArgumentNullException.ThrowIfNull(absent);
 
         FolderSession session = context.Session;
-        int budget = ResponseBudget.Resolve(maxBytes, issues);
+        int budget = ResponseBudget.Resolve(maxBytes, session.MaxResponseBytes, issues);
         issues.AddRange(Paging.BeyondTotal(offset, entries.Count, "items"));
         List<ContextEntry> page = [.. entries.Skip(offset).Take(count)];
         List<OmittedItem> omitted = [];
@@ -89,7 +89,7 @@ internal static class ContextPage
             // The calls in next depend on whether the budget cuts the page, so Read first expects that it does not.
             int pageEnd = offset + page.Count;
             Func<bool, List<NextCall>> reserveNext = cut => cut || pageEnd < entries.Count
-                ? After(nextPage, offset, pageEnd, entries.Count - offset, elements, maxBytes, cut, budget)
+                ? After(nextPage, offset, pageEnd, entries.Count - offset, elements, maxBytes, cut, budget, session.MaxResponseBytes)
                 : [];
             (contents, consumed) = Read(context, page, projection, facts, issues, absent, omitted, reserveNext, budget, cancellationToken);
         }
@@ -100,7 +100,7 @@ internal static class ContextPage
         {
             bool cutBySize = consumed < page.Count;
             omitted.Add(new OmittedItem($"{entries.Count - resume} more items (offset={resume})", cutBySize ? "size-budget" : "limit"));
-            next = withResources ? After(nextPage, offset, resume, entries.Count - resume, elements, maxBytes, cutBySize, budget) : [nextPage(resume)];
+            next = withResources ? After(nextPage, offset, resume, entries.Count - resume, elements, maxBytes, cutBySize, budget, session.MaxResponseBytes) : [nextPage(resume)];
         }
 
         List<EvidenceItem> evidence = ContextRoot.Evidence(page.Take(consumed).SelectMany(entry => entry.Sources));
@@ -159,9 +159,10 @@ internal static class ContextPage
 
     /// <summary>
     /// The calls that follow a page cut at <paramref name="resume"/>: the rest of the items with the caller's trimming and
-    /// budget kept, then, when the page was cut by size or much remains, the same page trimmed with <c>elements</c>, or with the largest budget.
+    /// budget kept, then, when the page was cut by size or much remains, the same page trimmed with <c>elements</c>, or with the
+    /// largest budget, <paramref name="ceiling"/>.
     /// </summary>
-    private static List<NextCall> After(Func<int, NextCall> nextPage, int offset, int resume, int remaining, string? elements, int? maxBytes, bool cutBySize, int budget)
+    private static List<NextCall> After(Func<int, NextCall> nextPage, int offset, int resume, int remaining, string? elements, int? maxBytes, bool cutBySize, int budget, int ceiling)
     {
         List<NextCall> calls = [TruncationCalls.Continue(nextPage(resume), resume, elements, maxBytes)];
         if (!cutBySize && (resume - offset < ResourceSearcher.DefaultCount || remaining < ResourceSearcher.DefaultCount))
@@ -175,9 +176,9 @@ internal static class ContextPage
             calls.Add(TruncationCalls.Trim(current, suggested: null));
         }
 
-        if (cutBySize && budget < EnvelopeJson.MaxBytes)
+        if (cutBySize && budget < ceiling)
         {
-            calls.Add(TruncationCalls.Larger(current));
+            calls.Add(TruncationCalls.Larger(current, ceiling));
         }
 
         return calls;

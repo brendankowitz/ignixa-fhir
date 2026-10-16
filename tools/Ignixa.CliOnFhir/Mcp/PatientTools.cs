@@ -53,7 +53,7 @@ public sealed class PatientTools(FolderSession session)
         [Description("Default 10, maximum 50.")] int? count = null,
         int? offset = null,
         [Description("Top-level elements to keep, comma-separated.")] string? elements = null,
-        [Description("Default 12288, maximum 51200.")] int? maxBytes = null,
+        [Description("Default 12288, maximum 16384.")] int? maxBytes = null,
         [Description("root only: map (default) or full.")] string? detail = null,
         RequestContext<CallToolRequestParams>? context = null,
         CancellationToken cancellationToken = default)

@@ -82,6 +82,7 @@ internal static class ColumnSearch
         int count,
         List<IssueItem> issues,
         int budget,
+        int? largerBudget,
         CancellationToken cancellationToken)
     {
         List<IndexedResource> page = [.. matches.Skip(request.Offset).Take(count)];
@@ -111,7 +112,7 @@ internal static class ColumnSearch
 
         // Assembled once: the assembler hands over the session's one-time cache notices, so each candidate size is a copy of it.
         ToolEnvelope<SearchFacts?> shell = ResourceSearcher.Envelope(session, source, facts: null, [], omitted, issues, cancellationToken);
-        return new Table(shell, request, columns, matches.Count, rows, budget).Fit();
+        return new Table(shell, request, columns, matches.Count, rows, budget, largerBudget).Fit();
     }
 
     /// <summary>The row of <paramref name="entry"/>, or null when it cannot be read now (the reason is in the reader's problems).</summary>
@@ -147,7 +148,7 @@ internal static class ColumnSearch
     private sealed record Row(CatalogEntry Entry, JsonArray Cells, IReadOnlyList<int> EmptyColumns, IReadOnlyList<CatalogEntry> Resolved, IReadOnlyList<string> Unresolved);
 
     /// <summary>The evaluated page and how much of it one response holds.</summary>
-    private sealed class Table(ToolEnvelope<SearchFacts?> shell, SearchRequest request, IReadOnlyList<CompiledColumn> columns, int total, List<Row?> rows, int budget)
+    private sealed class Table(ToolEnvelope<SearchFacts?> shell, SearchRequest request, IReadOnlyList<CompiledColumn> columns, int total, List<Row?> rows, int budget, int? largerBudget)
     {
         /// <summary>
         /// The largest prefix of the page whose whole response fits the budget. A row too large to fit even alone is named in
@@ -234,7 +235,7 @@ internal static class ColumnSearch
                 EmptyCells = emptyCells.Count == 0 ? null : emptyCells,
             };
 
-            List<NextCall> next = resume < total ? SearchNarrowing.After(request, total, resume, cut, budget) : [];
+            List<NextCall> next = resume < total ? SearchNarrowing.After(request, total, resume, cut, largerBudget) : [];
             return shell with { Facts = facts, Evidence = evidence, Omitted = allOmitted, Issues = allIssues, Next = next };
         }
 

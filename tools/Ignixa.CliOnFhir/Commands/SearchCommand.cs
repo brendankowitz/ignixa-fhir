@@ -71,6 +71,12 @@ internal static class SearchCommand
             Description = "One FHIRPath evaluated over a searchset Bundle of every match, returned in facts.value, for example 'entry.count()'",
         };
 
+        var perPatientOption = new Option<string?>("--per-patient")
+        {
+            Description = "Keep one match per patient before paging, --columns, --fhirpath or --summary count: 'latest' or 'earliest' by the type's date, "
+                + "or 'first' in the query's _sort order. Patients are those whose Patient compartment the match is in",
+        };
+
         Option<int?> maxBytesOption = CommonOptions.CreateMaxBytesOption();
         Option<string?> cacheDirOption = CommonOptions.CreateCacheDirOption();
         Option<bool> noCacheOption = CommonOptions.CreateNoCacheOption();
@@ -91,6 +97,7 @@ internal static class SearchCommand
         command.Options.Add(executeOption);
         command.Options.Add(columnsOption);
         command.Options.Add(fhirPathOption);
+        command.Options.Add(perPatientOption);
         command.Options.Add(maxBytesOption);
         command.Options.Add(prettyOption);
         command.Validators.Add(result =>
@@ -127,7 +134,8 @@ internal static class SearchCommand
                 parseResult.GetValue(compartmentOption),
                 parseResult.GetValue(maxBytesOption),
                 columns,
-                parseResult.GetValue(fhirPathOption));
+                parseResult.GetValue(fhirPathOption),
+                parseResult.GetValue(perPatientOption));
 
             bool pretty = parseResult.GetValue(prettyOption);
             return Task.FromResult(parseResult.GetValue(checkOption)
