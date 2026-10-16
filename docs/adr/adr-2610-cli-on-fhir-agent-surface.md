@@ -180,6 +180,12 @@ CRLF checkout adds a character per description line. `help` lists only the topic
   valid host. A path form (`patient:///summary/{id}`, or `patient://summary/{id}`) avoids both; decide before hosts
   depend on the template.
 - **Reversibility.** `--toolset all` restores the V13 surface, less the failure modes the lenient rules remove.
+- **V15 adds four grounded hints** from the MAI-Code-1.1-Flash transcript on the "LDL not at goal" cohort (it searched
+  ICD-10 codes in a SNOMED-only folder, let `asOf` default to the clock two months after the data, and met an empty cohort
+  with no reason). Each states a fact the tool computed and is silent otherwise: `code-system-not-in-folder`,
+  `asOfSource` with an `asof-after-data` warning, `cohort-empty-step`, and a "values disagree at the same time" extension of
+  the `patient_summary` quirk for one analyte under several LOINC codes. They live in issue text and help topics, so the
+  menu and instructions budgets are unchanged. See the README section "Grounded hints (V15)".
 
 ## References
 

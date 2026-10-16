@@ -174,6 +174,11 @@ public static class ResourceSearcher
         var source = new FolderSearchSource(session);
         var engine = new InMemorySearchEngine(source, Features, session.Compartments);
         List<IndexedResource> matches = Match(engine, source, parsed);
+        if (matches.Count == 0)
+        {
+            issues.AddRange(SearchCodeHints.ForEmptyResult(session, request.ResourceType, parsed, cancellationToken));
+        }
+
         PerPatientFacts? perPatient = null;
         if (request.PerPatient is { } chosen)
         {

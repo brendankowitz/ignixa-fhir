@@ -64,6 +64,11 @@ internal static class PatientCohort
             IReadOnlyList<CriterionCodes> medicationCodes = await codes.MedicationsAsync(request.Medications, cancellationToken);
             CohortOutcome outcome = new CohortEvaluation(session, request, issues, omitted, maxRead, cancellationToken).Run(conditionCodes, medicationCodes);
             issues.AddRange(NameIssues.For(outcome.Evidence.SelectMany(group => group)));
+            issues.AddRange(CohortHints.AsOfAfterData(session, request, cancellationToken));
+            if (outcome.Counted.Count == 0)
+            {
+                issues.AddRange(CohortHints.UnusedCodeSystems(session, request, conditionCodes, medicationCodes, cancellationToken));
+            }
 
             // Assembled once: the assembler hands over the session's one-time cache notices, so each candidate size is a copy of it.
             ToolEnvelope<CohortFacts?> shell = EnvelopeAssembler.Create<CohortFacts?>(session, null, outcome.BuiltAt, [], omitted, [], issues, cancellationToken);
@@ -131,7 +136,7 @@ internal static class PatientCohort
                 omitted.Add(new OmittedItem($"{evidence.Count - evidenceShown} more evidence items (the listed patients and the resources that decided each criterion)", "size-budget"));
             }
 
-            var facts = new CohortFacts(CohortInstant.Format(request.AsOf), outcome.Counted.Count, isFull ? outcome.Steps : [.. outcome.Steps.Select(Compact)], [.. listed.Select(ResourceReader.Describe)]);
+            var facts = new CohortFacts(CohortInstant.Format(request.AsOf), request.AsOfDefaulted ? CohortRequest.DefaultNow : CohortRequest.Argument, outcome.Counted.Count, isFull ? outcome.Steps : [.. outcome.Steps.Select(Compact)], [.. listed.Select(ResourceReader.Describe)]);
             return shell with
             {
                 Facts = facts,

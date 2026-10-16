@@ -42,6 +42,9 @@ public static class PatientMap
     /// <summary>Most lab codes named in quirks as coded several ways.</summary>
     public const int TopQuirks = 3;
 
+    /// <summary>Most values a disagreement between codes lists.</summary>
+    private const int TopDisagreeingValues = 3;
+
     /// <summary>Longest display copied into an item line; a longer one is cut and ends with "...".</summary>
     public const int MaxDisplay = 48;
 
@@ -242,12 +245,15 @@ public static class PatientMap
     private static IEnumerable<string> Quirks(PatientContext context)
     {
         // One test under several codes: a search by one code misses the others.
+        // The codes that disagree at the same instant come first: they are what a question can silently get wrong.
         IEnumerable<string> analytes = context.Labs
             .Where(series => Analyte(series.Summary.Item.Display) is not null)
             .GroupBy(series => Analyte(series.Summary.Item.Display)!, StringComparer.OrdinalIgnoreCase)
             .Where(group => group.Count() > 1)
+            .Select(group => (Group: group, Disagreement: Disagreement(group.ToList())))
+            .OrderBy(analyte => analyte.Disagreement.Length == 0)
             .Take(TopQuirks)
-            .Select(group => $"{group.Key}: {string.Join(", ", group.Select(series => $"{CodeAliases.Shorten(series.Summary.Item.Code!)} n={series.Observations.Count}"))}; search all");
+            .Select(analyte => $"{analyte.Group.Key}: {string.Join(", ", analyte.Group.Select(series => $"{CodeAliases.Shorten(series.Summary.Item.Code!)} n={series.Observations.Count}"))}; search all{analyte.Disagreement}");
         foreach (string analyte in analytes)
         {
             yield return analyte;
@@ -267,6 +273,33 @@ public static class PatientMap
                 yield return $"{domain} coded in {string.Join(", ", systems.Select(CodeAliases.Of))}";
             }
         }
+    }
+
+    /// <summary>
+    /// For one analyte under several codes: when two codes have readings at the very same instant (the date as written) with
+    /// different numbers in the same unit as written, the latest such instant and its values. A reading with a comparator, no
+    /// unit or no date is not compared, and nothing is converted. Empty when no instant disagrees.
+    /// </summary>
+    private static string Disagreement(IReadOnlyList<LabSeries> codes)
+    {
+        var disagreements = codes
+            .SelectMany((series, index) => series.Observations
+                .Where(entry => entry.Item is { Value: not null, Comparator: null, Unit: not null, Date: not null })
+                .Select(entry => (Code: index, At: entry.Item.Date!, entry.Date, Unit: entry.Item.Unit!, Value: entry.Item.Value!.Value)))
+            .GroupBy(reading => (reading.At, reading.Unit))
+            .Select(group => (Key: group.Key, group.First().Date, Values: group.DistinctBy(reading => reading.Value).Select(reading => reading.Value).ToList(), Codes: group.Select(reading => reading.Code).Distinct().Count()))
+            .Where(group => group.Codes > 1 && group.Values.Count > 1)
+            .OrderByDescending(group => group.Date)
+            .ThenBy(group => group.Key.At, StringComparer.Ordinal)
+            .ToList();
+        if (disagreements.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var first = disagreements[0];
+        string values = string.Join(" vs ", first.Values.Take(TopDisagreeingValues).Select(value => value.ToString("G29", CultureInfo.InvariantCulture)));
+        return $"; values disagree at the same time ({Day(first.Key.At)}: {values} {first.Key.Unit}); check which code the question means";
     }
 
     /// <summary>The domains with nothing and the notable types the compartment has none of, as one absence; null when none is missing.</summary>

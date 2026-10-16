@@ -14,6 +14,7 @@ namespace Ignixa.CliOnFhir.Cohorts;
 /// <param name="AgeMin">Youngest age in whole years at <paramref name="AsOf"/>, inclusive.</param>
 /// <param name="AgeMax">Oldest age in whole years at <paramref name="AsOf"/>, inclusive.</param>
 /// <param name="Gender">Patient.gender, when asked.</param>
+/// <param name="AsOfDefaulted">True when the request gave no asOf and <paramref name="AsOf"/> is the clock's now.</param>
 internal sealed record CohortRequest(
     DateTimeOffset AsOf,
     bool LivingOnly,
@@ -23,8 +24,15 @@ internal sealed record CohortRequest(
     IReadOnlyList<ConditionCriterion> Conditions,
     IReadOnlyList<MedicationCriterion> Medications,
     IReadOnlyList<ImmunizationCriterion> Immunizations,
-    IReadOnlyList<ObservationCriterion> Observations)
+    IReadOnlyList<ObservationCriterion> Observations,
+    bool AsOfDefaulted = false)
 {
+    /// <summary>The <c>asOf</c> source when the request gave one.</summary>
+    public const string Argument = "argument";
+
+    /// <summary>The <c>asOf</c> source when the request gave none and the clock's now was used.</summary>
+    public const string DefaultNow = "default-now";
+
     public const string Active = "active";
     public const string AnyStatus = "any";
     public const string ConfirmedOrUnspecified = "confirmed-or-unspecified";
@@ -69,7 +77,8 @@ internal sealed record CohortRequest(
             [.. CriterionObject.List(arguments.Conditions, "conditions", ConditionProperties).Select(Condition)],
             [.. CriterionObject.List(arguments.Medications, "medications", MedicationProperties).Select(Medication)],
             [.. CriterionObject.List(arguments.Immunizations, "immunizations", ImmunizationProperties).Select(criterion => Immunization(criterion, asOf))],
-            [.. CriterionObject.List(arguments.Observations, "observations", ObservationProperties).Select(criterion => Observation(criterion, asOf))]);
+            [.. CriterionObject.List(arguments.Observations, "observations", ObservationProperties).Select(criterion => Observation(criterion, asOf))],
+            AsOfDefaulted: arguments.AsOf is null);
     }
 
     private static ConditionCriterion Condition(CriterionObject criterion)

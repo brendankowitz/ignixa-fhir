@@ -73,6 +73,10 @@ internal static class FolderCodeText
             match.Tally.Types.ContainsKey("Condition") ? match.Tally.Active : null))];
 
         issues.AddRange(Paging.BeyondTotal(offset, matches.Count, "matching codes"));
+        if (matches.Count == 0 && system is not null && UnusedCodeSystemHint.ForSystemArgument(session, resourceType, system, cancellationToken) is { } unused)
+        {
+            issues.Add(unused);
+        }
         List<AbsentItem> absent = matches.Count == 0
             ? [new AbsentItem("codes whose display matches the words", $"{tallies.Count} distinct codes of {string.Join(", ", types)} in {(patient is null ? "the folder's" : $"Patient/{FhirIds.Safe(patient)}'s")} search indexes{(terminology is null ? string.Empty : " and the displays and designations of the loaded terminology")}", session.Catalog.BuiltAt)]
             : [];

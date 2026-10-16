@@ -194,6 +194,15 @@ Some argument combinations conflict in a way whose intent is clear. Since V14 ([
 
 The list is closed. A combination whose intent is not clear still fails as `invalid-parameter`: `columns` or `fhirpath` with `summary=count` or `_include`, `perPatient=first` without a `_sort`, `fhirpath` with `elements`.
 
+## Grounded hints (V15)
+
+Since V15 four hints state a fact the tool computed from the folder or the call's arguments, and say nothing when it does not hold exactly. None uses a model or guesses what a code looks like.
+
+- **`code-system-not-in-folder`** (information). A search over a plain token parameter (`code`, `vaccine-code`, ... no modifier, no chain) that matched nothing, a `patient_cohort` that counted nothing, or a `folder_code_systems text=... system=...` that matched nothing, named a code system the folder's resources of that type do not use (by the coding inventory of `folder_code_systems`, which includes the systems FHIR code elements imply), or a bare code that no coding of the parameter or of the folder holds. It lists the systems the parameter does use and points at `folder_code_systems text=...`. A parameter that is not a coding lookup (identifiers, `_id`, a FHIR-bound code such as `gender`) never gets the bare-code form.
+- **`patient_cohort` `asOf`.** `facts.asOfSource` is `argument` or `default-now`. When it defaulted and the latest start of any date search parameter of the clinical types (the types of a patient's date span) is on an earlier day, an `asof-after-data` warning gives both dates. `search_fhir_resources` applies no relative window of its own, so it has no such hint.
+- **`cohort-empty-step`** (information). When the count is 0, the first step that left no patient and why, from counts the evaluation already holds: no resource has any of the codes (`0 of N given codes occur`), resources have them but none belongs to a remaining patient, patients have them but none met the rule, no reading in the window, or the demographic criterion removed all.
+- **Conflicting values in `patient_summary` `quirks`.** An analyte coded several ways (the map groups lab codes by the display words before `[`, which pairs creatinine 38483-4 (Blood) with 2160-0 (Serum/Plasma)) gains `values disagree at the same time (2026-08-16: 6.07 vs 1.99 mg/dL); check which code the question means` when two codes have readings at the same instant, as written, with different numbers in the same unit as written. Nothing is converted, a reading with a comparator, no unit or no date is skipped, and an analyte that disagrees is listed ahead of the three-quirk cap.
+
 ## FHIRPath hints
 
 Since V14 ([ADR 2610](../../docs/adr/adr-2610-cli-on-fhir-agent-surface.md)) every `columns` path and `fhirpath` expression is analysed by `Ignixa.FhirPath`'s `FhirPathAnalyzer` before it is evaluated (`Search/FhirPathHints.cs`): a column against the searched type, a `fhirpath` against `Bundle` with `entry.resource` taken as the searched type, with the folder's FHIR schema. In the bench, 31% of `fhirpath` calls failed, most on a path that could never yield anything.
