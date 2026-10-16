@@ -38,10 +38,13 @@ public static class ViewRunner
     /// </summary>
     /// <param name="logger">Receives the details of a <c>view-internal-error</c>; required, so that no caller can drop them.</param>
     public static Task<ToolEnvelope<ViewFacts?>> RunAsync(FolderSession session, ViewRequest request, ILogger logger, CancellationToken cancellationToken) =>
-        RunAsync(session, request, timeout: null, logger, cancellationToken);
+        RunAsync(session, request, logger, timeoutSignal: CancellationToken.None, cancellationToken);
 
-    /// <param name="timeout">How long the run may take; null for the request's own, in seconds (a test passes a span no real run keeps).</param>
-    internal static async Task<ToolEnvelope<ViewFacts?>> RunAsync(FolderSession session, ViewRequest request, TimeSpan? timeout, ILogger logger, CancellationToken cancellationToken)
+    /// <param name="timeoutSignal">
+    /// Stops the run as its timeout does, besides the request's own seconds: a test passes one already cancelled, so the run is a
+    /// timeout at its first check, whatever the machine's speed.
+    /// </param>
+    internal static async Task<ToolEnvelope<ViewFacts?>> RunAsync(FolderSession session, ViewRequest request, ILogger logger, CancellationToken timeoutSignal, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(request);
@@ -55,7 +58,7 @@ public static class ViewRunner
         List<IssueItem> notes = [];
         try
         {
-            return await WithinTimeAsync(session, request, timeout, notes, cancellationToken);
+            return await WithinTimeAsync(session, request, notes, timeoutSignal, cancellationToken);
         }
         catch (ToolRequestException ex)
         {
@@ -86,7 +89,7 @@ public static class ViewRunner
             ? EnvelopeAssembler.Failure<ViewFacts>(session, error, cancellationToken)
             : EnvelopeAssembler.Create<ViewFacts?>(session, null, session.Catalog.BuiltAt, [], [], [], [error, .. notes], cancellationToken);
 
-    private static async Task<ToolEnvelope<ViewFacts?>> WithinTimeAsync(FolderSession session, ViewRequest request, TimeSpan? limit, List<IssueItem> notes, CancellationToken cancellationToken)
+    private static async Task<ToolEnvelope<ViewFacts?>> WithinTimeAsync(FolderSession session, ViewRequest request, List<IssueItem> notes, CancellationToken timeoutSignal, CancellationToken cancellationToken)
     {
         int seconds = request.TimeoutSeconds ?? DefaultTimeoutSeconds;
         if (seconds is < 1 or > MaxTimeoutSeconds)
@@ -94,8 +97,8 @@ public static class ViewRunner
             throw ToolRequestException.Error("invalid-parameter", $"'timeout' must be 1 to {MaxTimeoutSeconds} seconds, not {seconds}.");
         }
 
-        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(limit ?? TimeSpan.FromSeconds(seconds));
+        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSignal);
+        timeout.CancelAfter(TimeSpan.FromSeconds(seconds));
         var progress = new RunProgress();
         try
         {
@@ -107,7 +110,7 @@ public static class ViewRunner
             string cold = progress.ResolvingScope
                 ? " The time ran out while the patient compartments were being worked out, which a first run over a folder does from the search indexes of every type that can be in one; a build cut by the timeout keeps nothing, so run it once with a higher timeout (for example --timeout 300) to build them and keep them in the index cache, and later runs read them from there (with the cache off, nothing is kept)."
                 : string.Empty;
-            throw ToolRequestException.Error("view-timeout", $"The view did not finish within {limit?.TotalSeconds ?? seconds} seconds and was stopped.{cold} {narrower} the timeout (up to {MaxTimeoutSeconds}).");
+            throw ToolRequestException.Error("view-timeout", $"The view did not finish within {seconds} seconds and was stopped.{cold} {narrower} the timeout (up to {MaxTimeoutSeconds}).");
         }
     }
 

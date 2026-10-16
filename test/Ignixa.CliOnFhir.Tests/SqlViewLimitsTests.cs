@@ -48,9 +48,9 @@ public class SqlViewLimitsTests
     [Fact]
     public async Task GivenACompartmentAndATimeout_WhenTheRunIsStopped_ThenTheErrorDoesNotSuggestACompartment()
     {
-        using TestFolder folder = ManyPatients(3000);
+        using TestFolder folder = ManyPatients(5);
 
-        IssueItem error = Error(await RunInAsync(folder.Path, new ViewRequest(PatientView, Compartment: "Patient/p1"), timeout: TimeSpan.Zero));
+        IssueItem error = Error(await RunInAsync(folder.Path, new ViewRequest(PatientView, Compartment: "Patient/p1"), timedOut: true));
 
         error.Code.ShouldBe("view-timeout");
         error.Diagnostics.ShouldNotContain("compartment Patient/");
@@ -63,9 +63,9 @@ public class SqlViewLimitsTests
     [Fact]
     public async Task GivenATimeoutOutsideTheCompartmentBuild_WhenTheRunIsStopped_ThenTheErrorDoesNotBlameAnIndexBuild()
     {
-        using TestFolder folder = ManyPatients(3000);
+        using TestFolder folder = ManyPatients(5);
 
-        IssueItem error = Error(await RunInAsync(folder.Path, new ViewRequest(PatientView), timeout: TimeSpan.Zero));
+        IssueItem error = Error(await RunInAsync(folder.Path, new ViewRequest(PatientView), timedOut: true));
 
         error.Code.ShouldBe("view-timeout");
         error.Diagnostics.ShouldNotContain("compartments were being worked out");
@@ -106,11 +106,11 @@ public class SqlViewLimitsTests
     [Fact]
     public async Task GivenARunThatOutlastsTheTimeout_WhenRunWithOut_ThenItIsStoppedWithAnErrorAndLeavesNothing()
     {
-        using TestFolder folder = ManyPatients(3000);
+        using TestFolder folder = ManyPatients(5);
         using var elsewhere = new TestFolder();
         string path = Path.Combine(elsewhere.Path, "made", "rows.csv");
 
-        ToolEnvelope<ViewFacts?> envelope = await RunInAsync(folder.Path, new ViewRequest(PatientView, Out: path), timeout: TimeSpan.Zero);
+        ToolEnvelope<ViewFacts?> envelope = await RunInAsync(folder.Path, new ViewRequest(PatientView, Out: path), timedOut: true);
 
         IssueItem error = Error(envelope);
         error.Code.ShouldBe("view-timeout");

@@ -207,11 +207,34 @@ internal sealed record OutputTarget(string Path, string Format, bool Overwrite, 
         }
     }
 
+    /// <summary>
+    /// Refuses a <paramref name="resolvedPath"/> inside the data folder: by its path, links resolved (the index cache's rule), and on
+    /// Linux also by identity, so that a bind mount or a second mount of the folder, which no link leads to, is the folder too.
+    /// </summary>
+    /// <exception cref="ToolRequestException"><c>out-refused</c>.</exception>
     internal static void Check(string folderPath, string resolvedPath)
     {
         if (new FolderOverlap(folderPath).Reason(resolvedPath, "output file", Remedy) is { } reason)
         {
             throw ToolRequestException.Error("out-refused", $"Cannot write there: {reason}.");
+        }
+
+        if (DirectoryIdentity.IsAvailable && MountedFolder(folderPath, resolvedPath) is { } alias)
+        {
+            throw ToolRequestException.Error("out-refused", $"Cannot write there: the directory '{alias}' is the data folder itself under another path (a bind mount or a second mount of it, or a link that replaced the directory after its path was resolved); the folder is never written and {Remedy}.");
+        }
+    }
+
+    // The output's directory, or the first of its ancestors, that is the data folder by device and inode; null when none is.
+    private static string? MountedFolder(string folderPath, string resolvedPath)
+    {
+        try
+        {
+            return DirectoryIdentity.Of(folderPath) is { } folder ? DirectoryIdentity.SameAsOrUnder(System.IO.Path.GetDirectoryName(resolvedPath)!, folder) : null;
+        }
+        catch (IOException ex)
+        {
+            throw ToolRequestException.Error("out-refused", $"Cannot write there: the output directory cannot be compared with the data folder ({ex.Message}).");
         }
     }
 
@@ -284,7 +307,7 @@ internal sealed record OutputTarget(string Path, string Format, bool Overwrite, 
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            notes.Add(new IssueItem("information", "out-temp-left", $"The temporary file '{location}' was left: it was created there through a link and could not be deleted ({ex.GetType().Name}: {ex.Message}). Delete it yourself.", Location: null));
+            notes.Add(new IssueItem("information", "out-temp-left", $"The temporary file was left at '{location}' (where it was as of the check): it was created there through a link and could not be deleted ({ex.GetType().Name}: {ex.Message}). Delete it yourself.", Location: null));
         }
     }
 

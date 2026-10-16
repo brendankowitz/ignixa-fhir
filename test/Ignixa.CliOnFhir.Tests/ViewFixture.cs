@@ -48,12 +48,13 @@ internal static class ViewFixture
         await ViewRunner.RunAsync(Open(folder), request, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, CancellationToken.None);
 
     /// <summary>A run over the folder at <paramref name="folderPath"/>, for a folder that is not a whole <see cref="TestFolder"/>.</summary>
-    public static async Task<ToolEnvelope<ViewFacts?>> RunInAsync(string folderPath, ViewRequest request, Microsoft.Extensions.Logging.ILogger? logger = null, TimeSpan? timeout = null) =>
+    /// <param name="timedOut">Whether the run's timeout has already passed when it starts, so that it stops at its first check.</param>
+    public static async Task<ToolEnvelope<ViewFacts?>> RunInAsync(string folderPath, ViewRequest request, Microsoft.Extensions.Logging.ILogger? logger = null, bool timedOut = false) =>
         await ViewRunner.RunAsync(
             new Ignixa.CliOnFhir.Session.FolderSession(folderPath, new Ignixa.Specification.Generated.R4CoreSchemaProvider(), Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance),
             request,
-            timeout,
             logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
+            new CancellationToken(canceled: timedOut),
             CancellationToken.None);
 
     public static ViewFacts Facts(ToolEnvelope<ViewFacts?> envelope)

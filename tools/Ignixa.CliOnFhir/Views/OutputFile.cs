@@ -96,7 +96,7 @@ internal sealed class OutputFile
     /// directory. Nothing here throws for a file system failure; what could not be removed is reported instead.
     /// </summary>
     /// <returns>
-    /// An information issue: <c>out-temp-left</c> with where the temporary file really is, or <c>out-directory-left</c>; null when
+    /// An information issue: <c>out-temp-left</c> with where the temporary file was as of the check, or <c>out-directory-left</c>; null when
     /// everything was removed, or when the file was already renamed over the target (<see cref="Commit"/> reports any problem with it).
     /// </returns>
     public IssueItem? Discard()
@@ -148,7 +148,7 @@ internal sealed class OutputFile
     }
 
     private static IssueItem Left(string location, string why) =>
-        new("information", "out-temp-left", $"The temporary file '{location}' was left: {why}. Delete it when the directory is safe to use.", Location: null);
+        new("information", "out-temp-left", $"The temporary file was left at '{location}' (where it was as of the check): {why}. Delete it when the directory is safe to use.", Location: null);
 
     // Where the open file is now; null once it has no name.
     private string? Location() => OpenFilePath.Of(_handle);
@@ -180,9 +180,15 @@ internal sealed class OutputFile
             return null;
         }
 
-        string? landed = Location();
-        Close();
-        return landed;
+        // A lookup that fails must not leave the file open; the failure itself is reported by Commit.
+        try
+        {
+            return Location();
+        }
+        finally
+        {
+            Close();
+        }
     }
 
     private void Close()

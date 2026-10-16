@@ -450,13 +450,51 @@ public class SqlViewOutputSafetyTests
         File.Exists(landed).ShouldBeTrue();
     }
 
-    private static bool TryHardLink(string existing, string link)
+    // A bind mount is the data folder under a path no link leads to: only its device and inode give it away.
+    [Fact]
+    public async Task GivenABindMountOfTheDataFolder_WhenOutIsUnderIt_ThenItIsRefusedAndTheDataFolderIsUnchanged()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return; // identities are read with statx, which is Linux's
+        }
+
+        using TestFolder root = new TestFolder().Write("data/patients.ndjson", PatientsData);
+        string data = Path.Combine(root.Path, "data");
+        string mount = Directory.CreateDirectory(Path.Combine(root.Path, "mounted")).FullName;
+        if (!TryRun("mount", "--bind", data, mount))
+        {
+            return; // mounting needs privileges this environment does not grant
+        }
+
+        try
+        {
+            string[] before = Snapshot(data);
+
+            IssueItem error = Error(await RunInAsync(data, new ViewRequest(PatientView, Out: Path.Combine(mount, "sub", "rows.csv"))));
+
+            error.Code.ShouldBe("out-refused");
+            error.Diagnostics.ShouldContain("bind mount");
+            Snapshot(data).ShouldBe(before);
+        }
+        finally
+        {
+            TryRun("umount", mount).ShouldBeTrue();
+        }
+    }
+
+    private static bool TryHardLink(string existing, string link) => TryRun("ln", existing, link);
+
+    private static bool TryRun(string command, params string[] arguments)
     {
         try
         {
-            var info = new ProcessStartInfo("ln") { RedirectStandardError = true, UseShellExecute = false };
-            info.ArgumentList.Add(existing);
-            info.ArgumentList.Add(link);
+            var info = new ProcessStartInfo(command) { RedirectStandardError = true, UseShellExecute = false };
+            foreach (string argument in arguments)
+            {
+                info.ArgumentList.Add(argument);
+            }
+
             using Process process = Process.Start(info)!;
             process.WaitForExit();
             return process.ExitCode == 0;
