@@ -66,6 +66,20 @@ public class MapTests
         error.Location.ShouldNotBeNull().ShouldStartWith("inline:3:");
     }
 
+    // The tokenizer's failures come wrapped at the start of the text; the location is where the tokenizer stopped.
+    [Fact]
+    public async Task GivenACharacterTheTokenizerRefuses_WhenRun_ThenTheErrorGivesWhereItIs()
+    {
+        using TestFolder root = Root();
+        const string bad = "map \"http://example.org/fml/bad\" = \"Bad\"\ngroup B(source src : Patient, target tgt : Basic) {\n  src.id as id -> tgt.id = id; #\n}\n";
+
+        IssueItem error = Error(await RunAsync(Data(root), new MapRequest(bad)));
+
+        error.Code.ShouldBe("map-invalid");
+        error.Diagnostics.ShouldContain("is not valid FML at line 3, column 32");
+        error.Location.ShouldBe("inline:3:32");
+    }
+
     [Fact]
     public async Task GivenResourcesOfAnotherTypeInScope_WhenRun_ThenTheyAreSkippedAndAnIssueCountsThem()
     {

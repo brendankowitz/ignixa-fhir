@@ -50,7 +50,7 @@ internal static class MapCompiler
         }
         catch (ParseException ex)
         {
-            (int? line, int? column) = ex.Position.HasValue ? (ex.Position.Line, ex.Position.Column) : ((int?)null, (int?)null);
+            (int? line, int? column) = Position(ex);
             string at = line is int known ? $" at line {known}, column {column}" : string.Empty;
             throw Invalid(loaded, $"{What(loaded)} is not valid FML{at}{Detail(loaded, ex)}", line, column);
         }
@@ -87,6 +87,19 @@ internal static class MapCompiler
         {
             throw Invalid(loaded, $"{What(loaded)} could not be read as a StructureMap ({ex.GetType().Name}){Detail(loaded, ex)}", line: null, column: null);
         }
+    }
+
+    // Where the parser stopped. A failure of the tokenizer comes wrapped, at the start of the text, with the tokenizer's own
+    // exception inside, which holds the real place; a start-of-text position with an inner exception and no place is unknown.
+    private static (int? Line, int? Column) Position(ParseException ex)
+    {
+        if (ex.InnerException is Superpower.ParseException { ErrorPosition.HasValue: true } inner)
+        {
+            return (inner.ErrorPosition.Line, inner.ErrorPosition.Column);
+        }
+
+        bool wrapped = ex.InnerException is not null && ex.Position.Absolute == 0;
+        return ex.Position.HasValue && !wrapped ? (ex.Position.Line, ex.Position.Column) : (null, null);
     }
 
     // The parser's message quotes the map; it is repeated only for a map the caller gave.
