@@ -58,7 +58,7 @@ internal static class MapCommand
                 parseResult.GetValue(timeoutOption),
                 parseResult.GetValue(maxResourcesOption));
             ILogger logger = loggerFactory.CreateLogger("map");
-            return await Watchdog.RunAsync<MapFacts>("map-timeout", request.TimeoutSeconds, MapRunner.DefaultTimeoutSeconds, MapRunner.MaxTimeoutSeconds, token => MapRunner.RunAsync(session, request, logger, token), parseResult.GetValue(prettyOption), cancellationToken);
+            return await Watchdog.RunAsync<MapFacts>("map-timeout", request.TimeoutSeconds, MapRunner.DefaultTimeoutSeconds, MapRunner.MaxTimeoutSeconds, token => MapRunner.RunAsync(session, request, logger, token), parseResult.GetValue(prettyOption), session.AsOfClock, cancellationToken);
         });
 
         return command;

@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.CliOnFhir.Catalog;
+using Ignixa.CliOnFhir.Clock;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Indexing;
 
@@ -33,6 +34,27 @@ public static class EnvelopeAssembler
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
+
+        return Create(session, facts, builtAt, evidence, omitted, absent, issues, session.AsOfClock.ForEnvelope(), cancellationToken);
+    }
+
+    /// <summary>
+    /// <see cref="Create{TFacts}(FolderSession, TFacts, DateTimeOffset, IReadOnlyList{EvidenceItem}, IReadOnlyList{OmittedItem}, IReadOnlyList{AbsentItem}, IEnumerable{IssueItem}, CancellationToken)"/>
+    /// stating <paramref name="asOf"/>, the instant this call's answer is anchored to (its own <c>asOf</c>, or a tool's default),
+    /// rather than the session's. Set it here, before a response is fitted to its budget, so the size measured is the size sent.
+    /// </summary>
+    public static ToolEnvelope<TFacts> Create<TFacts>(
+        FolderSession session,
+        TFacts facts,
+        DateTimeOffset builtAt,
+        IReadOnlyList<EvidenceItem> evidence,
+        IReadOnlyList<OmittedItem> omitted,
+        IReadOnlyList<AbsentItem> absent,
+        IEnumerable<IssueItem> issues,
+        AsOf? asOf,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(issues);
 
         StaleFilesCount stale = session.CountStaleFiles(cancellationToken);
@@ -42,7 +64,7 @@ public static class EnvelopeAssembler
             allIssues.Add(new IssueItem("warning", "freshness-unavailable", $"Could not check whether files changed since they were read, so freshness.staleFiles is unknown: {reason}", Location: null));
         }
 
-        return new ToolEnvelope<TFacts>(facts, evidence, omitted, absent, allIssues, new FreshnessInfo(builtAt, stale.Count));
+        return new ToolEnvelope<TFacts>(facts, evidence, omitted, absent, allIssues, new FreshnessInfo(builtAt, stale.Count)) { AsOf = asOf };
     }
 
     /// <summary>
@@ -64,7 +86,7 @@ public static class EnvelopeAssembler
         ArgumentNullException.ThrowIfNull(issues);
 
         var freshnessReserve = new IssueItem("warning", "freshness-unavailable", new string('x', 512), Location: null);
-        var envelope = new ToolEnvelope<TFacts>(facts, evidence, omitted, absent, [.. issues, .. session.CacheIssues, freshnessReserve], new FreshnessInfo(DateTimeOffset.MaxValue, int.MaxValue)) { Next = next };
+        var envelope = new ToolEnvelope<TFacts>(facts, evidence, omitted, absent, [.. issues, .. session.CacheIssues, freshnessReserve], new FreshnessInfo(DateTimeOffset.MaxValue, int.MaxValue)) { Next = next, AsOf = AsOf.SizingReserve };
         return EnvelopeJson.SizeOf(envelope);
     }
 
@@ -97,7 +119,7 @@ public static class EnvelopeAssembler
         ArgumentNullException.ThrowIfNull(session);
 
         return FolderProblem(session) is { } folderProblem
-            ? new ToolEnvelope<TFacts?>(null, [], [], [], [folderProblem], new FreshnessInfo(IndexBuiltAt: null, StaleFiles: null))
+            ? new ToolEnvelope<TFacts?>(null, [], [], [], [folderProblem], new FreshnessInfo(IndexBuiltAt: null, StaleFiles: null)) { AsOf = session.AsOfClock.WithoutReading() }
             : Create<TFacts?>(session, null, session.Catalog.BuiltAt, [], [], [], [issue], cancellationToken);
     }
 

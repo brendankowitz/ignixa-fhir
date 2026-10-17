@@ -60,7 +60,7 @@ public static class ContextExpander
                 resume => ContextRoot.Expand(context, nodeKey, resume),
                 issues,
                 absent,
-                cancellationToken);
+                cancellationToken) with { AsOf = context.Anchor };
         }
         catch (ToolRequestException ex)
         {

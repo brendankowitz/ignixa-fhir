@@ -68,11 +68,36 @@ public class AsOfOptionTests
         ((string)record["asOfSource"]!).ShouldBe("clock");
     }
 
+    [Fact]
+    public async Task GivenAsOfOnSearch_WhenRun_ThenTheEnvelopeStatesTheSessionOption()
+    {
+        using TestFolder folder = Clinic();
+
+        (int exitCode, string output, _) = await RunAsync(["--as-of", "2020-02-29T12:00:00+05:30", "search", folder.Path, "Patient", "--no-cache"]);
+
+        exitCode.ShouldBe(0);
+        JsonNode asOf = JsonNode.Parse(output)!["asOf"]!;
+        ((string)asOf["instant"]!).ShouldBe("2020-02-29T12:00:00+05:30");
+        ((string)asOf["source"]!).ShouldBe("session-option");
+    }
+
+    [Fact]
+    public async Task GivenAMalformedAsOfOnMcp_WhenStarted_ThenItStopsBeforeServingWithInvalidAsOf()
+    {
+        using TestFolder folder = Clinic();
+
+        (int exitCode, string output, string errors) = await RunAsync(["mcp", folder.Path, "--as-of", "soon"]);
+
+        exitCode.ShouldBe(1);
+        output.ShouldBeEmpty();
+        errors.ShouldContain("invalid-as-of: '--as-of'");
+    }
+
     [Theory]
-    [InlineData("search", "Patient")]
+    [InlineData("get", "Patient/p1")]
     [InlineData("inspect")]
     [InlineData("term", "list")]
-    [InlineData("mcp")]
+    [InlineData("context", "p1")]
     public async Task GivenAsOfOnAVerbThatDoesNotReadIt_WhenParsed_ThenItIsRefused(params string[] verb)
     {
         using TestFolder folder = Clinic();
@@ -82,7 +107,7 @@ public class AsOfOptionTests
 
         exitCode.ShouldNotBe(0);
         output.ShouldNotContain("\"facts\"");
-        errors.ShouldContain("--as-of is used only by draft, summary and view for now");
+        errors.ShouldContain("--as-of is used only by draft, mcp, search, summary and view for now");
     }
 
     [Fact]
@@ -101,6 +126,8 @@ public class AsOfOptionTests
     {
         var root = new RootCommand();
         root.Subcommands.Add(InspectCommand.Create());
+        root.Subcommands.Add(GetCommand.Create());
+        root.Subcommands.Add(ContextCommand.Create());
         root.Subcommands.Add(SearchCommand.Create());
         root.Subcommands.Add(TermCommand.Create());
         root.Subcommands.Add(ViewCommand.Create());

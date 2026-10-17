@@ -5,6 +5,7 @@
 
 using System.Text.Json.Nodes;
 using Ignixa.CliOnFhir.Catalog;
+using Ignixa.CliOnFhir.Clock;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Search;
 using Ignixa.CliOnFhir.Session;
@@ -105,6 +106,7 @@ public static class ResourceFetcher
             new FreshnessInfo(builtAt, StaleFiles: int.MaxValue))
         {
             Next = cutBySize && found.Count > 1 ? Remaining([.. found.Skip(1).Select(ResourceReader.Describe)], elements, maxBytes, budget, session.MaxResponseBytes) : [],
+            AsOf = AsOf.SizingReserve,
         });
         Func<int, JsonObject, int> resolutionCosts = ResolvedReferences.Charge([.. found.Select(entry => (ResourceReader.Describe(entry), resolutions[ResourceReader.Describe(entry)]))]);
         Dictionary<int, int> chainBytes = ChainBytes(found, chains);

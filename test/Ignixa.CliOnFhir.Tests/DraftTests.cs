@@ -23,7 +23,8 @@ public class DraftTests
     {
         using TestFolder folder = Clinic();
 
-        DraftFacts facts = Facts(await RunAsync(folder, new DraftRequest("MedicationRequest", PotassiumOrder)));
+        ToolEnvelope<DraftFacts?> envelope = await RunAsync(folder, new DraftRequest("MedicationRequest", PotassiumOrder));
+        DraftFacts facts = Facts(envelope);
 
         facts.Verdict.ShouldBe(DraftFacts.Valid, string.Join("; ", facts.Checks.Select(check => $"{check.Check} {check.Element} {check.Outcome}")));
         JsonObject resource = facts.Resource;
@@ -43,7 +44,7 @@ public class DraftTests
         Text(dosage["route"]!["coding"]![0]!["code"]).ShouldBe("26643006");
         Check(facts, "terminology", "MedicationRequest.medicationCodeableConcept.coding[0]").Outcome.ShouldBe(DraftCheck.Pass);
         Check(facts, "reference", "MedicationRequest.encounter").Outcome.ShouldBe(DraftCheck.Pass);
-        facts.AsOf.ShouldBe(new AsOf(DateTimeOffset.Parse(Instant, System.Globalization.CultureInfo.InvariantCulture), AsOfSources.SessionOption));
+        envelope.AsOf.ShouldBe(new AsOf(DateTimeOffset.Parse(Instant, System.Globalization.CultureInfo.InvariantCulture), AsOfSources.SessionOption));
     }
 
     [Fact]
@@ -97,10 +98,10 @@ public class DraftTests
         var clock = new ManualTimeProvider { Now = new DateTimeOffset(2025, 3, 31, 23, 59, 58, 123, TimeSpan.Zero).AddTicks(4567) };
         FolderSession session = Open(folder, clock: clock);
 
-        DraftFacts facts = Facts(await RunAsync(session, new DraftRequest("MedicationRequest", PotassiumOrder), asOf: null));
+        ToolEnvelope<DraftFacts?> envelope = await RunAsync(session, new DraftRequest("MedicationRequest", PotassiumOrder), asOf: null);
 
-        Text(facts.Resource["authoredOn"]).ShouldBe("2025-03-31T23:59:58.123Z");
-        facts.AsOf.Source.ShouldBe(AsOfSources.Clock);
+        Text(Facts(envelope).Resource["authoredOn"]).ShouldBe("2025-03-31T23:59:58.123Z");
+        envelope.AsOf.ShouldNotBeNull().Source.ShouldBe(AsOfSources.Clock);
     }
 
     [Fact]
@@ -414,8 +415,9 @@ public class DraftTests
 
         json["derived"].ShouldBeNull();
         json["next"]!.AsArray().ShouldBeEmpty();
-        Text(json["facts"]!["asOf"]!["instant"]).ShouldBe(Instant);
-        Text(json["facts"]!["asOf"]!["source"]).ShouldBe(AsOfSources.SessionOption);
+        json["facts"]!["asOf"].ShouldBeNull();
+        Text(json["asOf"]!["instant"]).ShouldBe(Instant);
+        Text(json["asOf"]!["source"]).ShouldBe(AsOfSources.SessionOption);
         json["facts"]!["checks"]!.AsArray().Select(check => Text(check!["check"])).Distinct().ShouldBe(["validation", "terminology", "reference"]);
     }
 

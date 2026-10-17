@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.CliOnFhir.Clock;
+using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Drafting;
 using Ignixa.CliOnFhir.Views;
 using Shouldly;
@@ -78,11 +79,11 @@ public class AsOfDateTests
     {
         using TestFolder folder = DraftFixture.Clinic();
 
-        DraftFacts facts = DraftFixture.Facts(await DraftFixture.RunAsync(folder, new DraftRequest("MedicationRequest", DraftFixture.PotassiumOrder), "2024-05-01"));
+        ToolEnvelope<DraftFacts?> envelope = await DraftFixture.RunAsync(folder, new DraftRequest("MedicationRequest", DraftFixture.PotassiumOrder), "2024-05-01");
 
-        DraftFixture.Text(facts.Resource["authoredOn"]).ShouldBe("2024-05-01");
-        facts.AsOf.ShouldBe(AsOf.OfDate(new DateOnly(2024, 5, 1), AsOfSources.SessionOption));
-        facts.AsOf.Precision.ShouldBe("date");
+        DraftFixture.Text(DraftFixture.Facts(envelope).Resource["authoredOn"]).ShouldBe("2024-05-01");
+        envelope.AsOf.ShouldBe(AsOf.OfDate(new DateOnly(2024, 5, 1), AsOfSources.SessionOption));
+        envelope.AsOf!.Precision.ShouldBe("date");
     }
 
     [Fact]

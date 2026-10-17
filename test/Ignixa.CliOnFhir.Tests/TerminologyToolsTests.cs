@@ -24,7 +24,7 @@ namespace Ignixa.CliOnFhir.Tests;
 /// </summary>
 public class TerminologyToolsTests
 {
-    private static readonly string[] TopLevel = ["facts", "evidence", "omitted", "absent", "issues", "freshness", "derived", "next"];
+    private static readonly string[] TopLevel = ["facts", "evidence", "omitted", "absent", "issues", "freshness", "asOf", "derived", "next"];
 
     [Fact]
     public void GivenTheTerminologyTools_WhenTheirAnnotationsAreRead_ThenOnlyLoadPackageChangesStateAndReachesOut()

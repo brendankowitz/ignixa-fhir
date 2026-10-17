@@ -102,7 +102,7 @@ public static class ContextRoot
         ];
 
         DateTimeOffset builtAt = context.Compartment.IndexBuiltAt;
-        return EnvelopeAssembler.Create<RootDigestFacts?>(session, facts, builtAt, evidence, omitted, absent, issues, cancellationToken) with { Next = next };
+        return EnvelopeAssembler.Create<RootDigestFacts?>(session, facts, builtAt, evidence, omitted, absent, issues, context.Anchor, cancellationToken) with { Next = next };
     }
 
     /// <summary>The <c>patient_context</c> expand call for <paramref name="nodeKey"/> of this patient.</summary>

@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.CliOnFhir.Catalog;
+using Ignixa.CliOnFhir.Clock;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Patients;
 using Ignixa.CliOnFhir.Reading;
@@ -56,7 +57,8 @@ internal static class PatientCohort
             }
 
             bool isFull = arguments.Detail == FullDetail;
-            CohortRequest request = CohortRequest.Parse(arguments, session.UtcNow());
+            AsOf? stated = session.AsOfClock.Stated(arguments.AsOf);
+            CohortRequest request = CohortRequest.Parse(arguments, stated, session.UtcNow());
             List<IssueItem> issues = [];
             List<OmittedItem> omitted = [];
             var codes = new CohortCodes(session, issues, omitted);
@@ -71,7 +73,8 @@ internal static class PatientCohort
             }
 
             // Assembled once: the assembler hands over the session's one-time cache notices, so each candidate size is a copy of it.
-            ToolEnvelope<CohortFacts?> shell = EnvelopeAssembler.Create<CohortFacts?>(session, null, outcome.BuiltAt, [], omitted, [], issues, cancellationToken);
+            AsOf used = stated ?? new AsOf(request.AsOf, AsOfSources.Clock);
+            ToolEnvelope<CohortFacts?> shell = EnvelopeAssembler.Create<CohortFacts?>(session, null, outcome.BuiltAt, [], omitted, [], issues, used, cancellationToken);
             return new Fit(shell, request, outcome, isFull).Within(Math.Min(EnvelopeJson.DefaultBudget, session.MaxResponseBytes));
         }
         catch (ToolRequestException ex)

@@ -56,8 +56,16 @@ public static class ViewRunner
 
         if (EnvelopeAssembler.FolderProblem(session) is { } folderProblem)
         {
-            return EnvelopeAssembler.Failure<ViewFacts>(session, folderProblem, cancellationToken);
+            return EnvelopeAssembler.Failure<ViewFacts>(session, folderProblem, cancellationToken) with { AsOf = asOf.WithoutReading() };
         }
+
+        // The envelope states the clock the view read (the run measured its size with room for the widest asOf).
+        ToolEnvelope<ViewFacts?> envelope = await AnswerAsync(session, request, asOf, logger, timeoutSignal, cancellationToken);
+        return envelope with { AsOf = asOf.ForEnvelope() };
+    }
+
+    private static async Task<ToolEnvelope<ViewFacts?>> AnswerAsync(FolderSession session, ViewRequest request, AsOfClock asOf, ILogger logger, CancellationToken timeoutSignal, CancellationToken cancellationToken)
+    {
 
         List<IssueItem> notes = [];
         try

@@ -6,6 +6,7 @@
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.CliOnFhir.Catalog;
+using Ignixa.CliOnFhir.Clock;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Indexing;
 using Ignixa.CliOnFhir.Inspection;
@@ -245,17 +246,30 @@ public static class ResourceSearcher
         int pageEnd = request.Offset + page.Count;
         List<CatalogEntry> pageEntries = [.. page.Select(match => match.Entry)];
         Func<int, JsonObject, int> pageCosts = ResolvedReferences.Charge(page);
-        List<NextCall> uncutNext = pageEnd < matches.Count ? SearchNarrowing.After(request, matches.Count, pageEnd, cutBySize: false, largerBudget) : [];
+        // The calls repeat the query whole, so one too long to fit beside the page is left out (the omitted item says how to resume).
+        bool nextTooLong = false;
+        List<NextCall> Fitting(List<NextCall> calls)
+        {
+            if (calls.Count == 0 || ReservedBytes(request, query, matches.Count, included, issues, omitted, calls) <= budget)
+            {
+                return calls;
+            }
+
+            nextTooLong = true;
+            return [];
+        }
+
+        List<NextCall> uncutNext = Fitting(pageEnd < matches.Count ? SearchNarrowing.After(request, matches.Count, pageEnd, cutBySize: false, largerBudget) : []);
         ResourceBatch batch = ResourceBatch.Collect(session.RootPath, pageEntries, parsed.Elements, ReservedBytes(request, query, matches.Count, included, issues, omitted, uncutNext), budget, pageCosts, cancellationToken);
         if (batch.Consumed < page.Count)
         {
-            List<NextCall> cutNext = SearchNarrowing.After(request, matches.Count, pageEnd, cutBySize: true, largerBudget);
+            List<NextCall> cutNext = Fitting(SearchNarrowing.After(request, matches.Count, pageEnd, cutBySize: true, largerBudget));
             batch = ResourceBatch.Collect(session.RootPath, pageEntries, parsed.Elements, ReservedBytes(request, query, matches.Count, included, issues, omitted, cutNext), budget, pageCosts, cancellationToken);
         }
 
         int resume = request.Offset + batch.Consumed;
         bool cutBySize = batch.Consumed < page.Count;
-        List<NextCall> next = resume < matches.Count ? SearchNarrowing.After(request, matches.Count, resume, cutBySize, largerBudget) : [];
+        List<NextCall> next = resume < matches.Count && !nextTooLong ? SearchNarrowing.After(request, matches.Count, resume, cutBySize, largerBudget) : [];
         issues.AddRange(batch.Issues);
         omitted.AddRange(batch.Skipped);
         List<EvidenceItem> evidence = [.. batch.Evidence];
@@ -281,7 +295,8 @@ public static class ResourceSearcher
 
         if (resume < matches.Count)
         {
-            omitted.Add(new OmittedItem($"{matches.Count - resume} more matches (offset={resume})", cutBySize ? "size-budget" : "limit"));
+            string resumeWith = nextTooLong ? $"offset={resume}; no next call, as the query is too long to repeat in one" : $"offset={resume}";
+            omitted.Add(new OmittedItem($"{matches.Count - resume} more matches ({resumeWith})", cutBySize ? "size-budget" : "limit"));
         }
 
         var facts = new SearchFacts(request.ResourceType, query, request.Compartment, matches.Count, request.Offset, batch.Resources.Count, batch.Resources, includedResources, ResolvedReferences.ToFacts(resolved));
@@ -316,6 +331,7 @@ public static class ResourceSearcher
             new FreshnessInfo(DateTimeOffset.MaxValue, StaleFiles: int.MaxValue))
         {
             Next = pageNext,
+            AsOf = AsOf.SizingReserve,
         });
 
         ResourceBatch batch = ResourceBatch.Collect(session.RootPath, wanted, projection: null, reserved, budget, extraBytes, cancellationToken);
@@ -387,6 +403,7 @@ public static class ResourceSearcher
             new FreshnessInfo(DateTimeOffset.MaxValue, StaleFiles: int.MaxValue))
         {
             Next = next,
+            AsOf = AsOf.SizingReserve,
         };
         return EnvelopeJson.SizeOf(skeleton);
     }

@@ -97,7 +97,7 @@ public static partial class PatientMap
     /// <param name="session">The folder.</param>
     /// <param name="patient">The Patient's id, an identifier value or <c>system|value</c>.</param>
     /// <param name="asOf">
-    /// The call's <c>asOf</c> argument, read by <see cref="AsOfClock.Argument"/>: a date (<c>2134-09-01</c>, that day's first instant in
+    /// The call's <c>asOf</c> argument, else the session's <c>--as-of</c> (<see cref="AsOfClock.Stated"/>): a date (<c>2134-09-01</c>, that day's first instant in
     /// UTC) or an instant (<c>2134-09-01T12:00:00Z</c>); null for the patient's latest dated resource. Neither: an
     /// <see cref="AsOfClock.InvalidCode"/> error.
     /// </param>
@@ -106,7 +106,7 @@ public static partial class PatientMap
     {
         ArgumentNullException.ThrowIfNull(patient);
 
-        return Answer(session, () => PatientLookup.Resolve(session, patient), () => AsOfClock.Argument(asOf), cancellationToken);
+        return Answer(session, () => PatientLookup.Resolve(session, patient), () => session.AsOfClock.Stated(asOf), cancellationToken);
     }
 
     /// <summary>
@@ -200,7 +200,7 @@ public static partial class PatientMap
             omitted.Add(new OmittedItem($"{string.Join(", ", cut)}: only top lines shown", "limit"));
         }
 
-        return EnvelopeAssembler.Create<PatientMapFacts?>(context.Session, facts, builtAt, [], omitted, absent, issues, cancellationToken);
+        return EnvelopeAssembler.Create<PatientMapFacts?>(context.Session, facts, builtAt, [], omitted, absent, issues, given ?? context.Anchor, cancellationToken);
     }
 
     /// <summary>

@@ -117,12 +117,12 @@ public static class SearchPlanner
             ToolEnvelope<SearchFacts?> search = ResourceSearcher.Search(session, request, extra, cancellationToken);
             if (search.Facts is not { } results)
             {
-                return new ToolEnvelope<PlanFacts?>(null, search.Evidence, search.Omitted, search.Absent, search.Issues, search.Freshness);
+                return new ToolEnvelope<PlanFacts?>(null, search.Evidence, search.Omitted, search.Absent, search.Issues, search.Freshness) { AsOf = search.AsOf };
             }
 
             // The search's own items name its facts, which are facts.results here.
             List<OmittedItem> searchOmitted = [.. search.Omitted.Select(item => item.What.StartsWith("facts.", StringComparison.Ordinal) ? item with { What = "facts.results." + item.What["facts.".Length..] } : item)];
-            var envelope = new ToolEnvelope<PlanFacts?>(fit.Facts with { Results = results }, search.Evidence, [.. searchOmitted, .. fit.Omitted], search.Absent, [.. search.Issues, .. fit.Issues], search.Freshness) { Next = search.Next };
+            var envelope = new ToolEnvelope<PlanFacts?>(fit.Facts with { Results = results }, search.Evidence, [.. searchOmitted, .. fit.Omitted], search.Absent, [.. search.Issues, .. fit.Issues], search.Freshness) { Next = search.Next, AsOf = search.AsOf };
             int size = EnvelopeJson.SizeOf(envelope);
             if (size <= session.MaxResponseBytes || planBudget <= Slack)
             {

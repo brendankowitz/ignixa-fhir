@@ -38,6 +38,12 @@ public sealed record AsOf(
     /// <summary>A date and a time, with a zone or (<see cref="ZoneAssumed"/>) read as UTC without one.</summary>
     public const string InstantPrecision = "instant";
 
+    /// <summary>
+    /// The widest asOf an envelope can carry (seven fraction digits, an offset, the longest source, a precision and an assumed zone),
+    /// for a caller that measures an envelope before its asOf is known.
+    /// </summary>
+    public static AsOf SizingReserve { get; } = new(new DateTimeOffset(9999, 12, 31, 23, 59, 59, TimeSpan.FromHours(11)).AddTicks(TimeSpan.TicksPerSecond - 1), AsOfSources.BulkExportManifest, MonthPrecision, ZoneAssumed: true);
+
     /// <summary>The instant as a FHIR instant (<see cref="FhirInstant.Format"/>).</summary>
     [JsonPropertyOrder(-1)]
     public string Instant => FhirInstant.Format(Moment);

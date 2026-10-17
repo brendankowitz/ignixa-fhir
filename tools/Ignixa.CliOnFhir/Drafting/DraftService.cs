@@ -52,9 +52,17 @@ public static class DraftService
 
         if (EnvelopeAssembler.FolderProblem(session) is { } folderProblem)
         {
-            return EnvelopeAssembler.Failure<DraftFacts>(session, folderProblem, cancellationToken);
+            return EnvelopeAssembler.Failure<DraftFacts>(session, folderProblem, cancellationToken) with { AsOf = asOf.WithoutReading() };
         }
 
+        // A draft states the asOf that dated it; a refused one, the call's own when it is well formed, else the session's.
+        ToolEnvelope<DraftFacts?> envelope = await AnswerAsync(session, request, asOf, logger, seams, timeoutSignal, cancellationToken);
+        return envelope.Facts is not null ? envelope
+            : envelope with { AsOf = request.AsOf is { } argument && AsOfClock.Problem(argument) is null ? AsOfClock.Argument(argument) : asOf.ForEnvelope() };
+    }
+
+    private static async Task<ToolEnvelope<DraftFacts?>> AnswerAsync(FolderSession session, DraftRequest request, AsOfClock asOf, ILogger logger, DraftOutputSeams? seams, CancellationToken timeoutSignal, CancellationToken cancellationToken)
+    {
         List<IssueItem> notes = [];
         try
         {
@@ -104,7 +112,7 @@ public static class DraftService
             throw ToolRequestException.Error("invalid-parameter", $"A draft is a {string.Join(", ", DraftBuilder.ResourceTypes)}; '{Views.ViewIssues.Word(request.ResourceType)}' is not one of them.");
         }
 
-        AsOfResolution asOf = clock.Resolve();
+        AsOfResolution asOf = clock.ForCall(request.AsOf);
         List<IssueItem> issues = [.. asOf.Issues];
         JsonObject input = DraftInput.Read(request.Input);
         DraftContent content = DraftBuilder.Build(request.ResourceType, input, request.Profile, asOf.Value);
@@ -153,7 +161,7 @@ public static class DraftService
             }
         }
 
-        var facts = new DraftFacts(content.Resource, verdict, checks, asOf.Value, file);
+        var facts = new DraftFacts(content.Resource, verdict, checks, file);
         List<EvidenceItem> cited = [.. evidence.Distinct()];
 
         // A draft is answered whole or not at all: its input is small enough that this holds on the CLI, and a smaller response cap
@@ -163,7 +171,7 @@ public static class DraftService
             throw ToolRequestException.Error("draft-too-large", $"The draft and its checks do not fit the response limit of {session.MaxResponseBytes} bytes{(file is null ? string.Empty : $"; it was written to '{file.Path}'")}. Shorten its text (note, dosageText).");
         }
 
-        return EnvelopeAssembler.Create<DraftFacts?>(session, facts, session.Catalog.BuiltAt, cited, [], [], issues, cancellationToken);
+        return EnvelopeAssembler.Create<DraftFacts?>(session, facts, session.Catalog.BuiltAt, cited, [], [], issues, asOf.Value, cancellationToken);
     }
 
     // Only an invalid draft is withheld; one written with checks that did not conclude says which, so the file is not taken as checked.

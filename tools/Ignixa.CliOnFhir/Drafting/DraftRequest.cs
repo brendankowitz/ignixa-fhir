@@ -12,6 +12,7 @@ namespace Ignixa.CliOnFhir.Drafting;
 /// <param name="Packages">FHIR npm packages (<c>id@version</c>) whose StructureDefinitions and terminology to load first.</param>
 /// <param name="Out">A directory, outside the folder, to write the draft to as <c>&lt;Type&gt;-&lt;id&gt;.json</c>.</param>
 /// <param name="Overwrite">Replace that file when it exists; otherwise that is refused.</param>
+/// <param name="AsOf">The call's own asOf (<see cref="Clock.AsOfClock.ForCall"/>), instead of the session's; null for the session's.</param>
 /// <param name="TimeoutSeconds">How long the draft may take (default <see cref="DraftService.DefaultTimeoutSeconds"/>, at most <see cref="DraftService.MaxTimeoutSeconds"/>).</param>
 public sealed record DraftRequest(
     string ResourceType,
@@ -20,4 +21,5 @@ public sealed record DraftRequest(
     IReadOnlyList<string>? Packages = null,
     string? Out = null,
     bool Overwrite = false,
-    int? TimeoutSeconds = null);
+    int? TimeoutSeconds = null,
+    string? AsOf = null);

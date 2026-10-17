@@ -57,18 +57,18 @@ internal sealed record CohortRequest(
     public bool AsOfDefaulted => AsOfSource == AsOfSources.Clock;
 
     /// <summary>
-    /// Checks <paramref name="arguments"/>; their <c>asOf</c> is read by <see cref="AsOfClock.Argument"/> (a date is that day's first
-    /// instant in UTC), and <paramref name="now"/> is asOf when they give none.
+    /// Checks <paramref name="arguments"/>; <paramref name="stated"/> is the asOf the call or the session stated (their <c>asOf</c>
+    /// read by <see cref="AsOfClock.Stated"/>, a date as that day's first instant in UTC), and <paramref name="now"/> is asOf when
+    /// neither states one.
     /// </summary>
     /// <exception cref="ToolRequestException">
     /// An argument or criterion is malformed, contradictory or incomplete (invalid-parameter); asOf is not a FHIR date or instant
     /// (<see cref="AsOfClock.InvalidCode"/>).
     /// </exception>
-    public static CohortRequest Parse(CohortArguments arguments, DateTimeOffset now)
+    public static CohortRequest Parse(CohortArguments arguments, AsOf? stated, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(arguments);
 
-        AsOf? stated = AsOfClock.Argument(arguments.AsOf);
         DateTimeOffset asOf = stated?.Moment.ToUniversalTime() ?? now;
         if (arguments.AgeMin is < 0 || arguments.AgeMax is < 0 || arguments.AgeMax < arguments.AgeMin)
         {

@@ -63,6 +63,29 @@ public sealed partial class AsOfClock
     public AsOf? Stated(string? argument) =>
         Argument(argument) ?? (_option is null ? null : Parse(_option, "--as-of", AsOfSources.SessionOption));
 
+    /// <summary>
+    /// The session's instant for an envelope that states no other (<see cref="ToolEnvelope{TFacts}.AsOf"/>): resolved as
+    /// <see cref="Resolve"/> does, or null when the session's <c>--as-of</c> is malformed, which the call that reads it reports as
+    /// <see cref="InvalidCode"/>. Call it only once the folder's catalog has been read (a response about the folder).
+    /// </summary>
+    public AsOf? ForEnvelope() => _option is not null && Read(_option.Trim(), AsOfSources.SessionOption) is null ? null : Resolve().Value;
+
+    /// <summary>
+    /// What can be told without reading the folder or waiting on it: the instant already resolved, else the session's
+    /// <c>--as-of</c> when it is well formed, else null. For a response written while the session may be busy or the folder
+    /// unreadable (a watchdog's timeout, a folder that cannot be read).
+    /// </summary>
+    public AsOf? WithoutReading() =>
+        _resolution.IsValueCreated ? _resolution.Value.Value : _option is null ? null : Read(_option.Trim(), AsOfSources.SessionOption);
+
+    /// <summary>Whether <paramref name="text"/> can be read as an asOf; the problem, as <see cref="InvalidCode"/> states it, when not.</summary>
+    public static string? Problem(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+
+        return Read(text.Trim(), AsOfSources.SessionOption) is null ? Message("--as-of", text) : null;
+    }
+
     /// <summary>A call's own <c>asOf</c> argument, source <see cref="AsOfSources.Argument"/>; null when it gives none.</summary>
     /// <exception cref="ToolRequestException"><see cref="InvalidCode"/>: the argument is not a FHIR instant or date.</exception>
     public static AsOf? Argument(string? argument) => argument is null ? null : Parse(argument, "asOf", AsOfSources.Argument);
@@ -96,24 +119,28 @@ public sealed partial class AsOfClock
     // are read as V14 read them (LenientAsOf).
     private static AsOf Parse(string text, string name, string source)
     {
+        return Read(text.Trim(), source) ?? throw ToolRequestException.Error(InvalidCode, Message(name, text));
+    }
+
+    // Why text, which names no asOf, was refused.
+    private static string Message(string name, string text)
+    {
         string trimmed = text.Trim();
+        string reason = FhirDate.HasShape(trimmed) ? "not a date of the calendar"
+            : FhirInstant.HasShape(trimmed) ? FhirInstant.Problem(trimmed, out _)!
+            : NotADateOrInstant;
+        return $"'{name}' {Shown(text)} is {reason}.";
+    }
+
+    // The value trimmed text names, or null when it names none.
+    private static AsOf? Read(string trimmed, string source)
+    {
         if (FhirDate.TryParse(trimmed, out DateOnly day))
         {
             return AsOf.OfDate(day, source);
         }
 
-        if (FhirInstant.Problem(trimmed, out DateTimeOffset value) is not { } problem)
-        {
-            return new AsOf(value, source);
-        }
-
-        if (LenientAsOf.Parse(trimmed, source) is { } lenient)
-        {
-            return lenient;
-        }
-
-        string reason = FhirDate.HasShape(trimmed) ? "not a date of the calendar" : FhirInstant.HasShape(trimmed) ? problem : NotADateOrInstant;
-        throw ToolRequestException.Error(InvalidCode, $"'{name}' {Shown(text)} is {reason}.");
+        return FhirInstant.TryParse(trimmed, out DateTimeOffset value) ? new AsOf(value, source) : LenientAsOf.Parse(trimmed, source);
     }
 
     // The caller's own text, shown when it is shaped like a date and time, by its digest otherwise.

@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.CliOnFhir.Clock;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Output;
 
@@ -24,13 +25,19 @@ internal static class Watchdog
     /// <summary>Runs <paramref name="run"/>, printing its envelope, or the timeout error when it overruns; returns the exit code.</summary>
     /// <param name="timeoutCode">The verb's timeout error code, such as <c>view-timeout</c>.</param>
     /// <param name="timeoutSeconds">The run's timeout as requested; out-of-range values are the runner's to refuse, and are clamped here.</param>
+    /// <param name="asOf">The session's clock, whose instant the timeout error states when it is known without reading the folder.</param>
     public static Task<int> RunAsync<TFacts>(
-        string timeoutCode, int? timeoutSeconds, int defaultSeconds, int maxSeconds, Func<CancellationToken, Task<ToolEnvelope<TFacts?>>> run, bool pretty, CancellationToken cancellationToken)
-        where TFacts : class =>
-        RunAsync(timeoutCode, timeoutSeconds, defaultSeconds, maxSeconds, run, pretty, Grace, Environment.Exit, cancellationToken);
+        string timeoutCode, int? timeoutSeconds, int defaultSeconds, int maxSeconds, Func<CancellationToken, Task<ToolEnvelope<TFacts?>>> run, bool pretty, AsOfClock asOf, CancellationToken cancellationToken)
+        where TFacts : class
+    {
+        ArgumentNullException.ThrowIfNull(asOf);
+
+        return RunAsync(timeoutCode, timeoutSeconds, defaultSeconds, maxSeconds, run, pretty, Grace, Environment.Exit, asOf.WithoutReading, cancellationToken);
+    }
 
     /// <param name="grace">How long past the timeout to wait; a test passes a short one.</param>
     /// <param name="exit">Ends the process; a test records the code instead.</param>
+    /// <param name="asOf">The asOf the timeout error states, asked for only when the run overruns (it must not wait on the run).</param>
     internal static async Task<int> RunAsync<TFacts>(
         string timeoutCode,
         int? timeoutSeconds,
@@ -40,11 +47,13 @@ internal static class Watchdog
         bool pretty,
         TimeSpan grace,
         Action<int> exit,
+        Func<AsOf?> asOf,
         CancellationToken cancellationToken)
         where TFacts : class
     {
         ArgumentNullException.ThrowIfNull(run);
         ArgumentNullException.ThrowIfNull(exit);
+        ArgumentNullException.ThrowIfNull(asOf);
 
         int seconds = Math.Clamp(timeoutSeconds ?? defaultSeconds, 1, maxSeconds);
         Task<ToolEnvelope<TFacts?>> work = Task.Factory.StartNew(() => run(cancellationToken), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
@@ -53,7 +62,7 @@ internal static class Watchdog
             return EnvelopeOutput.Write(await work, pretty);
         }
 
-        EnvelopeOutput.Write(TimedOut<TFacts>(timeoutCode, seconds, grace), pretty);
+        EnvelopeOutput.Write(TimedOut<TFacts>(timeoutCode, seconds, grace) with { AsOf = asOf() }, pretty);
         await Console.Out.FlushAsync(CancellationToken.None);
         exit(1);
         return 1;

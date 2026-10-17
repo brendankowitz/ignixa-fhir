@@ -202,7 +202,7 @@ internal static class TermCommand
         where TFacts : class
     {
         ToolEnvelope<TFacts?> envelope = await call;
-        return new ToolEnvelope<object?>(envelope.Facts, envelope.Evidence, envelope.Omitted, envelope.Absent, envelope.Issues, envelope.Freshness) { Next = envelope.Next };
+        return new ToolEnvelope<object?>(envelope.Facts, envelope.Evidence, envelope.Omitted, envelope.Absent, envelope.Issues, envelope.Freshness) { Next = envelope.Next, AsOf = envelope.AsOf };
     }
 
     private static Argument<string> Required(string name, string description) => new(name) { Description = description };

@@ -8,6 +8,7 @@ using System.Diagnostics;
 using Ignixa.Abstractions;
 using Ignixa.CliOnFhir.Caching;
 using Ignixa.CliOnFhir.Catalog;
+using Ignixa.CliOnFhir.Clock;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Indexing;
 using Ignixa.CliOnFhir.Search;
@@ -59,8 +60,9 @@ public sealed class FolderSession
     /// default. The MCP server lowers it (<see cref="EnvelopeJson.McpMaxBytes"/>), because agent clients move larger results
     /// out of the model's context.
     /// </param>
+    /// <param name="asOfOption">The session's <c>--as-of</c> as given (<see cref="AsOfClock"/>); null when there is none.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxResponseBytes"/> is below <see cref="EnvelopeJson.MinBudget"/> or above <see cref="EnvelopeJson.MaxBytes"/>.</exception>
-    public FolderSession(string rootPath, IFhirSchemaProvider schema, ILoggerFactory loggerFactory, IndexCacheOptions? cacheOptions = null, TimeProvider? timeProvider = null, TerminologyOptions? terminology = null, int maxResponseBytes = EnvelopeJson.MaxBytes)
+    public FolderSession(string rootPath, IFhirSchemaProvider schema, ILoggerFactory loggerFactory, IndexCacheOptions? cacheOptions = null, TimeProvider? timeProvider = null, TerminologyOptions? terminology = null, int maxResponseBytes = EnvelopeJson.MaxBytes, string? asOfOption = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
         ArgumentNullException.ThrowIfNull(schema);
@@ -129,7 +131,11 @@ public sealed class FolderSession
 
         Terminology = new TerminologySession(this, terminology ?? TerminologyOptions.None);
         Validators = new ValidatorCache(this);
+        AsOfClock = new AsOfClock(this, asOfOption);
     }
+
+    /// <summary>The session's asOf: its <c>--as-of</c>, else the folder's data-pull time, else the clock, worked out once on first use.</summary>
+    public AsOfClock AsOfClock { get; }
 
     public string RootPath { get; }
 

@@ -83,6 +83,7 @@ internal static class CommonOptions
             FhirSchemas.Resolve(parseResult.GetValue(versionOption)!),
             loggerFactory,
             ResolveCache(parseResult, cacheDirOption, noCacheOption),
-            terminology: terminology);
+            terminology: terminology,
+            asOfOption: parseResult.GetValue(AsOfOption.Option));
     }
 }

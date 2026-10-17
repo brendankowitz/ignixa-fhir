@@ -20,12 +20,12 @@ namespace Ignixa.CliOnFhir.Tests;
 public class EnvelopeShapeTests
 {
     // Regression (Task 6): at 523e80d there was no 'next'.
-    private static readonly string[] TopLevel = ["facts", "evidence", "omitted", "absent", "issues", "freshness", "derived", "next"];
+    private static readonly string[] TopLevel = ["facts", "evidence", "omitted", "absent", "issues", "freshness", "asOf", "derived", "next"];
 
     private static readonly string[] Freshness = ["indexBuiltAt", "staleFiles"];
 
     // New at V13: at 3affbc14 every MCP response carried derived (null), absent and freshness even when they said nothing.
-    private static readonly string[] Always = ["facts", "evidence", "omitted", "issues", "next"];
+    private static readonly string[] Always = ["facts", "evidence", "omitted", "issues", "asOf", "next"];
 
     [Fact]
     public async Task GivenMcpCalls_WhenSucceededOrFailedOrFolderMissing_ThenTheTopLevelKeysAreTheSame()

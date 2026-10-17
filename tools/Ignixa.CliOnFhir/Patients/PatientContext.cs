@@ -102,6 +102,12 @@ internal sealed class PatientContext
     /// <summary>Whether <see cref="AsOf"/> is the session clock's, the default for a patient with no dated resource.</summary>
     public bool AsOfFromClock => _asOf.Value.FromClock;
 
+    /// <summary>
+    /// <see cref="AsOf"/> as an envelope states it: given by the call (<c>argument</c>), else the patient's latest dated resource
+    /// (<c>patient-latest</c>), else the session clock (<c>clock</c>).
+    /// </summary>
+    public Clock.AsOf Anchor => new(AsOf, AsOfGiven ? Clock.AsOfSources.Argument : AsOfFromClock ? Clock.AsOfSources.Clock : Clock.AsOfSources.PatientLatest);
+
     public ResourceElements Elements { get; }
 
     /// <summary>The shape checks on the statuses, comparators and demographics this context's summaries copy.</summary>

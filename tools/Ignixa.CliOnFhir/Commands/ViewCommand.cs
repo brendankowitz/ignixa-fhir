@@ -64,8 +64,8 @@ internal static class ViewCommand
                 parseResult.GetValue(timeoutOption),
                 parseResult.GetValue(maxResourcesOption));
             ILogger logger = loggerFactory.CreateLogger("view");
-            var asOf = new AsOfClock(session, parseResult.GetValue(AsOfOption.Option));
-            return await Watchdog.RunAsync<ViewFacts>("view-timeout", request.TimeoutSeconds, ViewRunner.DefaultTimeoutSeconds, ViewRunner.MaxTimeoutSeconds, token => ViewRunner.RunAsync(session, request, asOf, logger, token), parseResult.GetValue(prettyOption), cancellationToken);
+            AsOfClock asOf = session.AsOfClock;
+            return await Watchdog.RunAsync<ViewFacts>("view-timeout", request.TimeoutSeconds, ViewRunner.DefaultTimeoutSeconds, ViewRunner.MaxTimeoutSeconds, token => ViewRunner.RunAsync(session, request, asOf, logger, token), parseResult.GetValue(prettyOption), session.AsOfClock, cancellationToken);
         });
 
         return command;

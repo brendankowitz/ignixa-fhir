@@ -28,7 +28,7 @@ public class DraftCommandTests
         JsonNode facts = envelope["facts"]!;
         ((string)facts["verdict"]!).ShouldNotBe("invalid");
         ((string)facts["resource"]!["authoredOn"]!).ShouldBe("2024-05-02T00:00:00Z");
-        ((string)facts["asOf"]!["source"]!).ShouldBe("session-option");
+        ((string)envelope["asOf"]!["source"]!).ShouldBe("session-option");
         string path = (string)facts["file"]!["path"]!;
         File.Exists(path).ShouldBeTrue();
         Path.GetDirectoryName(path).ShouldBe(Out(root));

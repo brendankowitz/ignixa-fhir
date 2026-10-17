@@ -31,7 +31,7 @@ public class WatchdogTests
         int? exited = null;
         var never = new TaskCompletionSource<ToolEnvelope<ViewFacts?>>();
 
-        (int code, string output) = await CaptureAsync(() => Watchdog.RunAsync<ViewFacts>("view-timeout", 1, 30, 3600, _ => never.Task, pretty: false, TimeSpan.FromMilliseconds(50), code => exited = code, CancellationToken.None));
+        (int code, string output) = await CaptureAsync(() => Watchdog.RunAsync<ViewFacts>("view-timeout", 1, 30, 3600, _ => never.Task, pretty: false, TimeSpan.FromMilliseconds(50), code => exited = code, () => null, CancellationToken.None));
         open.Discard();
 
         code.ShouldBe(1);
@@ -50,7 +50,7 @@ public class WatchdogTests
         string created = Path.Combine(root.Path, "out", "deeper");
         OutputFile open = OutputTarget.ForFile(Data(root), Path.Combine(created, "rows.csv"), OutputTarget.Csv, overwrite: false).Begin([]);
 
-        (_, string output) = await CaptureAsync(() => Watchdog.RunAsync<ViewFacts>("view-timeout", 1, 30, 3600, _ => new TaskCompletionSource<ToolEnvelope<ViewFacts?>>().Task, pretty: false, TimeSpan.FromMilliseconds(50), _ => { }, CancellationToken.None));
+        (_, string output) = await CaptureAsync(() => Watchdog.RunAsync<ViewFacts>("view-timeout", 1, 30, 3600, _ => new TaskCompletionSource<ToolEnvelope<ViewFacts?>>().Task, pretty: false, TimeSpan.FromMilliseconds(50), _ => { }, () => null, CancellationToken.None));
         open.Discard();
 
         JsonArray issues = JsonNode.Parse(output)!["issues"]!.AsArray();
@@ -69,7 +69,7 @@ public class WatchdogTests
         OutputFile file = OutputTarget.ForFile(Data(root), target, OutputTarget.Ndjson, overwrite: true).Begin([]);
         file.CommitWithBackup();
 
-        (_, string output) = await CaptureAsync(() => Watchdog.RunAsync<ViewFacts>("deid-timeout", 1, 30, 3600, _ => new TaskCompletionSource<ToolEnvelope<ViewFacts?>>().Task, pretty: false, TimeSpan.FromMilliseconds(50), _ => { }, CancellationToken.None));
+        (_, string output) = await CaptureAsync(() => Watchdog.RunAsync<ViewFacts>("deid-timeout", 1, 30, 3600, _ => new TaskCompletionSource<ToolEnvelope<ViewFacts?>>().Task, pretty: false, TimeSpan.FromMilliseconds(50), _ => { }, () => null, CancellationToken.None));
         file.DropBackup().ShouldBeNull();
 
         JsonArray issues = JsonNode.Parse(output)!["issues"]!.AsArray();
@@ -90,7 +90,7 @@ public class WatchdogTests
         first.DropBackup().ShouldBeNull();
         second.Rollback().ShouldBeNull();
 
-        (_, string output) = await CaptureAsync(() => Watchdog.RunAsync<ViewFacts>("deid-timeout", 1, 30, 3600, _ => new TaskCompletionSource<ToolEnvelope<ViewFacts?>>().Task, pretty: false, TimeSpan.FromMilliseconds(50), _ => { }, CancellationToken.None));
+        (_, string output) = await CaptureAsync(() => Watchdog.RunAsync<ViewFacts>("deid-timeout", 1, 30, 3600, _ => new TaskCompletionSource<ToolEnvelope<ViewFacts?>>().Task, pretty: false, TimeSpan.FromMilliseconds(50), _ => { }, () => null, CancellationToken.None));
 
         output.ShouldNotContain(Path.Combine(root.Path, "out"));
         (await File.ReadAllTextAsync(restored)).ShouldBe("{}\n");
@@ -103,7 +103,7 @@ public class WatchdogTests
         int? exited = null;
 
         (int code, string output) = await CaptureAsync(() => Watchdog.RunAsync<ViewFacts>(
-            "view-timeout", 5, 30, 3600, token => ViewFixture.RunInAsync(Data(root), new ViewRequest(ViewFixture.PatientView)), pretty: false, TimeSpan.FromMilliseconds(50), code => exited = code, CancellationToken.None));
+            "view-timeout", 5, 30, 3600, token => ViewFixture.RunInAsync(Data(root), new ViewRequest(ViewFixture.PatientView)), pretty: false, TimeSpan.FromMilliseconds(50), code => exited = code, () => null, CancellationToken.None));
 
         code.ShouldBe(0);
         exited.ShouldBeNull();

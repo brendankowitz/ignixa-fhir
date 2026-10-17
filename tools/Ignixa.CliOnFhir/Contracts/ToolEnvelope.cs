@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Serialization;
+using Ignixa.CliOnFhir.Clock;
 
 namespace Ignixa.CliOnFhir.Contracts;
 
@@ -26,6 +27,14 @@ public sealed record ToolEnvelope<TFacts>(
     IReadOnlyList<IssueItem> Issues,
     FreshnessInfo Freshness)
 {
+    /// <summary>
+    /// The instant the answer is anchored to (<see cref="AsOfClock"/>): the call's own <c>asOf</c>, else the session's, else what
+    /// the tool defaults to (the patient's latest dated resource for the patient map, the clock for patient_cohort). Always
+    /// written; null only when it cannot be told, because the session's <c>--as-of</c> is malformed (the call that read it says
+    /// so) or the folder cannot be read to find its data-pull time.
+    /// </summary>
+    public AsOf? AsOf { get; init; }
+
     /// <summary>Always null until summaries are explicitly enabled; reserved so the shape never changes.</summary>
     public object? Derived => null;
 

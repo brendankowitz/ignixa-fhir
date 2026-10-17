@@ -5,6 +5,7 @@
 
 using System.Text.Json.Nodes;
 using Ignixa.CliOnFhir.Catalog;
+using Ignixa.CliOnFhir.Clock;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Indexing;
 using Ignixa.CliOnFhir.Reading;
@@ -133,6 +134,7 @@ internal static class ContextPage
             new FreshnessInfo(DateTimeOffset.MaxValue, StaleFiles: int.MaxValue))
         {
             Next = reserveNext(cutBySize),
+            AsOf = AsOf.SizingReserve,
         });
 
         // The reservation already holds every page item's evidence, which the batch counts again per resource: the

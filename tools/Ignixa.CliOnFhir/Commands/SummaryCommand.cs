@@ -39,7 +39,7 @@ internal static class SummaryCommand
             using ILoggerFactory loggerFactory = StandardErrorLogging.Create(LogLevel.Warning);
             FolderSession session = CommonOptions.CreateSession(parseResult, pathArgument, versionOption, cacheDirOption, noCacheOption, loggerFactory);
             string patient = parseResult.GetValue(patientArgument)!;
-            var asOf = new AsOfClock(session, parseResult.GetValue(AsOfOption.Option));
+            AsOfClock asOf = session.AsOfClock;
             return Task.FromResult(EnvelopeOutput.Write(PatientMap.Summarize(session, patient, asOf, cancellationToken), parseResult.GetValue(prettyOption)));
         });
 

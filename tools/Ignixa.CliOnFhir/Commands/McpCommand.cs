@@ -5,6 +5,7 @@
 
 using System.CommandLine;
 using Ignixa.CliOnFhir.Caching;
+using Ignixa.CliOnFhir.Clock;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Mcp;
 using Ignixa.CliOnFhir.Session;
@@ -66,6 +67,14 @@ internal static class McpCommand
             TerminologyOptions terminologyOptions = terminology.Resolve(parseResult, cacheDirOption);
             int maxResponseBytes = parseResult.GetValue(maxResponseBytesOption);
             McpToolset toolset = parseResult.GetValue(toolsetOption);
+            string? asOf = parseResult.GetValue(AsOfOption.Option);
+
+            // The session's asOf anchors every call, so one that cannot be read stops the server before it serves anything.
+            if (asOf is not null && AsOfClock.Problem(asOf) is { } asOfProblem)
+            {
+                await Console.Error.WriteLineAsync($"{AsOfClock.InvalidCode}: {asOfProblem}".AsMemory(), cancellationToken);
+                return 1;
+            }
 
             HostApplicationBuilder builder = Host.CreateEmptyApplicationBuilder(new HostApplicationBuilderSettings { Args = [] });
             builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
@@ -77,7 +86,8 @@ internal static class McpCommand
                 services.GetRequiredService<ILoggerFactory>(),
                 cacheOptions,
                 terminology: terminologyOptions,
-                maxResponseBytes: maxResponseBytes));
+                maxResponseBytes: maxResponseBytes,
+                asOfOption: asOf));
             builder.Services.AddHostedService<SessionWarmup>();
             McpServerSetup.AddTools(
                 builder.Services

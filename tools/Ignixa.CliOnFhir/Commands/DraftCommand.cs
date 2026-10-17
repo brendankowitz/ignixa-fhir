@@ -54,8 +54,8 @@ internal static class DraftCommand
                 parseResult.GetValue(overwriteOption),
                 parseResult.GetValue(timeoutOption));
             ILogger logger = loggerFactory.CreateLogger("draft");
-            var asOf = new AsOfClock(session, parseResult.GetValue(AsOfOption.Option));
-            return await Watchdog.RunAsync<DraftFacts>("draft-timeout", request.TimeoutSeconds, DraftService.DefaultTimeoutSeconds, DraftService.MaxTimeoutSeconds, token => DraftService.RunAsync(session, request, asOf, logger, token), parseResult.GetValue(prettyOption), cancellationToken);
+            AsOfClock asOf = session.AsOfClock;
+            return await Watchdog.RunAsync<DraftFacts>("draft-timeout", request.TimeoutSeconds, DraftService.DefaultTimeoutSeconds, DraftService.MaxTimeoutSeconds, token => DraftService.RunAsync(session, request, asOf, logger, token), parseResult.GetValue(prettyOption), session.AsOfClock, cancellationToken);
         });
 
         return command;
