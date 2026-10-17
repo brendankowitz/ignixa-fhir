@@ -90,6 +90,22 @@ public class DeIdTests
         envelope.Evidence.ShouldHaveSingleItem().Reference.ShouldBe("Patient/p2");
     }
 
+    // A date shift of a code matches every Patient but changes nothing; the resources are written, and a warning names the rule.
+    [Fact]
+    public async Task GivenARuleThatMatchesElementsItsMethodChangesNoneOf_WhenRun_ThenAWarningNamesTheRuleByDigest()
+    {
+        using TestFolder root = Root();
+        const string config = """{"fhirPathRules":[{"path":"Patient.name","method":"redact"},{"path":"Patient.gender","method":"dateShift"}],"parameters":{"dateShiftKey":"k-1"}}""";
+
+        ToolEnvelope<DeIdFacts?> envelope = await RunAsync(Data(root), new DeIdRequest(config, Out(root), ResourceType: "Patient"));
+
+        Facts(envelope).Written.ShouldBe(2);
+        IssueItem unapplied = envelope.Issues.Single(issue => issue.Code == "deid-rule-unapplied");
+        unapplied.Severity.ShouldBe("warning");
+        unapplied.Diagnostics.ShouldContain($"fhirPathRules[1] (path digest {Ignixa.CliOnFhir.Catalog.FhirIds.Digest("Patient.gender")}, 2 elements)");
+        unapplied.Diagnostics.ShouldNotContain("Patient.gender");
+    }
+
     [Fact]
     public async Task GivenMoreFailuresThanTheCap_WhenRun_ThenTheFirstAreIssuesAndTheRestAreCountedInOmitted()
     {

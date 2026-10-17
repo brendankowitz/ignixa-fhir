@@ -152,10 +152,11 @@ public static class DeIdRunner
 
         using DeIdEngineHost host = DeIdEngineHost.Create(config.Options, session.Schema);
         var tally = new DeIdTally();
-        IReadOnlyList<NdjsonFileFacts> files = await WriteAsync(session, host.Engine, scope.Entries, output, tally, cancellationToken);
+        var matches = new DeIdRuleMatches(config.Options.Rules);
+        IReadOnlyList<NdjsonFileFacts> files = await WriteAsync(session, host.Engine, scope.Entries, output, tally, matches, cancellationToken);
 
         DeIdFacts facts = Facts(scope, config, output, types, tally, files);
-        List<IssueItem> issues = [.. scope.Issues, .. config.Notes, .. DuplicateIdIssues.For(session.Catalog, types), .. tally.FailureIssues, .. notes];
+        List<IssueItem> issues = [.. scope.Issues, .. config.Notes, .. DuplicateIdIssues.For(session.Catalog, types), .. tally.FailureIssues, .. matches.Unapplied(tally.Operations), .. notes];
         if (files.Count == 0)
         {
             issues.Add(new IssueItem("information", "out-not-created", $"No resource was written, so no file was created in '{directory.Path}'.", Location: null));
@@ -181,14 +182,14 @@ public static class DeIdRunner
 
     // Every resource in scope order, then every file committed together; anything that stops the run first leaves nothing new.
     private static async Task<IReadOnlyList<NdjsonFileFacts>> WriteAsync(
-        FolderSession session, IDeIdEngine engine, IReadOnlyList<CatalogEntry> entries, NdjsonDirectory output, DeIdTally tally, CancellationToken cancellationToken)
+        FolderSession session, IDeIdEngine engine, IReadOnlyList<CatalogEntry> entries, NdjsonDirectory output, DeIdTally tally, DeIdRuleMatches matches, CancellationToken cancellationToken)
     {
         try
         {
             foreach (CatalogEntry entry in entries)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                await DeIdentifyAsync(session, engine, entry, output, tally, cancellationToken);
+                await DeIdentifyAsync(session, engine, entry, output, tally, matches, cancellationToken);
             }
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -206,7 +207,7 @@ public static class DeIdRunner
         }
     }
 
-    private static async Task DeIdentifyAsync(FolderSession session, IDeIdEngine engine, CatalogEntry entry, NdjsonDirectory output, DeIdTally tally, CancellationToken cancellationToken)
+    private static async Task DeIdentifyAsync(FolderSession session, IDeIdEngine engine, CatalogEntry entry, NdjsonDirectory output, DeIdTally tally, DeIdRuleMatches matches, CancellationToken cancellationToken)
     {
         (byte[]? json, IssueItem? problem) = ResourceReader.ReadBytes(session.RootPath, entry);
         if (json is null)
@@ -227,6 +228,7 @@ public static class DeIdRunner
         }
 
         (ReferenceResolution resolution, _) = session.BundleReferences.Rewrite(entry, ((IMutableJsonNode)resource).MutableNode);
+        long[]? matched = matches.Count(resource.ToElement(session.Schema), entry.ResourceType);
         Result<DeIdResult> result = await engine.DeidentifyAsync(resource, Settings, cancellationToken);
         if (!result.IsSuccess)
         {
@@ -241,6 +243,11 @@ public static class DeIdRunner
         }
 
         await output.WriteAsync(entry.ResourceType, result.Value.DeidentifiedJson, cancellationToken);
+        if (matched is not null)
+        {
+            matches.Add(matched);
+        }
+
         tally.Wrote(entry, result.Value.Metrics.OperationCounts, resolution.Resolved.Count);
     }
 
