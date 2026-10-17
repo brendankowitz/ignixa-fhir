@@ -174,4 +174,17 @@ public class DraftOutputTests
         envelope.Issues.ShouldContain(issue => issue.Code == "out-not-written");
         Directory.Exists(Out(root)).ShouldBeFalse();
     }
+
+    [Fact]
+    public async Task GivenAWrongDisplayOnTheMedication_WhenDraftedWithOut_ThenNothingIsWritten()
+    {
+        using TestFolder root = ClinicRoot();
+        string input = PotassiumOrder.Replace(PotassiumTabletDisplay, "potassium chloride 10 MEQ tablet", StringComparison.Ordinal);
+
+        ToolEnvelope<DraftFacts?> envelope = await RunInAsync(Data(root), new DraftRequest("MedicationRequest", input, Out: Out(root)));
+
+        Facts(envelope).Verdict.ShouldBe(DraftFacts.Invalid);
+        Facts(envelope).File.ShouldBeNull();
+        Directory.Exists(Out(root)).ShouldBeFalse();
+    }
 }

@@ -238,4 +238,28 @@ public class AsOfClockTests
     private static string[] Snapshot(string root) => [.. Directory.EnumerateFileSystemEntries(root, "*", SearchOption.AllDirectories)
         .Order(StringComparer.Ordinal)
         .Select(entry => $"{Path.GetRelativePath(root, entry)}:{File.GetLastWriteTimeUtc(entry).Ticks}:{(File.Exists(entry) ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(entry))) : "dir")}")];
+
+    [Fact]
+    public void GivenAnOptionWithMoreFractionalDigitsThanDotNetHolds_WhenResolved_ThenTheyAreDroppedPastTheSeventh()
+    {
+        using TestFolder folder = new TestFolder().Write("Patient.ndjson", Patients);
+
+        AsOf asOf = Open(folder, "2024-05-01T08:30:00.1234567891234Z").Clock.Resolve().Value;
+
+        asOf.Instant.ShouldBe("2024-05-01T08:30:00.1234567Z");
+    }
+
+    [Theory]
+    [InlineData("9999-12-31T23:00:00-14:00", "outside the instants the tool can hold")]
+    [InlineData("0001-01-01T00:00:00+14:00", "outside the instants the tool can hold")]
+    [InlineData("2023-02-29T00:00:00Z", "not a date of the calendar")]
+    [InlineData("2024-05-01", "not a FHIR instant")]
+    public void GivenAnOptionThatNamesNoInstantTheToolCanHold_WhenResolved_ThenTheMessageSaysWhy(string option, string reason)
+    {
+        using TestFolder folder = new TestFolder().Write("Patient.ndjson", Patients);
+
+        ToolRequestException error = Should.Throw<ToolRequestException>(() => Open(folder, option).Clock.Resolve());
+
+        error.Issue.Diagnostics.ShouldContain(reason);
+    }
 }

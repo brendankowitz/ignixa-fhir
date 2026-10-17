@@ -34,7 +34,7 @@ public class DraftTxServerTests
     };
 
     [Fact]
-    public async Task GivenACodeMissingFromAFragmentOfItsSystem_WhenDrafted_ThenTheServerAnswersAndOnlyTheSystemAndCodeAreSent()
+    public async Task GivenACodeMissingFromAFragmentOfItsSystem_WhenDrafted_ThenTheServerAnswersOnlySystemAndCodeAreSentAndADisplayItDisagreesWithIsUnknown()
     {
         using TestFolder folder = Clinic();
         (FolderSession session, StubHttpHandler tx) = Open(folder, _ => Valid("Glucose [Mass/volume] in Serum or Plasma"));
@@ -43,7 +43,9 @@ public class DraftTxServerTests
         ToolEnvelope<DraftFacts?> envelope = await RunAsync(session, new DraftRequest("ServiceRequest", input));
 
         DraftCheck check = Check(Facts(envelope), "terminology", "ServiceRequest.code.coding[0]");
-        check.Outcome.ShouldBe(DraftCheck.Warning);
+        check.Outcome.ShouldBe(DraftCheck.Unknown);
+        Facts(envelope).Verdict.ShouldBe(DraftFacts.Unknown);
+        envelope.Issues.Single(issue => issue.Code == "display-mismatch").Severity.ShouldBe("warning");
         var details = (TerminologyCheckDetails)check.Details;
         details.Source!.Kind.ShouldBe("tx-server");
         details.ExpectedDisplay.ShouldBe("Glucose [Mass/volume] in Serum or Plasma");

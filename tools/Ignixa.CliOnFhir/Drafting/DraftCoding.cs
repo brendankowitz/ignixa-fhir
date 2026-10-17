@@ -12,13 +12,17 @@ namespace Ignixa.CliOnFhir.Drafting;
 /// <param name="System">The code system (an absolute URI).</param>
 /// <param name="Code">The code.</param>
 /// <param name="Display">The display given, checked against the code system's; null when none was given.</param>
-internal sealed record DraftCoding(string Element, string System, string Code, string? Display)
+/// <param name="Primary">
+/// Whether it says what the draft is (the medication, the service, the observed code or the coded value): a display that is not its
+/// code's then fails the draft, since the two may name different things (another strength of a drug); elsewhere it is a warning.
+/// </param>
+internal sealed record DraftCoding(string Element, string System, string Code, string? Display, bool Primary = false)
 {
     /// <summary>
     /// Reads <c>{system, code, display?}</c> from <paramref name="input"/>; the system must be an absolute URI. Records where it
-    /// goes as <paramref name="element"/>.
+    /// goes as <paramref name="element"/>, and whether it is the draft's <paramref name="primary"/> coding.
     /// </summary>
-    public static DraftCoding Read(DraftArguments input, string element)
+    public static DraftCoding Read(DraftArguments input, string element, bool primary = false)
     {
         ArgumentNullException.ThrowIfNull(input);
 
@@ -31,7 +35,7 @@ internal sealed record DraftCoding(string Element, string System, string Code, s
             throw DraftArguments.Invalid($"'{input.Of("system")}' must be an absolute URI, the code system's canonical url (for example http://loinc.org).");
         }
 
-        return new DraftCoding(element, system, code, display);
+        return new DraftCoding(element, system, code, display, primary);
     }
 
     /// <summary>The Coding.</summary>

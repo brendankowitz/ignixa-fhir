@@ -33,7 +33,7 @@ internal sealed record ViewOutcome(
     ViewPaging Paging,
     int Budget,
     IReadOnlyDictionary<string, string> Variables,
-    Clock.AsOf AsOf,
+    Clock.AsOfFacts AsOf,
     int Unreadable,
     DistinctFacts? Distinct,
     List<IssueItem> Issues,

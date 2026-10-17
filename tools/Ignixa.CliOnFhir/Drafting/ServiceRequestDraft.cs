@@ -23,7 +23,7 @@ internal static class ServiceRequestDraft
         ArgumentNullException.ThrowIfNull(input);
 
         DraftSubject subject = DraftSubject.Read(input);
-        DraftCoding code = DraftCoding.Read(input.RequiredObject("code"), $"{ResourceType}.code.coding[0]");
+        DraftCoding code = DraftCoding.Read(input.RequiredObject("code"), $"{ResourceType}.code.coding[0]", primary: true);
         string status = input.OptionalString("status") ?? "draft";
         string intent = input.OptionalString("intent") ?? "order";
         string? priority = input.OptionalString("priority");

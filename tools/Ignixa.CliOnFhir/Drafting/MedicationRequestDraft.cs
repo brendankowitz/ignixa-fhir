@@ -24,7 +24,7 @@ internal static class MedicationRequestDraft
         ArgumentNullException.ThrowIfNull(input);
 
         DraftSubject subject = DraftSubject.Read(input);
-        DraftCoding medication = DraftCoding.Read(input.RequiredObject("medication"), $"{ResourceType}.medicationCodeableConcept.coding[0]");
+        DraftCoding medication = DraftCoding.Read(input.RequiredObject("medication"), $"{ResourceType}.medicationCodeableConcept.coding[0]", primary: true);
         string status = input.OptionalString("status") ?? "draft";
         string intent = input.OptionalString("intent") ?? "order";
         string authoredOn = DraftTimes.DateTimeOr(input, "authoredOn", asOf);

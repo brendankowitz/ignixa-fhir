@@ -10,7 +10,7 @@ namespace Ignixa.CliOnFhir.Commands;
 
 /// <summary>
 /// The last line of a verb's timeout. The runners stop at their timeout by cancellation, which they check between steps; one step,
-/// a single call of the FHIRPath evaluator, cannot be interrupted. So the CLI runs the work off the main thread and, when it has not
+/// a single call of the FHIRPath evaluator or of the validator, cannot be interrupted. So the CLI runs the work off the main thread and, when it has not
 /// finished <see cref="Grace"/> after its timeout, prints the verb's timeout error itself, names the temporary output files, previous
 /// targets renamed aside and directories the run may leave (it cannot clean up after a step that will not return), and ends the
 /// process with a non-zero exit code. An MCP host cannot
@@ -64,7 +64,7 @@ internal static class Watchdog
     {
         List<IssueItem> issues =
         [
-            new IssueItem("error", timeoutCode, $"The run did not finish within {seconds} seconds, and one step of it, an evaluation that cannot be interrupted, was still going {grace.TotalSeconds} seconds later, so the process was ended. Output files are renamed into place only once every resource is done, so none was unless the run had reached that point; one it renamed is complete, and a previous file it was replacing is named below. Narrow the scope, or simplify the expression or map that is slow.", Location: null),
+            new IssueItem("error", timeoutCode, $"The run did not finish within {seconds} seconds, and one step of it that cannot be interrupted (an evaluation, a validation or a terminology request) was still going {grace.TotalSeconds} seconds later, so the process was ended. Output files are renamed into place only once the run's work is done, so none was unless the run had reached that point; one it renamed is complete, and a previous file it was replacing is named below. Narrow the scope, or simplify what is slow (the expression, the map, or the draft's profile and terminology).", Location: null),
         ];
         issues.AddRange(OpenOutputFiles.TempPaths.Order(StringComparer.Ordinal).Select(path =>
             new IssueItem("information", "out-temp-left", $"The temporary file '{path}' (where it was as of the check) may have been left: the run was ended while it was writing it. Delete it when the directory is safe to use.", Location: null)));

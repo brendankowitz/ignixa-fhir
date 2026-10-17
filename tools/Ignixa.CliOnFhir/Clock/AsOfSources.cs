@@ -22,4 +22,10 @@ public static class AsOfSources
 
     /// <summary>The session's clock: the folder records no data-pull time.</summary>
     public const string Clock = "clock";
+
+    /// <summary>A view's <c>--var asOf=...</c>, which replaced the session's instant for that run.</summary>
+    public const string Variable = "variable";
+
+    /// <summary>A ViewDefinition's own constant <c>asOf</c>, which the view reads instead of the session's instant.</summary>
+    public const string ViewConstant = "view-constant";
 }

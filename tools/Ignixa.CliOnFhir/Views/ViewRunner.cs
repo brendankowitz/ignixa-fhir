@@ -130,7 +130,8 @@ public static class ViewRunner
         issues.AddRange(asOf.Issues);
         LoadedView loaded = ViewLocator.Resolve(session, request.View);
         IReadOnlyDictionary<string, string> variables = ViewVariables.Parse(request.Variables);
-        CompiledView view = ViewCompiler.Compile(session, ViewAsOf.With(loaded, asOf.Value, variables, issues), request.Where);
+        ViewAsOf.Applied applied = ViewAsOf.With(loaded, asOf.Value, variables, issues);
+        CompiledView view = ViewCompiler.Compile(session, applied.View, request.Where);
         issues.AddRange(ViewVariables.Undeclared(variables, view.Expression));
         issues.AddRange(ViewIssues.ResolveUse(loaded.Json));
         int? distinctColumn = DistinctColumn(view, request.Distinct);
@@ -139,7 +140,10 @@ public static class ViewRunner
         progress.ResolvingScope = false;
         CheckResourceLimit(request, view, scope);
 
-        var evaluation = new ViewEvaluation(session, view, variables, JsonSourceNodeFactory.Parse(new JsonObject { ["resourceType"] = view.Resource }).ToElement(session.Schema));
+        var evaluation = new ViewEvaluation(session, view, variables, JsonSourceNodeFactory.Parse(new JsonObject { ["resourceType"] = view.Resource }).ToElement(session.Schema))
+        {
+            Zoneless = applied.ReadsAsOf ? new ZonelessTimes() : null,
+        };
         evaluation.CheckVariables();
         if (scope.Entries.Count == 0)
         {
@@ -151,6 +155,10 @@ public static class ViewRunner
         issues.AddRange(EmptyColumnIssues(view, pass));
         issues.AddRange(NameIssues.For(scope.Entries));
         issues.AddRange(evaluation.Problems);
+        if (evaluation.Zoneless is { Values: > 0 } zoneless)
+        {
+            issues.Add(ZonelessIssue(zoneless, scope.Entries.Count));
+        }
         var outcome = new ViewOutcome(
             session,
             request,
@@ -161,13 +169,19 @@ public static class ViewRunner
             paging,
             budget,
             variables,
-            asOf.Value,
+            applied.Facts,
             evaluation.Unreadable,
             distinctColumn is int index ? new DistinctFacts(view.Columns[index].Name, pass.DistinctValues, pass.DistinctNulls) : null,
             issues,
             omitted);
         return file is null ? ViewResponse.ForRows(outcome, cancellationToken) : ViewResponse.ForFile(outcome, file, cancellationToken);
     }
+
+    private static IssueItem ZonelessIssue(ZonelessTimes zoneless, int resources) => new(
+        "warning",
+        "as-of-zone-missing",
+        $"{zoneless.Values} dateTime values in {zoneless.Resources} of the {resources} resources in scope have a time but no time zone (not valid FHIR). FHIRPath does not compare such a value with %asOf, which has one: it answers empty, so a where on them matches nothing and a column is null. Compare them with %asOfDate, the asOf day (a date compares with them unless they fall on that very day), or compare their text (period.start.substring(0, 10) <= %asOfDate.toString()).",
+        Location: null);
 
     private static void CheckResourceLimit(ViewRequest request, CompiledView view, ViewScope scope)
     {

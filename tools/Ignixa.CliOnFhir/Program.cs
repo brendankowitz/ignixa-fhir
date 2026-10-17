@@ -21,6 +21,7 @@ root.Subcommands.Add(DeIdCommand.Create());
 root.Subcommands.Add(MapCommand.Create());
 root.Subcommands.Add(DraftCommand.Create());
 root.Subcommands.Add(McpCommand.Create());
+// Last of all: it adds the --as-of refusal to every verb registered before it, so a verb added later must go above this line.
 AsOfOption.Register(root);
 
 return await root.Parse(args).InvokeAsync();

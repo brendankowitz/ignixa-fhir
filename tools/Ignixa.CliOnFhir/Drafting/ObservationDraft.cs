@@ -23,7 +23,7 @@ internal static class ObservationDraft
         ArgumentNullException.ThrowIfNull(input);
 
         DraftSubject subject = DraftSubject.Read(input);
-        DraftCoding code = DraftCoding.Read(input.RequiredObject("code"), $"{ResourceType}.code.coding[0]");
+        DraftCoding code = DraftCoding.Read(input.RequiredObject("code"), $"{ResourceType}.code.coding[0]", primary: true);
         string status = input.OptionalString("status") ?? "preliminary";
         DraftArguments? categoryInput = input.OptionalObject("category");
         DraftCoding? category = categoryInput is null ? null : DraftCoding.Read(categoryInput, $"{ResourceType}.category[0].coding[0]");
@@ -88,7 +88,7 @@ internal static class ObservationDraft
 
         if (codeableInput is not null)
         {
-            DraftCoding coding = DraftCoding.Read(codeableInput, $"{ResourceType}.valueCodeableConcept.coding[0]");
+            DraftCoding coding = DraftCoding.Read(codeableInput, $"{ResourceType}.valueCodeableConcept.coding[0]", primary: true);
             return ("valueCodeableConcept", coding.ToCodeableConcept(), coding);
         }
 

@@ -73,15 +73,13 @@ public sealed partial class AsOfClock
     // The clock's own precision (ticks) says nothing the data could; an instant to the millisecond is how FHIR data usually reads.
     private static DateTimeOffset ToMilliseconds(DateTimeOffset now) => new(now.Ticks - (now.Ticks % TimeSpan.TicksPerMillisecond), now.Offset);
 
-    private static AsOf Parse(string text, string name, string source) => FhirInstant.TryParse(text, out DateTimeOffset value)
-        ? new AsOf(value, source)
-        : throw ToolRequestException.Error(
-            InvalidCode,
-            $"'{name}' {Shown(text)} is not a FHIR instant: give a date and a time to the second with a time zone, for example 2024-05-01T00:00:00Z or 2024-05-01T08:30:00-05:00. A date alone does not say which moment of the day is meant.");
+    private static AsOf Parse(string text, string name, string source) => FhirInstant.Problem(text, out DateTimeOffset value) is { } problem
+        ? throw ToolRequestException.Error(InvalidCode, $"'{name}' {Shown(text)} is {problem}.")
+        : new AsOf(value, source);
 
     // The caller's own text, shown when it is shaped like a date and time, by its digest otherwise.
     private static string Shown(string text) => InstantLike().IsMatch(text) ? $"'{text}'" : $"(digest {FhirIds.Digest(text)})";
 
-    [GeneratedRegex(@"^[0-9TZ:.+\-]{1,40}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^[0-9TZ:.+\-]{1,64}$", RegexOptions.CultureInvariant)]
     private static partial Regex InstantLike();
 }

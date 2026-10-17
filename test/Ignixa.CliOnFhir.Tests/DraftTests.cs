@@ -145,24 +145,91 @@ public class DraftTests
     }
 
     [Fact]
-    public async Task GivenAWrongDisplay_WhenDrafted_ThenAWarningPointsAtTheExpectedDisplayAndTheDraftStaysValid()
+    public async Task GivenAWrongDisplayOnTheMedication_WhenDrafted_ThenTheTerminologyCheckFailsAndTheDraftIsInvalid()
     {
         using TestFolder folder = Clinic();
-        string input = PotassiumOrder.Replace(PotassiumTabletDisplay, "KCl tablet", StringComparison.Ordinal);
+        const string given = "potassium chloride 10 MEQ tablet";
+        string input = PotassiumOrder.Replace(PotassiumTabletDisplay, given, StringComparison.Ordinal);
 
         ToolEnvelope<DraftFacts?> envelope = await RunAsync(folder, new DraftRequest("MedicationRequest", input));
 
         DraftFacts facts = Facts(envelope);
         DraftCheck check = Check(facts, "terminology", "MedicationRequest.medicationCodeableConcept.coding[0]");
-        check.Outcome.ShouldBe(DraftCheck.Warning);
+        check.Outcome.ShouldBe(DraftCheck.Fail);
         var details = (TerminologyCheckDetails)check.Details;
         details.ExpectedDisplay.ShouldBe(PotassiumTabletDisplay);
         details.DisplayMatches.ShouldBe(false);
+        details.Result.ShouldBe("invalid");
         details.Reason.ShouldBe("display-mismatch");
+        facts.Verdict.ShouldBe(DraftFacts.Invalid);
+        IssueItem error = envelope.Issues.Single(issue => issue.Code == "display-mismatch");
+        error.Severity.ShouldBe("error");
+        error.Diagnostics.ShouldContain("expectedDisplay");
+        error.Diagnostics.ShouldContain("MedicationRequest.medicationCodeableConcept.coding[0]");
+        error.Diagnostics.ShouldNotContain(given);
+        error.Diagnostics.ShouldNotContain(PotassiumTabletDisplay);
+    }
+
+    [Theory]
+    [InlineData("ServiceRequest", "Magnesium", "ServiceRequest.code.coding[0]")]
+    [InlineData("Observation", "Potassium", "Observation.code.coding[0]")]
+    public async Task GivenAWrongDisplayOnWhatTheDraftIs_WhenDrafted_ThenTheDraftIsInvalid(string type, string display, string element)
+    {
+        using TestFolder folder = Clinic();
+        string input = type == "ServiceRequest"
+            ? MagnesiumOrder.Replace(MagnesiumDisplay, display, StringComparison.Ordinal)
+            : PotassiumResult.Replace("\"code\":\"2823-3\"", $"\"code\":\"2823-3\",\"display\":\"{display}\"", StringComparison.Ordinal);
+
+        DraftFacts facts = Facts(await RunAsync(folder, new DraftRequest(type, input)));
+
+        Check(facts, "terminology", element).Outcome.ShouldBe(DraftCheck.Fail);
+        facts.Verdict.ShouldBe(DraftFacts.Invalid);
+    }
+
+    [Fact]
+    public async Task GivenAWrongDisplayOnASecondaryCoding_WhenDrafted_ThenItIsAWarningAndTheDraftStaysValid()
+    {
+        using TestFolder folder = Clinic();
+        string input = PotassiumOrder.Replace("\"Oral route\"", "\"By mouth\"", StringComparison.Ordinal);
+
+        ToolEnvelope<DraftFacts?> envelope = await RunAsync(folder, new DraftRequest("MedicationRequest", input));
+
+        DraftFacts facts = Facts(envelope);
+        DraftCheck check = Check(facts, "terminology", "MedicationRequest.dosageInstruction[0].route.coding[0]");
+        check.Outcome.ShouldBe(DraftCheck.Warning);
+        ((TerminologyCheckDetails)check.Details).ExpectedDisplay.ShouldBe("Oral route");
         facts.Verdict.ShouldBe(DraftFacts.Valid);
-        IssueItem warning = envelope.Issues.Single(issue => issue.Code == "display-mismatch");
-        warning.Severity.ShouldBe("warning");
-        warning.Diagnostics.ShouldContain("expectedDisplay");
+        envelope.Issues.Single(issue => issue.Code == "display-mismatch").Severity.ShouldBe("warning");
+    }
+
+    [Fact]
+    public async Task GivenACodeAFragmentOfItsSystemLacks_WhenDrafted_ThenItIsUnknownAndAnIssueSaysWhy()
+    {
+        using TestFolder folder = Clinic();
+        string input = MagnesiumOrder.Replace($"\"code\":\"{Magnesium}\"", "\"code\":\"2345-7\"", StringComparison.Ordinal).Replace($",\"display\":\"{MagnesiumDisplay}\"", string.Empty, StringComparison.Ordinal);
+
+        ToolEnvelope<DraftFacts?> envelope = await RunAsync(folder, new DraftRequest("ServiceRequest", input));
+
+        DraftFacts facts = Facts(envelope);
+        Check(facts, "terminology", "ServiceRequest.code.coding[0]").Outcome.ShouldBe(DraftCheck.Unknown);
+        facts.Verdict.ShouldBe(DraftFacts.Unknown);
+        envelope.Issues.Single(issue => issue.Code == "code-not-in-loaded-content").Diagnostics.ShouldContain("ServiceRequest.code.coding[0]");
+    }
+
+    [Fact]
+    public async Task GivenUnknownTerminologyChecks_WhenDrafted_ThenEachIsExplainedByAnIssueNamingItsElement()
+    {
+        using TestFolder folder = Clinic();
+        JsonObject input = JsonNode.Parse(PotassiumOrder)!.AsObject();
+        input["medication"] = JsonNode.Parse($$"""{"system":"{{RxNorm}}","code":"{{PotassiumTablet}}"}""");
+        input["route"] = JsonNode.Parse("""{"system":"http://example.org/routes","code":"po"}""");
+        input["dose"] = JsonNode.Parse("""{"value":20,"unit":"mEq","unitSystem":"http://example.org/units","code":"meq"}""");
+
+        ToolEnvelope<DraftFacts?> envelope = await RunAsync(folder, new DraftRequest("MedicationRequest", input.ToJsonString()));
+
+        List<DraftCheck> unknown = [.. Facts(envelope).Checks.Where(check => check.Check == "terminology" && check.Outcome == DraftCheck.Unknown)];
+        unknown.Count.ShouldBe(2);
+        unknown.ShouldAllBe(check => envelope.Issues.Any(issue => issue.Severity != "information" && issue.Diagnostics.Contains(check.Element, StringComparison.Ordinal)));
     }
 
     [Fact]

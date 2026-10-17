@@ -39,7 +39,7 @@ internal static partial class DraftTimes
         ArgumentNullException.ThrowIfNull(asOf);
 
         return input.OptionalString(name) is { } text
-            ? (FhirInstant.TryParse(text, out _) ? text : throw DraftArguments.Invalid($"'{input.Of(name)}' must be a FHIR instant: a date and a time to the second with its zone, for example 2024-05-01T08:30:00Z."))
+            ? (FhirInstant.Problem(text, out _) is { } problem ? throw DraftArguments.Invalid($"'{input.Of(name)}' is {problem}.") : text)
             : asOf.Instant;
     }
 

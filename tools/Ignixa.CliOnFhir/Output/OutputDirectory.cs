@@ -32,7 +32,7 @@ internal sealed record OutputDirectory(string Path, bool Overwrite, string Folde
         OutputTarget.CheckDirectory(folderPath, path);
         if (System.IO.File.Exists(path))
         {
-            throw ToolRequestException.Error("out-refused", $"The output path '{path}' is a file; name a directory, which the run writes one NDJSON file per resource type into.");
+            throw ToolRequestException.Error("out-refused", $"The output path '{path}' is a file; name a directory, which the run writes its output files into.");
         }
 
         return new OutputDirectory(path, overwrite, folderPath);

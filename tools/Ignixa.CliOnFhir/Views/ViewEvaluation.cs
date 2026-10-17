@@ -36,6 +36,9 @@ internal sealed partial class ViewEvaluation(FolderSession session, CompiledView
 
     private readonly List<IssueItem> _problems = [];
 
+    /// <summary>When set, counts the zone-less times of every resource read (a view that reads <c>%asOf</c> cannot compare them).</summary>
+    public ZonelessTimes? Zoneless { get; init; }
+
     /// <summary>Resources in scope that could not be read, and so produced no rows (each is among <see cref="Problems"/>).</summary>
     public int Unreadable { get; private set; }
 
@@ -108,6 +111,8 @@ internal sealed partial class ViewEvaluation(FolderSession session, CompiledView
             return [];
         }
 
+        Zoneless?.Count(element);
+
         List<Dictionary<string, object?>> rows = Evaluate(() => _evaluator.Evaluate(view.Navigator, element, variables), FhirIds.Reference(entry), viewFromFolder);
         return rows.Select(row => new ViewRow(Cells(row), entry));
     }
@@ -129,6 +134,7 @@ internal sealed partial class ViewEvaluation(FolderSession session, CompiledView
 
             if (file!.Get(entry) is { } element)
             {
+                Zoneless?.Count(element);
                 resources.Add(element);
             }
             else
