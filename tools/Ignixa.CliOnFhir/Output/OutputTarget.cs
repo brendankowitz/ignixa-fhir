@@ -225,6 +225,39 @@ internal sealed record OutputTarget(string Path, string Format, bool Overwrite, 
         {
             throw ToolRequestException.Error("out-refused", $"Cannot write there: the directory '{directory}' is inside the data folder under another path (a bind mount of a part of the folder); the folder is never written and {Remedy}.");
         }
+
+        if (MountTable.IsAvailable && OverlayLayerInFolder(folderPath, directory) is { } layer)
+        {
+            throw ToolRequestException.Error("out-refused", $"Cannot write there: the directory '{directory}' is on an overlay mount that writes into '{layer}', which is in the data folder; the folder is never written and {Remedy}.");
+        }
+    }
+
+    // The upper or work directory of the overlay mount holding directory that is the data folder or inside it, by its path, its
+    // identity or where the mount table says it is; null when there is none. A directory this mount namespace cannot see (the layers
+    // of a container's own root, named as the host sees them) cannot be compared and is not refused.
+    private static string? OverlayLayerInFolder(string folderPath, string directory)
+    {
+        IReadOnlyList<string> layers;
+        try
+        {
+            layers = MountTable.OverlayWriteDirectories(directory);
+        }
+        catch (IOException ex)
+        {
+            throw ToolRequestException.Error("out-refused", $"Cannot write there: the output directory's mount cannot be read from the mount table ({ex.Message}).");
+        }
+
+        string folder = CanonicalPath.Resolve(folderPath);
+        foreach (string layer in layers.Where(Directory.Exists))
+        {
+            string resolved = CanonicalPath.Resolve(layer);
+            if (MountTable.IsSameOrUnder(resolved, folder) || (DirectoryIdentity.IsAvailable && MountedFolder(folderPath, resolved) is not null) || UnderFolderOnItsDevice(folderPath, resolved))
+            {
+                return layer;
+            }
+        }
+
+        return null;
     }
 
     // Whether directory, mapped through the mount table to where it really is, lies in the data folder, mapped the same way, on the
