@@ -77,9 +77,9 @@ public class RelativeDateSearchTests
 
     [Theory]
     [InlineData("2026-10-15T23:30:00Z", "date=today", "date=2026-10-15")]
-    [InlineData("2026-10-15T23:30:00-05:00", "date=today", "date=2026-10-15")]
+    [InlineData("2026-10-15T23:30:00-05:00", "date=getoday", "date=ge2026-10-15T05:00:00Z")]
     [InlineData("2026-10-15T23:30:00-05:00", "date=genow", "date=ge2026-10-16T04:30:00Z")]
-    [InlineData("2026-10-16T01:00:00+05:30", "date=today", "date=2026-10-16")]
+    [InlineData("2026-10-16T01:00:00+05:30", "date=getoday", "date=ge2026-10-15T18:30:00Z")]
     public void GivenAnAsOfNearMidnightWithOrWithoutAnOffset_WhenTodayAndNowAreResolved_ThenTodayIsItsOwnDayAndNowIsInUtc(string asOf, string query, string expected)
     {
         using TestFolder folder = Readings();
