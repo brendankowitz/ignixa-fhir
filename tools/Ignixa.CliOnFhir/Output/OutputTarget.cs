@@ -221,6 +221,26 @@ internal sealed record OutputTarget(string Path, string Format, bool Overwrite, 
         {
             throw ToolRequestException.Error("out-refused", $"Cannot write there: the directory '{alias}' is the data folder itself under another path (a bind mount or a second mount of it, or a link that replaced the directory after its path was resolved); the folder is never written and {Remedy}.");
         }
+        if (MountTable.IsAvailable && UnderFolderOnItsDevice(folderPath, directory))
+        {
+            throw ToolRequestException.Error("out-refused", $"Cannot write there: the directory '{directory}' is inside the data folder under another path (a bind mount of a part of the folder); the folder is never written and {Remedy}.");
+        }
+    }
+
+    // Whether directory, mapped through the mount table to where it really is, lies in the data folder, mapped the same way, on the
+    // same device: a bind mount of a subfolder of the data folder is a path the folder's own identity does not match.
+    private static bool UnderFolderOnItsDevice(string folderPath, string directory)
+    {
+        try
+        {
+            (string folderDevice, string folder) = MountTable.Underlying(CanonicalPath.Resolve(folderPath));
+            (string device, string underlying) = MountTable.Underlying(directory);
+            return device == folderDevice && MountTable.IsSameOrUnder(underlying, folder);
+        }
+        catch (IOException ex)
+        {
+            throw ToolRequestException.Error("out-refused", $"Cannot write there: the output directory cannot be compared with the data folder through the mount table ({ex.Message}).");
+        }
     }
 
     // The output's directory, or the first of its ancestors, that is the data folder by device and inode; null when none is.

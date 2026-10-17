@@ -3,7 +3,6 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Diagnostics;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.DeId;
 using Ignixa.CliOnFhir.Output;
@@ -204,20 +203,12 @@ public class DeIdOutputSafetyTests
         error.Diagnostics.ShouldContain("is a file");
     }
 
-    [Fact]
+    [BindMountFact]
     public async Task GivenABindMountOfTheDataFolder_WhenTheOutputDirectoryIsUnderIt_ThenItIsRefused()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return; // identities are read with statx, which is Linux's
-        }
-
         using TestFolder root = Root();
         string mount = Directory.CreateDirectory(Path.Combine(root.Path, "mounted")).FullName;
-        if (!TryRun("mount", "--bind", Data(root), mount))
-        {
-            return; // mounting needs privileges this environment does not grant
-        }
+        TestProcess.TryRun("mount", "--bind", Data(root), mount).ShouldBeTrue();
 
         try
         {
@@ -231,27 +222,7 @@ public class DeIdOutputSafetyTests
         }
         finally
         {
-            TryRun("umount", mount).ShouldBeTrue();
-        }
-    }
-
-    private static bool TryRun(string command, params string[] arguments)
-    {
-        try
-        {
-            var info = new ProcessStartInfo(command) { RedirectStandardError = true, UseShellExecute = false };
-            foreach (string argument in arguments)
-            {
-                info.ArgumentList.Add(argument);
-            }
-
-            using Process process = Process.Start(info)!;
-            process.WaitForExit();
-            return process.ExitCode == 0;
-        }
-        catch (System.ComponentModel.Win32Exception)
-        {
-            return false;
+            TestProcess.TryRun("umount", mount).ShouldBeTrue();
         }
     }
 }

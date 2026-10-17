@@ -3,7 +3,6 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Diagnostics;
 using System.Security.Cryptography;
 using Ignixa.CliOnFhir.Caching;
 using Ignixa.CliOnFhir.Contracts;
@@ -452,21 +451,13 @@ public class SqlViewOutputSafetyTests
     }
 
     // A bind mount is the data folder under a path no link leads to: only its device and inode give it away.
-    [Fact]
+    [BindMountFact]
     public async Task GivenABindMountOfTheDataFolder_WhenOutIsUnderIt_ThenItIsRefusedAndTheDataFolderIsUnchanged()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return; // identities are read with statx, which is Linux's
-        }
-
         using TestFolder root = new TestFolder().Write("data/patients.ndjson", PatientsData);
         string data = Path.Combine(root.Path, "data");
         string mount = Directory.CreateDirectory(Path.Combine(root.Path, "mounted")).FullName;
-        if (!TryRun("mount", "--bind", data, mount))
-        {
-            return; // mounting needs privileges this environment does not grant
-        }
+        TestProcess.TryRun("mount", "--bind", data, mount).ShouldBeTrue();
 
         try
         {
@@ -480,31 +471,11 @@ public class SqlViewOutputSafetyTests
         }
         finally
         {
-            TryRun("umount", mount).ShouldBeTrue();
+            TestProcess.TryRun("umount", mount).ShouldBeTrue();
         }
     }
 
-    private static bool TryHardLink(string existing, string link) => TryRun("ln", existing, link);
-
-    private static bool TryRun(string command, params string[] arguments)
-    {
-        try
-        {
-            var info = new ProcessStartInfo(command) { RedirectStandardError = true, UseShellExecute = false };
-            foreach (string argument in arguments)
-            {
-                info.ArgumentList.Add(argument);
-            }
-
-            using Process process = Process.Start(info)!;
-            process.WaitForExit();
-            return process.ExitCode == 0;
-        }
-        catch (System.ComponentModel.Win32Exception)
-        {
-            return false;
-        }
-    }
+    private static bool TryHardLink(string existing, string link) => TestProcess.TryRun("ln", existing, link);
 
     private static string[] Snapshot(string root) =>
         [.. Directory.EnumerateFileSystemEntries(root, "*", SearchOption.AllDirectories)
