@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.CommandLine;
+using Ignixa.CliOnFhir.Clock;
 using Ignixa.CliOnFhir.Session;
 using Ignixa.CliOnFhir.Views;
 using Microsoft.Extensions.Logging;
@@ -63,7 +64,8 @@ internal static class ViewCommand
                 parseResult.GetValue(timeoutOption),
                 parseResult.GetValue(maxResourcesOption));
             ILogger logger = loggerFactory.CreateLogger("view");
-            return await Watchdog.RunAsync<ViewFacts>("view-timeout", request.TimeoutSeconds, ViewRunner.DefaultTimeoutSeconds, ViewRunner.MaxTimeoutSeconds, token => ViewRunner.RunAsync(session, request, logger, token), parseResult.GetValue(prettyOption), cancellationToken);
+            var asOf = new AsOfClock(session, parseResult.GetValue(AsOfOption.Option));
+            return await Watchdog.RunAsync<ViewFacts>("view-timeout", request.TimeoutSeconds, ViewRunner.DefaultTimeoutSeconds, ViewRunner.MaxTimeoutSeconds, token => ViewRunner.RunAsync(session, request, asOf, logger, token), parseResult.GetValue(prettyOption), cancellationToken);
         });
 
         return command;

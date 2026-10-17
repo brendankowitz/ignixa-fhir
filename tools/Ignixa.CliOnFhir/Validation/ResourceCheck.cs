@@ -52,6 +52,15 @@ internal sealed class ResourceCheck(string rootPath, ProfileSet profiles, Valida
             return new ResourceValidation(entry, ResourceValidation.Unreadable, [], [], problem ?? new IssueItem("error", "invalid-resource", $"{ResourceReader.Describe(entry)} is not a JSON object; it was not validated.", Location: null));
         }
 
+        return Validate(entry, resource);
+    }
+
+    /// <summary>Validates <paramref name="resource"/>, already read (or built, as a draft is), as the resource <paramref name="entry"/> names.</summary>
+    public ResourceValidation Validate(CatalogEntry entry, JsonObject resource)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        ArgumentNullException.ThrowIfNull(resource);
+
         IElement element = JsonNodeSourceNode.Create(resource).ToElement(profiles.Schema);
         string coreUrl = CorePrefix + entry.ResourceType;
         ValidationSettings resourceSettings = ForResource(bundleReferences(entry, resource));

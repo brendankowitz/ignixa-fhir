@@ -18,6 +18,7 @@ namespace Ignixa.CliOnFhir.Views;
 /// <param name="Paging">The rows asked for in the response.</param>
 /// <param name="Budget">The response budget in bytes.</param>
 /// <param name="Variables">The variables applied.</param>
+/// <param name="AsOf">The session's instant, the view's <c>%asOf</c> unless it declares its own.</param>
 /// <param name="Unreadable">Resources in scope that could not be read.</param>
 /// <param name="Distinct">The distinct count, when asked for.</param>
 /// <param name="Issues">Problems and notes so far.</param>
@@ -32,6 +33,7 @@ internal sealed record ViewOutcome(
     ViewPaging Paging,
     int Budget,
     IReadOnlyDictionary<string, string> Variables,
+    Clock.AsOf AsOf,
     int Unreadable,
     DistinctFacts? Distinct,
     List<IssueItem> Issues,

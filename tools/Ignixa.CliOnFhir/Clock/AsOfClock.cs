@@ -1,0 +1,87 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
+using System.Text.RegularExpressions;
+using Ignixa.CliOnFhir.Catalog;
+using Ignixa.CliOnFhir.Contracts;
+using Ignixa.CliOnFhir.Session;
+
+namespace Ignixa.CliOnFhir.Clock;
+
+/// <summary>
+/// The session's <see cref="AsOf"/>: the instant its answers are anchored to. Resolved once, on first use, in this order: the
+/// session's <c>--as-of</c> option; the <c>transactionTime</c> of a Bulk Data export manifest at the folder's root
+/// (<see cref="BulkExportManifests"/>); the <c>timestamp</c> of the folder's container Bundles, the latest when they differ
+/// (<see cref="BundleTimestamps"/>); otherwise the session's clock (<see cref="FolderSession.UtcNow"/>). Detection only reads,
+/// and reads little: the manifest candidates at the root, and of each container Bundle the bytes before its first catalogued
+/// entry and after its last. A call may name its own instant (<see cref="ForCall"/>). Safe to use concurrently.
+/// </summary>
+public sealed partial class AsOfClock
+{
+    /// <summary>The error code of an <c>--as-of</c> (or <c>asOf</c> argument) that is not a FHIR instant.</summary>
+    public const string InvalidCode = "invalid-as-of";
+
+    private readonly FolderSession _session;
+    private readonly string? _option;
+    private readonly Lazy<AsOfResolution> _resolution;
+
+    /// <param name="session">The folder, read for its data-pull time, and whose clock is the last resort.</param>
+    /// <param name="sessionOption">The session's <c>--as-of</c> value as given; null when there is none.</param>
+    public AsOfClock(FolderSession session, string? sessionOption)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        _session = session;
+        _option = sessionOption;
+
+        // Not ExecutionAndPublication: that would keep an exception (a folder that could not be read) for the rest of the session.
+        _resolution = new Lazy<AsOfResolution>(Detect, LazyThreadSafetyMode.PublicationOnly);
+    }
+
+    /// <summary>The session's instant, worked out on the first call and the same on every later one.</summary>
+    /// <exception cref="ToolRequestException"><see cref="InvalidCode"/>: the session's <c>--as-of</c> is not a FHIR instant.</exception>
+    public AsOfResolution Resolve() => _resolution.Value;
+
+    /// <summary>The instant of one call: its own <paramref name="argument"/> when it gives one, otherwise the session's.</summary>
+    /// <exception cref="ToolRequestException"><see cref="InvalidCode"/>: the argument, or the session's option, is not a FHIR instant.</exception>
+    public AsOfResolution ForCall(string? argument) =>
+        argument is null ? Resolve() : new AsOfResolution(Parse(argument, "asOf", AsOfSources.Argument), []);
+
+    private AsOfResolution Detect()
+    {
+        if (_option is not null)
+        {
+            return new AsOfResolution(Parse(_option, "--as-of", AsOfSources.SessionOption), []);
+        }
+
+        FolderCatalog catalog = _session.Catalog;
+        (DateTimeOffset? manifest, List<IssueItem> issues) = BulkExportManifests.Detect(catalog.RootPath);
+        if (manifest is { } transactionTime)
+        {
+            return new AsOfResolution(new AsOf(transactionTime, AsOfSources.BulkExportManifest), issues);
+        }
+
+        (DateTimeOffset? timestamp, IReadOnlyList<IssueItem> bundleIssues) = BundleTimestamps.Detect(catalog);
+        issues.AddRange(bundleIssues);
+        return timestamp is { } latest
+            ? new AsOfResolution(new AsOf(latest, AsOfSources.BundleTimestamp), issues)
+            : new AsOfResolution(new AsOf(ToMilliseconds(_session.UtcNow().ToUniversalTime()), AsOfSources.Clock), issues);
+    }
+
+    // The clock's own precision (ticks) says nothing the data could; an instant to the millisecond is how FHIR data usually reads.
+    private static DateTimeOffset ToMilliseconds(DateTimeOffset now) => new(now.Ticks - (now.Ticks % TimeSpan.TicksPerMillisecond), now.Offset);
+
+    private static AsOf Parse(string text, string name, string source) => FhirInstant.TryParse(text, out DateTimeOffset value)
+        ? new AsOf(value, source)
+        : throw ToolRequestException.Error(
+            InvalidCode,
+            $"'{name}' {Shown(text)} is not a FHIR instant: give a date and a time to the second with a time zone, for example 2024-05-01T00:00:00Z or 2024-05-01T08:30:00-05:00. A date alone does not say which moment of the day is meant.");
+
+    // The caller's own text, shown when it is shaped like a date and time, by its digest otherwise.
+    private static string Shown(string text) => InstantLike().IsMatch(text) ? $"'{text}'" : $"(digest {FhirIds.Digest(text)})";
+
+    [GeneratedRegex(@"^[0-9TZ:.+\-]{1,40}$", RegexOptions.CultureInvariant)]
+    private static partial Regex InstantLike();
+}

@@ -5,6 +5,7 @@
 
 using System.Text.Json.Nodes;
 using Ignixa.CliOnFhir.Catalog;
+using Ignixa.CliOnFhir.Clock;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Output;
 using Ignixa.CliOnFhir.Reading;
@@ -37,18 +38,20 @@ public static class ViewRunner
     /// path in the folder, an unknown compartment, a run that takes too long) is an envelope with null facts and an
     /// <c>error</c> issue. A failure of the tool itself is the same, as <c>view-internal-error</c>, and is logged in full.
     /// </summary>
+    /// <param name="asOf">The session's instant, which the view reads as <c>%asOf</c> and the facts state.</param>
     /// <param name="logger">Receives the details of a <c>view-internal-error</c>; required, so that no caller can drop them.</param>
-    public static Task<ToolEnvelope<ViewFacts?>> RunAsync(FolderSession session, ViewRequest request, ILogger logger, CancellationToken cancellationToken) =>
-        RunAsync(session, request, logger, timeoutSignal: CancellationToken.None, cancellationToken);
+    public static Task<ToolEnvelope<ViewFacts?>> RunAsync(FolderSession session, ViewRequest request, AsOfClock asOf, ILogger logger, CancellationToken cancellationToken) =>
+        RunAsync(session, request, asOf, logger, timeoutSignal: CancellationToken.None, cancellationToken);
 
     /// <param name="timeoutSignal">
     /// Stops the run as its timeout does, besides the request's own seconds: a test passes one already cancelled, so the run is a
     /// timeout at its first check, whatever the machine's speed.
     /// </param>
-    internal static async Task<ToolEnvelope<ViewFacts?>> RunAsync(FolderSession session, ViewRequest request, ILogger logger, CancellationToken timeoutSignal, CancellationToken cancellationToken)
+    internal static async Task<ToolEnvelope<ViewFacts?>> RunAsync(FolderSession session, ViewRequest request, AsOfClock asOf, ILogger logger, CancellationToken timeoutSignal, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(asOf);
         ArgumentNullException.ThrowIfNull(logger);
 
         if (EnvelopeAssembler.FolderProblem(session) is { } folderProblem)
@@ -59,7 +62,7 @@ public static class ViewRunner
         List<IssueItem> notes = [];
         try
         {
-            return await WithinTimeAsync(session, request, notes, timeoutSignal, cancellationToken);
+            return await WithinTimeAsync(session, request, asOf, notes, timeoutSignal, cancellationToken);
         }
         catch (ToolRequestException ex)
         {
@@ -90,7 +93,7 @@ public static class ViewRunner
             ? EnvelopeAssembler.Failure<ViewFacts>(session, error, cancellationToken)
             : EnvelopeAssembler.Create<ViewFacts?>(session, null, session.Catalog.BuiltAt, [], [], [], [error, .. notes], cancellationToken);
 
-    private static async Task<ToolEnvelope<ViewFacts?>> WithinTimeAsync(FolderSession session, ViewRequest request, List<IssueItem> notes, CancellationToken timeoutSignal, CancellationToken cancellationToken)
+    private static async Task<ToolEnvelope<ViewFacts?>> WithinTimeAsync(FolderSession session, ViewRequest request, AsOfClock asOf, List<IssueItem> notes, CancellationToken timeoutSignal, CancellationToken cancellationToken)
     {
         int seconds = request.TimeoutSeconds ?? DefaultTimeoutSeconds;
         if (seconds is < 1 or > MaxTimeoutSeconds)
@@ -103,7 +106,7 @@ public static class ViewRunner
         var progress = new RunProgress();
         try
         {
-            return await ExecuteAsync(session, request, notes, progress, timeout.Token);
+            return await ExecuteAsync(session, request, asOf, notes, progress, timeout.Token);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeout.IsCancellationRequested)
         {
@@ -115,7 +118,7 @@ public static class ViewRunner
         }
     }
 
-    private static async Task<ToolEnvelope<ViewFacts?>> ExecuteAsync(FolderSession session, ViewRequest request, List<IssueItem> notes, RunProgress progress, CancellationToken cancellationToken)
+    private static async Task<ToolEnvelope<ViewFacts?>> ExecuteAsync(FolderSession session, ViewRequest request, AsOfClock clock, List<IssueItem> notes, RunProgress progress, CancellationToken cancellationToken)
     {
         List<IssueItem> issues = [];
         List<OmittedItem> omitted = [];
@@ -123,9 +126,11 @@ public static class ViewRunner
         OutputTarget? target = ViewOutput.Resolve(session, request);
         int budget = ResponseBudget.Resolve(request.MaxBytes, session.MaxResponseBytes, issues, BudgetAlternatives);
 
+        AsOfResolution asOf = clock.Resolve();
+        issues.AddRange(asOf.Issues);
         LoadedView loaded = ViewLocator.Resolve(session, request.View);
-        CompiledView view = ViewCompiler.Compile(session, loaded, request.Where);
         IReadOnlyDictionary<string, string> variables = ViewVariables.Parse(request.Variables);
+        CompiledView view = ViewCompiler.Compile(session, ViewAsOf.With(loaded, asOf.Value, variables, issues), request.Where);
         issues.AddRange(ViewVariables.Undeclared(variables, view.Expression));
         issues.AddRange(ViewIssues.ResolveUse(loaded.Json));
         int? distinctColumn = DistinctColumn(view, request.Distinct);
@@ -156,6 +161,7 @@ public static class ViewRunner
             paging,
             budget,
             variables,
+            asOf.Value,
             evaluation.Unreadable,
             distinctColumn is int index ? new DistinctFacts(view.Columns[index].Name, pass.DistinctValues, pass.DistinctNulls) : null,
             issues,

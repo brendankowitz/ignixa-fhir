@@ -19,6 +19,8 @@ root.Subcommands.Add(ValidateCommand.Create());
 root.Subcommands.Add(ViewCommand.Create());
 root.Subcommands.Add(DeIdCommand.Create());
 root.Subcommands.Add(MapCommand.Create());
+root.Subcommands.Add(DraftCommand.Create());
 root.Subcommands.Add(McpCommand.Create());
+AsOfOption.Register(root);
 
 return await root.Parse(args).InvokeAsync();

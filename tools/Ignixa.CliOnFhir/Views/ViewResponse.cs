@@ -120,6 +120,7 @@ internal static class ViewResponse
             outcome.Pass.Total,
             outcome.Scope.Entries.Count,
             outcome.View.OrdersAcrossResources ? new ViewProvenance(null, UnionAllOrder) : new ViewProvenance(EvidenceRows, null),
+            outcome.AsOf,
             Unreadable: outcome.Unreadable > 0 ? outcome.Unreadable : null,
             Where: request.Where is null ? null : QueryEcho.Of(request.Where),
             Variables: variables,

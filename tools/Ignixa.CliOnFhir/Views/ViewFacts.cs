@@ -13,6 +13,7 @@ namespace Ignixa.CliOnFhir.Views;
 /// <param name="Total">Every row the view produced over the resources in scope, whatever was returned.</param>
 /// <param name="Resources">Resources of the view's type in scope (the folder's, or the compartment's).</param>
 /// <param name="Provenance">How far evidence can say which resource rows came from.</param>
+/// <param name="AsOf">The instant the view read as <c>%asOf</c> (unless it declares its own constant <c>asOf</c>, or a variable replaced it), and where it came from.</param>
 /// <param name="Unreadable">Resources in scope that could not be read and so produced no rows; absent when none (each is an issue).</param>
 /// <param name="Where">The extra filter that was applied, as given.</param>
 /// <param name="Variables">The variables that were applied, as given.</param>
@@ -28,6 +29,7 @@ public sealed record ViewFacts(
     long Total,
     int Resources,
     ViewProvenance Provenance,
+    Clock.AsOf AsOf,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Unreadable = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Where = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyDictionary<string, string>? Variables = null,

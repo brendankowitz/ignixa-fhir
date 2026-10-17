@@ -407,7 +407,7 @@ public class SqlViewTests
         string missing = Path.Combine(Path.GetTempPath(), "cli-on-fhir-tests", Guid.NewGuid().ToString("N"));
         var session = new Ignixa.CliOnFhir.Session.FolderSession(missing, new Ignixa.Specification.Generated.R4CoreSchemaProvider(), Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance);
 
-        ToolEnvelope<ViewFacts?> envelope = await ViewRunner.RunAsync(session, new ViewRequest(PatientView), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, CancellationToken.None);
+        ToolEnvelope<ViewFacts?> envelope = await ViewRunner.RunAsync(session, new ViewRequest(PatientView), new Ignixa.CliOnFhir.Clock.AsOfClock(session, sessionOption: null), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, CancellationToken.None);
 
         envelope.Facts.ShouldBeNull();
         envelope.Issues.Single().Code.ShouldBe("folder-unavailable");

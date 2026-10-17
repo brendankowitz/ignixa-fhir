@@ -125,7 +125,9 @@ public class SqlViewLimitsTests
         using var cancelled = new CancellationTokenSource();
         await cancelled.CancelAsync();
 
-        await Should.ThrowAsync<OperationCanceledException>(() => ViewRunner.RunAsync(Open(folder), new ViewRequest(PatientView), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, cancelled.Token));
+        Ignixa.CliOnFhir.Session.FolderSession session = Open(folder);
+
+        await Should.ThrowAsync<OperationCanceledException>(() => ViewRunner.RunAsync(session, new ViewRequest(PatientView), new Ignixa.CliOnFhir.Clock.AsOfClock(session, sessionOption: null), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, cancelled.Token));
     }
 
     [Fact]
