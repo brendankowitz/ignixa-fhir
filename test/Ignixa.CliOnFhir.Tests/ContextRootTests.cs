@@ -73,7 +73,8 @@ public class ContextRootTests
         DomainStub labs = Root(folder).Labs;
 
         // Heart rate has the most observations; ties go by key. Glucose after asOf (o10) and entered-in-error (o11) and the
-        // survey (o12) are left out.
+        // survey (o12) are left out. Only o11 and o12 are counted as excluded: o10 is outside the window, which the
+        // dated-after-as-of note counts (Task 12b fix round 1, I6).
         string[] rows = [.. labs.Items.Select(item => $"{item.Code} {item.Count} {item.Value} {item.Unit} {item.Date} {item.Trend} {item.Reference}")];
         rows.Take(4).ShouldBe([
             "http://loinc.org|8867-4 4 80 /min 2025-01-01 up Observation/o3",
@@ -82,7 +83,7 @@ public class ContextRootTests
             "http://loinc.org|72166-2 1   2025-01-01 n/a Observation/o13"]);
         labs.Items[3].ValueType.ShouldBe("CodeableConcept");
         labs.Count.ShouldBe(5);
-        labs.Excluded.ShouldBe(3);
+        labs.Excluded.ShouldBe(2);
         labs.Window.ShouldBe(new ContextWindow(null, AsOf));
     }
 
@@ -91,14 +92,15 @@ public class ContextRootTests
     [InlineData("bundle")]
     public void GivenEncountersAroundAsOf_WhenTheRootIsRead_ThenTheFiveNewestRecordedOnesUpToAsOfAreShown(string layout)
     {
-        // e6 is entered-in-error and e8 starts after asOf.
+        // e6 is entered-in-error and e8 starts after asOf. Only e6 is counted as excluded: e8 is outside the window, which the
+        // dated-after-as-of note counts (Task 12b fix round 1, I6).
         using TestFolder folder = Layout(layout);
 
         DomainStub encounters = Root(folder).Encounters;
 
         encounters.Items.Select(item => item.Reference).ShouldBe(["Encounter/e7", "Encounter/e5", "Encounter/e4", "Encounter/e3", "Encounter/e2"]);
         encounters.Count.ShouldBe(6);
-        encounters.Excluded.ShouldBe(2);
+        encounters.Excluded.ShouldBe(1);
         encounters.Window.ShouldBe(new ContextWindow(null, AsOf));
     }
 

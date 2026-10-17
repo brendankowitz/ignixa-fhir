@@ -18,7 +18,7 @@ namespace Ignixa.CliOnFhir.Patients;
 /// <param name="Resolved">Problems whose clinical status is resolved.</param>
 /// <param name="NoStatus">Problems with no clinical status: unknown, not inactive (most frequent listed when too few are active).</param>
 /// <param name="Observations">Labs: the observations in those codes.</param>
-/// <param name="Excluded">Labs: Observations outside the window or the lab and vital-sign categories (surveys, social history), not counted.</param>
+/// <param name="Excluded">Labs: Observations up to asOf outside the status rule or the lab and vital-sign categories (surveys, social history), or without a coded code, not counted.</param>
 /// <param name="ByCategory">Labs: observations by category code, when any is other than laboratory or vital-signs.</param>
 /// <param name="ByClass">Encounters: counts by <c>class</c> code.</param>
 /// <param name="Transfers">Encounters: moves between locations, each <c>location</c> entry of an encounter after its first (ward and unit stays).</param>

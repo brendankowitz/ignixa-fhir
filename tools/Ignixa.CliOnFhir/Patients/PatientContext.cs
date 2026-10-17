@@ -58,9 +58,6 @@ internal sealed class PatientContext
     public const string ProblemLinkRule =
         "the Condition, then every MedicationRequest and MedicationStatement whose reasonReference references it (reasonReference) or whose reasonCode shares a system and code with its code (reasonCode)";
 
-    // The types the domains read, each with its main date (ClinicalRules.MainDate).
-    private static readonly string[] DomainTypes = ["Condition", "MedicationRequest", "MedicationStatement", "AllergyIntolerance", "Encounter", "Observation", "MedicationAdministration", "Immunization", "Procedure"];
-
     private readonly Lazy<IReadOnlyList<ContextEntry>> _problems;
     private readonly Lazy<IReadOnlyList<ContextEntry>> _medications;
     private readonly Lazy<IReadOnlyList<ContextEntry>> _allergies;
@@ -70,13 +67,18 @@ internal sealed class PatientContext
     private readonly Lazy<IReadOnlyList<ContextEntry>> _immunizations;
     private readonly Lazy<IReadOnlyList<ContextEntry>> _procedures;
     private readonly Lazy<(DateTimeOffset Instant, FhirTemporal Bound, bool FromClock)> _asOf;
+    private readonly Lazy<IReadOnlyList<CatalogEntry>> _members;
+    private readonly Lazy<ILookup<string, CatalogEntry>> _membersByType;
     private readonly Lazy<IReadOnlyDictionary<string, int>> _afterAsOf;
 
-    private PatientContext(FolderSession session, PatientCompartment compartment, DateTimeOffset? asOf)
+    private readonly Clock.AsOf? _stated;
+
+    private PatientContext(FolderSession session, PatientCompartment compartment, DateTimeOffset? asOf, Clock.AsOf? stated = null)
     {
         Session = session;
         Compartment = compartment;
         AsOfGiven = asOf is not null;
+        _stated = stated;
         _asOf = new(() => asOf is { } given ? Given(given) : Latest());
         Elements = new ResourceElements(session);
         Shapes = new ValueShapes(session.Schema.Version, BindingMembership.IfLoaded(session));
@@ -91,6 +93,9 @@ internal sealed class PatientContext
         _administrations = new(() => Newest(Describe(Compartment.OfType("MedicationAdministration")).Where(NotAfter)));
         _immunizations = new(() => Newest(Describe(Compartment.OfType("Immunization")).Where(NotAfter)));
         _procedures = new(() => Newest(Describe(Compartment.OfType("Procedure")).Where(NotAfter)));
+        // Without a stated asOf it is the latest main date of the record, so no member is after it and none is read to tell.
+        _members = new(() => AsOfGiven ? [.. Compartment.Members.Where(member => !DatedAfterAsOf(member))] : Compartment.Members);
+        _membersByType = new(() => Members.ToLookup(member => member.ResourceType, StringComparer.Ordinal));
         _afterAsOf = new(CountAfterAsOf);
     }
 
@@ -107,14 +112,28 @@ internal sealed class PatientContext
     /// <summary>Whether the call gave <see cref="AsOf"/>, rather than it being the patient's latest dated resource.</summary>
     public bool AsOfGiven { get; }
 
+    /// <summary>
+    /// The compartment's members as of <see cref="AsOf"/>: every member but those whose main date (<see cref="ClinicalRules.MainDate"/>)
+    /// is after it. Every count the map and the root show is of these; <see cref="PatientCompartment.Members"/> is the whole compartment.
+    /// </summary>
+    public IReadOnlyList<CatalogEntry> Members => _members.Value;
+
+    /// <summary>Whether any member of the compartment is dated after <see cref="AsOf"/>, so is not in <see cref="Members"/>.</summary>
+    public bool AnyAfterAsOf => _afterAsOf.Value.Count > 0;
+
+    /// <summary>The <see cref="Members"/> of type <paramref name="resourceType"/>.</summary>
+    public IReadOnlyList<CatalogEntry> MembersOf(string resourceType) =>
+        AsOfGiven ? [.. _membersByType.Value[resourceType]] : Compartment.OfType(resourceType);
+
     /// <summary>Whether <see cref="AsOf"/> is the session clock's, the default for a patient with no dated resource.</summary>
     public bool AsOfFromClock => _asOf.Value.FromClock;
 
     /// <summary>
-    /// <see cref="AsOf"/> as an envelope states it: given by the call (<c>argument</c>), else the patient's latest dated resource
-    /// (<c>patient-latest</c>), else the session clock (<c>clock</c>).
+    /// <see cref="AsOf"/> as an envelope states it: as stated, when it was (<see cref="Open(FolderSession, string, Clock.AsOf?)"/>:
+    /// the call's <c>argument</c> or the <c>session-option</c>, with its precision), else given by the call (<c>argument</c>), else the
+    /// patient's latest dated resource (<c>patient-latest</c>), else the session clock (<c>clock</c>).
     /// </summary>
-    public Clock.AsOf Anchor => new(AsOf, AsOfGiven ? Clock.AsOfSources.Argument : AsOfFromClock ? Clock.AsOfSources.Clock : Clock.AsOfSources.PatientLatest);
+    public Clock.AsOf Anchor => _stated ?? new(AsOf, AsOfGiven ? Clock.AsOfSources.Argument : AsOfFromClock ? Clock.AsOfSources.Clock : Clock.AsOfSources.PatientLatest);
 
     public ResourceElements Elements { get; }
 
@@ -162,7 +181,10 @@ internal sealed class PatientContext
     /// <summary>Every Procedure, any status, newest first.</summary>
     public IReadOnlyList<ContextEntry> Procedures => _procedures.Value;
 
-    /// <summary>Observations of the compartment in no lab series: outside the window or the category rule, or without a coded code.</summary>
+    /// <summary>
+    /// Observations of <see cref="Members"/> in no lab series: undated, outside the category or status rule, or without a coded
+    /// code. Those dated after a stated asOf are not members, and the <see cref="AfterAsOfCode"/> note counts them.
+    /// </summary>
     public int LabsExcluded => _labs.Value.Excluded;
 
     /// <summary>
@@ -178,6 +200,20 @@ internal sealed class PatientContext
 
         ClinicalRules.Precompile();
         return new PatientContext(session, PatientCompartment.Load(session, patientId), asOf);
+    }
+
+    /// <summary>
+    /// <see cref="Open(FolderSession, string, DateTimeOffset?)"/> as of what was stated (<see cref="Clock.AsOfClock.Stated"/>: the call's
+    /// asOf, else the session's <c>--as-of</c>), which <see cref="Anchor"/> then states with its source and precision; as of the
+    /// patient's latest dated resource when nothing was.
+    /// </summary>
+    /// <exception cref="ToolRequestException">The id is malformed or the folder holds no such Patient.</exception>
+    public static PatientContext Open(FolderSession session, string patientId, Clock.AsOf? stated)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        ClinicalRules.Precompile();
+        return new PatientContext(session, PatientCompartment.Load(session, patientId), stated?.Moment, stated);
     }
 
     private static (DateTimeOffset Instant, FhirTemporal Bound, bool FromClock) Given(DateTimeOffset asOf)
@@ -247,7 +283,7 @@ internal sealed class PatientContext
             issues.Add(new IssueItem(
                 "information",
                 AfterAsOfCode,
-                $"{after.Values.Sum()} resources of the record are dated after asOf {CohortInstant.Format(AsOf)} ({string.Join(", ", after.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => $"{pair.Key} {pair.Value}"))}): they are in the data but in the future relative to asOf, so no list, latest value or count of the map includes them.",
+                $"{after.Values.Sum()} resources of the record are dated after asOf {CohortInstant.Format(AsOf)} ({string.Join(", ", after.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => $"{pair.Key} {pair.Value}"))}): they are in the data but in the future relative to asOf, so no list, latest value or count includes them (record.resources, other, kinds and labs.excluded too).",
                 Location: null));
         }
 
@@ -354,11 +390,16 @@ internal sealed class PatientContext
     /// <summary>Whether <paramref name="entry"/> is not dated after <see cref="AsOf"/>: undated, or starting at or before it.</summary>
     private bool NotAfter(ContextEntry entry) => entry.Date is not { } date || date.CompareTo(_asOf.Value.Bound) <= 0;
 
-    // The domains' resources dated after asOf, by type: in the data, but in the future relative to asOf, so in no list or count.
-    private IReadOnlyDictionary<string, int> CountAfterAsOf() => DomainTypes
-        .Select(type => (Type: type, Count: Describe(Compartment.OfType(type)).Count(entry => !NotAfter(entry))))
-        .Where(pair => pair.Count > 0)
-        .ToDictionary(pair => pair.Type, pair => pair.Count, StringComparer.Ordinal);
+    // A member whose type has a main date and whose main date starts after asOf.
+    private bool DatedAfterAsOf(CatalogEntry member) =>
+        ClinicalRules.MainDate.ContainsKey(member.ResourceType) && Describe(member) is { } entry && !NotAfter(entry);
+
+    // The members dated after asOf, by type: in the data, but in the future relative to asOf, so in no list or count.
+    private IReadOnlyDictionary<string, int> CountAfterAsOf() => Compartment.Members.Count == Members.Count
+        ? new Dictionary<string, int>(StringComparer.Ordinal)
+        : Compartment.Members.Except(Members)
+            .GroupBy(member => member.ResourceType, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
 
     /// <summary>The entries <paramref name="rule"/> keeps, when rules are applied; all of them otherwise.</summary>
     private IReadOnlyList<ContextEntry> Keep(IReadOnlyList<ContextEntry> entries, string rule) =>
@@ -420,7 +461,7 @@ internal sealed class PatientContext
             .Select(group => Series(group.Key, [.. group]))
             .OrderByDescending(lab => lab.Observations.Count)
             .ThenBy(lab => lab.NodeKey, StringComparer.Ordinal)];
-        return (series, Compartment.OfType("Observation").Count - series.Sum(lab => lab.Observations.Count));
+        return (series, MembersOf("Observation").Count - series.Sum(lab => lab.Observations.Count));
     }
 
     private static LabSeries Series(string nodeKey, IReadOnlyList<ContextEntry> observations)

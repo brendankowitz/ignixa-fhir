@@ -46,7 +46,7 @@ public static class ContextFinder
             List<IssueItem> issues = [];
             int pageSize = Paging.Resolve(count, offset, issues);
             ElementsProjection? projection = elements is null ? null : ElementsProjection.Parse([elements], session.Schema);
-            PatientContext context = PatientContext.Open(session, patientId, asOf: null);
+            PatientContext context = PatientContext.Open(session, patientId, session.AsOfClock.Stated(argument: null));
             (IReadOnlyList<ContextEntry> matches, string rule) = Match(context, trimmed);
             List<AbsentItem> absent = matches.Count == 0 ? [Absence(context, query)] : [];
             return ContextPage.Build(
@@ -73,7 +73,7 @@ public static class ContextFinder
                 resume => Next(context, query, resume),
                 issues,
                 absent,
-                cancellationToken);
+                cancellationToken) with { AsOf = context.Anchor };
         }
         catch (ToolRequestException ex)
         {
@@ -94,7 +94,7 @@ public static class ContextFinder
 
     private static (IReadOnlyList<ContextEntry> Matches, string Rule) Match(PatientContext context, string query)
     {
-        List<CatalogEntry> coded = [.. context.Compartment.Members.Where(member => ClinicalRules.MainCode.ContainsKey(member.ResourceType))];
+        List<CatalogEntry> coded = [.. context.Members.Where(member => ClinicalRules.MainCode.ContainsKey(member.ResourceType))];
         int bar = query.IndexOf('|', StringComparison.Ordinal);
         bool byCode = bar >= 0 || !query.Any(char.IsWhiteSpace);
         bool byText = bar < 0;
@@ -128,8 +128,8 @@ public static class ContextFinder
 
     private static AbsentItem Absence(PatientContext context, string query)
     {
-        List<string> types = [.. context.Compartment.Types.Where(ClinicalRules.MainCode.ContainsKey).Order(StringComparer.Ordinal)];
-        int searched = context.Compartment.Members.Count(member => ClinicalRules.MainCode.ContainsKey(member.ResourceType));
+        List<string> types = [.. context.Members.Select(member => member.ResourceType).Distinct(StringComparer.Ordinal).Where(ClinicalRules.MainCode.ContainsKey).Order(StringComparer.Ordinal)];
+        int searched = context.Members.Count(member => ClinicalRules.MainCode.ContainsKey(member.ResourceType));
         DateTimeOffset builtAt = context.Compartment.IndexBuiltAt;
         return new AbsentItem(
             $"resources matching '{query}'",

@@ -17,8 +17,8 @@ namespace Ignixa.CliOnFhir.Patients;
 public static class ContextExpander
 {
     /// <summary>
-    /// Expands <paramref name="nodeKey"/> in <c>Patient/<paramref name="patientId"/></c>'s context as of the session clock's
-    /// current instant. A malformed key, or one that names no node of this patient, fails the call (null facts, an
+    /// Expands <paramref name="nodeKey"/> in <c>Patient/<paramref name="patientId"/></c>'s context as of the session's
+    /// <c>--as-of</c>, else as of the patient's latest dated resource. A malformed key, or one that names no node of this patient, fails the call (null facts, an
     /// <c>error</c> issue), as do a malformed id, an unknown patient and bad paging.
     /// </summary>
     public static ToolEnvelope<NodeFacts?> Expand(
@@ -44,7 +44,7 @@ public static class ContextExpander
             List<IssueItem> issues = [];
             int pageSize = Paging.Resolve(count, offset, issues);
             ElementsProjection? projection = elements is null ? null : ElementsProjection.Parse([elements], session.Schema);
-            PatientContext context = PatientContext.Open(session, patientId, asOf: null);
+            PatientContext context = PatientContext.Open(session, patientId, session.AsOfClock.Stated(argument: null));
             Node node = Resolve(context, nodeKey, issues);
             List<AbsentItem> absent = node.Entries.Count == 0 && nodeKey == ClinicalDomains.Allergies ? [ContextRoot.AllergyAbsence(context)] : [];
             return ContextPage.Build(
@@ -106,7 +106,7 @@ public static class ContextExpander
     /// <summary>The Encounter, then the resources in its Encounter compartment, type by type.</summary>
     private static Node Encounter(PatientContext context, string nodeKey, List<IssueItem> issues)
     {
-        CatalogEntry encounter = context.Compartment.OfType("Encounter").FirstOrDefault(resource => NodeKey.Encounter(resource.Id) == nodeKey)
+        CatalogEntry encounter = context.MembersOf("Encounter").FirstOrDefault(resource => NodeKey.Encounter(resource.Id) == nodeKey)
             ?? throw Unknown(context, nodeKey);
         (IReadOnlyList<IndexedResource> members, IReadOnlyList<string> unevaluable) = context.Compartment.Folder.CompartmentMembers("Encounter", encounter.Id);
         if (unevaluable.Count > 0)

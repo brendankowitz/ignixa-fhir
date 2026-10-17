@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.CliOnFhir.Catalog;
+using Ignixa.CliOnFhir.Clock;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Session;
 
@@ -17,7 +18,21 @@ public static class ContextRoot
     /// latest dated resource (<see cref="PatientContext.Open"/>). A request that cannot be answered (unreadable folder,
     /// malformed id, unknown patient) yields null facts and an <c>error</c> issue.
     /// </summary>
-    public static ToolEnvelope<RootDigestFacts?> Get(FolderSession session, string patientId, DateTimeOffset? asOf = null, CancellationToken cancellationToken = default)
+    public static ToolEnvelope<RootDigestFacts?> Get(FolderSession session, string patientId, DateTimeOffset? asOf = null, CancellationToken cancellationToken = default) =>
+        Answer(session, () => PatientContext.Open(session, patientId, asOf), cancellationToken);
+
+    /// <summary>
+    /// The root digest as of what <paramref name="asOf"/> was stated (the session's <c>--as-of</c>), else as of the patient's
+    /// latest dated resource: <c>patient_context</c> root <c>detail=full</c> and <c>context</c>.
+    /// </summary>
+    public static ToolEnvelope<RootDigestFacts?> Get(FolderSession session, string patientId, AsOfClock asOf, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(asOf);
+
+        return Answer(session, () => PatientContext.Open(session, patientId, asOf.Stated(argument: null)), cancellationToken);
+    }
+
+    private static ToolEnvelope<RootDigestFacts?> Answer(FolderSession session, Func<PatientContext> open, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
 
@@ -28,7 +43,7 @@ public static class ContextRoot
 
         try
         {
-            return Execute(PatientContext.Open(session, patientId, asOf), cancellationToken);
+            return Execute(open(), cancellationToken);
         }
         catch (ToolRequestException ex)
         {
@@ -48,7 +63,7 @@ public static class ContextRoot
             context.Encounters,
             context.Encounters.Count,
             context.EncounterRuleApplied,
-            context.Compartment.OfType("Encounter").Count - context.Encounters.Count,
+            context.MembersOf("Encounter").Count - context.Encounters.Count,
             context.Window,
             shown);
         DomainStub labs = Stub(
@@ -66,7 +81,7 @@ public static class ContextRoot
             absent.Add(AllergyAbsence(context));
         }
 
-        Dictionary<string, int> otherTypes = context.Compartment.Members
+        Dictionary<string, int> otherTypes = context.Members
             .Where(member => !ClinicalDomains.StubTypes.Contains(member.ResourceType))
             .GroupBy(member => member.ResourceType, StringComparer.Ordinal)
             .OrderBy(group => group.Key, StringComparer.Ordinal)
@@ -76,7 +91,7 @@ public static class ContextRoot
             context.PatientReference,
             session.Schema.Version.ToString(),
             context.AsOf,
-            context.Compartment.Members.Count,
+            context.Members.Count,
             context.Demographics(),
             problems,
             medications,
@@ -137,7 +152,7 @@ public static class ContextRoot
         DateTimeOffset builtAt = context.Compartment.IndexBuiltAt;
         return new AbsentItem(
             "AllergyIntolerance",
-            $"{context.PatientReference} compartment ({context.Compartment.Members.Count} resources, via {string.Join(", ", through)}); {inFolder} in the folder's {session.Catalog.FilesScanned} files. No record, not 'no known allergies'",
+            $"{context.PatientReference} compartment ({context.Members.Count} resources{(context.AnyAfterAsOf ? " at or before asOf" : string.Empty)}, via {string.Join(", ", through)}); {inFolder} in the folder's {session.Catalog.FilesScanned} files. No record, not 'no known allergies'",
             builtAt);
     }
 

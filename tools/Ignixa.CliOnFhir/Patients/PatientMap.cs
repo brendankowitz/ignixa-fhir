@@ -90,6 +90,18 @@ public static partial class PatientMap
         Answer(session, () => patientId, () => asOf is { } given ? new AsOf(given, AsOfSources.Argument) : null, cancellationToken);
 
     /// <summary>
+    /// The map of <c>Patient/<paramref name="patientId"/></c> as of what <paramref name="asOf"/> was stated (the session's
+    /// <c>--as-of</c>), else as of the patient's latest dated resource: <c>patient_context</c> root and <c>context --compact</c>,
+    /// so one session gives the map <c>patient_summary</c> gives.
+    /// </summary>
+    public static ToolEnvelope<PatientMapFacts?> Get(FolderSession session, string patientId, AsOfClock asOf, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(asOf);
+
+        return Answer(session, () => patientId, () => asOf.Stated(argument: null), cancellationToken);
+    }
+
+    /// <summary>
     /// The map of the Patient <paramref name="patient"/> names: its id, an identifier value (an MRN) or <c>system|value</c>
     /// (<see cref="PatientLookup"/>). The <c>patient_summary</c> tool. A patient named ambiguously or not at all yields null
     /// facts and an <c>ambiguous-patient</c> or <c>unknown-patient</c> error naming the candidates' ids.
@@ -133,7 +145,7 @@ public static partial class PatientMap
         try
         {
             AsOf? given = asOf();
-            return Execute(PatientContext.Open(session, patientId(), given?.Moment), given, cancellationToken);
+            return Execute(PatientContext.Open(session, patientId(), given), given, cancellationToken);
         }
         catch (ToolRequestException ex)
         {
@@ -162,7 +174,7 @@ public static partial class PatientMap
 
         List<FhirTemporal> dates = [.. described.Select(entry => entry.Date).OfType<FhirTemporal>()];
         var record = new MapRecord(
-            context.Compartment.Members.Count,
+            context.Members.Count,
             dates.Count == 0 ? null : Day(dates.Min()!.Literal),
             dates.Count == 0 ? null : Day(dates.Max()!.Literal),
             context.AsOfGiven ? CohortInstant.Format(context.AsOf) : null,
@@ -170,7 +182,7 @@ public static partial class PatientMap
             context.Window,
             given?.ShownPrecision,
             given?.ShownZoneAssumed);
-        Dictionary<string, int> other = context.Compartment.Members
+        Dictionary<string, int> other = context.Members
             .Where(member => !MapTypes.Contains(member.ResourceType))
             .GroupBy(member => member.ResourceType, StringComparer.Ordinal)
             .OrderBy(group => group.Key, StringComparer.Ordinal)
@@ -212,7 +224,7 @@ public static partial class PatientMap
     {
         FolderKinds kinds = context.Session.Kinds;
         Dictionary<string, IReadOnlyDictionary<string, int>> mixed = new(StringComparer.Ordinal);
-        foreach (IGrouping<string, CatalogEntry> type in context.Compartment.Members
+        foreach (IGrouping<string, CatalogEntry> type in context.Members
             .Where(member => kinds.IsMixed(member.ResourceType))
             .GroupBy(member => member.ResourceType, StringComparer.Ordinal)
             .OrderBy(group => group.Key, StringComparer.Ordinal))
@@ -430,19 +442,19 @@ public static partial class PatientMap
         [
             ("AllergyIntolerance", context.Allergies.Count),
             ("Condition", context.Problems.Count),
-            ("MedicationRequest or MedicationStatement", context.Compartment.OfType("MedicationRequest").Count + context.Compartment.OfType("MedicationStatement").Count),
-            ("Encounter", context.Compartment.OfType("Encounter").Count),
-            ("Observation", context.Compartment.OfType("Observation").Count),
+            ("MedicationRequest or MedicationStatement", context.MembersOf("MedicationRequest").Count + context.MembersOf("MedicationStatement").Count),
+            ("Encounter", context.MembersOf("Encounter").Count),
+            ("Observation", context.MembersOf("Observation").Count),
             ("Immunization", context.Immunizations.Count),
             ("Procedure", context.Procedures.Count),
         ];
         IEnumerable<string> domainTypes = domains.Where(domain => domain.Count == 0).Select(domain => domain.Type);
-        List<string> missing = [.. domainTypes.Concat(NotableTypes.Where(type => possible.Contains(type) && context.Compartment.OfType(type).Count == 0))];
+        List<string> missing = [.. domainTypes.Concat(NotableTypes.Where(type => possible.Contains(type) && context.MembersOf(type).Count == 0))];
         return missing.Count == 0
             ? null
             : new AbsentItem(
                 string.Join(", ", missing),
-                "none in compartment; not a recorded negative",
+                context.AnyAfterAsOf ? "none in compartment at or before asOf; not a recorded negative" : "none in compartment; not a recorded negative",
                 builtAt);
     }
 

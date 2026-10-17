@@ -133,8 +133,8 @@ public sealed class PatientTools(FolderSession session)
 
     private CallToolResult Root(string patientId, string? detail, CancellationToken cancellationToken) => detail switch
     {
-        null or "map" => ToolResults.Lean(PatientMap.Get(session, patientId, cancellationToken: cancellationToken)),
-        "full" => ToolResults.Lean(ContextRoot.Get(session, patientId, cancellationToken: cancellationToken)),
+        null or "map" => ToolResults.Lean(PatientMap.Get(session, patientId, session.AsOfClock, cancellationToken)),
+        "full" => ToolResults.Lean(ContextRoot.Get(session, patientId, session.AsOfClock, cancellationToken)),
         _ => ToolResults.Lean(EnvelopeAssembler.Failure<object>(
             session,
             new Contracts.IssueItem("error", "invalid-parameter", $"'detail' must be 'map' (the default) or 'full', not '{QueryEcho.Value(detail)}'.", Location: null),

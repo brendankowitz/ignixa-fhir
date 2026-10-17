@@ -37,7 +37,8 @@ public class PatientMapTests
         PatientMapFacts facts = PatientMap.Get(Open(folder), "p1", AsOf).Facts.ShouldNotBeNull();
 
         facts.Demographics.ShouldBe(new Demographics("Patient/p1", "Ann B Smith", "female", "1975-03-04", null));
-        facts.Record.Resources.ShouldBe(32);
+        // 32 in the record; e8 (2027) and o10 (2026-12) are dated after asOf, so are left out (Task 12b fix round 1, I6).
+        facts.Record.Resources.ShouldBe(30);
         facts.Record.From.ShouldBe("2010-01-01");
         facts.Record.To.ShouldBe("2025-06-01");
         facts.Domains.Keys.ShouldBe(PatientMap.DomainNames);
@@ -50,7 +51,8 @@ public class PatientMapTests
         facts.Domains["encounters"].Last.ShouldBe("2025-06-01");
         facts.Domains["labs"].Top.ShouldBe(["loinc|8867-4 Heart rate @2025-01-01 = 80 /min n=4 up Observation/o3", "loinc|2339-0 Glucose @2025-01-01 = 100 mg/dL n=3 down Observation/o9"]);
         facts.Domains["labs"].More.ShouldNotBeNull().ShouldContain("loinc|8480-6 Systolic blood pressure");
-        facts.Domains["labs"].Excluded.ShouldBe(3);
+        // o11 and o12; o10 is dated after asOf, so in the dated-after-as-of note instead (Task 12b fix round 1, I6).
+        facts.Domains["labs"].Excluded.ShouldBe(2);
         facts.Domains["immunizations"].ShouldBe(new MapDomain(0));
         facts.CodeSystems.Take(3).ShouldBe(["loinc=http://loinc.org", "v3-ActCode=http://terminology.hl7.org/CodeSystem/v3-ActCode", "rxnorm=http://www.nlm.nih.gov/research/umls/rxnorm"]);
         facts.CodeSystems.ShouldContain($"sct={Snomed}");

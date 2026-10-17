@@ -17,14 +17,14 @@ namespace Ignixa.CliOnFhir.Commands;
 internal static class AsOfOption
 {
     /// <summary>The verbs that read the option.</summary>
-    public static readonly IReadOnlySet<string> Consumers = new HashSet<string>(StringComparer.Ordinal) { "view", "draft", "summary", "search", "mcp" };
+    public static readonly IReadOnlySet<string> Consumers = new HashSet<string>(StringComparer.Ordinal) { "view", "draft", "summary", "context", "find", "search", "mcp" };
 
     /// <summary>The option, shared by the root command and the verbs that read it.</summary>
     public static Option<string?> Option { get; } = new("--as-of")
     {
         Description = "The instant the data is read as of: a FHIR instant such as 2024-05-01T08:30:00-05:00, or a date such as 2024-05-01 (that day's first instant in UTC). "
             + "Read by view (%asOf, %asOfDate) and draft (authoredOn, effective, issued), default the folder's data-pull time (a Bulk Data export manifest, "
-            + "else its Bundles' timestamp) else the clock; by search (relative dates such as ge now-7d); by summary, default the patient's latest dated resource; "
+            + "else its Bundles' timestamp) else the clock; by search (relative dates such as ge now-7d); by summary, context and find, default the patient's latest dated resource; "
             + "and by mcp, for every call that does not give its own asOf",
         Recursive = true,
     };
