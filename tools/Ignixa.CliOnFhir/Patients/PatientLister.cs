@@ -59,7 +59,7 @@ public static class PatientLister
         int pageSize = Paging.Resolve(count, offset, issues);
         if (sort is not (ByName or ByLatest))
         {
-            throw ToolRequestException.Error("invalid-parameter", $"'sort' must be '{ByName}' or '{ByLatest}', not '{sort}'.");
+            throw ToolRequestException.Error("invalid-parameter", $"'sort' must be '{ByName}' or '{ByLatest}', not '{QueryEcho.Value(sort)}'.");
         }
 
         PatientMatch? match = query is null ? null : PatientMatch.Parse(query);

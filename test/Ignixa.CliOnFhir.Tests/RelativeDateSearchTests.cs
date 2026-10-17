@@ -140,6 +140,25 @@ public class RelativeDateSearchTests
         note.Diagnostics.ShouldContain("today as the asOf day in UTC");
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GivenThousandsOfRelativeDates_WhenSearchedAtTheCliCeiling_ThenTheResponseFitsAndSaysWhatIsNotListed(bool columns)
+    {
+        using TestFolder folder = Readings();
+        string query = string.Join('&', Enumerable.Range(1, 200).Select(index => $"date=genow-{index}d")) + "&date=" + string.Join(',', Enumerable.Repeat("now", 3000));
+        var request = new SearchRequest("Observation", query, MaxBytes: EnvelopeJson.MaxBytes, Columns: columns ? [new("v", "effective")] : null);
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), request);
+
+        System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(envelope, EnvelopeJson.Compact).Length.ShouldBeLessThanOrEqualTo(EnvelopeJson.MaxBytes);
+        SearchFacts facts = envelope.Facts.ShouldNotBeNull();
+        facts.ResolvedParameters.ShouldNotBeNull().Count.ShouldBe(RelativeDates.MaxListed);
+        facts.ResolvedParameters![^1].Resolved.Length.ShouldBeLessThanOrEqualTo(QueryEcho.MaxValueLength + 64);
+        envelope.Omitted.ShouldContain(item => item.What == $"{201 - RelativeDates.MaxListed} more resolvedParameters (facts.query is the query searched)");
+        envelope.Omitted.ShouldContain(item => item.What.StartsWith("facts.originalQuery past its first", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void GivenAnAbsoluteQuery_WhenSearched_ThenFactsCarryNoRewrite()
     {

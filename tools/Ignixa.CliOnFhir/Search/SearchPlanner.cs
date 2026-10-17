@@ -44,7 +44,8 @@ public static class SearchPlanner
             // The plan shows the query the search runs: relative dates resolved as the search resolves them, and both queries stated.
             AsOf? callAsOf = AsOfClock.Argument(request.AsOf);
             (SearchRequest resolved, IReadOnlyList<ResolvedParameter> parameters, IssueItem? note) = RelativeDates.Resolve(session.Definitions, request, () => callAsOf ?? session.AsOfClock.Resolve().Value);
-            ToolEnvelope<PlanFacts?> envelope = Execute(session, resolved, execute, note is null ? null : (QueryEcho.Of(request.Query!), parameters, note), cancellationToken);
+            (IReadOnlyList<ResolvedParameter> shown, IReadOnlyList<OmittedItem> unlisted) = note is null ? ([], []) : RelativeDates.ForFacts(request.Query!, parameters);
+            ToolEnvelope<PlanFacts?> envelope = Execute(session, resolved, execute, note is null ? null : (QueryEcho.Of(request.Query!), shown, note, unlisted), cancellationToken);
             return callAsOf is null ? envelope : envelope with { AsOf = callAsOf };
         }
         catch (ToolRequestException ex)
@@ -57,7 +58,7 @@ public static class SearchPlanner
         FolderSession session,
         SearchRequest request,
         bool execute,
-        (string OriginalQuery, IReadOnlyList<ResolvedParameter> Parameters, IssueItem Note)? relative,
+        (string OriginalQuery, IReadOnlyList<ResolvedParameter> Parameters, IssueItem Note, IReadOnlyList<OmittedItem> Unlisted)? relative,
         CancellationToken cancellationToken)
     {
         // The search's own request checks, in the search's order, so a request the search refuses the plan refuses too.
@@ -87,7 +88,7 @@ public static class SearchPlanner
             planIssues.Add(new IssueItem("information", "invalid-value", $"{population.DigestedValues} top values are shown as digests ('~' and 16 hex digits): their system is not an http(s) or urn URI, or their code is not shaped as one. A search cannot use a digest.", Location: null));
         }
 
-        var facts = new PlanFacts(request.ResourceType, QueryEcho.Of(request.Query ?? string.Empty), request.Compartment, population.Indexed(request.ResourceType), parameters, execute)
+        var facts = new PlanFacts(request.ResourceType, QueryEcho.Of(request.Query ?? string.Empty), request.Compartment is null ? null : QueryEcho.Of(request.Compartment), population.Indexed(request.ResourceType), parameters, execute)
         {
             OriginalQuery = relative?.OriginalQuery,
             ResolvedParameters = relative?.Parameters,
@@ -98,16 +99,21 @@ public static class SearchPlanner
         }
 
         bool queryCut = QueryEcho.IsCut(request.Query);
-        List<OmittedItem> diagnosticsOmitted = [.. parseOmitted];
+        List<OmittedItem> diagnosticsOmitted = [.. parseOmitted, .. relative?.Unlisted ?? []];
         List<IssueItem> diagnostics = [];
         ResourceSearcher.AddDiagnostics(session, population.Source, diagnostics, diagnosticsOmitted);
         if (!execute)
         {
             DateTimeOffset builtAt = population.Source.IndexesRead.Select(index => index.BuiltAt).DefaultIfEmpty(session.Catalog.BuiltAt).Max();
-            List<NextCall> next = queryCut ? [] : [Search(request)];
+            bool repeatable = SearchNarrowing.Repeatable(request);
+            List<NextCall> next = repeatable ? [Search(request)] : [];
             if (queryCut)
             {
                 diagnosticsOmitted.Add(QueryEcho.Cut(request.Query!, "facts.query"));
+            }
+
+            if (!repeatable)
+            {
                 diagnosticsOmitted.Add(QueryEcho.NextLeftOut("the search this plan checks"));
             }
 
@@ -116,7 +122,7 @@ public static class SearchPlanner
         }
 
         // The search reports its own parse warnings and the diagnostics of the indexes it reads.
-        return WithResults(session, request, facts, planIssues, queryCut ? [QueryEcho.Cut(request.Query!, "facts.query")] : [], cancellationToken);
+        return WithResults(session, request, facts, planIssues, [.. queryCut ? [QueryEcho.Cut(request.Query!, "facts.query")] : Array.Empty<OmittedItem>(), .. relative?.Unlisted ?? []], cancellationToken);
     }
 
     /// <summary>
@@ -178,7 +184,7 @@ public static class SearchPlanner
         };
 
         bool comparable = trace.DataType is SearchParamType.Number or SearchParamType.Date or SearchParamType.Quantity;
-        var plan = new ParameterPlan(trace.Key, trace.Value, outcome, reason, [.. collected.Modifiers.Order(StringComparer.Ordinal)], comparable ? [.. collected.Prefixes.Order(StringComparer.Ordinal)] : [], collected.Bindings);
+        var plan = new ParameterPlan(QueryEcho.Of(trace.Key), QueryEcho.Of(trace.Value), outcome, reason, [.. collected.Modifiers.Order(StringComparer.Ordinal)], comparable ? [.. collected.Prefixes.Order(StringComparer.Ordinal)] : [], collected.Bindings);
         return (plan, collected.Modifiers.Contains("not") || collected.MissingMatches);
     }
 

@@ -141,7 +141,7 @@ public sealed class TerminologyTools(FolderSession session, McpToolset toolset =
         TermExpandInFolder.FolderScope => ToolResults.From(await TermExpandInFolder.ExpandAsync(session, valueSet, filter, count, offset, cancellationToken)),
         _ => ToolResults.From(EnvelopeAssembler.Failure<object>(
             session,
-            new IssueItem("error", "invalid-parameter", $"operation=expand takes scope 'all' (the default: every code) or 'folder' (only the codes the folder uses), not '{scope}'.", Location: null),
+            new IssueItem("error", "invalid-parameter", $"operation=expand takes scope 'all' (the default: every code) or 'folder' (only the codes the folder uses), not '{QueryEcho.Value(scope)}'.", Location: null),
             cancellationToken)),
     };
 

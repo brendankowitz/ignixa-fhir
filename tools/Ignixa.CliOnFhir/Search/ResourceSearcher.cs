@@ -71,15 +71,17 @@ public static class ResourceSearcher
             // Relative dates are resolved first, against the call's own asOf or the session's, so the query parsed is absolute.
             AsOf? callAsOf = AsOfClock.Argument(request.AsOf);
             (SearchRequest resolved, IReadOnlyList<ResolvedParameter> parameters, IssueItem? note) = RelativeDates.Resolve(session.Definitions, request, () => callAsOf ?? session.AsOfClock.Resolve().Value);
-            int annotations = (note is null ? 0 : EnvelopeJson.SizeOf(QueryEcho.Of(request.Query!)) + EnvelopeJson.SizeOf(parameters) + EnvelopeJson.SizeOf(note) + AnnotationNames)
+            (IReadOnlyList<ResolvedParameter> shown, IReadOnlyList<OmittedItem> unlisted) = note is null ? ([], []) : RelativeDates.ForFacts(request.Query!, parameters);
+            int annotations = (note is null ? 0 : EnvelopeJson.SizeOf(QueryEcho.Of(request.Query!)) + EnvelopeJson.SizeOf(shown) + EnvelopeJson.SizeOf(unlisted) + EnvelopeJson.SizeOf(note) + AnnotationNames)
                 + (callAsOf is null ? 0 : EnvelopeJson.SizeOf(AsOf.SizingReserve));
             ToolEnvelope<SearchFacts?> envelope = Execute(session, resolved, extraBytes + annotations, cancellationToken);
             if (note is not null)
             {
                 envelope = envelope with
                 {
-                    Facts = envelope.Facts is { } facts ? facts with { OriginalQuery = QueryEcho.Of(request.Query!), ResolvedParameters = parameters } : null,
+                    Facts = envelope.Facts is { } facts ? facts with { OriginalQuery = QueryEcho.Of(request.Query!), ResolvedParameters = shown } : null,
                     Issues = [note, .. envelope.Issues],
+                    Omitted = [.. envelope.Omitted, .. unlisted],
                 };
             }
 
@@ -265,7 +267,7 @@ public static class ResourceSearcher
         List<CatalogEntry> pageEntries = [.. page.Select(match => match.Entry)];
         Func<int, JsonObject, int> pageCosts = ResolvedReferences.Charge(page);
         // The calls repeat the query whole, so one too long to fit beside the page is left out (the omitted item says how to resume).
-        bool nextTooLong = false;
+        bool nextTooLong = !SearchNarrowing.Repeatable(request);
         List<NextCall> Fitting(List<NextCall> calls)
         {
             if (calls.Count == 0 || ReservedBytes(request, query, matches.Count, included, issues, omitted, calls) <= budget)
@@ -313,7 +315,7 @@ public static class ResourceSearcher
 
         if (resume < matches.Count)
         {
-            string resumeWith = nextTooLong ? $"offset={resume}; no next call, as the query is too long to repeat in one" : $"offset={resume}";
+            string resumeWith = nextTooLong ? $"offset={resume}; no next call, as the request is too long to repeat in one" : $"offset={resume}";
             omitted.Add(new OmittedItem($"{matches.Count - resume} more matches ({resumeWith})", cutBySize ? "size-budget" : "limit"));
         }
 

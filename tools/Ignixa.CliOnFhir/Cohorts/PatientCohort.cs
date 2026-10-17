@@ -53,7 +53,7 @@ internal static class PatientCohort
 
             if (arguments.Detail is not (null or "compact" or FullDetail))
             {
-                throw ToolRequestException.Error("invalid-parameter", $"'detail' must be 'compact' (the default) or 'full', not '{arguments.Detail}'.");
+                throw ToolRequestException.Error("invalid-parameter", $"'detail' must be 'compact' (the default) or 'full', not '{QueryEcho.Value(arguments.Detail)}'.");
             }
 
             bool isFull = arguments.Detail == FullDetail;

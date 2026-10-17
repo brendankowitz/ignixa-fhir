@@ -10,6 +10,7 @@ using Ignixa.CliOnFhir.Patients;
 using Ignixa.CliOnFhir.Session;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using Ignixa.CliOnFhir.Contracts;
 
 namespace Ignixa.CliOnFhir.Mcp;
 
@@ -136,7 +137,7 @@ public sealed class PatientTools(FolderSession session)
         "full" => ToolResults.Lean(ContextRoot.Get(session, patientId, cancellationToken: cancellationToken)),
         _ => ToolResults.Lean(EnvelopeAssembler.Failure<object>(
             session,
-            new Contracts.IssueItem("error", "invalid-parameter", $"'detail' must be 'map' (the default) or 'full', not '{detail}'.", Location: null),
+            new Contracts.IssueItem("error", "invalid-parameter", $"'detail' must be 'map' (the default) or 'full', not '{QueryEcho.Value(detail)}'.", Location: null),
             cancellationToken)),
     };
 }

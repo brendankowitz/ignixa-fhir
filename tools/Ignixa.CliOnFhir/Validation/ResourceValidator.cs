@@ -382,7 +382,7 @@ public static class ResourceValidator
     {
         null or "full" => ValidationDepth.Full,
         "spec" => ValidationDepth.Spec,
-        _ => throw ToolRequestException.Error("invalid-parameter", $"'depth' must be 'spec' or 'full', not '{depth}'."),
+        _ => throw ToolRequestException.Error("invalid-parameter", $"'depth' must be 'spec' or 'full', not '{QueryEcho.Value(depth)}'."),
     };
 
     /// <summary>The resources to validate in this call: the requested limit, at most the maximum for the mode.</summary>

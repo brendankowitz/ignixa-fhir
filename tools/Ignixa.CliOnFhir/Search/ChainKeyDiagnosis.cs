@@ -50,7 +50,7 @@ internal sealed class ChainKeyDiagnosis(IFhirSchemaProvider schema, ISearchParam
         definitions.TryGetSearchParameter(types[0], name, out SearchParameterInfo reference);
         if (reference.Type != SearchParamType.Reference)
         {
-            return Invalid(parameter, $"'{name}' is a {reference.Type} parameter of {types[0]}, so it cannot be chained; only reference parameters can.");
+            return Invalid(parameter, $"'{QueryEcho.Value(name)}' is a {reference.Type} parameter of {types[0]}, so it cannot be chained; only reference parameters can.");
         }
 
         string? typed = colon < 0 ? null : link[(colon + 1)..];
@@ -83,7 +83,7 @@ internal sealed class ChainKeyDiagnosis(IFhirSchemaProvider schema, ISearchParam
         (string source, string referenceName, string rest) = (parts[1], parts[2], parts[3]);
         if (!schema.ResourceTypeNames.Contains(source))
         {
-            return Invalid(parameter, $"'{source}' is not a {schema.Version} resource type.");
+            return Invalid(parameter, $"'{QueryEcho.Value(source)}' is not a {schema.Version} resource type.");
         }
 
         if (!definitions.TryGetSearchParameter(source, referenceName, out SearchParameterInfo reference))
@@ -93,7 +93,7 @@ internal sealed class ChainKeyDiagnosis(IFhirSchemaProvider schema, ISearchParam
 
         if (reference.Type != SearchParamType.Reference)
         {
-            return Invalid(parameter, $"'{referenceName}' is a {reference.Type} parameter of {source}; _has needs a reference parameter.");
+            return Invalid(parameter, $"'{QueryEcho.Value(referenceName)}' is a {reference.Type} parameter of {source}; _has needs a reference parameter.");
         }
 
         if (!reference.TargetResourceTypes.Intersect(types, StringComparer.Ordinal).Any())
@@ -107,15 +107,15 @@ internal sealed class ChainKeyDiagnosis(IFhirSchemaProvider schema, ISearchParam
     private ToolRequestException Unknown(string parameter, string name, string resourceType) =>
         ToolRequestException.Error(
             SearchQueryParser.UnknownParameterCode,
-            $"'{parameter}': '{name}' is not a search parameter of {resourceType}. {ParameterSuggestions.For(name, resourceType, knownNames(resourceType))}{SearchQueryParser.LenientHint}");
+            $"'{QueryEcho.Value(parameter)}': '{QueryEcho.Value(name)}' is not a search parameter of {resourceType}. {ParameterSuggestions.For(name, resourceType, knownNames(resourceType))}{SearchQueryParser.LenientHint}");
 
     private ToolRequestException Unknown(string parameter, string name, IReadOnlyList<string> resourceTypes) =>
         resourceTypes.Count == 1
             ? Unknown(parameter, name, resourceTypes[0])
             : ToolRequestException.Error(
                 SearchQueryParser.UnknownParameterCode,
-                $"'{parameter}': '{name}' is not a search parameter of any type the reference can point at ({string.Join(", ", resourceTypes)}). Name the type, for example ':{resourceTypes[0]}', to get suggestions.{SearchQueryParser.LenientHint}");
+                $"'{QueryEcho.Value(parameter)}': '{QueryEcho.Value(name)}' is not a search parameter of any type the reference can point at ({string.Join(", ", resourceTypes)}). Name the type, for example ':{resourceTypes[0]}', to get suggestions.{SearchQueryParser.LenientHint}");
 
     private static ToolRequestException Invalid(string parameter, string reason) =>
-        ToolRequestException.Error(SearchFailures.InvalidRequestCode, $"'{parameter}': {reason}");
+        ToolRequestException.Error(SearchFailures.InvalidRequestCode, $"'{QueryEcho.Value(parameter)}': {reason}");
 }

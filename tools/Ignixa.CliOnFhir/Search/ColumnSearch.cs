@@ -175,6 +175,9 @@ internal static class ColumnSearch
         {
             List<OmittedItem> skipped = [];
             List<Row?> kept = [.. rows];
+
+            // The next calls repeat the request whole, so ones that would not fit even beside no row are left out.
+            _noNext = !SearchNarrowing.Repeatable(request) || !Fits(Build(kept, 0, skipped));
             while (true)
             {
                 if (Fits(Build(kept, kept.Count, skipped)))
@@ -212,6 +215,8 @@ internal static class ColumnSearch
             }
         }
 
+        private bool _noNext;
+
         private bool Fits(ToolEnvelope<SearchFacts?> envelope) => EnvelopeJson.SizeOf(envelope) <= budget;
 
         /// <summary>The response holding the first <paramref name="taken"/> page positions of <paramref name="kept"/>.</summary>
@@ -240,19 +245,25 @@ internal static class ColumnSearch
 
             List<IssueItem> allIssues = [.. shell.Issues, .. EmptyColumnWarnings(shown.Count, emptyCells), .. UnresolvedNote(shown)];
             List<OmittedItem> allOmitted = [.. shell.Omitted, .. skipped];
-            if (resume < total)
+            if (QueryEcho.IsCut(request.Query))
             {
-                allOmitted.Add(new OmittedItem($"{total - resume} more matches (offset={resume})", cut ? "size-budget" : "limit"));
+                allOmitted.Add(QueryEcho.Cut(request.Query!, "facts.query"));
             }
 
-            var facts = new SearchFacts(request.ResourceType, request.Query ?? string.Empty, request.Compartment, total, request.Offset, shown.Count, Resources: null)
+            if (resume < total)
+            {
+                string resumeWith = _noNext ? $"offset={resume}; no next call, as the request is too long to repeat in one" : $"offset={resume}";
+                allOmitted.Add(new OmittedItem($"{total - resume} more matches ({resumeWith})", cut ? "size-budget" : "limit"));
+            }
+
+            var facts = new SearchFacts(request.ResourceType, QueryEcho.Of(request.Query ?? string.Empty), request.Compartment is null ? null : QueryEcho.Of(request.Compartment), total, request.Offset, shown.Count, Resources: null)
             {
                 Columns = [KeyColumn, .. columns.Select(column => column.Name)],
                 Rows = [.. shown.Select(row => row.Cells)],
                 EmptyCells = emptyCells.Count == 0 ? null : emptyCells,
             };
 
-            List<NextCall> next = resume < total ? SearchNarrowing.After(request, total, resume, cut, largerBudget) : [];
+            List<NextCall> next = resume < total && !_noNext ? SearchNarrowing.After(request, total, resume, cut, largerBudget) : [];
             return shell with { Facts = facts, Evidence = evidence, Omitted = allOmitted, Issues = allIssues, Next = next };
         }
 

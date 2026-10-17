@@ -63,7 +63,7 @@ public sealed class SearchQueryParser
 
         if (!_schema.ResourceTypeNames.Contains(request.ResourceType))
         {
-            throw ToolRequestException.Error("unknown-resource-type", $"'{request.ResourceType}' is not a {_schema.Version} resource type.");
+            throw ToolRequestException.Error("unknown-resource-type", $"'{QueryEcho.Value(request.ResourceType)}' is not a {_schema.Version} resource type.");
         }
 
         List<IssueItem> warnings = [];
@@ -161,7 +161,7 @@ public sealed class SearchQueryParser
 
         if (!string.Equals(summary, "count", StringComparison.OrdinalIgnoreCase))
         {
-            throw ToolRequestException.Error("invalid-parameter", $"'summary' must be 'count' or omitted, not '{summary}'.");
+            throw ToolRequestException.Error("invalid-parameter", $"'summary' must be 'count' or omitted, not '{QueryEcho.Value(summary)}'.");
         }
 
         parameters.Add(new QueryParameter("_summary", "count"));
@@ -190,7 +190,7 @@ public sealed class SearchQueryParser
             int equals = segment.IndexOf('=', StringComparison.Ordinal);
             if (equals < 0 || equals == segment.Length - 1 || equals == 0)
             {
-                yield return new IssueItem("warning", "parameter-ignored", $"'{segment}' was ignored: a search parameter needs a name and a value ('name=value').", Location: null);
+                yield return new IssueItem("warning", "parameter-ignored", $"'{QueryEcho.Value(segment)}' was ignored: a search parameter needs a name and a value ('name=value').", Location: null);
             }
         }
     }
@@ -200,7 +200,7 @@ public sealed class SearchQueryParser
         // A sort key the builder cannot use is dropped from the order, which changes which page is returned.
         if (options.UnsupportedParams.FirstOrDefault(name => name.StartsWith("_sort=", StringComparison.Ordinal)) is { } sort)
         {
-            throw SearchFailures.NotSupported($"'{sort}' cannot be sorted by: it is not a sortable (date, number, quantity, string, token or uri) search parameter of {resourceType}.");
+            throw SearchFailures.NotSupported($"'{QueryEcho.Value(sort)}' cannot be sorted by: it is not a sortable (date, number, quantity, string, token or uri) search parameter of {resourceType}.");
         }
 
         List<IssueItem> ignored = [];
@@ -250,7 +250,7 @@ public sealed class SearchQueryParser
             throw SearchFailures.NotSupported($"'{name}={value}' is not supported by this tool: {baseName} is a search parameter of {resourceType} that the search pipeline does not evaluate.");
         }
 
-        string reason = detail?.TrimEnd('.') ?? $"'{baseName}' is not a search parameter of {resourceType}";
+        string reason = detail?.TrimEnd('.') ?? $"'{QueryEcho.Value(baseName)}' is not a search parameter of {resourceType}";
         if (lenient)
         {
             return Ignored($"{name}={value}", $"{reason} (ignored because the search is lenient, so the results may be broader than asked)");
@@ -309,5 +309,5 @@ public sealed class SearchQueryParser
     }
 
     private static IssueItem Ignored(string parameter, string reason) =>
-        new("warning", "parameter-ignored", $"'{parameter}' did not filter the results: {reason}", Location: null);
+        new("warning", "parameter-ignored", $"'{QueryEcho.Value(parameter)}' did not filter the results: {reason}", Location: null);
 }

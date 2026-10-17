@@ -101,7 +101,7 @@ public static class ContextFinder
         (string? system, string code) = bar >= 0 ? (query[..bar], query[(bar + 1)..]) : ((string?)null, query);
         if (code.Length == 0)
         {
-            throw ToolRequestException.Error("invalid-parameter", $"'{query}' names no code after '|'; use 'system|code', '|code' (no system) or a bare code.");
+            throw ToolRequestException.Error("invalid-parameter", $"'{QueryEcho.Value(query)}' names no code after '|'; use 'system|code', '|code' (no system) or a bare code.");
         }
 
         List<ContextEntry> codeMatches = byCode ? Where(context, coded, concept => concept.HasCode(system, code), "code") : [];

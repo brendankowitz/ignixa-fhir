@@ -70,7 +70,7 @@ internal sealed partial class FolderFhirPath
         }
         catch (Exception ex) when (ex is FormatException or ArgumentException or InvalidOperationException or NotSupportedException)
         {
-            throw ToolRequestException.Error("invalid-parameter", $"{label} '{expression}' is not valid FHIRPath: {ex.Message}");
+            throw ToolRequestException.Error("invalid-parameter", $"{label} '{QueryEcho.Value(expression)}' is not valid FHIRPath: {QueryEcho.Value(ex.Message)}");
         }
     }
 
@@ -98,7 +98,7 @@ internal sealed partial class FolderFhirPath
         }
         catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or ArgumentException or FormatException or InvalidCastException)
         {
-            throw ToolRequestException.Error("invalid-parameter", $"{label} '{text}' could not be evaluated on {subject}: {ex.Message}");
+            throw ToolRequestException.Error("invalid-parameter", $"{label} '{QueryEcho.Value(text)}' could not be evaluated on {subject}: {QueryEcho.Value(ex.Message)}");
         }
     }
 

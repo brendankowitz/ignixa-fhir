@@ -56,7 +56,7 @@ internal static class PerPatient
             case Latest or Earliest:
                 throw Invalid($"perPatient={pick} needs a date to order {resourceType} by and has none for it; give _sort in the query (_sort=-<date parameter>) and perPatient=first.");
             default:
-                throw Invalid($"'perPatient' takes '{Latest}', '{Earliest}' or '{First}', not '{pick}'.");
+                throw Invalid($"'perPatient' takes '{Latest}', '{Earliest}' or '{First}', not '{QueryEcho.Value(pick)}'.");
         }
     }
 

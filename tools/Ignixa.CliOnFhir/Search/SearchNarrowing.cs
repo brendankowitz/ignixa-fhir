@@ -63,6 +63,20 @@ internal static class SearchNarrowing
         ["Condition"] = "recorded-date",
     };
 
+    /// <summary>
+    /// Whether a call can repeat <paramref name="request"/>: none of its texts (query, compartment, elements, fhirpath, the columns'
+    /// names and paths together) is longer than <see cref="QueryEcho.MaxLength"/>, the longest the response repeats. A request that
+    /// is not gets no <c>next</c>; the response's omitted item names the offset to resume at instead.
+    /// </summary>
+    public static bool Repeatable(SearchRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        int columns = request.Columns?.Sum(column => column.Name.Length + column.Path.Length) ?? 0;
+        return !QueryEcho.IsCut(request.Query) && !QueryEcho.IsCut(request.Compartment) && !QueryEcho.IsCut(request.Elements)
+            && !QueryEcho.IsCut(request.FhirPath) && columns <= QueryEcho.MaxLength;
+    }
+
     /// <summary>The search as asked, starting at <paramref name="offset"/>.</summary>
     public static NextCall Call(SearchRequest request, int offset)
     {
@@ -125,6 +139,11 @@ internal static class SearchNarrowing
     /// <param name="largerBudget">The largest budget the server allows, when it is more than this call had; null otherwise.</param>
     public static List<NextCall> After(SearchRequest request, int total, int resume, bool cutBySize, int? largerBudget)
     {
+        if (!Repeatable(request))
+        {
+            return [];
+        }
+
         NextCall current = Call(request, request.Offset);
         NextCall rest = Call(request, resume);
         bool askedForFew = resume - request.Offset < CountWorthwhile;

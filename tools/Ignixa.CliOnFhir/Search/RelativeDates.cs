@@ -74,6 +74,33 @@ internal static partial class RelativeDates
             : (request with { Query = string.Join('&', segments) }, resolved, Note(resolved.Count, anchor));
     }
 
+    /// <summary>The most resolved parameters facts list; the rest are counted in <c>omitted</c>.</summary>
+    public const int MaxListed = 10;
+
+    /// <summary>
+    /// <paramref name="resolved"/> as facts list it, bounded whatever the query: at most <see cref="MaxListed"/>, each name and value
+    /// as an issue repeats a value (<see cref="QueryEcho.Value"/>: a long one keeps its start, length and digest); and the omitted
+    /// items that say what was left out, the original query's cut echo among them.
+    /// </summary>
+    public static (IReadOnlyList<ResolvedParameter> Shown, IReadOnlyList<OmittedItem> Omitted) ForFacts(string originalQuery, IReadOnlyList<ResolvedParameter> resolved)
+    {
+        ArgumentNullException.ThrowIfNull(originalQuery);
+        ArgumentNullException.ThrowIfNull(resolved);
+
+        List<OmittedItem> omitted = [];
+        if (QueryEcho.IsCut(originalQuery))
+        {
+            omitted.Add(QueryEcho.Cut(originalQuery, "facts.originalQuery"));
+        }
+
+        if (resolved.Count > MaxListed)
+        {
+            omitted.Add(new OmittedItem($"{resolved.Count - MaxListed} more resolvedParameters (facts.query is the query searched)", "limit"));
+        }
+
+        return ([.. resolved.Take(MaxListed).Select(parameter => new ResolvedParameter(QueryEcho.Value(parameter.Parameter), QueryEcho.Value(parameter.Original), QueryEcho.Value(parameter.Resolved)))], omitted);
+    }
+
     private static IssueItem Note(int count, AsOf asOf)
     {
         string day = asOf.Moment.Offset == TimeSpan.Zero

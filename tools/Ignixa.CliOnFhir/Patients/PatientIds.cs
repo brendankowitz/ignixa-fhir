@@ -20,7 +20,7 @@ internal static class PatientIds
     {
         if (!FhirIds.IsValid(patientId) && !FhirIds.IsDigest(patientId))
         {
-            throw ToolRequestException.Error("invalid-parameter", $"'patientId' must be a Patient id (1 to 64 letters, digits, '-' or '.') or the digest patient_list gives, for example one from patient_list, not '{patientId}'.");
+            throw ToolRequestException.Error("invalid-parameter", $"'patientId' must be a Patient id (1 to 64 letters, digits, '-' or '.') or the digest patient_list gives, for example one from patient_list, not '{QueryEcho.Value(patientId)}'.");
         }
     }
 }

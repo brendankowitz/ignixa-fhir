@@ -236,12 +236,12 @@ public static class ResourceFetcher
         string[] parts = reference?.Split('/') ?? [];
         if (parts.Length != 2 || parts[0].Length == 0 || parts[1].Length == 0)
         {
-            throw ToolRequestException.Error("invalid-reference", $"'{reference}' is not a relative reference; expected 'ResourceType/id', for example 'Patient/123'.");
+            throw ToolRequestException.Error("invalid-reference", $"'{QueryEcho.Value(reference)}' is not a relative reference; expected 'ResourceType/id', for example 'Patient/123'.");
         }
 
         if (!session.Schema.ResourceTypeNames.Contains(parts[0]))
         {
-            throw ToolRequestException.Error("unknown-resource-type", $"'{parts[0]}' in '{reference}' is not a {session.Schema.Version} resource type.");
+            throw ToolRequestException.Error("unknown-resource-type", $"'{QueryEcho.Value(parts[0])}' in '{QueryEcho.Value(reference)}' is not a {session.Schema.Version} resource type.");
         }
 
         return (parts[0], parts[1]);

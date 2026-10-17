@@ -94,17 +94,17 @@ internal static class CompartmentArgument
         string[] parts = compartment.Split('/');
         if (parts.Length != 2 || parts[0].Length == 0 || parts[1].Length == 0)
         {
-            throw ToolRequestException.Error("invalid-parameter", $"'compartment' must be 'Type/id', for example 'Patient/123', not '{compartment}'.");
+            throw ToolRequestException.Error("invalid-parameter", $"'compartment' must be 'Type/id', for example 'Patient/123', not '{QueryEcho.Value(compartment)}'.");
         }
 
         if (!membership.CompartmentTypes.Contains(parts[0], StringComparer.Ordinal))
         {
-            throw ToolRequestException.Error("invalid-parameter", $"'{parts[0]}' in 'compartment={compartment}' is not a {session.Schema.Version} compartment type; use one of {string.Join(", ", membership.CompartmentTypes)}.");
+            throw ToolRequestException.Error("invalid-parameter", $"'{QueryEcho.Value(parts[0])}' in 'compartment={QueryEcho.Value(compartment)}' is not a {session.Schema.Version} compartment type; use one of {string.Join(", ", membership.CompartmentTypes)}.");
         }
 
         if (!FhirIds.IsValid(parts[1]) && !FhirIds.IsDigest(parts[1]))
         {
-            throw ToolRequestException.Error("invalid-parameter", $"'{parts[1]}' in 'compartment={compartment}' is not a FHIR id (1 to 64 letters, digits, '-' or '.') or the digest the tools name a resource with an invalid id by.");
+            throw ToolRequestException.Error("invalid-parameter", $"'{QueryEcho.Value(parts[1])}' in 'compartment={QueryEcho.Value(compartment)}' is not a FHIR id (1 to 64 letters, digits, '-' or '.') or the digest the tools name a resource with an invalid id by.");
         }
 
         return (parts[0], parts[1]);

@@ -40,10 +40,17 @@ internal static class FolderCodeText
     {
         List<IssueItem> issues = [];
         int pageSize = Paging.Resolve(count ?? DefaultCount, offset, issues);
+
+        // The words are repeated in facts and in next, so their length is bounded as the terminology tools bound text.
+        if (text.Length > Terminology.Tools.TermArguments.MaxTextLength)
+        {
+            throw ToolRequestException.Error("invalid-parameter", $"'text' is longer than {Terminology.Tools.TermArguments.MaxTextLength} characters: give the few words a display starts with.");
+        }
+
         IReadOnlyList<string> words = Words(text);
         if (resourceType is not null && !session.Schema.ResourceTypeNames.Contains(resourceType))
         {
-            throw ToolRequestException.Error("invalid-parameter", $"'resourceType' {resourceType} is not a {session.Schema.Version} resource type.");
+            throw ToolRequestException.Error("invalid-parameter", $"'resourceType' {QueryEcho.Value(resourceType)} is not a {session.Schema.Version} resource type.");
         }
 
         List<string> types = [.. session.Catalog.Entries

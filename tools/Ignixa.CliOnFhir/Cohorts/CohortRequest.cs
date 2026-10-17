@@ -77,7 +77,7 @@ internal sealed record CohortRequest(
 
         if (arguments.Gender is { } gender && !Genders.Contains(gender, StringComparer.Ordinal))
         {
-            throw CriterionObject.Invalid($"gender is {string.Join(", ", Genders)}, not '{gender}'.");
+            throw CriterionObject.Invalid($"gender is {string.Join(", ", Genders)}, not '{QueryEcho.Value(gender)}'.");
         }
 
         return new CohortRequest(
@@ -131,7 +131,7 @@ internal sealed record CohortRequest(
         {
             if (!RxClassJson.IsClassId(classId))
             {
-                throw CriterionObject.Invalid($"{criterion.Where}.classId '{classId}' is not an RxClass class id (letters and digits, for example C10AA).");
+                throw CriterionObject.Invalid($"{criterion.Where}.classId '{QueryEcho.Value(classId)}' is not an RxClass class id (letters and digits, for example C10AA).");
             }
 
             IReadOnlyList<DrugClassSource> named = DrugClassSource.Parse(source, [DrugClassSource.Atc]);

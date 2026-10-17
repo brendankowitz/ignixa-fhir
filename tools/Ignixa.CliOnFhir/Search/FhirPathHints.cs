@@ -116,7 +116,7 @@ internal static class FhirPathHints
             {
                 string suffix = property[choiceBase.Length..];
                 string best = codes.OrderBy(code => Distance(suffix.ToUpperInvariant(), code.ToUpperInvariant())).First();
-                return $"'{property}' is not an element of {typeName}: {choiceBase} is one of {string.Join(", ", codes)}. Write {choiceBase}.ofType({best}) (or {choiceBase}{Capitalized(best)}).";
+                return $"'{QueryEcho.Value(property)}' is not an element of {typeName}: {choiceBase} is one of {string.Join(", ", codes)}. Write {choiceBase}.ofType({best}) (or {choiceBase}{Capitalized(best)}).";
             }
         }
 
@@ -130,8 +130,8 @@ internal static class FhirPathHints
             .Take(MaxSuggestions)
             .Select(candidate => $"'{candidate.Name}'")];
         return near.Count > 0
-            ? $"'{property}' is not an element of {typeName}, so it never yields a value; did you mean {string.Join(" or ", near)}?"
-            : $"'{property}' is not an element of {typeName}, so it never yields a value.";
+            ? $"'{QueryEcho.Value(property)}' is not an element of {typeName}, so it never yields a value; did you mean {string.Join(" or ", near)}?"
+            : $"'{QueryEcho.Value(property)}' is not an element of {typeName}, so it never yields a value.";
     }
 
     private static IEnumerable<(string Base, IReadOnlyList<string> Codes)> ChoiceElements(IType type) =>

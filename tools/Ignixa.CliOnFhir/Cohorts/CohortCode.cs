@@ -44,10 +44,10 @@ internal sealed record CohortCode
         string code = bar < 0 ? trimmed : trimmed[(bar + 1)..];
         if (code.Length == 0 || system is { Length: 0 })
         {
-            throw ToolRequestException.Error("invalid-parameter", $"{where} '{text}' is not a code: write 'system|code' (http://snomed.info/sct|44054006) or a bare code, which matches in any system.");
+            throw ToolRequestException.Error("invalid-parameter", $"{where} '{QueryEcho.Value(text)}' is not a code: write 'system|code' (http://snomed.info/sct|44054006) or a bare code, which matches in any system.");
         }
 
-        return From(system, code) ?? throw ToolRequestException.Error("invalid-parameter", $"{where} '{text}' holds a character a search cannot carry ({string.Join(' ', UnsafeCharacters.ToCharArray())}).");
+        return From(system, code) ?? throw ToolRequestException.Error("invalid-parameter", $"{where} '{QueryEcho.Value(text)}' holds a character a search cannot carry ({string.Join(' ', UnsafeCharacters.ToCharArray())}).");
     }
 
     /// <summary>The code, or null when it holds a character a search query cannot carry (a code read from terminology).</summary>

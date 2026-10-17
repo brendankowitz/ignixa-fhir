@@ -35,6 +35,24 @@ internal static class QueryEcho
         return query[..length] + "…";
     }
 
+    /// <summary>The longest argument value an issue message repeats whole (<see cref="Value"/>).</summary>
+    public const int MaxValueLength = 100;
+
+    /// <summary>
+    /// An argument value as an issue message repeats it: whole when it is at most <see cref="MaxValueLength"/> characters, else its
+    /// start, its length and its digest, so a message about a value never grows with it.
+    /// </summary>
+    public static string Value(string? value)
+    {
+        if (value is null || value.Length <= MaxValueLength)
+        {
+            return value ?? string.Empty;
+        }
+
+        int length = char.IsHighSurrogate(value[(MaxValueLength / 2) - 1]) ? (MaxValueLength / 2) - 1 : MaxValueLength / 2;
+        return $"{value[..length]}… ({value.Length} characters, digest {FhirIds.Digest(value)})";
+    }
+
     /// <summary>The <c>omitted</c> item for a cut echo of <paramref name="query"/> at <paramref name="where"/> (a facts path).</summary>
     public static OmittedItem Cut(string query, string where)
     {

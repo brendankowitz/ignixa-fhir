@@ -87,7 +87,7 @@ internal sealed record PlanFit(PlanFacts Facts, IReadOnlyList<IssueItem> Issues,
 
     private static List<OmittedItem> Cut(IReadOnlyList<OmittedItem> omitted, PlanFacts bare, int listed) => listed >= bare.Parameters.Count
         ? [.. omitted, new OmittedItem("all top values", "size-budget")]
-        : [.. omitted, new OmittedItem("all top values", "size-budget"), new OmittedItem($"{bare.Parameters.Count - listed} more parameters, from '{bare.Parameters[listed].Name}' on (check fewer at a time)", "size-budget")];
+        : [.. omitted, new OmittedItem("all top values", "size-budget"), new OmittedItem($"{bare.Parameters.Count - listed} more parameters, from '{QueryEcho.Value(bare.Parameters[listed].Name)}' on (check fewer at a time)", "size-budget")];
 
     private static bool Fits(FolderSession session, PlanFacts facts, IReadOnlyList<IssueItem> issues, IReadOnlyList<OmittedItem> omitted, IReadOnlyList<NextCall> next, int budget) =>
         EnvelopeAssembler.MaxSize<PlanFacts?>(session, facts, [], omitted, [], issues, next) <= budget;

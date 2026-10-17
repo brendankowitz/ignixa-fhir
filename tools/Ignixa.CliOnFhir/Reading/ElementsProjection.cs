@@ -77,7 +77,7 @@ public sealed class ElementsProjection
             .. Names
                 .Where(name => !shape.Selects(name))
                 .Order(StringComparer.Ordinal)
-                .Select(name => new IssueItem("warning", "element-ignored", $"'{name}' is not a top-level element of {resourceType}, so it selected nothing.", Location: null)),
+                .Select(name => new IssueItem("warning", "element-ignored", $"'{QueryEcho.Value(name)}' is not a top-level element of {resourceType}, so it selected nothing.", Location: null)),
         ];
     }
 

@@ -71,7 +71,7 @@ public sealed class FolderTools(FolderSession session)
         "full" => ToolResults.From(await CodeSystems.FolderCodeSystems.ListAsync(session, count, offset, top, withTerminology, cancellationToken)),
         _ => ToolResults.From(EnvelopeAssembler.Failure<object>(
             session,
-            new IssueItem("error", "invalid-parameter", $"'detail' must be 'compact' (the default) or 'full', not '{detail}'.", Location: null),
+            new IssueItem("error", "invalid-parameter", $"'detail' must be 'compact' (the default) or 'full', not '{QueryEcho.Value(detail)}'.", Location: null),
             cancellationToken)),
     };
 }

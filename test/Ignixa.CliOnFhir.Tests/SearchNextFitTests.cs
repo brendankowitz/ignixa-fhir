@@ -34,7 +34,7 @@ public class SearchNextFitTests
         int returned = envelope.Facts.ShouldNotBeNull().Returned;
         returned.ShouldBeGreaterThan(0);
         envelope.Next.ShouldBeEmpty();
-        envelope.Omitted.ShouldContain(item => item.What == $"{30 - returned} more matches (offset={returned}; no next call, as the query is too long to repeat in one)");
+        envelope.Omitted.ShouldContain(item => item.What == $"{30 - returned} more matches (offset={returned}; no next call, as the request is too long to repeat in one)");
     }
 
     [Fact]

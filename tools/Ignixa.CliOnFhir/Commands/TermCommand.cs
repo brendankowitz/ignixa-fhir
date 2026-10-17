@@ -111,7 +111,7 @@ internal static class TermCommand
             {
                 TermExpandInFolder.FolderScope => Untyped(TermExpandInFolder.ExpandAsync(session, parse.GetValue(valueSet), parse.GetValue(filter), parse.GetValue(count), parse.GetValue(offset), token)),
                 null or "all" => Untyped(TermExpand.ExpandAsync(session, parse.GetValue(valueSet), parse.GetValue(filter), parse.GetValue(count), parse.GetValue(offset), token)),
-                string other => Task.FromResult(EnvelopeAssembler.Failure<object>(session, new IssueItem("error", "invalid-parameter", $"--scope is 'all' or 'folder', not '{other}'.", Location: null), token)),
+                string other => Task.FromResult(EnvelopeAssembler.Failure<object>(session, new IssueItem("error", "invalid-parameter", $"--scope is 'all' or 'folder', not '{QueryEcho.Value(other)}'.", Location: null), token)),
             });
     }
 

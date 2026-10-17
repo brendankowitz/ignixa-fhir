@@ -38,7 +38,7 @@ internal static class CohortInstant
     /// <summary>A date or dateTime the request gives, for example <c>window.after</c>.</summary>
     /// <exception cref="ToolRequestException">Not a FHIR date or dateTime.</exception>
     public static DateTimeOffset Argument(string text, string where) =>
-        Parse(text.Trim()) ?? throw ToolRequestException.Error("invalid-parameter", $"{where} '{text}' is not a date: write 2026-08-17 or 2026-08-17T00:00:00Z.");
+        Parse(text.Trim()) ?? throw ToolRequestException.Error("invalid-parameter", $"{where} '{QueryEcho.Value(text)}' is not a date: write 2026-08-17 or 2026-08-17T00:00:00Z.");
 
     /// <summary>The instant as the facts show it.</summary>
     public static string Format(DateTimeOffset instant) =>

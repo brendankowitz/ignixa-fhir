@@ -78,7 +78,7 @@ internal static class SystemsCommand
             {
                 "full" => EnvelopeOutput.Write(await FolderCodeSystems.ListAsync(session, count, offset, top, withTerminology, cancellationToken), pretty),
                 null or "compact" => EnvelopeOutput.Write(await FolderCodeSystems.ListCompactAsync(session, count, offset, top, withTerminology, cancellationToken), pretty),
-                string other => EnvelopeOutput.Write(EnvelopeAssembler.Failure<object>(session, new IssueItem("error", "invalid-parameter", $"--detail is 'compact' or 'full', not '{other}'.", Location: null), cancellationToken), pretty),
+                string other => EnvelopeOutput.Write(EnvelopeAssembler.Failure<object>(session, new IssueItem("error", "invalid-parameter", $"--detail is 'compact' or 'full', not '{QueryEcho.Value(other)}'.", Location: null), cancellationToken), pretty),
             };
         });
 

@@ -256,7 +256,12 @@ internal static partial class ExpressionSearch
                     evidenceShown < Math.Min(evidence.Count, valueFrom == FromMatches ? MatchEvidenceLimit : evidence.Count) ? "size-budget" : "limit"));
             }
 
-            var facts = new SearchFacts(request.ResourceType, request.Query ?? string.Empty, request.Compartment, total, Offset: 0, Returned: 0, Resources: null)
+            if (QueryEcho.IsCut(request.Query))
+            {
+                allOmitted.Add(QueryEcho.Cut(request.Query!, "facts.query"));
+            }
+
+            var facts = new SearchFacts(request.ResourceType, QueryEcho.Of(request.Query ?? string.Empty), request.Compartment, total, Offset: 0, Returned: 0, Resources: null)
             {
                 FhirPath = request.FhirPath,
                 Value = new JsonArray([.. value.Take(valueShown).Select(item => item?.DeepClone())]),
