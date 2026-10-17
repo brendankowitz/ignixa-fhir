@@ -47,6 +47,7 @@ internal sealed class OutputFile
         Stream = new UnclosedStream(_file);
         TempPath = tempPath;
         _createdDirectories = createdDirectories;
+        OpenOutputFiles.Add(this);
     }
 
     /// <summary>The temporary file, for the writers; disposing it does not close the file.</summary>
@@ -106,6 +107,18 @@ internal sealed class OutputFile
     /// everything was removed, or when the file was already renamed over the target (<see cref="Commit"/> reports any problem with it).
     /// </returns>
     public IssueItem? Discard()
+    {
+        try
+        {
+            return DiscardOpen();
+        }
+        finally
+        {
+            OpenOutputFiles.Remove(this);
+        }
+    }
+
+    private IssueItem? DiscardOpen()
     {
         if (_moved)
         {
@@ -197,6 +210,7 @@ internal sealed class OutputFile
         }
 
         _moved = true;
+        OpenOutputFiles.Remove(this);
         if (!renameOpen)
         {
             return null;

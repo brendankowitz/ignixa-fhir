@@ -53,7 +53,8 @@ internal static class DeIdCommand
                 parseResult.GetValue(overwriteOption),
                 parseResult.GetValue(timeoutOption),
                 parseResult.GetValue(maxResourcesOption));
-            return EnvelopeOutput.Write(await DeIdRunner.RunAsync(session, request, loggerFactory.CreateLogger("deid"), cancellationToken), parseResult.GetValue(prettyOption));
+            ILogger logger = loggerFactory.CreateLogger("deid");
+            return await Watchdog.RunAsync<DeIdFacts>("deid-timeout", request.TimeoutSeconds, DeIdRunner.DefaultTimeoutSeconds, DeIdRunner.MaxTimeoutSeconds, token => DeIdRunner.RunAsync(session, request, logger, token), parseResult.GetValue(prettyOption), cancellationToken);
         });
 
         return command;
