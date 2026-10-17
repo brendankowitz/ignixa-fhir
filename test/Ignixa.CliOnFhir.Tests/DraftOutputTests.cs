@@ -49,6 +49,16 @@ public class DraftOutputTests
     }
 
     [Fact]
+    public async Task GivenAnOutDirectoryAroundTheFolder_WhenDrafted_ThenItIsRefusedAsDeidAndMapRefuseIt()
+    {
+        using TestFolder root = ClinicRoot();
+
+        Error(await RunInAsync(Data(root), new DraftRequest("ServiceRequest", MagnesiumOrder, Out: root.Path))).Code.ShouldBe("out-refused");
+
+        Directory.GetFiles(root.Path).ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task GivenAPathThroughALinkThenParent_WhenDrafted_ThenItIsResolvedAsTheSystemDoesAndRefusedInTheFolder()
     {
         if (!OperatingSystem.IsLinux())

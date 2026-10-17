@@ -16,7 +16,8 @@ namespace Ignixa.CliOnFhir.Drafting;
 /// verb that writes uses (<see cref="OutputDirectory"/>, <see cref="OutputTarget"/>, <see cref="OutputFile"/>): the directory is
 /// refused inside, around or (on Linux, by device and inode, bind mounts included) the same as the folder; the file is written to a
 /// temporary file beside it, created exclusively and checked by its open handle; an existing file is replaced only with
-/// <c>overwrite</c>, after it is renamed aside, and put back if the rename fails.
+/// <c>overwrite</c>, and only by the complete draft, in one atomic rename (as <c>view --out</c> replaces its one file), so a run that
+/// fails leaves it as it was.
 /// </summary>
 internal static class DraftOutput
 {
@@ -50,28 +51,20 @@ internal static class DraftOutput
             seams?.AfterBegin?.Invoke(file);
             await file.Stream.WriteAsync(bytes, cancellationToken);
             await file.Stream.FlushAsync(cancellationToken);
-            file.CommitWithBackup();
+            file.Commit();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            Abandon(file, notes);
+            Note(file.Discard(), notes);
             throw ToolRequestException.Error("out-write-failed", $"Writing '{target.Path}' failed: {ex.Message}. The partial file was removed unless a note says otherwise.");
         }
         catch
         {
-            Abandon(file, notes);
+            Note(file.Discard(), notes);
             throw;
         }
 
-        Note(file.DropBackup(), notes);
         return new DraftFileFacts(target.Path, bytes.Length);
-    }
-
-    // Puts back an existing file renamed aside by a commit that then failed, and removes what this run created.
-    private static void Abandon(OutputFile file, List<IssueItem> notes)
-    {
-        Note(file.Rollback(), notes);
-        Note(file.Discard(), notes);
     }
 
     private static void Note(IssueItem? left, List<IssueItem> notes)
