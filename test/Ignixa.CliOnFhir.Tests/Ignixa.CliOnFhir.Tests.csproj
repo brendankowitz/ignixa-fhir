@@ -23,4 +23,15 @@
     <ProjectReference Include="..\..\tools\Ignixa.CliOnFhir\Ignixa.CliOnFhir.csproj" />
   </ItemGroup>
 
+  <!-- The FML oracle's case list, exclusions, known gaps and comparison, shared so that MapOracleTests cannot drift from
+       FmlTransformOracleTests. The corpus is the one test/Ignixa.FhirMappingLanguage.Tests downloads when it is built. -->
+  <ItemGroup>
+    <Compile Include="..\Ignixa.FhirMappingLanguage.Tests\Conformance\CanonicalJson.cs" Link="FmlOracle\CanonicalJson.cs" />
+    <Compile Include="..\Ignixa.FhirMappingLanguage.Tests\Conformance\FmlKnownEvaluatorGaps.cs" Link="FmlOracle\FmlKnownEvaluatorGaps.cs" />
+    <Compile Include="..\Ignixa.FhirMappingLanguage.Tests\Conformance\FmlManifestLoader.cs" Link="FmlOracle\FmlManifestLoader.cs" />
+    <Compile Include="..\Ignixa.FhirMappingLanguage.Tests\Conformance\FmlOracleCase.cs" Link="FmlOracle\FmlOracleCase.cs" />
+    <Compile Include="..\Ignixa.FhirMappingLanguage.Tests\Conformance\FmlOracleExclusions.cs" Link="FmlOracle\FmlOracleExclusions.cs" />
+    <Compile Include="..\Ignixa.FhirMappingLanguage.Tests\Conformance\FmlTestCasesLocator.cs" Link="FmlOracle\FmlTestCasesLocator.cs" />
+  </ItemGroup>
+
 </Project>

@@ -16,10 +16,12 @@ using Ignixa.Serialization.SourceNodes;
 namespace Ignixa.CliOnFhir.Mapping;
 
 /// <summary>
-/// Runs a map's entry group on one resource, as <c>Ignixa.FhirMappingLanguage</c>'s own conformance runner does
-/// (<c>FmlTransformOracleTests</c>): the resource is the source, a new resource of the target type the target, and the target is
-/// changed through a <see cref="JsonNodeMutator"/>. Errors are strict (the first one stops the resource), each run gets a new
-/// evaluator (its limits count per resource), and <see cref="MappingEvaluatorOptions.TransformTimeout"/> bounds each one.
+/// Runs a map's entry group on one resource, set up as <c>Ignixa.FhirMappingLanguage</c>'s official FML test cases are run
+/// (<c>FmlTransformOracleTests</c>): the resource is the source, a new resource of the target type the target, the target is
+/// changed through a <see cref="JsonNodeMutator"/>, and that mutator makes what <c>create()</c> asks for, a datatype or a
+/// resource (a node parsed from <c>{"resourceType": type}</c> is refused as a datatype such as <c>Reference</c>).
+/// <c>MapOracleTests</c> holds the two to the same results. Errors are strict (the first one stops the resource), each run gets a
+/// new evaluator (its limits count per resource), and <see cref="MappingEvaluatorOptions.TransformTimeout"/> bounds each one.
 /// </summary>
 /// <param name="schema">The folder's FHIR version.</param>
 /// <param name="map">The map, its imports merged.</param>
@@ -40,17 +42,17 @@ internal sealed class MapTransform(IFhirSchemaProvider schema, MapExpression map
     {
         ArgumentNullException.ThrowIfNull(source);
 
+        var mutator = new JsonNodeMutator(_fhirPathEvaluator, _fhirPathParser, () => schema);
         ResourceJsonNode target = JsonSourceNodeFactory.Parse(new JsonObject { ["resourceType"] = entry.TargetType });
         var context = new MappingContext
         {
             ErrorMode = ErrorMode.Strict,
-            ResourceCreator = type => JsonSourceNodeFactory.Parse(new JsonObject { ["resourceType"] = type }).ToElement(schema),
+            ResourceCreator = type => mutator.CreateElement(type),
         };
         context.SetSource(entry.SourceName, source.ToElement(schema));
         context.SetTarget(entry.TargetName, target.ToElement(schema));
         context.SetTargetResource(entry.TargetName, target);
 
-        var mutator = new JsonNodeMutator(_fhirPathEvaluator, _fhirPathParser, () => schema);
         new MappingEvaluator(Options, mutator).ExecuteGroup(map, entry.Group, context, cancellationToken);
         return ((IMutableJsonNode)target).MutableNode;
     }

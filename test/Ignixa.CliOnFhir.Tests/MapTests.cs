@@ -199,6 +199,49 @@ public class MapTests
         json.Issues.ShouldNotContain(issue => issue.Code == "map-output-empty");
     }
 
+    // create() makes its value with the evaluator's mutator, so the value can be written into the target and then filled in.
+    [Fact]
+    public async Task GivenAMapThatCreatesAReference_WhenRun_ThenTheCreatedValueIsWrittenAndFilledIn()
+    {
+        using TestFolder root = Root();
+        const string create = """
+            map "http://example.org/fml/create" = "Create"
+            group C(source src : Patient, target tgt : Basic) {
+              src -> tgt.extension as ext, ext.url = 'http://example.org/subject', ext.value = create('Reference') as r, r.reference = reference(src);
+            }
+            """;
+
+        ToolEnvelope<MapFacts?> envelope = await RunAsync(Data(root), new MapRequest(create));
+
+        MapFacts facts = Facts(envelope);
+        (facts.Transformed, facts.Failed).ShouldBe((2, 0), Json(envelope));
+        facts.Resources.ShouldNotBeNull().Select(resource => resource.ToJsonString()).ShouldBe([
+            """{"resourceType":"Basic","extension":[{"url":"http://example.org/subject","valueReference":{"reference":"Patient/p1"}}]}""",
+            """{"resourceType":"Basic","extension":[{"url":"http://example.org/subject","valueReference":{"reference":"Patient/p2"}}]}""",
+        ]);
+    }
+
+    // The README's account of evaluate(): the library reads a lone name as a variable and a quoted one as text; a path works.
+    [Theory]
+    [InlineData("gender", null)]
+    [InlineData("'gender'", "gender")]
+    [InlineData("gender.first()", "female")]
+    [InlineData("$this.gender", "female")]
+    public async Task GivenEvaluateOfTheGender_WhenRun_ThenTheResultIsAsTheLibraryReadsTheExpression(string expression, string? gender)
+    {
+        using TestFolder root = Root();
+        string map = $$"""
+            map "http://example.org/fml/evaluate" = "Evaluate"
+            group E(source src : Patient, target tgt : Patient) {
+              src -> tgt.gender = evaluate(src, {{expression}});
+            }
+            """;
+
+        MapFacts facts = Facts(await RunAsync(Data(root), new MapRequest(map, References: ["Patient/p1"])));
+
+        facts.Resources.ShouldHaveSingleItem()["gender"]?.GetValue<string>().ShouldBe(gender);
+    }
+
     // An invoked group writes into its own target parameter, whatever it is called.
     [Fact]
     public async Task GivenAnImportedGroupWhoseTargetHasAnotherName_WhenCalled_ThenItWritesIntoTheTarget()
