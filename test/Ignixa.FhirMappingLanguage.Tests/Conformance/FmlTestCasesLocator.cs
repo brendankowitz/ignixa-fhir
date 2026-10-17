@@ -51,6 +51,13 @@ public static class FmlTestCasesLocator
                 return candidate;
             }
 
+            // Another test project that compiles these helpers in (Ignixa.CliOnFhir.Tests) finds this project's copy from test/.
+            var sibling = Path.Combine(directory.FullName, "Ignixa.FhirMappingLanguage.Tests", "TestData", "fhir-test-cases");
+            if (Directory.Exists(sibling))
+            {
+                return sibling;
+            }
+
             directory = directory.Parent;
         }
 

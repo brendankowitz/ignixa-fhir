@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Shouldly" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\tools\Ignixa.CliOnFhir\Ignixa.CliOnFhir.csproj" />
+    <!-- Builds the FML test project so its DownloadFhirTestCases target fetches the corpus MapOracleTests reads. -->
+    <ProjectReference Include="..\Ignixa.FhirMappingLanguage.Tests\Ignixa.FhirMappingLanguage.Tests.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <!-- The FML oracle's case list, exclusions, known gaps and comparison, shared so that MapOracleTests cannot drift from
+       FmlTransformOracleTests. The corpus is the one test/Ignixa.FhirMappingLanguage.Tests downloads when it is built. -->
+  <ItemGroup>
+    <Compile Include="..\Ignixa.FhirMappingLanguage.Tests\Conformance\CanonicalJson.cs" Link="FmlOracle\CanonicalJson.cs" />
+    <Compile Include="..\Ignixa.FhirMappingLanguage.Tests\Conformance\FmlKnownEvaluatorGaps.cs" Link="FmlOracle\FmlKnownEvaluatorGaps.cs" />
+    <Compile Include="..\Ignixa.FhirMappingLanguage.Tests\Conformance\FmlManifestLoader.cs" Link="FmlOracle\FmlManifestLoader.cs" />
+    <Compile Include="..\Ignixa.FhirMappingLanguage.Tests\Conformance\FmlOracleCase.cs" Link="FmlOracle\FmlOracleCase.cs" />
+    <Compile Include="..\Ignixa.FhirMappingLanguage.Tests\Conformance\FmlOracleExclusions.cs" Link="FmlOracle\FmlOracleExclusions.cs" />
+    <Compile Include="..\Ignixa.FhirMappingLanguage.Tests\Conformance\FmlTestCasesLocator.cs" Link="FmlOracle\FmlTestCasesLocator.cs" />
+  </ItemGroup>
+
+</Project>

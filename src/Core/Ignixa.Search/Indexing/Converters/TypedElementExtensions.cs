@@ -19,6 +19,17 @@ internal static class ElementExtensions
         return children.Count > 0 ? children[0].Value : null;
     }
 
+    /// <summary>
+    /// The first child named <paramref name="name"/>, or null. Use it for a complex child (a Range's <c>low</c>), whose
+    /// <see cref="IElement.Value"/> - what <see cref="Scalar"/> returns - is always null.
+    /// </summary>
+    public static IElement Child(this IElement element, string name)
+    {
+        if (element == null) return null;
+        var children = element.Children(name);
+        return children.Count > 0 ? children[0] : null;
+    }
+
     public static TokenSearchValue ToTokenSearchValue(this IElement coding)
     {
         EnsureArg.IsNotNull(coding, nameof(coding));

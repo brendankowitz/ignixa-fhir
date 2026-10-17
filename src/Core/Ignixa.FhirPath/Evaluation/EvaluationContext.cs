@@ -218,6 +218,14 @@ public record EvaluationContext
     public Func<InstanceCreationRequest, IElement?>? InstanceCreator { get; init; }
 
     /// <summary>
+    /// Optional functions the host binds by name, evaluated with the function's focus and its evaluated arguments
+    /// (<see cref="HostFunction"/>). Looked up with the dictionary's own comparer, before the built-in functions, so a
+    /// name bound here takes precedence over a built-in of the same name; a name bound nowhere fails as an unknown
+    /// function does. Hosts that want FHIRPath's case-insensitive function names supply a case-insensitive dictionary.
+    /// </summary>
+    public IReadOnlyDictionary<string, HostFunction>? HostFunctions { get; init; }
+
+    /// <summary>
     /// Cache holder for the in-instance <see cref="ReferenceIndex"/> that <c>resolve()</c> uses to
     /// look up contained resources and, for a Bundle/Parameters root, sibling entries, before
     /// falling back to <see cref="FhirEvaluationContext.ElementResolver"/>. A single holder

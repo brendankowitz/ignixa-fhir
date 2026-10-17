@@ -7,6 +7,8 @@
     <Nullable>disable</Nullable>
     <!-- Suppress CLS-compliance warnings for interfaces from Ignixa.Domain -->
     <NoWarn>$(NoWarn);CS3001;CS3002;CS3003;CS3009;CS3027</NoWarn>
+    <!-- The in-memory search engine API is [Experimental("IGNIXAEXP001")] for consumers; this assembly implements it. -->
+    <NoWarn>$(NoWarn);IGNIXAEXP001</NoWarn>
   </PropertyGroup>
 
   <!-- NuGet Package Configuration -->

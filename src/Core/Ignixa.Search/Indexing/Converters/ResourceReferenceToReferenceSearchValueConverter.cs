@@ -41,10 +41,15 @@ public class ResourceReferenceToReferenceSearchValueConverter : FhirElementToSea
         if (reference == null) yield break;
 
         // Contained resources will not be searchable.
-        if (reference.StartsWith("#", StringComparison.Ordinal)
-            || reference.StartsWith("urn:", StringComparison.Ordinal))
+        if (reference.StartsWith("#", StringComparison.Ordinal))
             yield break;
 
+        // A urn: reference (urn:uuid, urn:oid) is kept. References "may actually contain logical URIs (e.g. OIDs or
+        // UUIDs) that resolve within the transaction" (R4 references.html §2.3.0.2); one still present when the
+        // resource is indexed (a server that did not rewrite it, or a resource read from a Bundle) is the element's
+        // value, an absolute URI, which the search page's [url] form matches (R4 §3.1.1.4.12, R5 §3.2.1.5.11).
+        // Dropping it made subject=urn:uuid:x unmatchable and reported the element as absent to :missing. It parses
+        // to an untyped reference whose id is the whole urn, the same value the query path parses the search to.
         yield return _referenceSearchValueParser.Parse(reference);
     }
 }

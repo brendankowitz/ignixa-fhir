@@ -4,7 +4,7 @@
 // </copyright>
 
 using System.Text;
-using System.Text.Json;
+using Hl7.Fhir.Model;
 using Microsoft.Health.Fhir.CodeGen.Language;
 using Microsoft.Health.Fhir.CodeGen.Models;
 using Microsoft.Health.Fhir.CodeGenCommon.Models;
@@ -118,63 +118,27 @@ public sealed class CSharpCodeSystemResolverLanguage : ILanguage
         return sb.ToString();
     }
 
-    private void GenerateCodeSystemMappings(StringBuilder sb, DefinitionCollection definitions, string fhirVersion)
+    private const string MaxValueSetExtensionUrl = "http://hl7.org/fhir/StructureDefinition/elementdefinition-maxValueSet";
+
+    private static void GenerateCodeSystemMappings(StringBuilder sb, DefinitionCollection definitions, string fhirVersion)
     {
-        // Extract resource path → code system mappings from FHIR package metadata
-        // by analyzing element definitions and their value set bindings
-        var mappings = new SortedDictionary<string, string>();
+        // A FHIR `code` carries no system in the instance: it is implied by the element's binding
+        // (http://hl7.org/fhir/terminologies.html#4.1). The implied system is knowable only when the code
+        // must come from a value set that draws on exactly one code system; any other element is left
+        // unmapped (system-less) rather than given a guessed system.
+        var mappings = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        var omitted = new SortedDictionary<string, List<string>>(StringComparer.Ordinal);
 
-        // First, try to load from static JSON file if it exists
-        string mappingsPath = GetCodeSystemMappingsJsonPath(fhirVersion);
-        if (File.Exists(mappingsPath))
+        foreach (var (resourceName, resource) in definitions.ResourcesByName.OrderBy(pair => pair.Key, StringComparer.Ordinal))
         {
-            try
+            if (resource.Snapshot?.Element is not { } elements)
             {
-                string json = File.ReadAllText(mappingsPath, Encoding.UTF8);
-                JsonDocument.Parse(json).Dispose();
-
-                using JsonDocument doc = JsonDocument.Parse(json);
-                foreach (JsonProperty property in doc.RootElement.EnumerateObject())
-                {
-                    string path = property.Name;
-                    string? codeSystem = property.Value.GetString();
-                    if (!string.IsNullOrEmpty(codeSystem))
-                    {
-                        mappings[path] = codeSystem;
-                    }
-                }
+                throw new InvalidOperationException($"Resource {resourceName} has no snapshot; its code bindings cannot be read.");
             }
-            catch
-            {
-                // Fall back to UTF-16
-                try
-                {
-                    string json = File.ReadAllText(mappingsPath, Encoding.Unicode);
-                    using JsonDocument doc = JsonDocument.Parse(json);
-                    foreach (JsonProperty property in doc.RootElement.EnumerateObject())
-                    {
-                        string path = property.Name;
-                        string? codeSystem = property.Value.GetString();
-                        if (!string.IsNullOrEmpty(codeSystem))
-                        {
-                            mappings[path] = codeSystem;
-                        }
-                    }
-                }
-                catch
-                {
-                    // Continue if JSON parsing fails
-                }
-            }
-        }
 
-        // Additionally, extract mappings from FHIR package metadata
-        // by analyzing resources and their element bindings
-        if (definitions.ResourcesByName != null)
-        {
-            foreach (var (resourceName, resource) in definitions.ResourcesByName)
+            foreach (var element in elements)
             {
-                ExtractCodeSystemMappingsFromResource(mappings, resource, resourceName);
+                AddMapping(mappings, omitted, definitions, element);
             }
         }
 
@@ -192,108 +156,122 @@ public sealed class CSharpCodeSystemResolverLanguage : ILanguage
             sb.AppendLine();
 
         Console.WriteLine($"Generated {count} code system mappings for {fhirVersion}");
+        foreach (var (reason, paths) in omitted)
+        {
+            Console.WriteLine($"  Omitted {paths.Count} ({reason})");
+            foreach (string path in paths)
+            {
+                Console.WriteLine($"    {path}");
+            }
+        }
     }
 
-    private void ExtractCodeSystemMappingsFromResource(SortedDictionary<string, string> mappings, Hl7.Fhir.Model.StructureDefinition resource, string resourceName)
+    private static void AddMapping(
+        SortedDictionary<string, string> mappings,
+        SortedDictionary<string, List<string>> omitted,
+        DefinitionCollection definitions,
+        ElementDefinition element)
     {
-        // Extract code system bindings from element definitions
-        if (resource.Snapshot?.Element == null)
+        if (element.Binding is not { } binding || element.Type is not [{ Code: "code" }])
+        {
             return;
-
-        foreach (var element in resource.Snapshot.Element)
-        {
-            if (element.Binding?.ValueSet == null)
-                continue;
-
-            string path = element.Path ?? string.Empty;
-            if (string.IsNullOrEmpty(path))
-                continue;
-
-            // Remove [x] suffix from choice type elements
-            path = path.Replace("[x]", string.Empty);
-
-            string? valueSetUrl = element.Binding.ValueSet;
-            if (string.IsNullOrEmpty(valueSetUrl))
-                continue;
-
-            // Try to extract the underlying code system from the value set
-            string? codeSystemUrl = ExtractCodeSystemFromValueSet(valueSetUrl, mappings.Values);
-            if (string.IsNullOrEmpty(codeSystemUrl))
-            {
-                codeSystemUrl = valueSetUrl; // Fall back to value set if code system not found
-            }
-
-            // Remove canonical version suffix (|version)
-            if (codeSystemUrl.Contains("|"))
-            {
-                codeSystemUrl = codeSystemUrl.Substring(0, codeSystemUrl.IndexOf("|"));
-            }
-
-            // Add mapping from path to code system URL
-            if (!mappings.ContainsKey(path))
-            {
-                mappings[path] = codeSystemUrl;
-            }
         }
+
+        string path = element.Path.Replace("[x]", string.Empty, StringComparison.Ordinal);
+        if (ImpliedValueSet(binding) is not { } valueSetUrl)
+        {
+            Omit(omitted, binding.ValueSet is null ? $"{binding.Strength} binding names no value set" : $"{binding.Strength} binding without a required maximum value set", path);
+            return;
+        }
+
+        if (FindValueSet(definitions, valueSetUrl) is not { } valueSet)
+        {
+            Omit(omitted, "bound value set is not in the package", $"{path} -> {valueSetUrl}");
+            return;
+        }
+
+        List<ValueSet.ConceptSetComponent> includes = valueSet.Compose?.Include ?? [];
+        if (includes.Count == 0 || includes.Any(include => string.IsNullOrEmpty(include.System)))
+        {
+            Omit(omitted, "bound value set has no compose or includes another value set", $"{path} -> {valueSetUrl}");
+            return;
+        }
+
+        string[] systems = [.. includes.Select(include => include.System).Distinct(StringComparer.Ordinal)];
+        if (systems.Length != 1)
+        {
+            Omit(omitted, "bound value set draws on several code systems", $"{path} -> {valueSetUrl} ({string.Join(", ", systems)})");
+            return;
+        }
+
+        if (mappings.TryGetValue(path, out string? existing) && existing != systems[0])
+        {
+            throw new InvalidOperationException($"{path} is bound to both {existing} and {systems[0]}.");
+        }
+
+        mappings[path] = systems[0];
     }
 
-    private string? ExtractCodeSystemFromValueSet(string valueSetUrl, ICollection<string> existingMappings)
+    /// <summary>
+    /// The value set a code is guaranteed to come from: the bound one when the binding is required or
+    /// extensible, else a required maximum value set (R4 binds <c>Resource.language</c> as preferred with
+    /// all-languages as its maximum). Preferred and example bindings alone imply nothing.
+    /// </summary>
+    private static string? ImpliedValueSet(ElementDefinition.ElementDefinitionBindingComponent binding)
     {
-        // Try to extract the primary code system from a value set URL
-        // For common FHIR value sets, use known code system mappings
-
-        // Map common FHIR value sets to their primary code systems
-        var knownMappings = new Dictionary<string, string>
+        string? maxValueSet = MaxValueSet(binding);
+        return binding.Strength switch
         {
-            { "http://hl7.org/fhir/ValueSet/languages", "urn:ietf:bcp:47" },
-            { "http://hl7.org/fhir/ValueSet/mimetypes", "urn:ietf:bcp:13" },
-            { "http://hl7.org/fhir/ValueSet/currencies", "urn:iso:std:iso:4217" },
-            { "http://hl7.org/fhir/ValueSet/country", "urn:iso:std:iso:3166" },
-            { "http://hl7.org/fhir/ValueSet/language", "urn:ietf:bcp:47" },
+            BindingStrength.Required => binding.ValueSet,
+            _ when maxValueSet is not null => maxValueSet,
+            BindingStrength.Extensible => binding.ValueSet,
+            _ => null,
         };
-
-        if (knownMappings.TryGetValue(valueSetUrl, out var codeSystem))
-        {
-            return codeSystem;
-        }
-
-        // For HL7 value sets, try to extract the code system from the URL pattern
-        if (valueSetUrl.StartsWith("http://hl7.org/fhir/ValueSet/"))
-        {
-            string valueSetName = valueSetUrl.Substring("http://hl7.org/fhir/ValueSet/".Length);
-            // Many HL7 value sets map to code systems with similar names
-            // For example: ValueSet/administrative-gender → CodeSystem/administrative-gender
-            string possibleCodeSystemUrl = $"http://hl7.org/fhir/CodeSystem/{valueSetName}";
-            // We could validate this exists, but for now assume the pattern holds
-            return possibleCodeSystemUrl;
-        }
-
-        return null;
     }
 
-    private string GetCodeSystemMappingsJsonPath(string fhirVersion)
+    private static string? MaxValueSet(ElementDefinition.ElementDefinitionBindingComponent binding)
     {
-        // Resolve path to embedded resourcepath-codesystem-mappings.json in Ignixa.Search project
-        string baseDir = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "../../src", "Ignixa.Search", "Data"));
-
-        string versionDir = fhirVersion switch
+        Extension? extension = binding.Extension.SingleOrDefault(candidate => candidate.Url == MaxValueSetExtensionUrl);
+        return extension?.Value switch
         {
-            "R4" => "R4",
-            "R4B" => "R4B",
-            "R5" => "R5",
-            "R6" => "R6",
-            "STU3" => "Stu3",
-            _ => throw new ArgumentException($"Unknown FHIR version: {fhirVersion}")
+            null => null,
+            Canonical canonical => canonical.Value,
+            FhirUri uri => uri.Value,
+            ResourceReference reference => reference.Reference,
+            DataType other => throw new InvalidOperationException($"Unexpected {other.TypeName} value on a {MaxValueSetExtensionUrl} extension."),
         };
-
-        return Path.Combine(baseDir, versionDir, "resourcepath-codesystem-mappings.json");
     }
 
-    private string EscapeString(string value)
+    private static ValueSet? FindValueSet(DefinitionCollection definitions, string valueSetUrl)
     {
-        if (value == null)
-            return "null";
+        int pipe = valueSetUrl.LastIndexOf('|');
+        if (pipe >= 0)
+        {
+            return definitions.ValueSetsByVersionedUrl.GetValueOrDefault(valueSetUrl);
+        }
 
+        string[] versions = definitions.VersionsForValueSet(valueSetUrl);
+        return versions switch
+        {
+            [] => null,
+            [string version] => definitions.ValueSetsByVersionedUrl[$"{valueSetUrl}|{version}"],
+            _ => throw new InvalidOperationException($"{valueSetUrl} is loaded in several versions ({string.Join(", ", versions)}); an unversioned binding to it is ambiguous."),
+        };
+    }
+
+    private static void Omit(SortedDictionary<string, List<string>> omitted, string reason, string detail)
+    {
+        if (!omitted.TryGetValue(reason, out List<string>? details))
+        {
+            details = [];
+            omitted[reason] = details;
+        }
+
+        details.Add(detail);
+    }
+
+    private static string EscapeString(string value)
+    {
         return value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r");
     }
 }

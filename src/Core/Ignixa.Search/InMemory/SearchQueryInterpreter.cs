@@ -3,13 +3,15 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+#nullable enable
+
 using EnsureThat;
-using Ignixa.Specification.ValueSets.Normative;
+using Ignixa.Search.Exceptions;
 using Ignixa.Search.Expressions;
-using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.InMemory;
 
@@ -17,9 +19,60 @@ namespace Ignixa.Search.InMemory;
 /// Expression visitor that converts FHIR search parameter expressions into predicates for in-memory filtering.
 /// Ported from microsoft/fhir-server feature/subscription-engine branch.
 /// </summary>
+/// <remarks>
+/// <para>
+/// The expression beneath each <see cref="SearchParameterExpression"/> is lowered to the field-level shape and
+/// compiled into a test of one index entry (see <see cref="SearchIndexEntryMatcher"/>): a resource matches when
+/// one of its entries for the parameter satisfies the whole criterion. A token <c>:not</c> matches resources with
+/// no entry satisfying the criterion, including resources without the parameter.
+/// </para>
+/// <para>
+/// <c>_id</c> and <c>_type</c> are read from <see cref="Abstractions.ResourceKey"/>, since they never have index
+/// entries. Chained and reverse-chained (<c>_has</c>) parameters are evaluated only when the interpreter was
+/// created with an <see cref="IInMemorySearchSource"/> and the matching <see cref="InMemorySearchFeatures"/>, and
+/// compartment searches only when it was also given an <see cref="InMemoryCompartmentMembership"/>; otherwise they
+/// throw <see cref="SearchOperationNotSupportedException"/>.
+/// </para>
+/// </remarks>
 [CLSCompliant(false)]
 public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContext<SearchQueryInterpreter.Context, SearchPredicate>
 {
+    private readonly IInMemorySearchSource? _source;
+    private readonly InMemorySearchFeatures _features;
+    private readonly InMemoryCompartmentMembership? _compartments;
+
+    /// <summary>Creates an interpreter that filters one resource type; chains and <c>_has</c> are not supported.</summary>
+    public SearchQueryInterpreter()
+    {
+    }
+
+    /// <summary>
+    /// Creates an interpreter that can follow references into <paramref name="source"/> for the enabled
+    /// <paramref name="features"/>. Experimental (<c>IGNIXAEXP001</c>).
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.Experimental(InMemoryExperimental.DiagnosticId)]
+    public SearchQueryInterpreter(IInMemorySearchSource source, InMemorySearchFeatures features)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        _source = source;
+        _features = features;
+    }
+
+    /// <summary>
+    /// Creates an interpreter like <see cref="SearchQueryInterpreter(IInMemorySearchSource, InMemorySearchFeatures)"/> that
+    /// also evaluates compartment searches (<see cref="CompartmentSearchExpression"/>) with <paramref name="compartments"/>.
+    /// Experimental (<c>IGNIXAEXP001</c>).
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.Experimental(InMemoryExperimental.DiagnosticId)]
+    public SearchQueryInterpreter(IInMemorySearchSource source, InMemorySearchFeatures features, InMemoryCompartmentMembership compartments)
+        : this(source, features)
+    {
+        ArgumentNullException.ThrowIfNull(compartments);
+
+        _compartments = compartments;
+    }
+
     /// <summary>
     /// Gets the initial context for expression visiting.
     /// </summary>
@@ -28,326 +81,334 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
     public SearchPredicate VisitSearchParameter(SearchParameterExpression expression, Context context)
     {
         EnsureArg.IsNotNull(expression, nameof(expression));
-        EnsureArg.IsNotNull<Context>(context, nameof(context));
 
-        return VisitInnerWithContext(expression.Parameter.Name, expression.Expression, context);
-    }
-
-    public SearchPredicate VisitBinary(BinaryExpression expression, Context context)
-    {
-        EnsureArg.IsNotNull(expression, nameof(expression));
-        EnsureArg.IsNotNull<Context>(context, nameof(context));
-
-        return VisitBinary(context.ParameterName, expression.BinaryOperator, expression.Value);
-    }
-
-    private static SearchPredicate VisitBinary(string fieldName, BinaryOperator op, object value)
-    {
-        EnsureArg.IsNotNull(fieldName, nameof(fieldName));
-        EnsureArg.IsNotNull(value, nameof(value));
-
-        return input => input.Where(x => x.Index.Any(y => y.SearchParameter.Name == fieldName && GetMappedValue(op, y.Value, (IComparable)value)));
-    }
-
-    private static bool GetMappedValue(BinaryOperator expressionBinaryOperator, ISearchValue first, IComparable second)
-    {
-        EnsureArg.IsNotNull(first, nameof(first));
-        EnsureArg.IsNotNull(second, nameof(second));
-
-        if (first == null || second == null)
+        string parameterName = expression.Parameter.Name;
+        if (expression.Parameter.ComponentInconsistency is { } inconsistency)
         {
-            return false;
+            throw new SearchOperationNotSupportedException(
+                $"Composite search parameter '{expression.Parameter.Code}' cannot be searched in memory: {inconsistency}.");
         }
 
-        var comparisonVisitor = new ComparisonValueVisitor(expressionBinaryOperator, second);
-        first.AcceptVisitor(comparisonVisitor);
+        Expression body = LegacyExpressionLowerer.LowerToLegacy(expression.Expression);
 
-        return comparisonVisitor.Compare();
+        if (expression.Parameter.Code == SearchParameterNames.ResourceType)
+        {
+            Func<string, bool> matchesType = CompileKeyField(body, SearchParameterNames.ResourceType);
+            return input => input.Where(x => matchesType(x.Location.ResourceType));
+        }
+
+        if (expression.Parameter.Code == SearchParameterNames.Id)
+        {
+            Func<string, bool> matchesId = CompileKeyField(body, SearchParameterNames.Id);
+            return input => input.Where(x => matchesId(x.Location.Id));
+        }
+
+        if (body is NotExpression not)
+        {
+            Func<SearchIndexEntry, bool> negated = WithCanonicals(SearchIndexEntryMatcher.Compile(not.Expression, expression.Parameter), expression, negatedBody: true);
+            return input => input.Where(x => !x.Index.Any(y => y.SearchParameter.Name == parameterName && negated(y)));
+        }
+
+        Func<SearchIndexEntry, bool> matcher = WithCanonicals(SearchIndexEntryMatcher.Compile(body, expression.Parameter), expression, negatedBody: false);
+        return input => input.Where(x => x.Index.Any(y => y.SearchParameter.Name == parameterName && matcher(y)));
+    }
+
+    /// <summary>
+    /// For a reference parameter that selects canonicals, extends <paramref name="matcher"/> to the canonical entries
+    /// <see cref="CanonicalReferenceSearchIndexer"/> adds, which the field-level matcher never matches.
+    /// </summary>
+    private static Func<SearchIndexEntry, bool> WithCanonicals(Func<SearchIndexEntry, bool> matcher, SearchParameterExpression expression, bool negatedBody)
+    {
+        if (expression.Parameter.CanonicalReferences == CanonicalReferenceKind.None)
+        {
+            return matcher;
+        }
+
+        Expression positive = negatedBody && expression.Expression is NotExpression { Expression: { } inner } ? inner : expression.Expression;
+        Func<UriSearchValue, bool> canonical = CanonicalReferenceMatcher.Compile(positive);
+        return entry => entry.Value is UriSearchValue uri ? canonical(uri) : matcher(entry);
     }
 
     public SearchPredicate VisitSearchParameterPredicate(SearchParameterPredicateExpression expression, Context context)
     {
         EnsureArg.IsNotNull(expression, nameof(expression));
-        EnsureArg.IsNotNull<Context>(context, nameof(context));
 
-        return LowerAndVisit(expression.Parameter, expression.Modifier, expression.Comparator, componentIndex: null, expression.Value, context);
+        return VisitSearchParameter(Expression.SearchParameter(expression.Parameter, expression), context);
     }
 
     public SearchPredicate VisitCompositeComponent(CompositeComponentExpression expression, Context context)
     {
         EnsureArg.IsNotNull(expression, nameof(expression));
-        EnsureArg.IsNotNull<Context>(context, nameof(context));
 
-        // BindComposite (SearchExpressionBinder) only ever wraps a SearchParameterPredicateExpression here
-        // (confirmed by reading SearchExpressionBinder.BindComposite and LegacyExpressionLowerer, which relies
-        // on the same invariant) -- fail loudly rather than silently mis-evaluating an unexpected shape.
-        if (expression.WrappedExpression is not SearchParameterPredicateExpression predicate)
-        {
-            throw new SearchOperationNotSupportedException(
-                $"{nameof(SearchQueryInterpreter)} can only evaluate a {nameof(CompositeComponentExpression)} whose " +
-                $"{nameof(CompositeComponentExpression.WrappedExpression)} is a {nameof(SearchParameterPredicateExpression)}, " +
-                $"found {expression.WrappedExpression.GetType().Name}.");
-        }
-
-        // Note: context (in particular context.ParameterName, which drives index-entry matching in
-        // VisitBinary/VisitString below) is threaded through UNCHANGED here, matching this class's existing
-        // behavior: VisitBinary/VisitString have never read BinaryExpression/StringExpression.ComponentIndex --
-        // only context.ParameterName (set once, at the top, by VisitSearchParameter) drives which index entries
-        // are considered. This is a real, pre-existing (not introduced by this change) simplification of the
-        // in-memory backend: it does not disambiguate composite components by position. Replicated as-is, not
-        // strengthened, per this task's mandate to reproduce existing semantics rather than invent new ones.
-        return LowerAndVisit(predicate.Parameter, predicate.Modifier, predicate.Comparator, expression.Position, predicate.Value, context);
+        return VisitFieldLevel(expression, context);
     }
 
-    /// <summary>
-    /// Reconstructs the old field-level sub-expression for a single typed predicate via the same
-    /// <see cref="SearchValueExpressionBuilderHelper"/> the parser used before Task 4 and
-    /// <see cref="LegacyExpressionLowerer"/> still uses today, then evaluates it through this class's
-    /// own already-implemented, unmodified structural visit methods (<see cref="VisitBinary"/>,
-    /// <see cref="VisitString"/>, <see cref="VisitMultiary"/>, <see cref="VisitNotExpression"/>,
-    /// <see cref="VisitMissingField"/>). This guarantees the evaluated result is identical to what the
-    /// pre-Task-7 pipeline (parse-time decomposition via <see cref="SearchValueExpressionBuilderHelper"/>,
-    /// then this class's field-level visitors) produced -- including this class's pre-existing gaps (e.g.
-    /// <see cref="VisitMissingField"/> throwing <see cref="SearchOperationNotSupportedException"/> for
-    /// internal references or empty-system tokens; string-typed comparisons throwing for parameter types
-    /// <see cref="VisitString"/>'s internal switch does not enumerate) -- rather than re-deriving that
-    /// per-type comparator math by hand, which would risk silently changing behavior no test currently
-    /// exercises. See task-7-report.md "Before You Begin" / "Concerns" for the full analysis.
-    /// </summary>
-    private SearchPredicate LowerAndVisit(
-        SearchParameterInfo parameter,
-        SearchModifier modifier,
-        SearchComparator comparator,
-        int? componentIndex,
-        ISearchValue value,
-        Context context)
-    {
-        Expression lowered = new SearchValueExpressionBuilderHelper().Build(parameter.Code, modifier, comparator, componentIndex, value);
-
-        return lowered.AcceptVisitor(this, context);
-    }
-
-    public SearchPredicate VisitChained(ChainedExpression expression, Context context)
+    // Binary, String and MissingField nodes normally sit beneath a SearchParameterExpression, which compiles them
+    // per entry. Reached directly, they are tested against the entries of the parameter named by the context.
+    public SearchPredicate VisitBinary(BinaryExpression expression, Context context)
     {
         EnsureArg.IsNotNull(expression, nameof(expression));
-        EnsureArg.IsNotNull<Context>(context, nameof(context));
 
-        throw new SearchOperationNotSupportedException("ChainedExpression is not supported.");
+        return VisitFieldLevel(expression, context);
+    }
+
+    public SearchPredicate VisitString(StringExpression expression, Context context)
+    {
+        EnsureArg.IsNotNull(expression, nameof(expression));
+
+        if (context.ParameterName == SearchParameterNames.ResourceType)
+        {
+            Func<string, bool> matchesType = CompileKeyField(expression, SearchParameterNames.ResourceType);
+            return input => input.Where(x => matchesType(x.Location.ResourceType));
+        }
+
+        return VisitFieldLevel(expression, context);
     }
 
     public SearchPredicate VisitMissingField(MissingFieldExpression expression, Context context)
     {
         EnsureArg.IsNotNull(expression, nameof(expression));
-        EnsureArg.IsNotNull<Context>(context, nameof(context));
 
-        // MissingFieldExpression is for low-level field checks
-        // For now, not commonly used in standard FHIR search - throw not supported
-        throw new SearchOperationNotSupportedException("MissingFieldExpression is not supported in in-memory search.");
+        return VisitFieldLevel(expression, context);
     }
 
     public SearchPredicate VisitMissingSearchParameter(MissingSearchParameterExpression expression, Context context)
     {
         EnsureArg.IsNotNull(expression, nameof(expression));
-        EnsureArg.IsNotNull<Context>(context, nameof(context));
 
-        // Check if the search parameter exists (has index entries) or not
-        string parameterName = expression.Parameter.Name;
-        bool shouldBeMissing = expression.IsMissing;
-
-        return input =>
+        // Every resource has an id and none has an _id index entry.
+        if (expression.Parameter.Code == SearchParameterNames.Id)
         {
-            if (shouldBeMissing)
-            {
-                // Return resources that do NOT have any index entries for this parameter
-                return input.Where(x => !x.Index.Any(y => y.SearchParameter.Name == parameterName));
-            }
-            else
-            {
-                // Return resources that DO have index entries for this parameter
-                return input.Where(x => x.Index.Any(y => y.SearchParameter.Name == parameterName));
-            }
-        };
+            return expression.IsMissing
+                ? input => Enumerable.Empty<(Abstractions.ResourceKey, IReadOnlyCollection<SearchIndexEntry>)>()
+                : input => input;
+        }
+
+        string parameterName = expression.Parameter.Name;
+        return expression.IsMissing
+            ? input => input.Where(x => !x.Index.Any(y => y.SearchParameter.Name == parameterName))
+            : input => input.Where(x => x.Index.Any(y => y.SearchParameter.Name == parameterName));
     }
 
     public SearchPredicate VisitMultiary(MultiaryExpression expression, Context context)
     {
         EnsureArg.IsNotNull(expression, nameof(expression));
         EnsureArg.IsNotNull(expression.Expressions, nameof(expression.Expressions));
-        EnsureArg.IsNotNull<Context>(context, nameof(context));
 
         return expression.Expressions
             .Select(x => x.AcceptVisitor(this, context))
-            .Aggregate((x, y) =>
+            .Aggregate((x, y) => expression.MultiaryOperation switch
             {
-                return expression.MultiaryOperation switch
-                {
-                    MultiaryOperator.And => p => x(p).Intersect(y(p)),
-                    MultiaryOperator.Or => p => x(p).Union(y(p)),
-                    _ => throw new NotImplementedException($"MultiaryOperator {expression.MultiaryOperation} not supported")
-                };
+                MultiaryOperator.And => p => x(p).Intersect(y(p), ByLocation.Instance),
+                MultiaryOperator.Or => p => x(p).Union(y(p), ByLocation.Instance),
+                _ => throw new SearchOperationNotSupportedException($"MultiaryOperator {expression.MultiaryOperation} is not supported in in-memory search."),
             });
-    }
-
-    public SearchPredicate VisitString(StringExpression expression, Context context)
-    {
-        EnsureArg.IsNotNull(expression, nameof(expression));
-        EnsureArg.IsNotNull<Context>(context, nameof(context));
-
-        StringComparison comparison = expression.IgnoreCase
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
-
-        if (context.ParameterName == "_type")
-        {
-            return input => input.Where(x => x.Location.ResourceType.Equals(expression.Value, comparison));
-        }
-        else
-        {
-            return expression.StringOperator switch
-            {
-                StringOperator.StartsWith => input => input.Where(x => x.Index.Any(y =>
-                    y.SearchParameter.Name == context.ParameterName &&
-                    CompareStringParameter(y, (a, b, c) => a.StartsWith(b, c)))),
-
-                StringOperator.Equals => input => input.Where(x => x.Index.Any(y =>
-                    y.SearchParameter.Name == context.ParameterName &&
-                    CompareStringParameter(y, string.Equals))),
-
-                StringOperator.Contains => input => input.Where(x => x.Index.Any(y =>
-                    y.SearchParameter.Name == context.ParameterName &&
-                    CompareStringParameter(y, (a, b, c) => a.Contains(b, c)))),
-
-                _ => throw new NotImplementedException($"StringOperator {expression.StringOperator} not supported")
-            };
-        }
-
-        bool CompareStringParameter(SearchIndexEntry y, Func<string, string, StringComparison, bool> compareFunc)
-        {
-            EnsureArg.IsNotNull(y, nameof(y));
-
-            return y.SearchParameter.Type switch
-            {
-                SearchParamType.String => compareFunc(((StringSearchValue)y.Value).String, expression.Value, comparison),
-
-                SearchParamType.Token => compareFunc(((TokenSearchValue)y.Value).Code, expression.Value, comparison) ||
-                                        compareFunc(((TokenSearchValue)y.Value).System, expression.Value, comparison),
-
-                _ => throw new NotImplementedException($"Search parameter type {y.SearchParameter.Type} not supported for string comparison")
-            };
-        }
-    }
-
-    public SearchPredicate VisitCompartment(CompartmentSearchExpression expression, Context context)
-    {
-        EnsureArg.IsNotNull(expression, nameof(expression));
-        EnsureArg.IsNotNull<Context>(context, nameof(context));
-
-        throw new SearchOperationNotSupportedException("Compartment search is not supported.");
-    }
-
-    public SearchPredicate VisitPatientEverything(PatientEverythingExpression expression, Context context)
-    {
-        EnsureArg.IsNotNull(expression, nameof(expression));
-        EnsureArg.IsNotNull<Context>(context, nameof(context));
-
-        throw new SearchOperationNotSupportedException("Patient $everything is not supported in in-memory search.");
-    }
-
-    public SearchPredicate VisitInclude(IncludeExpression expression, Context context)
-    {
-        EnsureArg.IsNotNull(expression, nameof(expression));
-        EnsureArg.IsNotNull<Context>(context, nameof(context));
-
-        throw new NotImplementedException();
-    }
-
-    private SearchPredicate VisitInnerWithContext(string parameterName, Expression expression, Context context, bool negate = false)
-    {
-        EnsureArg.IsNotNull(parameterName, nameof(parameterName));
-        EnsureArg.IsNotNull(expression, nameof(expression));
-        EnsureArg.IsNotNull<Context>(context, nameof(context));
-
-        var newContext = context.WithParameterName(parameterName);
-
-        SearchPredicate filter = input =>
-        {
-            if (expression != null)
-            {
-                return expression.AcceptVisitor(this, newContext)(input);
-            }
-            else
-            {
-                // :missing will end up here
-                throw new NotSupportedException("This query is not supported");
-            }
-        };
-
-        if (negate)
-        {
-            SearchPredicate inner = filter;
-            filter = input => input.Except(inner(input));
-        }
-
-        return filter;
-    }
-
-    public SearchPredicate VisitNotExpression(NotExpression expression, Context context)
-    {
-        EnsureArg.IsNotNull(expression, nameof(expression));
-        EnsureArg.IsNotNull<Context>(context, nameof(context));
-
-        // Visit the inner expression to get its predicate
-        SearchPredicate innerPredicate = expression.Expression.AcceptVisitor(this, context);
-
-        // Return a predicate that negates the inner predicate's result
-        return input =>
-        {
-            var innerResults = innerPredicate(input);
-            return input.Except(innerResults);
-        };
-    }
-
-    public SearchPredicate VisitSortParameter(SortExpression expression, Context context)
-    {
-        EnsureArg.IsNotNull(expression, nameof(expression));
-        EnsureArg.IsNotNull<Context>(context, nameof(context));
-
-        throw new NotImplementedException();
-    }
-
-    public SearchPredicate VisitIn<T>(InExpression<T> expression, Context context)
-    {
-        EnsureArg.IsNotNull(expression, nameof(expression));
-        EnsureArg.IsNotNull<Context>(context, nameof(context));
-
-        throw new NotImplementedException("InExpression is not yet supported for in-memory search.");
     }
 
     public SearchPredicate VisitUnion(UnionExpression expression, Context context)
     {
         EnsureArg.IsNotNull(expression, nameof(expression));
-        EnsureArg.IsNotNull<Context>(context, nameof(context));
 
-        // Union expressions: combine results from each sub-expression with Union
         return expression.Expressions
             .Select(x => x.AcceptVisitor(this, context))
-            .Aggregate((x, y) => p => x(p).Union(y(p)));
+            .Aggregate((x, y) => p => x(p).Union(y(p), ByLocation.Instance));
+    }
+
+    public SearchPredicate VisitNotExpression(NotExpression expression, Context context)
+    {
+        EnsureArg.IsNotNull(expression, nameof(expression));
+
+        SearchPredicate inner = expression.Expression.AcceptVisitor(this, context);
+        return input => input.Except(inner(input), ByLocation.Instance);
+    }
+
+    public SearchPredicate VisitChained(ChainedExpression expression, Context context)
+    {
+        EnsureArg.IsNotNull(expression, nameof(expression));
+
+        InMemorySearchFeatures required = expression.Reversed ? InMemorySearchFeatures.ReverseChains : InMemorySearchFeatures.Chains;
+        if (_source is null || !_features.HasFlag(required))
+        {
+            throw new SearchOperationNotSupportedException(expression.Reversed
+                ? "Reverse chained (_has) search is not enabled for in-memory search."
+                : "ChainedExpression is not supported.");
+        }
+
+        RefuseCanonicalOnly(expression.ReferenceSearchParameter, expression.Reversed ? "_has" : "a chain");
+        SearchPredicate inner = expression.Expression.AcceptVisitor(this, InitialContext);
+        return expression.Reversed
+            ? ReverseChain(expression, inner, _source)
+            : ForwardChain(expression, inner, _source);
+    }
+
+    /// <summary>
+    /// Matches the resources in the expression's compartment (see <see cref="InMemoryCompartmentMembership"/>), limited to its
+    /// <see cref="CompartmentSearchExpression.FilteredResourceTypes"/> when it names any.
+    /// </summary>
+    /// <exception cref="SearchOperationNotSupportedException">The interpreter was created without compartment definitions.</exception>
+    /// <exception cref="BadSearchRequestException">The compartment type is not one the FHIR version defines.</exception>
+    public SearchPredicate VisitCompartment(CompartmentSearchExpression expression, Context context)
+    {
+        EnsureArg.IsNotNull(expression, nameof(expression));
+
+        if (_compartments is not { } compartments)
+        {
+            throw new SearchOperationNotSupportedException("Compartment search is not enabled for this in-memory search.");
+        }
+
+        if (!compartments.CompartmentTypes.Contains(expression.CompartmentType, StringComparer.Ordinal))
+        {
+            throw new BadSearchRequestException($"'{expression.CompartmentType}' is not a compartment type; the compartment types are {string.Join(", ", compartments.CompartmentTypes)}.");
+        }
+
+        string type = expression.CompartmentType;
+        string id = expression.CompartmentId;
+        ISet<string> only = expression.FilteredResourceTypes;
+        return input => input.Where(x => (only.Count == 0 || only.Contains(x.Location.ResourceType)) && compartments.IsInCompartment(x.Location, x.Index, type, id));
+    }
+
+    public SearchPredicate VisitPatientEverything(PatientEverythingExpression expression, Context context)
+    {
+        EnsureArg.IsNotNull(expression, nameof(expression));
+
+        throw new SearchOperationNotSupportedException("Patient $everything is not supported in in-memory search.");
+    }
+
+    // _include and _sort are not filters; InMemorySearchEngine applies them from SearchOptions.
+    public SearchPredicate VisitInclude(IncludeExpression expression, Context context)
+    {
+        EnsureArg.IsNotNull(expression, nameof(expression));
+
+        throw new SearchOperationNotSupportedException("IncludeExpression is not a filter; use InMemorySearchEngine to resolve includes.");
+    }
+
+    public SearchPredicate VisitSortParameter(SortExpression expression, Context context)
+    {
+        EnsureArg.IsNotNull(expression, nameof(expression));
+
+        throw new SearchOperationNotSupportedException("SortExpression is not a filter; use InMemorySearchEngine to sort.");
+    }
+
+    public SearchPredicate VisitIn<T>(InExpression<T> expression, Context context)
+    {
+        EnsureArg.IsNotNull(expression, nameof(expression));
+
+        throw new SearchOperationNotSupportedException("InExpression is not supported in in-memory search.");
     }
 
     public SearchPredicate VisitNotReferenced(NotReferencedExpression expression, Context context)
     {
         EnsureArg.IsNotNull(expression, nameof(expression));
-        EnsureArg.IsNotNull<Context>(context, nameof(context));
 
         throw new SearchOperationNotSupportedException("_not-referenced is not supported in in-memory search.");
     }
+
+    private static SearchPredicate VisitFieldLevel(Expression expression, Context context)
+    {
+        string? parameterName = context.ParameterName;
+        Func<SearchIndexEntry, bool> matcher = SearchIndexEntryMatcher.Compile(LegacyExpressionLowerer.LowerToLegacy(expression), parameter: null);
+        return input => input.Where(x => x.Index.Any(y => y.SearchParameter.Name == parameterName && matcher(y)));
+    }
+
+    /// <summary>
+    /// A resource matches when one of its references through the chain's parameter points at a resource of a
+    /// target type that matches the chain's inner expression. The targets are evaluated once per predicate call.
+    /// </summary>
+    private static SearchPredicate ForwardChain(ChainedExpression chain, SearchPredicate inner, IInMemorySearchSource source) =>
+        input =>
+        {
+            HashSet<(string ResourceType, string Id)> targets = [.. chain.TargetResourceTypes
+                .SelectMany(type => inner(source.Enumerate(type)))
+                .Select(match => (match.Location.ResourceType, match.Location.Id))];
+
+            return input.Where(x => LocalReferences(x.Index, chain.ReferenceSearchParameter).Any(targets.Contains));
+        };
+
+    /// <summary>
+    /// A resource matches when a resource of the chain's source type both matches the chain's inner expression and
+    /// references it through the chain's parameter.
+    /// </summary>
+    private static SearchPredicate ReverseChain(ChainedExpression chain, SearchPredicate inner, IInMemorySearchSource source) =>
+        input =>
+        {
+            HashSet<(string ResourceType, string Id)> referenced = [.. chain.ResourceTypes
+                .SelectMany(type => inner(source.Enumerate(type)))
+                .SelectMany(match => LocalReferences(match.Index, chain.ReferenceSearchParameter))];
+
+            return input.Where(x => referenced.Contains((x.Location.ResourceType, x.Location.Id)));
+        };
+
+    /// <summary>
+    /// Refuses following <paramref name="parameter"/> when it selects only canonicals, decided from its definition so the
+    /// answer never depends on the data or the order of its index entries. Resolving a canonical to the resource it names is
+    /// a value join this engine does not perform, so following such a parameter would always find nothing.
+    /// </summary>
+    /// <exception cref="SearchOperationNotSupportedException">The parameter selects only canonicals.</exception>
+    internal static void RefuseCanonicalOnly(SearchParameterInfo parameter, string follower)
+    {
+        if (parameter.CanonicalReferences == CanonicalReferenceKind.Only)
+        {
+            throw new SearchOperationNotSupportedException(
+                $"Search parameter '{parameter.Code}' selects only canonical references; canonical resolution is not supported, so {follower} cannot follow it in in-memory search.");
+        }
+    }
+
+    /// <summary>
+    /// The resources <paramref name="index"/> references through <paramref name="parameter"/>, or through every reference
+    /// parameter when it is null, by type and id. A reference with a base URI points at another server, and one without a
+    /// type cannot be resolved, so neither names a resource the source could hold. A canonical entry
+    /// (<see cref="CanonicalReferenceSearchIndexer"/>) is skipped: it is never followed, whatever entries surround it.
+    /// </summary>
+    internal static IEnumerable<(string ResourceType, string Id)> LocalReferences(IEnumerable<SearchIndexEntry> index, SearchParameterInfo? parameter) =>
+        index
+            .Where(entry => parameter is null ? entry.SearchParameter.Type == SearchParamType.Reference : entry.SearchParameter.Name == parameter.Name)
+            .Select(entry => entry.Value)
+            .OfType<ReferenceSearchValue>()
+            .Where(reference => reference.BaseUri is null && !string.IsNullOrEmpty(reference.ResourceType) && !string.IsNullOrEmpty(reference.ResourceId))
+            .Select(reference => (reference.ResourceType, reference.ResourceId));
+
+    /// <summary>
+    /// Compiles the lowered body of <c>_id</c> or <c>_type</c> into a test of the resource key field it searches. Each
+    /// resource has exactly one id and one type, so negating the comparison is "no value matches".
+    /// </summary>
+    /// <exception cref="BadSearchRequestException">The value names a system, which an id or type never has.</exception>
+    private static Func<string, bool> CompileKeyField(Expression expression, string parameterCode)
+    {
+        switch (expression)
+        {
+            case StringExpression { StringOperator: StringOperator.Equals, FieldName: not (FieldName.TokenSystem or FieldName.IdentifierTypeSystem or FieldName.IdentifierTypeCode) } str:
+                StringComparison comparison = str.IgnoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+                return value => string.Equals(value, str.Value, comparison);
+            case StringExpression { FieldName: FieldName.TokenSystem } or MissingFieldExpression { FieldName: FieldName.TokenSystem }:
+                throw new BadSearchRequestException($"{parameterCode} values have no system; search {parameterCode}=value without a '|'.");
+            case NotExpression not:
+                Func<string, bool> negated = CompileKeyField(not.Expression, parameterCode);
+                return value => !negated(value);
+            case MultiaryExpression { MultiaryOperation: MultiaryOperator.Or } or UnionExpression:
+                Func<string, bool>[] alternatives = [.. Children(expression).Select(child => CompileKeyField(child, parameterCode))];
+                return value => alternatives.Any(alternative => alternative(value));
+            case MultiaryExpression { MultiaryOperation: MultiaryOperator.And } multiary:
+                Func<string, bool>[] all = [.. multiary.Expressions.Select(child => CompileKeyField(child, parameterCode))];
+                return value => all.All(condition => condition(value));
+            default:
+                throw new SearchOperationNotSupportedException($"{expression} is not supported for {parameterCode} in in-memory search.");
+        }
+    }
+
+    private static IReadOnlyList<Expression> Children(Expression expression) =>
+        expression switch
+        {
+            MultiaryExpression multiary => multiary.Expressions,
+            UnionExpression union => union.Expressions,
+            _ => [expression],
+        };
 
     /// <summary>
     /// Context that is passed through the visit.
     /// </summary>
     public struct Context : IEquatable<Context>
     {
-        public string ParameterName { get; set; }
+        public string? ParameterName { get; set; }
 
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Public API")]
         public Context WithParameterName(string paramName)
@@ -363,7 +424,7 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
             return ParameterName == other.ParameterName;
         }
 
-        public override readonly bool Equals(object obj)
+        public override readonly bool Equals(object? obj)
         {
             return obj is Context context && Equals(context);
         }

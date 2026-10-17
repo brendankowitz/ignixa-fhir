@@ -259,7 +259,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
                     continue;
                 }
 
-                if (_schema.ResourceTypeNames.Contains(expression.PropertyName))
+                if (IsResourceTypeName(expression.PropertyName))
                 {
                     var resourceType = _schema.GetTypeDefinition(expression.PropertyName);
                     if (resourceType != null)
@@ -278,7 +278,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
                 continue;
             }
 
-            if (focusTypes.IsRoot && _schema.ResourceTypeNames.Contains(expression.PropertyName))
+            if (focusTypes.IsRoot && IsResourceTypeName(expression.PropertyName))
             {
                 var resourceType = _schema.GetTypeDefinition(expression.PropertyName);
                 if (resourceType != null)
@@ -345,7 +345,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
                     continue;
                 }
 
-                if (_schema.ResourceTypeNames.Contains(expression.ChildName))
+                if (IsResourceTypeName(expression.ChildName))
                 {
                     var resourceType = _schema.GetTypeDefinition(expression.ChildName);
                     if (resourceType != null)
@@ -364,7 +364,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
                 continue;
             }
 
-            if (focusTypes.IsRoot && _schema.ResourceTypeNames.Contains(expression.ChildName))
+            if (focusTypes.IsRoot && IsResourceTypeName(expression.ChildName))
             {
                 var resourceType = _schema.GetTypeDefinition(expression.ChildName);
                 if (resourceType != null)
@@ -522,8 +522,10 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         }
         else
         {
+            // Its return type is unknown, not the focus's: a host function such as patientSearch() returns other resources,
+            // and navigation after it must not be checked against the focus type.
             context.AddWarning($"Unknown function '{functionName}'", expression);
-            result.CopyFrom(focusTypes);
+            result.AddUnknown(focusTypes.IsCollection());
         }
 
         if (functionName.Equals("defineVariable", StringComparison.OrdinalIgnoreCase))
@@ -641,7 +643,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
                     continue;
                 }
 
-                if (_schema.ResourceTypeNames.Contains(expression.Name))
+                if (IsResourceTypeName(expression.Name))
                 {
                     var resourceType = _schema.GetTypeDefinition(expression.Name);
                     if (resourceType != null)
@@ -658,7 +660,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
                 continue;
             }
 
-            if (focusTypes.IsRoot && _schema.ResourceTypeNames.Contains(expression.Name))
+            if (focusTypes.IsRoot && IsResourceTypeName(expression.Name))
             {
                 var resourceType = _schema.GetTypeDefinition(expression.Name);
                 if (resourceType != null)
@@ -835,6 +837,16 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         {
             systemTypeMatches = GetSystemTypeMatches(construction, typeName);
             hasSystemTypeMatch = systemTypeMatches.Count > 0;
+        }
+
+        if (matchingTypes.Count == 0
+            && targetType?.Info.IsResource == true
+            && focusTypes.Types.Any(focusType => focusType.Type?.Info is { IsAbstract: true, IsResource: true }))
+        {
+            // A Resource or DomainResource focus (Bundle.entry.resource, contained) holds every resource type at runtime,
+            // so the filter narrows it rather than always yielding empty.
+            result.AddType(targetType, focusTypes.IsCollection());
+            return result;
         }
 
         if (matchingTypes.Count > 0 || hasSystemTypeMatch)
@@ -1368,6 +1380,19 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
     }
 
     /// <summary>
+    /// Whether <paramref name="name"/> spells a resource type exactly, as a type-name navigation (<c>Patient.name</c>) must.
+    /// </summary>
+    /// <remarks>
+    /// The schema's <see cref="IFhirSchemaProvider.ResourceTypeNames"/> may compare case-insensitively (the generated
+    /// providers do), and an element named like a resource type in lower case (<c>MedicationRequest.medication</c>,
+    /// <c>Observation.encounter</c>) would then be typed as that resource: <c>medication.ofType(Reference)</c> was reported
+    /// always empty and <c>encounter.resolve()</c> an error, while the evaluator, which matches the type name exactly,
+    /// navigates the element.
+    /// </remarks>
+    private bool IsResourceTypeName(string name) =>
+        _schema.ResourceTypeNames.Contains(name) && _schema.GetTypeDefinition(name)?.Info.Name == name;
+
+    /// <summary>
     /// Reports whether an unresolved name may name one instance of a choice element the focus declares,
     /// such as <c>occurrenceDateTime</c> for <c>ServiceRequest.occurrence</c>.
     /// </summary>
@@ -1463,11 +1488,20 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         Expression expression,
         AnalysisContext context)
     {
+        bool abstractResourceFocus = focusTypes.Types.Any(focusType => focusType.Type?.Info is { IsAbstract: true, IsResource: true });
+        if (!focusTypes.IsRoot && abstractResourceFocus && IsPropertyOnAnotherRootType(propertyName))
+        {
+            // entry.resource, contained or resolve() typed as Resource: the runtime type decides, as it does at an abstract root.
+            result.AddUnknown(path: propertyName);
+            context.AddIndeterminateWarning(
+                $"Property '{propertyName}' is not declared by abstract type '{focusTypes.TypeNames()}', so the runtime resource type decides it.",
+                expression);
+            return;
+        }
+
         if (!focusTypes.IsRoot || !IsPropertyOnAnotherRootType(propertyName))
         {
-            context.AddError(
-                $"Property '{propertyName}' not found on type '{focusTypes.TypeNames()}'",
-                expression);
+            AddUnresolvedPropertyError(propertyName, focusTypes, expression, context);
             return;
         }
 
@@ -1482,9 +1516,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
         if (MayBeChoiceElementInstanceName(focusTypes, propertyName))
         {
-            context.AddError(
-                $"Property '{propertyName}' not found on type '{focusTypes.TypeNames()}'",
-                expression);
+            AddUnresolvedPropertyError(propertyName, focusTypes, expression, context);
             return;
         }
 
@@ -1492,6 +1524,13 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
             $"Property '{propertyName}' will always be empty on root type '{context.RootType}'. It is declared by another resource type, but not by this one.",
             expression);
     }
+
+    private static void AddUnresolvedPropertyError(string propertyName, FhirPathTypeSet focusTypes, Expression expression, AnalysisContext context) =>
+        context.AddUnresolvedPropertyError(
+            $"Property '{propertyName}' not found on type '{focusTypes.TypeNames()}'",
+            propertyName,
+            [.. focusTypes.Types.Where(focusType => !focusType.IsUnknown).Select(focusType => focusType.TypeName).Distinct(StringComparer.Ordinal)],
+            expression);
 
     /// <summary>
     /// Validates that the focus type is supported by the function.

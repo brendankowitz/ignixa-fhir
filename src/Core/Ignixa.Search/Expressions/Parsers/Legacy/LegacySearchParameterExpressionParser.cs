@@ -275,7 +275,7 @@ public sealed class LegacySearchParameterExpressionParser : ISearchParameterExpr
                     referenceSearchValue.Kind,
                     referenceSearchValue.BaseUri,
                     modifier.ResourceType,
-                    referenceSearchValue.ResourceId);
+                    referenceSearchValue.ResourceId) { OriginalString = referenceSearchValue.OriginalString };
             }
             catch (ArgumentException)
             {

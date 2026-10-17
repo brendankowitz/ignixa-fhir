@@ -1,0 +1,163 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
+using System.Text;
+using System.Text.Json;
+using Ignixa.Abstractions;
+using Ignixa.CliOnFhir.Catalog;
+using Ignixa.CliOnFhir.Contracts;
+using Ignixa.CliOnFhir.Reading;
+using Ignixa.CliOnFhir.Terminology;
+using Ignixa.CliOnFhir.Terminology.Npm;
+using Ignixa.PackageManagement.Infrastructure;
+using Ignixa.PackageManagement.Models;
+using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Schema;
+
+namespace Ignixa.CliOnFhir.Validation;
+
+/// <summary>
+/// The StructureDefinitions validation can use beyond the core definitions (those of the folder, then of the requested
+/// packages, later ones taking precedence for a repeated canonical), layered over the session's core schema with Ignixa's
+/// <see cref="ProfileLayeredSchemaProvider"/>, and a schema resolver whose binding checks use the session's terminology
+/// adapter. Immutable once built; the resolver caches the schemas it builds and is safe to use concurrently.
+/// </summary>
+internal sealed class ProfileSet
+{
+    public const string UnusableCode = "profile-unusable";
+
+    private readonly Dictionary<string, LoadedProfile> _byCanonical;
+
+    private ProfileSet(ISchema schema, IValidationSchemaResolver resolver, IReadOnlyList<LoadedProfile> profiles, IReadOnlyList<string> packages, IReadOnlyList<IssueItem> problems)
+    {
+        Schema = schema;
+        Resolver = resolver;
+        Profiles = profiles;
+        Packages = packages;
+        Problems = problems;
+
+        // The last definition of a canonical wins, as in the layered provider.
+        _byCanonical = new Dictionary<string, LoadedProfile>(StringComparer.Ordinal);
+        foreach (LoadedProfile profile in profiles)
+        {
+            _byCanonical[profile.Url] = profile;
+            if (profile.Version is { } version)
+            {
+                _byCanonical[$"{profile.Url}|{version}"] = profile;
+            }
+        }
+    }
+
+    /// <summary>The schema resources are read with: the core schema, with the loaded StructureDefinitions layered over it.</summary>
+    public ISchema Schema { get; }
+
+    public IValidationSchemaResolver Resolver { get; }
+
+    /// <summary>Every StructureDefinition loaded, folder first, then the packages in request order.</summary>
+    public IReadOnlyList<LoadedProfile> Profiles { get; }
+
+    /// <summary>The packages (<c>id@version</c>) whose StructureDefinitions are loaded, in request order.</summary>
+    public IReadOnlyList<string> Packages { get; }
+
+    /// <summary>StructureDefinitions that could not be read or built, as warnings.</summary>
+    public IReadOnlyList<IssueItem> Problems { get; }
+
+    /// <summary>The loaded profile <paramref name="canonical"/> (<c>url</c> or <c>url|version</c>) names; null when none is loaded.</summary>
+    public LoadedProfile? Find(string canonical) => _byCanonical.GetValueOrDefault(canonical);
+
+    /// <param name="core">The session's core schema.</param>
+    /// <param name="rootPath">The folder, for reading its StructureDefinitions.</param>
+    /// <param name="folderDefinitions">The folder's catalogued StructureDefinitions.</param>
+    /// <param name="packages">The acquired packages, their StructureDefinitions kept.</param>
+    /// <param name="terminology">The terminology the binding checks ask.</param>
+    public static ProfileSet Build(IFhirSchemaProvider core, string rootPath, IReadOnlyList<CatalogEntry> folderDefinitions, IReadOnlyList<AcquiredPackage> packages, ITerminologyService terminology)
+    {
+        ArgumentNullException.ThrowIfNull(core);
+        ArgumentNullException.ThrowIfNull(folderDefinitions);
+        ArgumentNullException.ThrowIfNull(packages);
+
+        List<IssueItem> problems = [];
+        List<(ExtractedResource Resource, string Type, string Source, EvidenceItem Evidence)> definitions = [];
+        foreach (CatalogEntry entry in folderDefinitions)
+        {
+            (byte[]? json, IssueItem? problem) = ResourceReader.ReadBytes(rootPath, entry);
+            if (json is null)
+            {
+                problems.Add(problem! with { Severity = "warning", Code = UnusableCode, Diagnostics = $"A StructureDefinition in the folder was not loaded for validation: {problem.Diagnostics}" });
+                continue;
+            }
+
+            Add(definitions, problems, json, core.FullVersion, TerminologySourceInfo.FolderName, new EvidenceItem(FhirIds.Reference(entry), entry.FilePath, entry.Line, entry.Offset));
+        }
+
+        foreach (AcquiredPackage package in packages)
+        {
+            string source = $"{package.Id}@{package.Version}";
+            foreach (TerminologyFile file in package.Contents.Profiles)
+            {
+                Add(definitions, problems, file.Json.ToArray(), core.FullVersion, source, new EvidenceItem("StructureDefinition", $"{package.Id}#{package.Version}/{file.Path}", Line: null, Offset: 0));
+            }
+        }
+
+        // Ignixa's own layering adapts each definition (generating a snapshot from the differential when it has none); one it
+        // cannot adapt is dropped there, so it is found here by asking for it back.
+        ISchema schema = definitions.Count == 0 ? core : new ProfileLayeredSchemaProvider(core, [.. definitions.Select(definition => definition.Resource)]);
+        List<LoadedProfile> profiles = [];
+        foreach ((ExtractedResource resource, string type, string source, EvidenceItem evidence) in definitions)
+        {
+            bool usable = schema.GetTypeDefinition(resource.Canonical) is not null;
+            profiles.Add(new LoadedProfile(resource.Canonical, resource.Version, type, source, usable, evidence));
+            if (!usable)
+            {
+                problems.Add(new IssueItem("warning", UnusableCode, $"StructureDefinition {TerminologyNames.Canonical(resource.Canonical, resource.Version)} from {source} could not be built into validation checks (no snapshot, or one that cannot be generated from its differential); resources claiming it are reported as profile-not-loaded.", evidence.File));
+            }
+        }
+
+        var resolver = new CachedValidationSchemaResolver(new StructureDefinitionSchemaResolver(schema, terminologyService: terminology));
+        return new ProfileSet(schema, resolver, profiles, [.. packages.Select(package => $"{package.Id}@{package.Version}")], problems);
+    }
+
+    private static void Add(List<(ExtractedResource, string, string, EvidenceItem)> definitions, List<IssueItem> problems, byte[] json, string fhirVersion, string source, EvidenceItem evidence)
+    {
+        string? url;
+        string? version;
+        string? type;
+        string? id;
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            JsonElement root = document.RootElement;
+            url = String(root, "url");
+            version = String(root, "version");
+            type = String(root, "type");
+            id = String(root, "id");
+        }
+        catch (JsonException)
+        {
+            problems.Add(new IssueItem("warning", UnusableCode, $"A StructureDefinition from {source} is not valid JSON and was not loaded for validation.", evidence.File));
+            return;
+        }
+
+        if (url is null || type is null || id is null)
+        {
+            problems.Add(new IssueItem("warning", UnusableCode, $"A StructureDefinition from {source} has no url, type or id and was not loaded for validation.", evidence.File));
+            return;
+        }
+
+        var resource = new ExtractedResource
+        {
+            ResourceType = "StructureDefinition",
+            Canonical = url,
+            Version = version,
+            ResourceId = id,
+            ResourceJson = Encoding.UTF8.GetString(json),
+            FhirVersion = fhirVersion,
+        };
+        definitions.Add((resource, type, source, evidence));
+    }
+
+    private static string? String(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.String && value.GetString() is { Length: > 0 } text ? text : null;
+}

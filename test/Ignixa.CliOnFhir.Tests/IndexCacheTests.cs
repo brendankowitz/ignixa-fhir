@@ -1,0 +1,1328 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
+using System.CommandLine;
+using System.Text.Json.Nodes;
+using Ignixa.CliOnFhir.Caching;
+using Ignixa.CliOnFhir.Catalog;
+using Ignixa.CliOnFhir.Commands;
+using Ignixa.CliOnFhir.Contracts;
+using Ignixa.CliOnFhir.Indexing;
+using Ignixa.CliOnFhir.Inspection;
+using Ignixa.CliOnFhir.Session;
+using Ignixa.Specification.Generated;
+using Microsoft.Extensions.Logging.Abstractions;
+using Shouldly;
+
+namespace Ignixa.CliOnFhir.Tests;
+
+public class IndexCacheTests
+{
+    // A type file's header is the magic, the layout and the manifest id (64 hex characters, so a one-byte length prefix).
+    private const int ManifestIdOffset = 8 + 4 + 1;
+
+    private static readonly string[] FixtureTypes = ["Encounter", "Observation", "Patient"];
+
+    private static readonly string[] NotBuilds = ["0123456789abcdef-R4", "packages", "rxclass", "index-notabuild"];
+
+    private static readonly string[] StaleBuilds = ["index-v15-111111111111", "index-v15-222222222222", "index-v15-333333333333"];
+
+    [Fact]
+    public void GivenIndexBuiltAndPersisted_WhenReloadedInANewSession_ThenEveryEntryDiagnosticAndParameterIsIdentical()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession writer = Open(folder, cache);
+        FolderSession reader = Open(folder, cache);
+
+        foreach (string type in FixtureTypes)
+        {
+            ResourceTypeIndex fresh = writer.GetIndex(type);
+            ResourceTypeIndex loaded = reader.GetIndex(type);
+
+            fresh.FromCache.ShouldBeFalse();
+            loaded.FromCache.ShouldBeTrue();
+            loaded.Resources.ShouldNotBeEmpty();
+            SearchIndexCanon.Describe(loaded).ShouldBe(SearchIndexCanon.Describe(fresh));
+            loaded.Diagnostics.ShouldBe(fresh.Diagnostics);
+            loaded.BuiltAt.ShouldBe(fresh.BuiltAt);
+            loaded.IndexEntryCount.ShouldBe(fresh.IndexEntryCount);
+            loaded.Resources.Select(resource => resource.Entry).ShouldBe(fresh.Resources.Select(resource => resource.Entry));
+        }
+
+        reader.CacheIssues.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenMoreResourcesThanOneSegmentHolds_WhenReloaded_ThenTheSegmentsReadInParallelJoinInCatalogOrder()
+    {
+        int count = TypeIndexFile.SegmentSize * 2 + 17;
+        using TestFolder folder = new TestFolder().Write("patients.ndjson", string.Join('\n', Enumerable.Range(0, count).Select(index =>
+            $$"""{"resourceType":"Patient","id":"p{{index}}","name":[{"family":"F{{index % 97}}"}],"birthDate":"19{{10 + (index % 90)}}-0{{1 + (index % 9)}}-1{{index % 10}}","gender":"{{(index % 2 == 0 ? "female" : "male")}}"}""")));
+        using var cache = new TestFolder();
+
+        ResourceTypeIndex fresh = Open(folder, cache).GetIndex("Patient");
+        ResourceTypeIndex loaded = Open(folder, cache).GetIndex("Patient");
+
+        loaded.FromCache.ShouldBeTrue();
+        loaded.Resources.Count.ShouldBe(count);
+        loaded.Resources.Select(resource => resource.Key.Id).ShouldBe(fresh.Resources.Select(resource => resource.Key.Id));
+        SearchIndexCanon.Describe(loaded).ShouldBe(SearchIndexCanon.Describe(fresh));
+    }
+
+    [Fact]
+    public void GivenFixtureCoveringEveryParameterType_WhenIndexed_ThenTheRoundTripActuallyExercisesThem()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession session = Open(folder, cache);
+
+        string canon = string.Join('\n', FixtureTypes.SelectMany(type => SearchIndexCanon.Describe(session.GetIndex(type))));
+
+        // string, token (with mixed-case text), date (with a half-hour negative offset), reference, quantity, composite
+        canon.ShouldContain("String[\"Smith\"");
+        canon.ShouldContain("text=\"Body Height\"");
+        canon.ShouldContain("Date[");
+        canon.ShouldContain("Reference[InternalOrExternal");
+        canon.ShouldContain("Quantity[");
+        canon.ShouldContain("Composite[");
+        canon.ShouldContain("text=\"Annual Check-up Visit\"");
+        canon.ShouldContain("-03:30\"");
+    }
+
+    [Fact]
+    public void GivenIndexWithExtractionFailures_WhenReloaded_ThenTheDiagnosticsRoundTrip()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        ResourceTypeIndex fresh = Open(folder, cache).GetIndex("Observation");
+        fresh.Diagnostics.ShouldNotBeEmpty();
+
+        ResourceTypeIndex loaded = Open(folder, cache).GetIndex("Observation");
+
+        loaded.FromCache.ShouldBeTrue();
+        loaded.Diagnostics.ShouldBe(fresh.Diagnostics);
+    }
+
+    [Fact]
+    public void GivenCachedIndex_WhenReloaded_ThenEveryEntryPointsAtTheSessionsOwnParameterDefinition()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession writer = Open(folder, cache);
+        FolderSession reader = Open(folder, cache);
+
+        foreach (string type in FixtureTypes)
+        {
+            foreach (IndexedResource resource in writer.GetIndex(type).Resources)
+            {
+                foreach (var entry in resource.Index)
+                {
+                    entry.SearchParameter.ShouldBeSameAs(writer.Definitions.GetSearchParameter(type, entry.SearchParameter.Code));
+                }
+            }
+
+            ResourceTypeIndex loaded = reader.GetIndex(type);
+            loaded.FromCache.ShouldBeTrue();
+            foreach (IndexedResource resource in loaded.Resources)
+            {
+                foreach (var entry in resource.Index)
+                {
+                    entry.SearchParameter.ShouldBeSameAs(reader.Definitions.GetSearchParameter(type, entry.SearchParameter.Code));
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void GivenUnchangedFolder_WhenSecondSessionOpens_ThenItLoadsFromCacheWithoutIssues()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        Open(folder, cache).GetIndex("Patient");
+        FolderSession second = Open(folder, cache);
+
+        ResourceTypeIndex index = second.GetIndex("Patient");
+
+        index.FromCache.ShouldBeTrue();
+        index.CacheWriteMilliseconds.ShouldBeNull();
+        second.CacheIssues.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenTypeNeverPersisted_WhenSecondSessionRequestsIt_ThenItIsBuiltAndPersistedWithoutIssues()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        Open(folder, cache).GetIndex("Patient");
+        FolderSession second = Open(folder, cache);
+
+        second.GetIndex("Patient").FromCache.ShouldBeTrue();
+        ResourceTypeIndex encounter = second.GetIndex("Encounter");
+
+        encounter.FromCache.ShouldBeFalse();
+        encounter.CacheWriteMilliseconds.ShouldNotBeNull();
+        second.CacheIssues.ShouldBeEmpty();
+        Open(folder, cache).GetIndex("Encounter").FromCache.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenFileContentChanged_WhenSessionOpens_ThenIndexIsRebuiltAndTheChangeIsReported()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        Open(folder, cache).GetIndex("Patient");
+        folder.Write("patient.json", """{"resourceType":"Patient","id":"p1","name":[{"family":"Jones"}]}""");
+        FolderSession second = Open(folder, cache);
+
+        ResourceTypeIndex index = second.GetIndex("Patient");
+
+        index.FromCache.ShouldBeFalse();
+        index.Resources.ShouldHaveSingleItem().Index.Select(entry => SearchIndexCanon.Describe(entry.Value)).ShouldContain(value => value.Contains("Jones", StringComparison.Ordinal));
+        IssueItem issue = second.CacheIssues.ShouldHaveSingleItem();
+        issue.Code.ShouldBe("index-cache-rebuilt");
+        issue.Severity.ShouldBe("information");
+        issue.Diagnostics.ShouldContain("1 of the folder's files changed");
+        issue.Diagnostics.ShouldContain("1 modified");
+        Open(folder, cache).GetIndex("Patient").FromCache.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenFileOnlyTouched_WhenSessionOpens_ThenIndexIsRebuilt()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        Open(folder, cache).GetIndex("Patient");
+        string path = Path.Combine(folder.Path, "patient.json");
+        File.SetLastWriteTimeUtc(path, File.GetLastWriteTimeUtc(path).AddMinutes(5));
+        FolderSession second = Open(folder, cache);
+
+        second.GetIndex("Patient").FromCache.ShouldBeFalse();
+
+        second.CacheIssues.ShouldHaveSingleItem().Diagnostics.ShouldContain("1 modified");
+    }
+
+    [Fact]
+    public void GivenFilesAddedAndRemoved_WhenSessionOpens_ThenIndexIsRebuiltAndBothAreCounted()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        Open(folder, cache).GetIndex("Patient");
+        File.Delete(Path.Combine(folder.Path, "encounters.ndjson"));
+        folder.Write("another.json", """{"resourceType":"Patient","id":"p2"}""");
+        FolderSession second = Open(folder, cache);
+
+        ResourceTypeIndex index = second.GetIndex("Patient");
+
+        index.FromCache.ShouldBeFalse();
+        index.Resources.Count.ShouldBe(2);
+        second.CacheIssues.ShouldHaveSingleItem().Diagnostics.ShouldContain("2 of the folder's files changed since the cache was written (1 added, 1 removed, 0 modified)");
+    }
+
+    [Theory]
+    [InlineData("formatVersion", 0, "cache format differs")]
+    [InlineData("toolVersion", "0.0.0-other", "tool version differs")]
+    [InlineData("definitionsHash", "00", "search parameter definitions differ")]
+    [InlineData("moduleVersions", "Ignixa.Search=00000000-0000-0000-0000-000000000000", "indexing code differs")]
+    [InlineData("fhirVersion", "R5", "FHIR version differs")]
+    public void GivenManifestFromAnotherFormatToolDefinitionsOrVersion_WhenSessionOpens_ThenWholeCacheIsRebuilt(string field, object value, string expectedReason)
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        first.GetIndex("Encounter");
+        SimulateCacheWrittenByAnotherBuild(first.CacheDirectory!, field, value);
+        FolderSession second = Open(folder, cache);
+
+        second.GetIndex("Patient").FromCache.ShouldBeFalse();
+        second.GetIndex("Encounter").FromCache.ShouldBeFalse();
+
+        IssueItem issue = second.CacheIssues.ShouldHaveSingleItem();
+        issue.Code.ShouldBe("index-cache-rebuilt");
+        issue.Diagnostics.ShouldContain(expectedReason);
+    }
+
+    [Fact]
+    public void GivenCorruptTypeFile_WhenSessionOpens_ThenOnlyThatTypeIsRebuiltWithAWarning()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        first.GetIndex("Encounter");
+        File.WriteAllText(Path.Combine(first.CacheDirectory!, "Patient.index.bin"), "{ not json");
+        FolderSession second = Open(folder, cache);
+
+        ResourceTypeIndex patient = second.GetIndex("Patient");
+        ResourceTypeIndex encounter = second.GetIndex("Encounter");
+
+        patient.FromCache.ShouldBeFalse();
+        patient.Resources.ShouldHaveSingleItem();
+        encounter.FromCache.ShouldBeTrue();
+        IssueItem issue = second.CacheIssues.ShouldHaveSingleItem();
+        issue.Code.ShouldBe("index-cache-corrupt");
+        issue.Severity.ShouldBe("warning");
+        issue.Diagnostics.ShouldContain("Patient");
+        Open(folder, cache).GetIndex("Patient").FromCache.ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("null")]
+    [InlineData("")]
+    [InlineData("CLIOFIDX")]
+    public void GivenTypeFileOfTheWrongShape_WhenSessionOpens_ThenItIsRebuiltWithAWarning(string content)
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        File.WriteAllText(Path.Combine(first.CacheDirectory!, "Patient.index.bin"), content);
+        FolderSession second = Open(folder, cache);
+
+        second.GetIndex("Patient").FromCache.ShouldBeFalse();
+
+        second.CacheIssues.ShouldHaveSingleItem().Code.ShouldBe("index-cache-corrupt");
+    }
+
+    [Fact]
+    public void GivenTypeFileNamingAnUnknownSearchParameter_WhenSessionOpens_ThenItIsRebuiltWithAWarning()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        string path = Path.Combine(first.CacheDirectory!, "Patient.index.bin");
+        ReplaceBytes(path, "family", "fam1ly");
+        FolderSession second = Open(folder, cache);
+
+        second.GetIndex("Patient").FromCache.ShouldBeFalse();
+
+        IssueItem issue = second.CacheIssues.ShouldHaveSingleItem();
+        issue.Code.ShouldBe("index-cache-corrupt");
+        issue.Diagnostics.ShouldContain("fam1ly");
+    }
+
+    [Fact]
+    public void GivenTypeFileCutShortOrWithBytesAfterItsEnd_WhenSessionOpens_ThenItIsRebuiltWithAWarning()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        string path = Path.Combine(first.CacheDirectory!, "Patient.index.bin");
+        byte[] bytes = File.ReadAllBytes(path);
+        File.WriteAllBytes(path, bytes[..^7]);
+        FolderSession cut = Open(folder, cache);
+
+        cut.GetIndex("Patient").FromCache.ShouldBeFalse();
+        cut.CacheIssues.ShouldHaveSingleItem().Code.ShouldBe("index-cache-corrupt");
+
+        File.WriteAllBytes(path, [.. bytes, 0]);
+        FolderSession second = Open(folder, cache);
+
+        second.GetIndex("Patient").FromCache.ShouldBeFalse();
+
+        second.CacheIssues.ShouldHaveSingleItem().Code.ShouldBe("index-cache-corrupt");
+    }
+
+    [Fact]
+    public void GivenCorruptManifest_WhenSessionOpens_ThenItIsReplacedWithAWarning()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        string manifestPath = Path.Combine(first.CacheDirectory!, "manifest.json");
+        string original = File.ReadAllText(manifestPath);
+        File.WriteAllText(manifestPath, "garbage");
+        FolderSession second = Open(folder, cache);
+
+        // The replacement is the manifest the folder state and tool produce, i.e. the one the type files were written under.
+        second.GetIndex("Patient").Resources.ShouldHaveSingleItem();
+
+        second.CacheIssues.ShouldHaveSingleItem().Code.ShouldBe("index-cache-corrupt");
+        File.ReadAllText(manifestPath).ShouldBe(original);
+        FolderSession third = Open(folder, cache);
+        third.GetIndex("Patient").FromCache.ShouldBeTrue();
+        third.CacheIssues.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenCacheDisabled_WhenIndexed_ThenNothingIsWrittenAnywhere()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        var session = new FolderSession(folder.Path, new R4CoreSchemaProvider(), NullLoggerFactory.Instance, IndexCacheOptions.Disabled);
+
+        foreach (string type in FixtureTypes)
+        {
+            session.GetIndex(type).FromCache.ShouldBeFalse();
+        }
+
+        session.CacheDirectory.ShouldBeNull();
+        session.CacheIssues.ShouldBeEmpty();
+        Directory.EnumerateFileSystemEntries(cache.Path).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenNoCacheFlag_WhenOptionsAreResolved_ThenCacheIsDisabled()
+    {
+        var (command, cacheDir, noCache) = CreateCacheCommand();
+
+        IndexCacheOptions options = CommonOptions.ResolveCache(command.Parse(["--no-cache"]), cacheDir, noCache);
+
+        options.IsEnabled.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenCacheDirFlag_WhenOptionsAreResolved_ThenItOverridesTheUserDefault()
+    {
+        var (command, cacheDir, noCache) = CreateCacheCommand();
+        using var cache = new TestFolder();
+
+        IndexCacheOptions options = CommonOptions.ResolveCache(command.Parse(["--cache-dir", cache.Path]), cacheDir, noCache);
+
+        options.RootDirectory.ShouldBe(cache.Path);
+    }
+
+    [Fact]
+    public void GivenNeitherFlag_WhenOptionsAreResolved_ThenTheUserLevelDefaultIsUsed()
+    {
+        var (command, cacheDir, noCache) = CreateCacheCommand();
+
+        IndexCacheOptions options = CommonOptions.ResolveCache(command.Parse([]), cacheDir, noCache);
+
+        options.RootDirectory.ShouldNotBeNull().ShouldEndWith("cli-on-fhir");
+    }
+
+    [Fact]
+    public void GivenCacheDirTogetherWithNoCache_WhenParsed_ThenItIsAUsageError()
+    {
+        var (command, _, _) = CreateCacheCommand();
+
+        command.Parse(["--no-cache", "--cache-dir", "/somewhere"]).Errors.ShouldNotBeEmpty();
+    }
+
+    [Fact]
+    public void GivenCacheRootThatCannotBeCreated_WhenIndexed_ThenIndexIsStillServedWithOneUnavailableWarning()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        cache.Write("blocker", "a file where the cache root directory would have to be");
+        var session = new FolderSession(
+            folder.Path,
+            new R4CoreSchemaProvider(),
+            NullLoggerFactory.Instance,
+            IndexCacheOptions.At(Path.Combine(cache.Path, "blocker")));
+
+        ResourceTypeIndex patient = session.GetIndex("Patient");
+        ResourceTypeIndex encounter = session.GetIndex("Encounter");
+
+        patient.Resources.ShouldHaveSingleItem();
+        encounter.Resources.ShouldNotBeEmpty();
+        patient.FromCache.ShouldBeFalse();
+        IssueItem issue = session.CacheIssues.ShouldHaveSingleItem();
+        issue.Code.ShouldBe("index-cache-unavailable");
+        issue.Severity.ShouldBe("warning");
+    }
+
+    [Fact]
+    public void GivenDefaultLocationCannotBeDetermined_WhenIndexed_ThenIndexIsStillServedWithAnUnavailableWarning()
+    {
+        using TestFolder folder = CreateFixture();
+        var session = new FolderSession(
+            folder.Path,
+            new R4CoreSchemaProvider(),
+            NullLoggerFactory.Instance,
+            new IndexCacheOptions(null, "no home directory"));
+
+        session.GetIndex("Patient").Resources.ShouldHaveSingleItem();
+
+        IssueItem issue = session.CacheIssues.ShouldHaveSingleItem();
+        issue.Code.ShouldBe("index-cache-unavailable");
+        issue.Diagnostics.ShouldContain("no home directory");
+    }
+
+    [Fact]
+    public void GivenCaching_WhenIndexed_ThenTheSourceFolderIsNeverWrittenAndTheCacheLivesElsewhere()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        string[] before = Snapshot(folder.Path);
+        FolderSession session = Open(folder, cache);
+
+        foreach (string type in FixtureTypes)
+        {
+            session.GetIndex(type);
+        }
+
+        Snapshot(folder.Path).ShouldBe(before);
+        session.CacheDirectory.ShouldNotBeNull().ShouldStartWith(cache.Path);
+        session.CacheDirectory.ShouldEndWith("-R4");
+        Directory.EnumerateFiles(session.CacheDirectory).Select(Path.GetFileName).Order(StringComparer.Ordinal)
+            .ShouldBe(["Encounter.index.bin", "Observation.index.bin", "Patient.index.bin", "manifest.json"]);
+    }
+
+    [Fact]
+    public void GivenTwoFolders_WhenCached_ThenEachGetsItsOwnDirectoryUnderTheBuildsDirectory()
+    {
+        using TestFolder one = CreateFixture();
+        using TestFolder two = CreateFixture();
+        using var cache = new TestFolder();
+
+        FolderSession firstSession = Open(one, cache);
+        FolderSession secondSession = Open(two, cache);
+        firstSession.GetIndex("Patient");
+        secondSession.GetIndex("Patient");
+        string? first = firstSession.CacheDirectory;
+        string? second = secondSession.CacheDirectory;
+
+        first.ShouldNotBe(second);
+        Directory.GetParent(first!)!.FullName.ShouldBe(Directory.GetParent(second!)!.FullName);
+        Directory.GetParent(first!)!.Parent!.FullName.ShouldBe(cache.Path);
+    }
+
+    // Regression: at 87543aa2 every build shared one directory per folder, so two builds used side by side discarded each
+    // other's cache on every first call ("tool version differs").
+    [Fact]
+    public void GivenAnotherBuildsCacheUnderTheRoot_WhenASessionOpens_ThenNeitherIsDiscarded()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        string ours = Directory.GetParent(first.CacheDirectory!)!.FullName;
+        string theirs = PlantBuild(cache, "index-v15-0123456789ab", DateTime.UtcNow.AddMinutes(-1));
+
+        FolderSession second = Open(folder, cache);
+
+        second.GetIndex("Patient").FromCache.ShouldBeTrue();
+        second.CacheIssues.ShouldBeEmpty();
+        Directory.Exists(theirs).ShouldBeTrue();
+        Directory.Exists(ours).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenMoreBuildsThanKept_WhenASessionOpens_ThenTheLeastRecentlyUsedAreEvicted()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        string newest = PlantBuild(cache, "index-v15-aaaaaaaaaaaa", DateTime.UtcNow.AddHours(-1));
+        string newer = PlantBuild(cache, "index-v15-bbbbbbbbbbbb", DateTime.UtcNow.AddHours(-2));
+        string older = PlantBuild(cache, "index-v14-cccccccccccc", DateTime.UtcNow.AddHours(-3));
+        string oldest = PlantBuild(cache, "index-v15-dddddddddddd", DateTime.UtcNow.AddHours(-4));
+
+        FolderSession session = Open(folder, cache);
+        session.GetIndex("Patient");
+
+        FolderIndexCache.KeptBuilds.ShouldBe(3);
+        Directory.Exists(Directory.GetParent(session.CacheDirectory!)!.FullName).ShouldBeTrue();
+        Directory.Exists(newest).ShouldBeTrue();
+        Directory.Exists(newer).ShouldBeTrue();
+        Directory.Exists(older).ShouldBeFalse();
+        Directory.Exists(oldest).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenTheEarlierLayoutAndOtherCaches_WhenASessionOpens_ThenTheyAreLeftAlone()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        string[] untouched = [.. NotBuilds.Select(name => PlantBuild(cache, name, DateTime.UtcNow.AddDays(-30)))];
+        foreach (string build in StaleBuilds)
+        {
+            PlantBuild(cache, build, DateTime.UtcNow.AddDays(-1));
+        }
+
+        Open(folder, cache).GetIndex("Patient");
+
+        untouched.ShouldAllBe(directory => Directory.Exists(directory));
+    }
+
+    // Regression: at 596c9c3d any directory under the root named index-v* beyond the three most recent was deleted, so a
+    // custom --cache-dir shared with the user's own directories could lose them.
+    [Fact]
+    public void GivenUserDirectoriesThatLookLikeBuilds_WhenOlderBuildsAreEvicted_ThenOnlyTheToolsOwnBuildsAreDeleted()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        string[] lookAlikes =
+        [
+            PlantBuild(cache, "index-vacation-photos", DateTime.UtcNow.AddDays(-30)),
+            PlantBuild(cache, "index-v15-0123456789AB", DateTime.UtcNow.AddDays(-30)),
+            PlantBuild(cache, "index-v15-0123456789abc", DateTime.UtcNow.AddDays(-30)),
+            PlantUserDirectory(cache, "index-v15-eeeeeeeeeeee", DateTime.UtcNow.AddDays(-30)),
+        ];
+        string[] stale = [.. StaleBuilds.Select(build => PlantBuild(cache, build, DateTime.UtcNow.AddDays(-1)))];
+
+        Open(folder, cache).GetIndex("Patient");
+
+        lookAlikes.ShouldAllBe(directory => Directory.Exists(directory));
+        stale.Count(directory => Directory.Exists(directory)).ShouldBe(FolderIndexCache.KeptBuilds - 1);
+    }
+
+    // New at V5: before it one patient's context read the index of every type that can be in a Patient compartment.
+    [Fact]
+    public void GivenCachedPatientCompartments_WhenANewSessionMapsAPatient_ThenNoIndexIsReadAndTheMapIsTheSame()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession writer = Open(folder, cache);
+        string built = System.Text.Json.JsonSerializer.Serialize(Patients.PatientMap.Get(writer, "p1").Facts!.Domains, EnvelopeJson.Compact);
+        writer.PatientCompartments.FromCache.ShouldBeFalse();
+        File.Exists(Path.Combine(writer.CacheDirectory!, "Patient.compartments.json")).ShouldBeTrue();
+
+        FolderSession reader = Open(folder, cache);
+        string loaded = System.Text.Json.JsonSerializer.Serialize(Patients.PatientMap.Get(reader, "p1").Facts!.Domains, EnvelopeJson.Compact);
+
+        reader.PatientCompartments.FromCache.ShouldBeTrue();
+        reader.BuiltIndexTypes.ShouldBeEmpty();
+        loaded.ShouldBe(built);
+        reader.PatientCompartments.MembersOf("p1").Select(member => $"{member.ResourceType}/{member.Id}")
+            .ShouldBe(writer.PatientCompartments.MembersOf("p1").Select(member => $"{member.ResourceType}/{member.Id}"));
+    }
+
+    [Fact]
+    public void GivenACorruptCompartmentFile_WhenASessionOpens_ThenTheCompartmentsAreWorkedOutAgainWithAWarning()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        _ = first.PatientCompartments;
+        File.WriteAllText(Path.Combine(first.CacheDirectory!, "Patient.compartments.json"), "{ not json");
+
+        FolderSession second = Open(folder, cache);
+
+        second.PatientCompartments.FromCache.ShouldBeFalse();
+        second.PatientCompartments.MembersOf("p1").ShouldNotBeEmpty();
+        IssueItem issue = second.CacheIssues.ShouldHaveSingleItem();
+        issue.Code.ShouldBe("index-cache-corrupt");
+        issue.Diagnostics.ShouldContain("Patient compartments");
+    }
+
+    [Fact]
+    public void GivenSeveralProcessesBuildingTheSameCache_WhenTheyFinish_ThenTheCacheIsCompleteAndLoadable()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+
+        Parallel.For(0, 6, _ =>
+        {
+            FolderSession session = Open(folder, cache);
+            foreach (string type in FixtureTypes)
+            {
+                session.GetIndex(type);
+            }
+
+            session.CacheIssues.ShouldBeEmpty();
+        });
+
+        FolderSession reader = Open(folder, cache);
+        foreach (string type in FixtureTypes)
+        {
+            reader.GetIndex(type).FromCache.ShouldBeTrue();
+        }
+
+        reader.CacheIssues.ShouldBeEmpty();
+        Directory.EnumerateFiles(reader.CacheDirectory!, "*.tmp").ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenCachedIndexes_WhenInspectedWithBuildIndex_ThenEachTypeReportsItsSourceAndTimes()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+
+        ToolEnvelope<FolderInspection> cold = FolderInspector.Inspect(Open(folder, cache), buildIndexes: true);
+        ToolEnvelope<FolderInspection> warm = FolderInspector.Inspect(Open(folder, cache), buildIndexes: true);
+
+        cold.Facts.Index.ShouldNotBeNull().ResourceTypes.ShouldAllBe(type => type.Source == "built" && type.CacheWriteMilliseconds != null);
+        IndexFacts warmFacts = warm.Facts.Index.ShouldNotBeNull();
+        warmFacts.ResourceTypes.ShouldAllBe(type => type.Source == "cache" && type.CacheWriteMilliseconds == null);
+        warmFacts.CacheDirectory.ShouldNotBeNull().ShouldStartWith(cache.Path);
+        warm.Freshness.StaleFiles.ShouldBe(0);
+        warm.Issues.Where(issue => issue.Code.StartsWith("index-cache", StringComparison.Ordinal)).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenStaleCache_WhenInspectedWithBuildIndex_ThenTheRebuildIsAnIssueInTheEnvelope()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderInspector.Inspect(Open(folder, cache), buildIndexes: true);
+        folder.Write("patient.json", """{"resourceType":"Patient","id":"p1"}""");
+
+        ToolEnvelope<FolderInspection> envelope = FolderInspector.Inspect(Open(folder, cache), buildIndexes: true);
+
+        envelope.Issues.ShouldContain(issue => issue.Code == "index-cache-rebuilt" && issue.Diagnostics.Contains("1 of the folder's files changed", StringComparison.Ordinal));
+        envelope.Facts.Index.ShouldNotBeNull().ResourceTypes.ShouldAllBe(type => type.Source == "built");
+        envelope.Freshness.StaleFiles.ShouldBe(0);
+    }
+
+    [Fact]
+    public void GivenCacheDirectoryInsideTheDataFolder_WhenIndexed_ThenCacheIsRefusedAndNothingIsWrittenToTheFolder()
+    {
+        using TestFolder folder = CreateFixture();
+        string[] before = Snapshot(folder.Path);
+
+        foreach (IndexCacheOptions options in new[]
+        {
+            IndexCacheOptions.At(Path.Combine(folder.Path, "cache")),
+            IndexCacheOptions.At(folder.Path),
+            IndexCacheOptions.At(folder.Path + Path.DirectorySeparatorChar),
+            IndexCacheOptions.UserDefault(Path.Combine(folder.Path, ".cache")),
+        })
+        {
+            var session = new FolderSession(folder.Path, new R4CoreSchemaProvider(), NullLoggerFactory.Instance, options);
+
+            session.GetIndex("Patient").FromCache.ShouldBeFalse();
+            session.GetIndex("Encounter").Resources.ShouldNotBeEmpty();
+
+            session.CacheDirectory.ShouldBeNull();
+            IssueItem issue = session.CacheIssues.ShouldHaveSingleItem();
+            issue.Code.ShouldBe("index-cache-unavailable");
+            issue.Diagnostics.ShouldContain("inside the data folder");
+        }
+
+        Snapshot(folder.Path).ShouldBe(before);
+    }
+
+    [Fact]
+    public void GivenDataFolderInsideTheCacheRoot_WhenIndexed_ThenCacheIsRefused()
+    {
+        using var cache = new TestFolder();
+        string dataPath = Path.Combine(cache.Path, "data");
+        Directory.CreateDirectory(dataPath);
+        File.WriteAllText(Path.Combine(dataPath, "p.json"), """{"resourceType":"Patient","id":"p1"}""");
+        var session = new FolderSession(dataPath, new R4CoreSchemaProvider(), NullLoggerFactory.Instance, IndexCacheOptions.At(cache.Path));
+
+        session.GetIndex("Patient").Resources.ShouldHaveSingleItem();
+
+        session.CacheDirectory.ShouldBeNull();
+        session.CacheIssues.ShouldHaveSingleItem().Diagnostics.ShouldContain("inside the cache directory");
+        Directory.EnumerateFileSystemEntries(cache.Path).Select(Path.GetFileName).ShouldBe(["data"]);
+    }
+
+    [Fact]
+    public void GivenSiblingDirectoryWithTheSamePrefix_WhenIndexed_ThenItIsNotMistakenForInsideTheFolder()
+    {
+        using TestFolder folder = CreateFixture();
+        string sibling = folder.Path + "-cache";
+        try
+        {
+            var session = new FolderSession(folder.Path, new R4CoreSchemaProvider(), NullLoggerFactory.Instance, IndexCacheOptions.At(sibling));
+
+            session.GetIndex("Patient");
+
+            session.CacheIssues.ShouldBeEmpty();
+            session.CacheDirectory.ShouldNotBeNull().ShouldStartWith(sibling);
+        }
+        finally
+        {
+            Directory.Delete(sibling, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void GivenPersistedIndex_WhenTheTypeFileIsSniffed_ThenItIsNeverAFhirResource()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession session = Open(folder, cache);
+        session.GetIndex("Patient");
+
+        foreach (string file in Directory.EnumerateFiles(session.CacheDirectory!, "*.json"))
+        {
+            ResourceSniffer.Sniff(File.ReadAllBytes(file)).ResourceType.ShouldBeNull(file);
+        }
+    }
+
+    [Theory]
+    [InlineData("files-null")]
+    [InlineData("files-duplicate-path")]
+    [InlineData("files-null-element")]
+    public void GivenManifestWithNullOrDuplicateMembers_WhenSessionOpens_ThenItIsReplacedWithAWarningInsteadOfFailing(string damage)
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        string manifestPath = Path.Combine(first.CacheDirectory!, "manifest.json");
+        JsonNode manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!;
+        switch (damage)
+        {
+            case "files-null": manifest["files"] = null; break;
+            case "files-duplicate-path": manifest["files"]!.AsArray().Add(manifest["files"]![0]!.DeepClone()); break;
+            case "files-null-element": manifest["files"]!.AsArray().Add(null); break;
+            default: throw new ArgumentOutOfRangeException(nameof(damage), damage, null);
+        }
+
+        File.WriteAllText(manifestPath, manifest.ToJsonString());
+        FolderSession second = Open(folder, cache);
+
+        second.GetIndex("Patient").Resources.ShouldHaveSingleItem();
+
+        second.CacheIssues.ShouldHaveSingleItem().Code.ShouldBe("index-cache-corrupt");
+        Open(folder, cache).CacheIssues.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("duplicate-resource")]
+    [InlineData("uncatalogued-resource")]
+    [InlineData("other-type")]
+    [InlineData("other-catalog-count")]
+    public void GivenTypeFileThatDisagreesWithTheCatalog_WhenSessionOpens_ThenTheTypeIsRebuiltWithAWarningInsteadOfFailing(string damage)
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        ResourceTypeIndex built = first.GetIndex("Observation");
+        string path = Path.Combine(first.CacheDirectory!, "Observation.index.bin");
+        IndexedResource firstResource = built.Resources[0];
+        (ResourceTypeIndex damaged, int catalogCount) = damage switch
+        {
+            "duplicate-resource" => (built with { Resources = [.. built.Resources, firstResource] }, 2),
+            "uncatalogued-resource" => (built with { Resources = [firstResource with { Key = firstResource.Key with { Id = "nope" } }] }, 2),
+            "other-type" => (built with { ResourceType = "Encounter" }, 2),
+            _ => (built, 3),
+        };
+        RewriteTypeFile(path, damaged, catalogCount);
+        FolderSession second = Open(folder, cache);
+
+        ResourceTypeIndex observation = second.GetIndex("Observation");
+        ToolEnvelope<FolderInspection> envelope = FolderInspector.Inspect(second, buildIndexes: true);
+
+        observation.FromCache.ShouldBeFalse();
+        observation.Resources.Count.ShouldBe(2);
+        envelope.Issues.Count(issue => issue.Code == "index-cache-corrupt").ShouldBe(1);
+        Open(folder, cache).GetIndex("Observation").FromCache.ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData("""{"resourceType":"Patient","id":"ancient","birthDate":"0001-01-01"}""")]
+    [InlineData("""{"resourceType":"Patient","id":"ancient","birthDate":"0042"}""")]
+    [InlineData("""{"resourceType":"Patient","id":"ancient","birthDate":"1980-02-03","deceasedDateTime":"2020-01-02T03:04:05-05:30"}""")]
+    public void GivenADateTheSharedFormatOnceCouldNotReproduce_WhenIndexed_ThenTheTypeIsPersistedAndReloadsIdentically(string patient)
+    {
+        // Regression for the two small-year rows: PartialDateTime printed years below 1000 unpadded, so they did not
+        // survive the cache and the whole type was left uncached. The -05:30 row is a guard: the tool's own converter
+        // compensated for the "-05:-30" rendering, which the shared format no longer needs to.
+        using TestFolder folder = CreateFixture();
+        folder.Write("ancient.json", patient);
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+
+        ResourceTypeIndex built = first.GetIndex("Patient");
+
+        built.CacheWriteMilliseconds.ShouldNotBeNull();
+        first.CacheIssues.ShouldBeEmpty();
+        ResourceTypeIndex loaded = Open(folder, cache).GetIndex("Patient");
+        loaded.FromCache.ShouldBeTrue();
+        SearchIndexCanon.Describe(loaded).ShouldBe(SearchIndexCanon.Describe(built));
+    }
+
+    [Fact]
+    public void GivenStringsWithSearchEscapeCharacters_WhenReloaded_ThenTheStoredTextIsNotUnescapedTwice()
+    {
+        string[] lines =
+        [
+            """{"resourceType":"Patient","id":"a","name":[{"family":"back\\slash","given":["x\\y"]}]}""",
+            """{"resourceType":"Patient","id":"b","name":[{"family":"co,mma","given":["pi|pe","dol$lar"]}]}""",
+            """{"resourceType":"Patient","id":"c","name":[{"family":"mix\\,ed\\|","given":["\\\\"]}]}""",
+            """{"resourceType":"Patient","id":"d","name":[{"family":"keeps\\\\,backslash","given":["pi\\\\|pe","dol\\\\$lar"]}]}""",
+        ];
+        using TestFolder folder = new TestFolder().Write("patients.ndjson", string.Join('\n', lines));
+        using var cache = new TestFolder();
+        ResourceTypeIndex fresh = Open(folder, cache).GetIndex("Patient");
+
+        ResourceTypeIndex loaded = Open(folder, cache).GetIndex("Patient");
+
+        loaded.FromCache.ShouldBeTrue();
+        SearchIndexCanon.Describe(loaded).ShouldBe(SearchIndexCanon.Describe(fresh));
+        string.Join('\n', SearchIndexCanon.Describe(fresh)).ShouldContain("back\\slash");
+        string.Join('\n', SearchIndexCanon.Describe(fresh)).ShouldContain("keeps\\,backslash");
+    }
+
+    [Theory]
+    [InlineData("formatVersion", 1)]
+    [InlineData("toolVersion", "0.0.0-older")]
+    public void GivenCacheOfAnOlderShape_WhenSessionOpens_ThenItIsADifferentCacheNotACorruptOne(string field, object value)
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        first.GetIndex("Encounter");
+        SimulateCacheWrittenByAnotherBuild(first.CacheDirectory!, field, value, inOlderShape: true);
+        string manifestPath = Path.Combine(first.CacheDirectory!, "manifest.json");
+        JsonNode olderManifest = JsonNode.Parse(File.ReadAllText(manifestPath))!;
+        olderManifest.AsObject().Remove("moduleVersions");
+        olderManifest["files"] = new JsonObject();
+        File.WriteAllText(manifestPath, olderManifest.ToJsonString());
+        FolderSession second = Open(folder, cache);
+
+        second.GetIndex("Patient").FromCache.ShouldBeFalse();
+        second.GetIndex("Encounter").FromCache.ShouldBeFalse();
+
+        second.CacheIssues.Select(issue => issue.Code).ShouldBe(["index-cache-rebuilt"]);
+        FolderSession third = Open(folder, cache);
+        third.GetIndex("Patient").FromCache.ShouldBeTrue();
+        third.CacheIssues.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenTypeFileOfAnOlderShapeUnderAnotherManifest_WhenSessionOpens_ThenItIsAPlainMissWithoutAWarning()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        string path = Path.Combine(first.CacheDirectory!, "Patient.index.bin");
+        RebindTypeFile(path, new string('0', 64), cutBody: true);
+        FolderSession second = Open(folder, cache);
+
+        second.GetIndex("Patient").FromCache.ShouldBeFalse();
+
+        second.CacheIssues.ShouldBeEmpty();
+        Open(folder, cache).GetIndex("Patient").FromCache.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenPersistedCache_WhenTheManifestIsRead_ThenItNamesEveryAssemblyThatBuildsIndexes()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession session = Open(folder, cache);
+        session.GetIndex("Patient");
+
+        JsonNode manifest = JsonNode.Parse(File.ReadAllText(Path.Combine(session.CacheDirectory!, "manifest.json")))!;
+
+        string[] modules = manifest["moduleVersions"]!.GetValue<string>().Split(';');
+        modules.Select(module => module.Split('=')[0]).ShouldBe(["Ignixa.FhirPath", "Ignixa.Search", "Ignixa.Specification", "cli-on-fhir"], ignoreOrder: true);
+        modules.Select(module => Guid.Parse(module.Split('=')[1])).ShouldAllBe(id => id != Guid.Empty);
+    }
+
+    [Fact]
+    public void GivenCacheDirectoryThatIsASymlinkIntoTheDataFolder_WhenIndexed_ThenCacheIsRefusedAndNothingIsWritten()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return; // creating symbolic links needs a privilege Windows CI does not grant
+        }
+
+        using TestFolder folder = CreateFixture();
+        using var elsewhere = new TestFolder();
+        Directory.CreateDirectory(Path.Combine(folder.Path, "sub"));
+        string link = Path.Combine(elsewhere.Path, "cachelink");
+        Directory.CreateSymbolicLink(link, Path.Combine(folder.Path, "sub"));
+        string[] before = Snapshot(folder.Path);
+
+        foreach (string cacheRoot in new[] { link, Path.Combine(link, "nested", "deeper") })
+        {
+            var session = new FolderSession(folder.Path, new R4CoreSchemaProvider(), NullLoggerFactory.Instance, IndexCacheOptions.At(cacheRoot));
+
+            session.GetIndex("Patient").Resources.ShouldHaveSingleItem();
+
+            session.CacheDirectory.ShouldBeNull();
+            session.CacheIssues.ShouldHaveSingleItem().Diagnostics.ShouldContain("inside the data folder");
+        }
+
+        Snapshot(folder.Path).ShouldBe(before);
+    }
+
+    [Fact]
+    public void GivenDataFolderReachedThroughASymlink_WhenCacheIsPlacedInsideItsRealPath_ThenCacheIsRefused()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TestFolder folder = CreateFixture();
+        using var elsewhere = new TestFolder();
+        string link = Path.Combine(elsewhere.Path, "datalink");
+        Directory.CreateSymbolicLink(link, folder.Path);
+        var session = new FolderSession(link, new R4CoreSchemaProvider(), NullLoggerFactory.Instance, IndexCacheOptions.At(Path.Combine(folder.Path, "cache")));
+
+        session.GetIndex("Patient").Resources.ShouldHaveSingleItem();
+
+        session.CacheDirectory.ShouldBeNull();
+        session.CacheIssues.ShouldHaveSingleItem().Code.ShouldBe("index-cache-unavailable");
+        Directory.Exists(Path.Combine(folder.Path, "cache")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenPerFolderCacheDirectoryReplacedByASymlinkIntoTheDataFolder_WhenIndexed_ThenNothingIsWrittenThroughIt()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        string perFolderDirectory = DirectoryOf(Open(folder, cache));
+        Directory.Delete(perFolderDirectory, recursive: true);
+        string target = Path.Combine(folder.Path, "sub");
+        Directory.CreateDirectory(target);
+        Directory.CreateSymbolicLink(perFolderDirectory, target);
+        string[] before = Snapshot(folder.Path);
+        FolderSession session = Open(folder, cache);
+
+        session.GetIndex("Patient").Resources.ShouldHaveSingleItem();
+
+        session.CacheIssues.ShouldHaveSingleItem().Diagnostics.ShouldContain("inside the data folder");
+        Snapshot(folder.Path).ShouldBe(before);
+    }
+
+    [Fact]
+    public void GivenDifferentlyCasedPaths_WhenCacheIsInsideOrAroundTheFolder_ThenCacheIsRefusedBecauseVolumesMayIgnoreCase()
+    {
+        using TestFolder folder = CreateFixture();
+        string upper = folder.Path.ToUpperInvariant();
+
+        foreach (string cacheRoot in new[] { Path.Combine(upper, "CACHE"), upper, Path.GetDirectoryName(upper)! })
+        {
+            var session = new FolderSession(folder.Path, new R4CoreSchemaProvider(), NullLoggerFactory.Instance, IndexCacheOptions.At(cacheRoot));
+
+            session.GetIndex("Patient");
+
+            session.CacheDirectory.ShouldBeNull(cacheRoot);
+            session.CacheIssues.ShouldHaveSingleItem().Code.ShouldBe("index-cache-unavailable");
+        }
+    }
+
+    [Theory]
+    [InlineData("formatVersion", "cache format is missing")]
+    [InlineData("toolVersion", "tool version is missing or not a string")]
+    [InlineData("definitionsHash", "search parameter definitions is missing or not a string")]
+    [InlineData("moduleVersions", "indexing code is missing or not a string")]
+    public void GivenManifestMissingAnIdentityMember_WhenSessionOpens_ThenItIsADifferentCacheAndNeverSkipped(string member, string expectedReason)
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        RewriteManifest(first.CacheDirectory!, manifest => manifest.Remove(member));
+        FolderSession second = Open(folder, cache);
+
+        second.GetIndex("Patient").FromCache.ShouldBeFalse();
+
+        IssueItem issue = second.CacheIssues.ShouldHaveSingleItem();
+        issue.Code.ShouldBe("index-cache-rebuilt");
+        issue.Diagnostics.ShouldContain(expectedReason);
+    }
+
+    [Fact]
+    public void GivenManifestIdentityOfTheWrongType_WhenSessionOpens_ThenItIsADifferentCache()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        RewriteManifest(first.CacheDirectory!, manifest => manifest["toolVersion"] = 7);
+        FolderSession second = Open(folder, cache);
+
+        second.GetIndex("Patient").FromCache.ShouldBeFalse();
+
+        second.CacheIssues.ShouldHaveSingleItem().Diagnostics.ShouldContain("tool version is missing or not a string");
+    }
+
+    [Fact]
+    public void GivenManifestWithPascalCaseMembers_WhenSessionOpens_ThenItDoesNotPassAsTheCurrentCache()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        RewriteManifest(first.CacheDirectory!, manifest =>
+        {
+            foreach (var (name, value) in manifest.ToArray())
+            {
+                manifest.Remove(name);
+                manifest[char.ToUpperInvariant(name[0]) + name[1..]] = value;
+            }
+        });
+        FolderSession second = Open(folder, cache);
+
+        second.GetIndex("Patient").FromCache.ShouldBeFalse();
+
+        second.CacheIssues.ShouldHaveSingleItem().Code.ShouldBe("index-cache-rebuilt");
+    }
+
+    [Fact]
+    public void GivenStaleMemberAlsoPresentInAnotherCasing_WhenSessionOpens_ThenTheExactCasedMemberDecides()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        string current = string.Empty;
+        RewriteManifest(first.CacheDirectory!, manifest =>
+        {
+            current = manifest["toolVersion"]!.GetValue<string>();
+            manifest["toolVersion"] = "0.0.0-stale";
+            manifest["ToolVersion"] = current;
+        });
+
+        FolderSession stale = Open(folder, cache);
+        stale.GetIndex("Patient").FromCache.ShouldBeFalse();
+        stale.CacheIssues.ShouldHaveSingleItem().Diagnostics.ShouldContain("tool version differs");
+
+        RewriteManifest(first.CacheDirectory!, manifest =>
+        {
+            manifest["ToolVersion"] = "0.0.0-stale";
+            manifest["toolVersion"] = current;
+        });
+        FolderSession inert = Open(folder, cache);
+        inert.GetIndex("Patient").FromCache.ShouldBeTrue();
+        inert.CacheIssues.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenManifestRepeatingAMemberName_WhenSessionOpens_ThenItIsCorruptAndReplaced()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        string manifestPath = Path.Combine(first.CacheDirectory!, "manifest.json");
+        string text = File.ReadAllText(manifestPath);
+        File.WriteAllText(manifestPath, text.Replace("{\"formatVersion\"", "{\"toolVersion\":\"0.0.0-stale\",\"formatVersion\"", StringComparison.Ordinal));
+        FolderSession second = Open(folder, cache);
+
+        second.GetIndex("Patient").Resources.ShouldHaveSingleItem();
+
+        second.CacheIssues.ShouldHaveSingleItem().Code.ShouldBe("index-cache-corrupt");
+        File.ReadAllText(manifestPath).ShouldBe(text);
+    }
+
+    [Fact]
+    public void GivenRelativeLinkWithParentSegmentThroughAnotherLink_WhenCacheIsPlacedAtIt_ThenItIsResolvedLikeTheOperatingSystemAndRefused()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        // out/hop -> data/inner ; out/cache -> "hop/../c". The OS resolves hop first, so `..` is data and the
+        // cache lands in data/c; resolving `..` lexically would put it in out/c.
+        using var root = new TestFolder();
+        root.Write("data/patient.json", """{"resourceType":"Patient","id":"p1"}""");
+        Directory.CreateDirectory(Path.Combine(root.Path, "data", "inner"));
+        Directory.CreateDirectory(Path.Combine(root.Path, "data", "c"));
+        Directory.CreateDirectory(Path.Combine(root.Path, "out"));
+        Directory.CreateSymbolicLink(Path.Combine(root.Path, "out", "hop"), Path.Combine(root.Path, "data", "inner"));
+        Directory.CreateSymbolicLink(Path.Combine(root.Path, "out", "cache"), "hop/../c");
+        string[] before = Snapshot(Path.Combine(root.Path, "data"));
+        var session = new FolderSession(
+            Path.Combine(root.Path, "data"),
+            new R4CoreSchemaProvider(),
+            NullLoggerFactory.Instance,
+            IndexCacheOptions.At(Path.Combine(root.Path, "out", "cache")));
+
+        session.GetIndex("Patient").Resources.ShouldHaveSingleItem();
+
+        session.CacheDirectory.ShouldBeNull();
+        session.CacheIssues.ShouldHaveSingleItem().Diagnostics.ShouldContain("inside the data folder");
+        Snapshot(Path.Combine(root.Path, "data")).ShouldBe(before);
+        Directory.Exists(Path.Combine(root.Path, "out", "c")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenRelativeLinkWithoutParentSegments_WhenCacheIsPlacedAtIt_ThenItIsResolvedFromTheLinksDirectoryAndRefused()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var root = new TestFolder();
+        root.Write("data/patient.json", """{"resourceType":"Patient","id":"p1"}""");
+        Directory.CreateDirectory(Path.Combine(root.Path, "data", "sub"));
+        Directory.CreateSymbolicLink(Path.Combine(root.Path, "link"), "data/sub");
+        var session = new FolderSession(
+            Path.Combine(root.Path, "data"),
+            new R4CoreSchemaProvider(),
+            NullLoggerFactory.Instance,
+            IndexCacheOptions.At(Path.Combine(root.Path, "link")));
+
+        session.GetIndex("Patient").Resources.ShouldHaveSingleItem();
+
+        session.CacheDirectory.ShouldBeNull();
+        session.CacheIssues.ShouldHaveSingleItem().Diagnostics.ShouldContain("inside the data folder");
+        Directory.EnumerateFileSystemEntries(Path.Combine(root.Path, "data", "sub")).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenRelativeLinksThatStayOutsideTheFolder_WhenCacheIsPlacedAtThem_ThenTheCacheIsUsed()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var root = new TestFolder();
+        root.Write("data/patient.json", """{"resourceType":"Patient","id":"p1"}""");
+        Directory.CreateDirectory(Path.Combine(root.Path, "elsewhere", "real"));
+        Directory.CreateDirectory(Path.Combine(root.Path, "out"));
+        Directory.CreateSymbolicLink(Path.Combine(root.Path, "out", "cache"), "../elsewhere/real");
+        var session = new FolderSession(
+            Path.Combine(root.Path, "data"),
+            new R4CoreSchemaProvider(),
+            NullLoggerFactory.Instance,
+            IndexCacheOptions.At(Path.Combine(root.Path, "out", "cache")));
+
+        session.GetIndex("Patient");
+
+        session.CacheIssues.ShouldBeEmpty();
+        Directory.EnumerateFiles(Path.Combine(root.Path, "elsewhere", "real"), "manifest.json", SearchOption.AllDirectories).ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public void GivenDataFolderPathThatCannotBeResolved_WhenTheCacheIsUsed_ThenItFailsClosedWithAnUnavailableWarning()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TestFolder folder = CreateFixture();
+        using var elsewhere = new TestFolder();
+        Directory.CreateSymbolicLink(Path.Combine(elsewhere.Path, "loopA"), "loopB");
+        Directory.CreateSymbolicLink(Path.Combine(elsewhere.Path, "loopB"), "loopA");
+        FolderSession session = new(folder.Path, new R4CoreSchemaProvider(), NullLoggerFactory.Instance);
+        FolderCatalog unresolvable = session.Catalog with { RootPath = Path.Combine(elsewhere.Path, "loopA", "data") };
+        string cacheRoot = Path.Combine(elsewhere.Path, "cache");
+        var cache = new FolderIndexCache(IndexCacheOptions.At(cacheRoot), unresolvable, "R4", session.Definitions);
+
+        cache.TryLoad("Patient").ShouldBeNull();
+
+        cache.CacheDirectory.ShouldBeNull();
+        IssueItem issue = cache.Issues.ShouldHaveSingleItem();
+        issue.Code.ShouldBe("index-cache-unavailable");
+        issue.Diagnostics.ShouldContain("cannot be resolved");
+        Directory.Exists(cacheRoot).ShouldBeFalse();
+    }
+
+    private static (Command Command, Option<string?> CacheDir, Option<bool> NoCache) CreateCacheCommand()
+    {
+        Option<string?> cacheDir = CommonOptions.CreateCacheDirOption();
+        Option<bool> noCache = CommonOptions.CreateNoCacheOption();
+        var command = new Command("test");
+        CommonOptions.AddCacheOptions(command, cacheDir, noCache);
+        return (command, cacheDir, noCache);
+    }
+
+    // Rewrites the manifest as an older or foreign build would have written it and rebinds the type files to it, so
+    // the cache is internally consistent but no longer matches this run.
+    private static void SimulateCacheWrittenByAnotherBuild(string cacheDirectory, string field, object value, bool inOlderShape = false) =>
+        RewriteManifest(cacheDirectory, manifest => manifest[field] = JsonValue.Create(value), inOlderShape);
+
+    // Rewrites the manifest and re-binds the type files to the rewritten bytes, so the cache stays internally
+    // consistent and only differs from what this run would write.
+    private static void RewriteManifest(string cacheDirectory, Action<JsonObject> change, bool typeFilesInOlderShape = false)
+    {
+        string manifestPath = Path.Combine(cacheDirectory, "manifest.json");
+        JsonObject manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!.AsObject();
+        change(manifest);
+        byte[] manifestBytes = System.Text.Encoding.UTF8.GetBytes(manifest.ToJsonString());
+        File.WriteAllBytes(manifestPath, manifestBytes);
+        string manifestId = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(manifestBytes));
+        foreach (string typeFile in Directory.EnumerateFiles(cacheDirectory, "*" + TypeIndexFile.Suffix))
+        {
+            RebindTypeFile(typeFile, manifestId, cutBody: typeFilesInOlderShape);
+        }
+    }
+
+    /// <summary>Names <paramref name="manifestId"/> in the type file's header; <paramref name="cutBody"/> leaves nothing readable after it.</summary>
+    private static void RebindTypeFile(string path, string manifestId, bool cutBody)
+    {
+        byte[] bytes = File.ReadAllBytes(path);
+        System.Text.Encoding.ASCII.GetBytes(manifestId).CopyTo(bytes, ManifestIdOffset);
+        File.WriteAllBytes(path, cutBody ? bytes[..(ManifestIdOffset + manifestId.Length + 3)] : bytes);
+    }
+
+    /// <summary>Writes <paramref name="index"/> over the type file at <paramref name="path"/>, under the manifest the file names.</summary>
+    private static void RewriteTypeFile(string path, ResourceTypeIndex index, int catalogEntryCount)
+    {
+        string manifestId = System.Text.Encoding.ASCII.GetString(File.ReadAllBytes(path), ManifestIdOffset, 64);
+        using var stream = new FileStream(path, FileMode.Create, FileAccess.Write);
+        TypeIndexFile.Write(stream, manifestId, catalogEntryCount, index);
+    }
+
+    /// <summary>Replaces every occurrence of <paramref name="text"/> in the file with <paramref name="replacement"/> of the same length.</summary>
+    private static void ReplaceBytes(string path, string text, string replacement)
+    {
+        byte[] bytes = File.ReadAllBytes(path);
+        byte[] from = System.Text.Encoding.UTF8.GetBytes(text);
+        byte[] to = System.Text.Encoding.UTF8.GetBytes(replacement);
+        int found = 0;
+        int at = bytes.AsSpan().IndexOf(from);
+        while (at >= 0)
+        {
+            to.CopyTo(bytes, at);
+            found++;
+            int next = bytes.AsSpan(at + 1).IndexOf(from);
+            at = next < 0 ? -1 : at + 1 + next;
+        }
+
+        found.ShouldBeGreaterThan(0);
+        File.WriteAllBytes(path, bytes);
+    }
+
+    private static string DirectoryOf(FolderSession session)
+    {
+        session.GetIndex("Patient");
+        return session.CacheDirectory!;
+    }
+
+    private static string[] Snapshot(string root) =>
+    [
+        .. Directory.EnumerateFileSystemEntries(root, "*", SearchOption.AllDirectories)
+            .Order(StringComparer.Ordinal)
+            .Select(path => File.Exists(path)
+                ? $"{path} {new FileInfo(path).Length} {File.GetLastWriteTimeUtc(path).Ticks}"
+                : path),
+    ];
+
+    /// <summary>A directory under the cache root with one file, last used at <paramref name="lastUsed"/>.</summary>
+    private static string PlantBuild(TestFolder cache, string name, DateTime lastUsed)
+    {
+        string directory = Path.Combine(cache.Path, name);
+        Directory.CreateDirectory(Path.Combine(directory, "folder-R4"));
+        File.WriteAllText(Path.Combine(directory, "folder-R4", "manifest.json"), "{}");
+        Directory.SetLastWriteTimeUtc(directory, lastUsed);
+        return directory;
+    }
+
+    private static string PlantUserDirectory(TestFolder cache, string name, DateTime lastUsed)
+    {
+        string directory = Path.Combine(cache.Path, name);
+        Directory.CreateDirectory(Path.Combine(directory, "notes"));
+        File.WriteAllText(Path.Combine(directory, "notes", "todo.txt"), "mine");
+        Directory.SetLastWriteTimeUtc(directory, lastUsed);
+        return directory;
+    }
+
+    private static FolderSession Open(TestFolder folder, TestFolder cache) =>
+        new(folder.Path, new R4CoreSchemaProvider(), NullLoggerFactory.Instance, IndexCacheOptions.At(cache.Path));
+
+    private static TestFolder CreateFixture() => new TestFolder()
+        .Write("patient.json", """
+            {"resourceType":"Patient","id":"p1","name":[{"family":"Smith","given":["Ann","Marie"]}],"birthDate":"1980-01-02","gender":"female",
+             "identifier":[{"type":{"coding":[{"system":"http://terminology.hl7.org/CodeSystem/v2-0203","code":"MR"}]},"system":"http://hospital.example/mrn","value":"12345"}]}
+            """)
+        .Write("encounters.ndjson", """
+            {"resourceType":"Encounter","id":"e1","status":"finished","class":{"system":"http://terminology.hl7.org/CodeSystem/v3-ActCode","code":"AMB"},"subject":{"reference":"Patient/p1"},"reasonCode":[{"text":"Annual Check-up Visit"}],"period":{"start":"2020-03-04T05:06:07-03:30","end":"2020-03-04T06:00:00-03:30"}}
+            {"resourceType":"Encounter","id":"e2","status":"in-progress","class":{"code":"IMP"},"subject":{"reference":"http://other.example/fhir/Patient/p9"},"period":{"start":"2021"}}
+            """)
+        .Write("observations.ndjson", """
+            {"resourceType":"Observation","id":"o1","status":"final","code":{"coding":[{"system":"http://loinc.org","code":"8302-2","display":"Body height"}],"text":"Body Height"},"subject":{"reference":"Patient/p1"},"encounter":{"reference":"Encounter/e1"},"effectiveDateTime":"2020-03-04T05:06:07-03:30","valueQuantity":{"value":77.50,"unit":"cm","system":"http://unitsofmeasure.org","code":"cm"}}
+            {"resourceType":"Observation","id":"o2","status":"final","code":{"text":"Panel"},"effectiveDateTime":"garbage","component":[{"code":{"coding":[{"system":"http://loinc.org","code":"8480-6"}]},"valueQuantity":{"value":120,"system":"http://unitsofmeasure.org","code":"mm[Hg]"}}]}
+            """);
+}
