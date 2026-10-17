@@ -42,6 +42,7 @@ public static class SearchPlanner
         try
         {
             // The plan shows the query the search runs: relative dates resolved as the search resolves them, and both queries stated.
+            session.AsOfClock.ThrowIfOptionInvalid();
             AsOf? callAsOf = AsOfClock.Argument(request.AsOf);
             (SearchRequest resolved, IReadOnlyList<ResolvedParameter> parameters, IssueItem? note) = RelativeDates.Resolve(session.Definitions, request, () => callAsOf ?? session.AsOfClock.Resolve().Value);
             (IReadOnlyList<ResolvedParameter> shown, IReadOnlyList<OmittedItem> unlisted) = note is null ? ([], []) : RelativeDates.ForFacts(request.Query!, parameters);

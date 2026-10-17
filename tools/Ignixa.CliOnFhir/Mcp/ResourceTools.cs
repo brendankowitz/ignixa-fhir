@@ -29,6 +29,9 @@ public sealed class ResourceTools(FolderSession session, McpToolset toolset = Mc
     /// <summary>The argument names <c>search_fhir_resources</c> takes, as the client sends them.</summary>
     private static readonly IReadOnlySet<string> SearchArguments = ToolArguments.Names(typeof(ResourceTools).GetMethod(nameof(SearchFhirResources))!);
 
+    /// <summary>The argument names <c>plan_fhir_search</c> takes, as the client sends them.</summary>
+    private static readonly IReadOnlySet<string> PlanArguments = ToolArguments.Names(typeof(ResourceTools).GetMethod(nameof(PlanFhirSearch))!);
+
     [McpServerTool(Name = "search_fhir_resources", ReadOnly = true, Idempotent = true)]
     [QueryToolset(Description = QuerySearchDescription, HiddenArguments = ["fhirpath", "maxBytes"], HiddenUnderAll = ["asOf"])]
     [Description("""
@@ -81,6 +84,7 @@ public sealed class ResourceTools(FolderSession session, McpToolset toolset = Mc
     }
 
     [McpServerTool(Name = "plan_fhir_search", ReadOnly = true, Idempotent = true)]
+    [UnlistedArguments("asOf")]
     [Description("""
         Explains a search without running it: how each parameter resolves, how many resources populate it, top codes. Takes search_fhir_resources' arguments; execute=true runs it too. help topic=plan.
         """)]
@@ -94,8 +98,16 @@ public sealed class ResourceTools(FolderSession session, McpToolset toolset = Mc
         int offset = 0,
         string? summary = null,
         string? elements = null,
+        string? asOf = null,
+        RequestContext<CallToolRequestParams>? context = null,
         CancellationToken cancellationToken = default) =>
-        ToolResults.From(SearchPlanner.Plan(session, new SearchRequest(resourceType, query, count, offset, summary, elements, lenient, compartment), execute, cancellationToken));
+        ToolResults.From(ToolArguments.CheckSearch(
+            session,
+            PlanArguments,
+            context?.Params?.Arguments?.Keys,
+            lenient,
+            () => SearchPlanner.Plan(session, new SearchRequest(resourceType, query, count, offset, summary, elements, lenient, compartment, AsOf: asOf), execute, cancellationToken),
+            cancellationToken));
 
     [McpServerTool(Name = "read_resources", ReadOnly = true, Idempotent = true)]
     [QueryToolset(HiddenArguments = ["maxBytes"])]

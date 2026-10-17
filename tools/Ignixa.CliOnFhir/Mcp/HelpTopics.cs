@@ -156,6 +156,7 @@ internal static class HelpTopics
             - Token parameters list their most common values ('topValues', at most 10, as 'system|code' or '|code' with resource counts) so you can pick codes that exist. They are folder data (codes, never displays); a system or code not shaped as one is shown as a digest.
             - Problems fail exactly as the search would: 'unknown-search-parameter' with a suggestion, 'search-not-supported', 'digest-not-supported', 'invalid-search-request'.
             - execute=true also runs the search and returns its results in 'facts.results' with the search's evidence and paging ('count', 'offset', 'elements', 'summary' as for search_fhir_resources).
+            - asOf (accepted though not listed): the instant relative dates count from, as for search_fhir_resources; default the session's. Any other argument fails as invalid-parameter (lenient: a parameter-ignored warning).
             """,
         ["validate"] = """
             validate_resources: validates resources in the folder against the FHIR core definitions and loaded profiles (Ignixa.Validation) and summarizes the result.

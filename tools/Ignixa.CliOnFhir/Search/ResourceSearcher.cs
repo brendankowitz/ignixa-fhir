@@ -69,6 +69,7 @@ public static class ResourceSearcher
         try
         {
             // Relative dates are resolved first, against the call's own asOf or the session's, so the query parsed is absolute.
+            session.AsOfClock.ThrowIfOptionInvalid();
             AsOf? callAsOf = AsOfClock.Argument(request.AsOf);
             (SearchRequest resolved, IReadOnlyList<ResolvedParameter> parameters, IssueItem? note) = RelativeDates.Resolve(session.Definitions, request, () => callAsOf ?? session.AsOfClock.Resolve().Value);
             (IReadOnlyList<ResolvedParameter> shown, IReadOnlyList<OmittedItem> unlisted) = note is null ? ([], []) : RelativeDates.ForFacts(request.Query!, parameters);

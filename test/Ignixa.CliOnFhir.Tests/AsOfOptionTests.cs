@@ -130,6 +130,27 @@ public class AsOfOptionTests
         errors.ShouldContain("--as-of is used only by context, draft, find, mcp, search, summary and view for now");
     }
 
+    // Task 12b fix round 1, I5: every verb that reads --as-of refuses a malformed one, whether or not the request needs it.
+    // Regression: at 86a9d902 search (with no relative date) answered as if --as-of had not been given.
+    [Theory]
+    [InlineData("search", "Patient")]
+    [InlineData("search", "Observation", "code=8867-4")]
+    [InlineData("summary", "p1")]
+    [InlineData("context", "p1")]
+    [InlineData("context", "p1", "--node", "problems")]
+    [InlineData("find", "p1", "heart")]
+    public async Task GivenAMalformedAsOf_WhenAVerbThatReadsItRuns_ThenItFailsWithInvalidAsOf(params string[] verb)
+    {
+        using TestFolder folder = Clinic();
+
+        (int exitCode, string output, _) = await RunAsync([verb[0], folder.Path, .. verb[1..], "--no-cache", "--as-of", "soon"]);
+
+        exitCode.ShouldNotBe(0);
+        JsonNode envelope = JsonNode.Parse(output)!;
+        ((string)envelope["issues"]![0]!["code"]!).ShouldBe("invalid-as-of");
+        envelope["facts"].ShouldBeNull();
+    }
+
     [Fact]
     public async Task GivenAMalformedAsOf_WhenViewRuns_ThenTheEnvelopeHasTheRequestError()
     {

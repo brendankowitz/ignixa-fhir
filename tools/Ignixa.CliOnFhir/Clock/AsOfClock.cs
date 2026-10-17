@@ -78,6 +78,19 @@ public sealed partial class AsOfClock
     public AsOf? WithoutReading() =>
         _resolution.IsValueCreated ? _resolution.Value.Value : _option is null ? null : Read(_option.Trim(), AsOfSources.SessionOption);
 
+    /// <summary>
+    /// Fails when the session's <c>--as-of</c> is malformed, for a verb that reads it only for some requests (<c>search</c>, for
+    /// relative dates), so that a malformed one is never accepted silently. Nothing of the folder is read.
+    /// </summary>
+    /// <exception cref="ToolRequestException"><see cref="InvalidCode"/>: the session's option is not a FHIR instant or date.</exception>
+    public void ThrowIfOptionInvalid()
+    {
+        if (_option is not null)
+        {
+            Parse(_option, "--as-of", AsOfSources.SessionOption);
+        }
+    }
+
     /// <summary>Whether <paramref name="text"/> can be read as an asOf; the problem, as <see cref="InvalidCode"/> states it, when not.</summary>
     public static string? Problem(string text)
     {

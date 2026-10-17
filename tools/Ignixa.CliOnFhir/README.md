@@ -164,7 +164,8 @@ A date search parameter (its type is `date` in the FHIR version's definitions, `
 - asOf is the call's own (`search_fhir_resources` `asOf`), else the session's (`--as-of`, the folder's data-pull time, else the clock); the envelope's `asOf` states it.
 - `facts.query` is the query searched, `facts.originalQuery` the one sent, and `facts.resolvedParameters` lists each rewritten parameter `{parameter, original, resolved}`; an information issue `relative-date-resolved` states the asOf and the zone. A query without a relative date has none of these (the shape is unchanged).
 - A value that starts like one but is not (`now-3m`, `today-24h`, `nowish`, one reaching before the year 1) fails as `invalid-parameter` naming the forms; `now` as the value of a parameter that is not a date (`code=now`), or after a modifier (`date:missing`), is left to the query.
-- `plan_fhir_search` (`search --check`) shows the same rewrite, with its note among the plan's issues.
+- `plan_fhir_search` (`search --check`) shows the same rewrite, with its note among the plan's issues. It takes the same `asOf` (accepted though not listed under `all`, as for `search_fhir_resources`; Task 12b fix round 1), so the plan resolves against the instant the search would, and like the search it refuses an argument it does not define (`invalid-parameter`; `lenient`: a `parameter-ignored` warning).
+- A malformed `--as-of` fails `search` and `search --check` with `invalid-as-of` whether or not the query has a relative date, as every verb that reads `--as-of` does, rather than answering as if it had not been given.
 
 ## Search plans
 
