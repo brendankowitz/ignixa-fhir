@@ -21,6 +21,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\tools\Ignixa.CliOnFhir\Ignixa.CliOnFhir.csproj" />
+    <!-- Builds the FML test project so its DownloadFhirTestCases target fetches the corpus MapOracleTests reads. -->
+    <ProjectReference Include="..\Ignixa.FhirMappingLanguage.Tests\Ignixa.FhirMappingLanguage.Tests.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <!-- The FML oracle's case list, exclusions, known gaps and comparison, shared so that MapOracleTests cannot drift from

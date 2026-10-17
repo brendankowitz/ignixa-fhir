@@ -108,9 +108,18 @@ internal sealed class OutputFile
 
                 string backup = Path.Combine(Path.GetDirectoryName(_target.Path)!, $".{Path.GetFileName(_target.Path)}.{Guid.NewGuid():N}.bak");
                 _backupIdentity = IdentityOf(_target.Path);
-                NoReplaceRename.Move(_target.Path, backup);
-                _backup = backup;
                 OpenOutputFiles.AddBackup(backup, _target.Path);
+                try
+                {
+                    NoReplaceRename.Move(_target.Path, backup);
+                }
+                catch
+                {
+                    OpenOutputFiles.RemoveBackup(backup);
+                    throw;
+                }
+
+                _backup = backup;
             }
 
             string? landed = Rename(replace: false);
