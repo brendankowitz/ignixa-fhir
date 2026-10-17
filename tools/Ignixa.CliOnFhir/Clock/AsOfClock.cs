@@ -12,7 +12,7 @@ namespace Ignixa.CliOnFhir.Clock;
 
 /// <summary>
 /// The session's <see cref="AsOf"/>: the instant its answers are anchored to. Resolved once, on first use, in this order: the
-/// session's <c>--as-of</c> option (a FHIR instant, or a FHIR date read as that day's first instant in UTC); the
+/// session's <c>--as-of</c> option (a FHIR instant or date, or a form V14 accepted: see Parse); the
 /// <c>transactionTime</c> of a Bulk Data export manifest at the folder's root (<see cref="BulkExportManifests"/>); the
 /// <c>timestamp</c> of the folder's container Bundles, the latest when they differ (<see cref="BundleTimestamps"/>); otherwise
 /// the session's clock (<see cref="FolderSession.UtcNow"/>). Detection only reads, and reads little: the manifest candidates at
@@ -22,11 +22,11 @@ namespace Ignixa.CliOnFhir.Clock;
 /// </summary>
 public sealed partial class AsOfClock
 {
-    /// <summary>The error code of an <c>--as-of</c> (or <c>asOf</c> argument) that is not a FHIR instant or date.</summary>
+    /// <summary>The error code of an <c>--as-of</c> (or <c>asOf</c> argument) that is not a date or a date and time.</summary>
     public const string InvalidCode = "invalid-as-of";
 
-    private const string NotADateOrInstant = "not a FHIR date or instant: give a date, such as 2024-05-01 (read as that day's first instant in UTC), "
-        + "or a date and a time to the second with a time zone, such as 2024-05-01T08:30:00-05:00";
+    private const string NotADateOrInstant = "not a FHIR date or dateTime: give a date, such as 2024-05-01, 2024-05 or 2024 (the first instant of that day, "
+        + "month or year in UTC), or a date and time, such as 2024-05-01T08:30:00-05:00 (without a zone it is read as UTC)";
 
     private readonly FolderSession _session;
     private readonly string? _option;
@@ -91,7 +91,9 @@ public sealed partial class AsOfClock
     // The clock's own precision (ticks) says nothing the data could; an instant to the millisecond is how FHIR data usually reads.
     private static DateTimeOffset ToMilliseconds(DateTimeOffset now) => new(now.Ticks - (now.Ticks % TimeSpan.TicksPerMillisecond), now.Offset);
 
-    // Surrounding whitespace is dropped, as patient_summary and patient_cohort always dropped it from their asOf.
+    // Surrounding whitespace is dropped, as patient_summary and patient_cohort always dropped it from their asOf. A full date and a
+    // FHIR instant are read strictly (an instant keeps its offset and any number of fraction digits); the other forms V14 accepted
+    // are read as V14 read them (LenientAsOf).
     private static AsOf Parse(string text, string name, string source)
     {
         string trimmed = text.Trim();
@@ -103,6 +105,11 @@ public sealed partial class AsOfClock
         if (FhirInstant.Problem(trimmed, out DateTimeOffset value) is not { } problem)
         {
             return new AsOf(value, source);
+        }
+
+        if (LenientAsOf.Parse(trimmed, source) is { } lenient)
+        {
+            return lenient;
         }
 
         string reason = FhirDate.HasShape(trimmed) ? "not a date of the calendar" : FhirInstant.HasShape(trimmed) ? problem : NotADateOrInstant;

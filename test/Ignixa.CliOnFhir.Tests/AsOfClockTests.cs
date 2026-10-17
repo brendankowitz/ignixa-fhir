@@ -196,10 +196,10 @@ public class AsOfClockTests
     }
 
     [Theory]
-    [InlineData("2024-05")]
-    [InlineData("2024-05-01T08:30:00")]
-    [InlineData("2024-05-01T08:30Z")]
+    [InlineData("2024-13")]
+    [InlineData("2024-02-30")]
     [InlineData("2024-02-30T00:00:00Z")]
+    [InlineData("2024-02-30T08:30:00")]
     [InlineData("2024-05-01T23:59:60Z")]
     [InlineData("2024-05-01T08:30:00+15:00")]
     [InlineData("now")]
@@ -256,10 +256,50 @@ public class AsOfClockTests
 
         AsOf asOf = Open(folder, "2024-05-01").Clock.Resolve().Value;
 
-        asOf.ShouldBe(new AsOf(At("2024-05-01T00:00:00Z"), AsOfSources.SessionOption, IsDateOnly: true));
+        asOf.ShouldBe(new AsOf(At("2024-05-01T00:00:00Z"), AsOfSources.SessionOption, Precision: AsOf.DatePrecision));
         asOf.Instant.ShouldBe("2024-05-01T00:00:00Z");
         asOf.Day.ShouldBe("2024-05-01");
         asOf.Precision.ShouldBe(AsOf.DatePrecision);
+    }
+
+    /// <summary>The forms V14's patient_summary and patient_cohort accepted, read as V14 read them: the period's first instant in UTC, a zone-less time as UTC.</summary>
+    [Theory]
+    [InlineData("2024", "2024-01-01T00:00:00Z", AsOf.YearPrecision, false)]
+    [InlineData("2024-05", "2024-05-01T00:00:00Z", AsOf.MonthPrecision, false)]
+    [InlineData("2024-05-01", "2024-05-01T00:00:00Z", AsOf.DatePrecision, false)]
+    [InlineData("2024-05-01T08:30:00", "2024-05-01T08:30:00Z", AsOf.InstantPrecision, true)]
+    [InlineData("2024-05-01T08:30", "2024-05-01T08:30:00Z", AsOf.InstantPrecision, true)]
+    [InlineData("2024-05-01T08:30:00.25", "2024-05-01T08:30:00.25Z", AsOf.InstantPrecision, true)]
+    [InlineData("2024-05-01T08:30Z", "2024-05-01T08:30:00Z", AsOf.InstantPrecision, false)]
+    [InlineData("2024-05-01T08:30+02:00", "2024-05-01T08:30:00+02:00", AsOf.InstantPrecision, false)]
+    [InlineData("2024-05-01T08:30:00+02:00", "2024-05-01T08:30:00+02:00", AsOf.InstantPrecision, false)]
+    public void GivenAnOptionInAFormV14Accepted_WhenResolved_ThenItIsReadAsV14ReadItWithItsPrecisionAndZone(string option, string instant, string precision, bool zoneAssumed)
+    {
+        using TestFolder folder = new TestFolder().Write("Patient.ndjson", Patients);
+
+        AsOf asOf = Open(folder, option).Clock.Resolve().Value;
+
+        asOf.Instant.ShouldBe(instant);
+        asOf.Precision.ShouldBe(precision);
+        asOf.ZoneAssumed.ShouldBe(zoneAssumed);
+        asOf.Source.ShouldBe(AsOfSources.SessionOption);
+    }
+
+    /// <summary>The same instant as V14's own reader (Cohorts/CohortInstant.cs, which still reads cohort windows) for every form it reads.</summary>
+    [Theory]
+    [InlineData("2024")]
+    [InlineData("2024-05")]
+    [InlineData("2024-05-01")]
+    [InlineData("2024-05-01T08:30:00")]
+    [InlineData("2024-05-01T08:30")]
+    [InlineData("2024-05-01T08:30:00Z")]
+    [InlineData("2024-05-01T08:30:00-05:00")]
+    [InlineData("2024-05-01T08:30:00.1234567+05:30")]
+    public void GivenAFormV14Read_WhenParsedAsAnArgument_ThenTheInstantIsV14s(string text)
+    {
+        AsOf asOf = AsOfClock.Argument(text).ShouldNotBeNull();
+
+        asOf.Moment.ShouldBe(Ignixa.CliOnFhir.Cohorts.CohortInstant.Parse(text).ShouldNotBeNull());
     }
 
     [Fact]
@@ -285,9 +325,8 @@ public class AsOfClockTests
     [InlineData("0001-01-01T00:00:00+14:00", "outside the instants the tool can hold")]
     [InlineData("2023-02-29T00:00:00Z", "not a date of the calendar")]
     [InlineData("2023-02-29", "not a date of the calendar")]
-    [InlineData("2024-05", "not a FHIR date or instant")]
-    [InlineData("2024-05-01T08:30:00", "not a FHIR date or instant")]
-    [InlineData("yesterday", "not a FHIR date or instant")]
+    [InlineData("2024-13", "not a FHIR date or dateTime")]
+    [InlineData("yesterday", "not a FHIR date or dateTime")]
     public void GivenAnOptionThatNamesNoInstantTheToolCanHold_WhenResolved_ThenTheMessageSaysWhy(string option, string reason)
     {
         using TestFolder folder = new TestFolder().Write("Patient.ndjson", Patients);

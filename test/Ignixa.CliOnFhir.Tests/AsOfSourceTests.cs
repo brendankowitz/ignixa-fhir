@@ -15,7 +15,8 @@ namespace Ignixa.CliOnFhir.Tests;
 /// <summary>
 /// summary / patient_summary and patient_cohort read their asOf through <see cref="AsOfClock"/> (the V14 merge's one option) and
 /// say where it came from in <c>asOfSource</c>: <c>argument</c>, <c>session-option</c>, <c>patient-latest</c> (the map's default)
-/// or <c>clock</c> (the cohort's default, V15's <c>default-now</c>). A date keeps V14's meaning, that day's first instant in UTC.
+/// or <c>clock</c> (the cohort's default, V15's <c>default-now</c>). Every form V14 accepted keeps V14's meaning (the period's first
+/// instant in UTC, a time without a zone read as UTC), and its precision is stated.
 /// </summary>
 public class AsOfSourceTests
 {
@@ -76,9 +77,27 @@ public class AsOfSourceTests
     }
 
     [Theory]
+    [InlineData("2016", "2016-01-01", "year", null, 1)]
+    [InlineData("2016-06", "2016-06-01", "month", null, 1)]
+    [InlineData("2016-06-01", "2016-06-01", "date", null, 1)]
+    [InlineData("2016-06-01T10:00:00", "2016-06-01T10:00:00Z", null, true, 2)]
+    [InlineData("2016-06-01T09:59", "2016-06-01T09:59:00Z", null, true, 1)]
+    public void GivenAnAsOfArgumentInAFormV14Accepted_WhenSummarized_ThenItIsReadAsV14ReadItAndItsPrecisionIsStated(string asOf, string echoed, string? precision, bool? zoneAssumed, int encounters)
+    {
+        using TestFolder folder = Chart();
+
+        PatientMapFacts facts = PatientMap.Summarize(PatientFixture.Open(folder), "m1", asOf).Facts.ShouldNotBeNull();
+
+        facts.Record.AsOf.ShouldBe(echoed);
+        facts.Record.AsOfPrecision.ShouldBe(precision);
+        facts.Record.AsOfZoneAssumed.ShouldBe(zoneAssumed);
+        facts.Domains["encounters"].Count.ShouldBe(encounters);
+    }
+
+    [Theory]
     [InlineData("yesterday")]
-    [InlineData("2016-06")]
-    [InlineData("2016-06-01T10:00:00")]
+    [InlineData("2016-13")]
+    [InlineData("2016-02-30T10:00:00")]
     public void GivenAnAsOfArgumentThatIsNeitherADateNorAnInstant_WhenSummarized_ThenTheCallFailsAsInvalidAsOf(string asOf)
     {
         using TestFolder folder = Chart();
@@ -104,9 +123,27 @@ public class AsOfSourceTests
     }
 
     [Theory]
+    [InlineData("2026", "2026-01-01", "year", null)]
+    [InlineData("2026-08", "2026-08-01", "month", null)]
+    [InlineData("2026-08-17", "2026-08-17", "date", null)]
+    [InlineData("2026-08-17T10:00:00", "2026-08-17T10:00:00Z", null, true)]
+    [InlineData("2026-08-17T10:00:00Z", "2026-08-17T10:00:00Z", null, null)]
+    public async Task GivenACohortAsOfInAFormV14Accepted_WhenCounted_ThenItIsEchoedAsV14EchoedItWithItsPrecision(string asOf, string echoed, string? precision, bool? zoneAssumed)
+    {
+        using TestFolder folder = new TestFolder().Write("patients.ndjson", CohortFixture.Patient("p1", "1970-01-01"));
+
+        CohortFacts facts = CohortFixture.Facts(await PatientCohort.RunAsync(SearchFixture.Open(folder), new CohortArguments(asOf), CancellationToken.None));
+
+        facts.AsOf.ShouldBe(echoed);
+        facts.AsOf.ShouldBe(CohortInstant.Format(CohortInstant.Parse(asOf).ShouldNotBeNull()));
+        facts.AsOfPrecision.ShouldBe(precision);
+        facts.AsOfZoneAssumed.ShouldBe(zoneAssumed);
+    }
+
+    [Theory]
     [InlineData("yesterday")]
-    [InlineData("2026")]
-    [InlineData("2026-08-17T10:00:00")]
+    [InlineData("2026-13")]
+    [InlineData("2026-02-30")]
     public async Task GivenACohortAsOfThatIsNeitherADateNorAnInstant_WhenCounted_ThenTheCallFailsAsInvalidAsOf(string asOf)
     {
         using TestFolder folder = new TestFolder().Write("patients.ndjson", CohortFixture.Patient("p1", "1970-01-01"));
@@ -114,6 +151,6 @@ public class AsOfSourceTests
         IssueItem issue = CohortFixture.Failure(await PatientCohort.RunAsync(SearchFixture.Open(folder), new CohortArguments(asOf), CancellationToken.None));
 
         issue.Code.ShouldBe(AsOfClock.InvalidCode);
-        issue.Diagnostics.ShouldContain("not a FHIR date or instant");
+        issue.Diagnostics.ShouldContain("is not a");
     }
 }

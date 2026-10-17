@@ -18,8 +18,8 @@ namespace Ignixa.CliOnFhir.Views;
 /// does not declare, so the run gives the view a constant of each name it does not declare itself. A ViewDefinition's own constant
 /// is kept, with a warning that the variable is then not the session's; a <c>--var</c> of either name replaces the value, as a
 /// variable replaces any constant, with a warning, and must be of the variable's type: an instant for <c>asOf</c>, a date for
-/// <c>asOfDate</c>. A session value given as a date (<c>--as-of 2024-05-01</c>) is <c>%asOf</c> 2024-05-01T00:00:00Z and
-/// <c>%asOfDate</c> 2024-05-01.
+/// <c>asOfDate</c>. <c>%asOf</c> is the session's resolved instant and <c>%asOfDate</c> its day: <c>--as-of 2024-05</c> is
+/// <c>%asOf</c> 2024-05-01T00:00:00Z and <c>%asOfDate</c> 2024-05-01.
 /// </summary>
 internal static partial class ViewAsOf
 {

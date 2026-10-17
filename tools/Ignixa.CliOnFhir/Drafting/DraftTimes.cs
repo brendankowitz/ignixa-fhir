@@ -12,8 +12,8 @@ namespace Ignixa.CliOnFhir.Drafting;
 internal static partial class DraftTimes
 {
     /// <summary>
-    /// A FHIR dateTime member (a year, a month, a date, or a date and time with a zone), or <paramref name="asOf"/>: its instant, or
-    /// its day when it was given as a date, since a dateTime may be a date and a time of day the caller never named is not invented.
+    /// A FHIR dateTime member (a year, a month, a date, or a date and time with a zone), or <paramref name="asOf"/> at the precision it
+    /// was given (<see cref="AsOf.DateTimeText"/>): a dateTime may be a year, a month or a date, and a time nobody named is not invented.
     /// </summary>
     public static string DateTimeOr(DraftArguments input, string name, AsOf asOf)
     {
@@ -35,7 +35,7 @@ internal static partial class DraftTimes
             : null;
     }
 
-    /// <summary>A FHIR instant member, or <paramref name="asOf"/>'s instant (for a date-only asOf, that day's first instant in UTC: an instant needs a time).</summary>
+    /// <summary>A FHIR instant member, or <paramref name="asOf"/>'s instant (for an asOf given as a year, month or date, that period's first instant in UTC: an instant needs a time).</summary>
     public static string InstantOr(DraftArguments input, string name, AsOf asOf)
     {
         ArgumentNullException.ThrowIfNull(input);

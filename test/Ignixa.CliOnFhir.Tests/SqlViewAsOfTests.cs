@@ -97,7 +97,7 @@ public class SqlViewAsOfTests
     {
         using TestFolder folder = Clinic();
 
-        Error(await RunAsync(Open(folder), new ViewRequest(PatientView), "2026-01-01T00:00")).Code.ShouldBe(AsOfClock.InvalidCode);
+        Error(await RunAsync(Open(folder), new ViewRequest(PatientView), "2026-13-01")).Code.ShouldBe(AsOfClock.InvalidCode);
     }
 
     [Theory]

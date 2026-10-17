@@ -19,6 +19,8 @@ namespace Ignixa.CliOnFhir.Cohorts;
 /// Where <paramref name="AsOf"/> came from (<see cref="AsOfSources"/>, <c>facts.asOfSource</c>): <c>argument</c> when the request
 /// gave it, <c>clock</c> when it defaulted to the session clock's now (V15 named that <c>default-now</c>).
 /// </param>
+/// <param name="AsOfPrecision">The given asOf's precision when it is not an instant (<c>year</c>, <c>month</c>, <c>date</c>); null otherwise.</param>
+/// <param name="AsOfZoneAssumed">Whether the given asOf was a date and time without a zone, read as UTC.</param>
 internal sealed record CohortRequest(
     DateTimeOffset AsOf,
     bool LivingOnly,
@@ -29,7 +31,9 @@ internal sealed record CohortRequest(
     IReadOnlyList<MedicationCriterion> Medications,
     IReadOnlyList<ImmunizationCriterion> Immunizations,
     IReadOnlyList<ObservationCriterion> Observations,
-    string AsOfSource)
+    string AsOfSource,
+    string? AsOfPrecision = null,
+    bool AsOfZoneAssumed = false)
 {
     public const string Active = "active";
     public const string AnyStatus = "any";
@@ -86,7 +90,9 @@ internal sealed record CohortRequest(
             [.. CriterionObject.List(arguments.Medications, "medications", MedicationProperties).Select(Medication)],
             [.. CriterionObject.List(arguments.Immunizations, "immunizations", ImmunizationProperties).Select(criterion => Immunization(criterion, asOf))],
             [.. CriterionObject.List(arguments.Observations, "observations", ObservationProperties).Select(criterion => Observation(criterion, asOf))],
-            stated?.Source ?? AsOfSources.Clock);
+            stated?.Source ?? AsOfSources.Clock,
+            stated?.ShownPrecision,
+            stated?.ZoneAssumed ?? false);
     }
 
     private static ConditionCriterion Condition(CriterionObject criterion)

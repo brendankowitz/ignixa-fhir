@@ -133,7 +133,7 @@ public static partial class PatientMap
         try
         {
             AsOf? given = asOf();
-            return Execute(PatientContext.Open(session, patientId(), given?.Moment), given?.Source, cancellationToken);
+            return Execute(PatientContext.Open(session, patientId(), given?.Moment), given, cancellationToken);
         }
         catch (ToolRequestException ex)
         {
@@ -141,7 +141,7 @@ public static partial class PatientMap
         }
     }
 
-    private static ToolEnvelope<PatientMapFacts?> Execute(PatientContext context, string? givenSource, CancellationToken cancellationToken)
+    private static ToolEnvelope<PatientMapFacts?> Execute(PatientContext context, AsOf? given, CancellationToken cancellationToken)
     {
         List<ContextEntry> labObservations = [.. context.Labs.SelectMany(series => series.Observations)];
         IReadOnlyList<ContextEntry> described =
@@ -166,7 +166,9 @@ public static partial class PatientMap
             dates.Count == 0 ? null : Day(dates.Min()!.Literal),
             dates.Count == 0 ? null : Day(dates.Max()!.Literal),
             context.AsOfGiven ? CohortInstant.Format(context.AsOf) : null,
-            givenSource ?? (context.AsOfFromClock ? AsOfSources.Clock : AsOfSources.PatientLatest));
+            given?.Source ?? (context.AsOfFromClock ? AsOfSources.Clock : AsOfSources.PatientLatest),
+            given?.ShownPrecision,
+            given?.ShownZoneAssumed);
         Dictionary<string, int> other = context.Compartment.Members
             .Where(member => !MapTypes.Contains(member.ResourceType))
             .GroupBy(member => member.ResourceType, StringComparer.Ordinal)

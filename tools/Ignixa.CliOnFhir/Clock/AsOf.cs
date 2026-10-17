@@ -13,32 +13,63 @@ namespace Ignixa.CliOnFhir.Clock;
 /// session's clock. Defaults that mean "now" (a draft's <c>authoredOn</c>, a view's <c>%asOf</c>) read it, never the wall clock.
 /// </summary>
 /// <param name="Moment">
-/// The instant, with the offset it was given in (UTC for the clock). For a date-only value, that day's first instant in UTC, as
-/// <c>patient_summary</c> and <c>patient_cohort</c> have always read a date (2024-05-01 is 2024-05-01T00:00:00Z).
+/// The instant, with the offset it was given in (UTC for the clock, and for a value given without a zone). For a year, a month
+/// or a date, the first instant of that period in UTC, as <c>patient_summary</c> and <c>patient_cohort</c> have always read
+/// one (2024 is 2024-01-01T00:00:00Z, 2024-05-01 is 2024-05-01T00:00:00Z).
 /// </param>
 /// <param name="Source">One of <see cref="AsOfSources"/>.</param>
-/// <param name="IsDateOnly">Whether the value was given as a FHIR date, so it names a day, not a moment of it.</param>
-public sealed record AsOf([property: JsonIgnore] DateTimeOffset Moment, string Source, [property: JsonIgnore] bool IsDateOnly = false)
+/// <param name="Precision">What the value was given as: <see cref="YearPrecision"/>, <see cref="MonthPrecision"/>, <see cref="DatePrecision"/> or <see cref="InstantPrecision"/>.</param>
+/// <param name="ZoneAssumed">Whether a date and time was given without a zone, so it was read as UTC.</param>
+public sealed record AsOf(
+    [property: JsonIgnore] DateTimeOffset Moment,
+    string Source,
+    [property: JsonIgnore] string Precision = AsOf.InstantPrecision,
+    [property: JsonIgnore] bool ZoneAssumed = false)
 {
-    /// <summary>The precision <see cref="Precision"/> names for a date-only value.</summary>
+    /// <summary>A year alone (<c>2024</c>).</summary>
+    public const string YearPrecision = "year";
+
+    /// <summary>A year and month (<c>2024-05</c>).</summary>
+    public const string MonthPrecision = "month";
+
+    /// <summary>A full date (<c>2024-05-01</c>).</summary>
     public const string DatePrecision = "date";
+
+    /// <summary>A date and a time, with a zone or (<see cref="ZoneAssumed"/>) read as UTC without one.</summary>
+    public const string InstantPrecision = "instant";
 
     /// <summary>The instant as a FHIR instant (<see cref="FhirInstant.Format"/>).</summary>
     [JsonPropertyOrder(-1)]
     public string Instant => FhirInstant.Format(Moment);
 
-    /// <summary><see cref="DatePrecision"/> when the value was given as a date; absent for an instant.</summary>
+    /// <summary>The precision as facts show it: absent for an instant, the usual case.</summary>
+    [JsonPropertyName("precision")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? Precision => IsDateOnly ? DatePrecision : null;
+    public string? ShownPrecision => Precision == InstantPrecision ? null : Precision;
 
-    /// <summary>The calendar day, as a FHIR date: the date given, or the instant's day in its own offset.</summary>
+    /// <summary><c>true</c> when the zone was assumed; absent otherwise.</summary>
+    [JsonPropertyName("zoneAssumed")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? ShownZoneAssumed => ZoneAssumed ? true : null;
+
+    /// <summary>The calendar day, as a FHIR date: the instant's day in its own offset, so the first day of a year or month given.</summary>
     [JsonIgnore]
     public string Day => Moment.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
-    /// <summary>The value as a FHIR dateTime: the day for a date-only value (a dateTime may be a date), the instant otherwise.</summary>
+    /// <summary>
+    /// The value as a FHIR dateTime, at the precision it was given (a dateTime may be a year, a month or a date, and a time of day
+    /// nobody named is not invented); the instant otherwise.
+    /// </summary>
     [JsonIgnore]
-    public string DateTimeText => IsDateOnly ? Day : Instant;
+    public string DateTimeText => Precision switch
+    {
+        YearPrecision => Moment.ToString("yyyy", CultureInfo.InvariantCulture),
+        MonthPrecision => Moment.ToString("yyyy-MM", CultureInfo.InvariantCulture),
+        DatePrecision => Day,
+        _ => Instant,
+    };
 
-    /// <summary>The first instant of <paramref name="day"/> in UTC, marked date-only.</summary>
-    public static AsOf OfDate(DateOnly day, string source) => new(new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero), source, IsDateOnly: true);
+    /// <summary>The first instant of <paramref name="day"/> in UTC, at <paramref name="precision"/> (a date, or the year or month it starts).</summary>
+    public static AsOf OfDate(DateOnly day, string source, string precision = DatePrecision) =>
+        new(new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero), source, precision);
 }
