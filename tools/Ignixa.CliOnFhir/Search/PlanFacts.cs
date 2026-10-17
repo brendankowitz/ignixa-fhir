@@ -22,4 +22,13 @@ public sealed record PlanFacts(
     int Indexed,
     IReadOnlyList<ParameterPlan> Parameters,
     bool Executed,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] SearchFacts? Results = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] SearchFacts? Results = null)
+{
+    /// <summary>When relative dates were resolved (<see cref="RelativeDates"/>): the query as written; <see cref="Query"/> is the one planned. Absent otherwise.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? OriginalQuery { get; init; }
+
+    /// <summary>When relative dates were resolved: each parameter, as written and as planned. Absent otherwise.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<ResolvedParameter>? ResolvedParameters { get; init; }
+}

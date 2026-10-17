@@ -45,7 +45,7 @@ public class McpMenuSizeTests(ITestOutputHelper output)
     [InlineData(McpToolset.Query, new[] { "folder_code_systems", "help", "patient_cohort", "patient_summary", "read_resources", "search_fhir_resources", "terminology" })]
     [InlineData(
         McpToolset.All,
-        new[] { "folder_code_systems", "folder_inspect", "help", "patient_cohort", "patient_context", "patient_list", "patient_summary", "plan_fhir_search", "read_resources", "search_fhir_resources", "terminology", "terminology_load_package", "validate_resources" })]
+        new[] { "draft_resource", "folder_code_systems", "folder_inspect", "help", "patient_cohort", "patient_context", "patient_list", "patient_summary", "plan_fhir_search", "read_resources", "search_fhir_resources", "terminology", "terminology_load_package", "validate_resources" })]
     public void GivenTheServerRegistration_WhenItsServicesAreBuilt_ThenTheToolsetsToolsAreRegistered(McpToolset toolset, string[] expected)
     {
         var services = new ServiceCollection();

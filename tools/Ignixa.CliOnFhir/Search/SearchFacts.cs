@@ -87,4 +87,12 @@ public sealed record SearchFacts(
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public PerPatientFacts? PerPatient { get; init; }
+
+    /// <summary>When relative dates were resolved (<see cref="RelativeDates"/>): the query as written; <see cref="Query"/> is the one searched. Absent otherwise.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? OriginalQuery { get; init; }
+
+    /// <summary>When relative dates were resolved: each parameter, as written and as searched. Absent otherwise.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<ResolvedParameter>? ResolvedParameters { get; init; }
 }

@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Reflection;
+using Ignixa.CliOnFhir.Clock;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Session;
 using Ignixa.Search.Expressions;
@@ -40,7 +41,11 @@ public static class SearchPlanner
 
         try
         {
-            return Execute(session, request, execute, cancellationToken);
+            // The plan shows the query the search runs: relative dates resolved as the search resolves them, and both queries stated.
+            AsOf? callAsOf = AsOfClock.Argument(request.AsOf);
+            (SearchRequest resolved, IReadOnlyList<ResolvedParameter> parameters, IssueItem? note) = RelativeDates.Resolve(session.Definitions, request, () => callAsOf ?? session.AsOfClock.Resolve().Value);
+            ToolEnvelope<PlanFacts?> envelope = Execute(session, resolved, execute, note is null ? null : (QueryEcho.Of(request.Query!), parameters, note), cancellationToken);
+            return callAsOf is null ? envelope : envelope with { AsOf = callAsOf };
         }
         catch (ToolRequestException ex)
         {
@@ -48,7 +53,12 @@ public static class SearchPlanner
         }
     }
 
-    private static ToolEnvelope<PlanFacts?> Execute(FolderSession session, SearchRequest request, bool execute, CancellationToken cancellationToken)
+    private static ToolEnvelope<PlanFacts?> Execute(
+        FolderSession session,
+        SearchRequest request,
+        bool execute,
+        (string OriginalQuery, IReadOnlyList<ResolvedParameter> Parameters, IssueItem Note)? relative,
+        CancellationToken cancellationToken)
     {
         // The search's own request checks, in the search's order, so a request the search refuses the plan refuses too.
         ResourceSearcher.ValidatePaging(request);
@@ -77,7 +87,16 @@ public static class SearchPlanner
             planIssues.Add(new IssueItem("information", "invalid-value", $"{population.DigestedValues} top values are shown as digests ('~' and 16 hex digits): their system is not an http(s) or urn URI, or their code is not shaped as one. A search cannot use a digest.", Location: null));
         }
 
-        var facts = new PlanFacts(request.ResourceType, QueryEcho.Of(request.Query ?? string.Empty), request.Compartment, population.Indexed(request.ResourceType), parameters, execute);
+        var facts = new PlanFacts(request.ResourceType, QueryEcho.Of(request.Query ?? string.Empty), request.Compartment, population.Indexed(request.ResourceType), parameters, execute)
+        {
+            OriginalQuery = relative?.OriginalQuery,
+            ResolvedParameters = relative?.Parameters,
+        };
+        if (relative is { } rewrite)
+        {
+            planIssues.Insert(0, rewrite.Note);
+        }
+
         bool queryCut = QueryEcho.IsCut(request.Query);
         List<OmittedItem> diagnosticsOmitted = [.. parseOmitted];
         List<IssueItem> diagnostics = [];

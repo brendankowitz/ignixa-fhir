@@ -50,7 +50,7 @@ public static class McpServerSetup
         """;
 
     /// <summary>The types whose <see cref="McpServerToolAttribute"/> methods the server offers, as the toolset allows.</summary>
-    public static IReadOnlyList<Type> ToolTypes { get; } = [typeof(FolderTools), typeof(ResourceTools), typeof(PatientTools), typeof(TerminologyTools), typeof(ValidationTools), typeof(HelpTools)];
+    public static IReadOnlyList<Type> ToolTypes { get; } = [typeof(FolderTools), typeof(ResourceTools), typeof(PatientTools), typeof(TerminologyTools), typeof(ValidationTools), typeof(DraftTools), typeof(HelpTools)];
 
     /// <summary>The types whose <see cref="McpServerResourceAttribute"/> methods the server offers under every toolset.</summary>
     public static IReadOnlyList<Type> ResourceTypes { get; } = [typeof(PatientResources)];
@@ -77,7 +77,7 @@ public static class McpServerSetup
                     continue;
                 }
 
-                McpServerToolCreateOptions options = toolset == McpToolset.Query ? QueryOptions(query!) : new();
+                McpServerToolCreateOptions options = toolset == McpToolset.Query ? QueryOptions(query!) : AllOptions(query);
                 yield return McpServerTool.Create(method, context => createTarget(type, context), options);
             }
         }
@@ -101,6 +101,12 @@ public static class McpServerSetup
 
         options.ServerInfo = new() { Name = "cli-on-fhir", Version = typeof(McpServerSetup).Assembly.GetName().Version?.ToString() ?? "0.0.0" };
         options.ServerInstructions = Instructions(toolset);
+    }
+
+    private static McpServerToolCreateOptions AllOptions(QueryToolsetAttribute? query)
+    {
+        HashSet<string> hidden = new(query?.HiddenUnderAll ?? [], StringComparer.Ordinal);
+        return hidden.Count == 0 ? new() : new McpServerToolCreateOptions { SchemaCreateOptions = new AIJsonSchemaCreateOptions { IncludeParameter = parameter => !hidden.Contains(parameter.Name!) } };
     }
 
     private static McpServerToolCreateOptions QueryOptions(QueryToolsetAttribute query)

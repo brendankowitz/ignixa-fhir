@@ -36,6 +36,10 @@ namespace Ignixa.CliOnFhir.Search;
 /// When given (<c>latest</c>, <c>earliest</c> or <c>first</c>), only each patient's first match is kept, by date or by the
 /// query's <c>_sort</c>, before paging, <c>columns</c>, <c>fhirpath</c> or <c>summary=count</c> apply; null keeps every match.
 /// </param>
+/// <param name="AsOf">
+/// The call's own asOf, which its relative dates (<c>date=genow-7d</c>) count from and the envelope states; null for the session's
+/// (<see cref="Clock.AsOfClock"/>).
+/// </param>
 public sealed record SearchRequest(
     string ResourceType,
     string? Query = null,
@@ -48,4 +52,5 @@ public sealed record SearchRequest(
     int? MaxBytes = null,
     IReadOnlyList<SearchColumn>? Columns = null,
     string? FhirPath = null,
-    string? PerPatient = null);
+    string? PerPatient = null,
+    string? AsOf = null);

@@ -39,6 +39,9 @@ public static class ResourceSearcher
     /// </summary>
     private const InMemorySearchFeatures Features = InMemorySearchFeatures.All;
 
+    /// <summary>Room for the names and separators of <c>originalQuery</c>, <c>resolvedParameters</c> and the note beside the facts.</summary>
+    private const int AnnotationNames = 64;
+
     /// <summary>Stands in for an omitted item added after a batch is read, when reserving room for it.</summary>
     private static readonly OmittedItem Placeholder = new(new string('x', 96), "size-budget");
 
@@ -65,7 +68,22 @@ public static class ResourceSearcher
 
         try
         {
-            return Execute(session, request, extraBytes, cancellationToken);
+            // Relative dates are resolved first, against the call's own asOf or the session's, so the query parsed is absolute.
+            AsOf? callAsOf = AsOfClock.Argument(request.AsOf);
+            (SearchRequest resolved, IReadOnlyList<ResolvedParameter> parameters, IssueItem? note) = RelativeDates.Resolve(session.Definitions, request, () => callAsOf ?? session.AsOfClock.Resolve().Value);
+            int annotations = (note is null ? 0 : EnvelopeJson.SizeOf(QueryEcho.Of(request.Query!)) + EnvelopeJson.SizeOf(parameters) + EnvelopeJson.SizeOf(note) + AnnotationNames)
+                + (callAsOf is null ? 0 : EnvelopeJson.SizeOf(AsOf.SizingReserve));
+            ToolEnvelope<SearchFacts?> envelope = Execute(session, resolved, extraBytes + annotations, cancellationToken);
+            if (note is not null)
+            {
+                envelope = envelope with
+                {
+                    Facts = envelope.Facts is { } facts ? facts with { OriginalQuery = QueryEcho.Of(request.Query!), ResolvedParameters = parameters } : null,
+                    Issues = [note, .. envelope.Issues],
+                };
+            }
+
+            return callAsOf is null ? envelope : envelope with { AsOf = callAsOf };
         }
         catch (ToolRequestException ex)
         {

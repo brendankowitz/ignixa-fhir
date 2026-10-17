@@ -30,7 +30,7 @@ public sealed class ResourceTools(FolderSession session, McpToolset toolset = Mc
     private static readonly IReadOnlySet<string> SearchArguments = ToolArguments.Names(typeof(ResourceTools).GetMethod(nameof(SearchFhirResources))!);
 
     [McpServerTool(Name = "search_fhir_resources", ReadOnly = true, Idempotent = true)]
-    [QueryToolset(Description = QuerySearchDescription, HiddenArguments = ["fhirpath", "maxBytes"])]
+    [QueryToolset(Description = QuerySearchDescription, HiddenArguments = ["fhirpath", "maxBytes"], HiddenUnderAll = ["asOf"])]
     [Description("""
         FHIR search over one resource type. Every search parameter, _sort and _count included, goes inside 'query': 'code=http://loinc.org|4548-4&date=ge2020&_sort=-date'.
         - compartment=Patient/<id>: one patient, no lookup first.
@@ -53,10 +53,11 @@ public sealed class ResourceTools(FolderSession session, McpToolset toolset = Mc
         Dictionary<string, string>? columns = null,
         string? fhirpath = null,
         [Description("latest, earliest or first: one match per patient.")] string? perPatient = null,
+        string? asOf = null,
         RequestContext<CallToolRequestParams>? context = null,
         CancellationToken cancellationToken = default)
     {
-        var request = new SearchRequest(resourceType, query, count, offset, summary, elements, lenient, compartment, maxBytes, columns is null ? null : SearchColumn.From(columns), fhirpath, perPatient);
+        var request = new SearchRequest(resourceType, query, count, offset, summary, elements, lenient, compartment, maxBytes, columns is null ? null : SearchColumn.From(columns), fhirpath, perPatient, asOf);
         if (toolset == McpToolset.Query && OutsideQueryToolset(request) is { } outside)
         {
             return ToolResults.Lean(EnvelopeAssembler.Failure<SearchFacts>(session, new IssueItem("error", "invalid-parameter", outside, Location: null), cancellationToken));
