@@ -61,6 +61,9 @@ internal sealed class OutputFile
     /// <summary>The temporary file's path, as checked.</summary>
     public string TempPath { get; }
 
+    /// <summary>The directories this run created for the file, deepest first.</summary>
+    public IReadOnlyList<string> CreatedDirectories => _createdDirectories;
+
     /// <summary>
     /// Flushes the file, checks that its handle still shows it at <see cref="TempPath"/> and that the target's directory is still the
     /// one that was checked, and renames it over the target; where the file landed is checked against the data folder afterwards.
@@ -107,6 +110,7 @@ internal sealed class OutputFile
                 _backupIdentity = IdentityOf(_target.Path);
                 NoReplaceRename.Move(_target.Path, backup);
                 _backup = backup;
+                OpenOutputFiles.AddBackup(backup, _target.Path);
             }
 
             string? landed = Rename(replace: false);
@@ -149,6 +153,7 @@ internal sealed class OutputFile
             {
                 NoReplaceRename.Move(backup, _target.Path);
                 _backup = null;
+                OpenOutputFiles.RemoveBackup(backup);
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -175,6 +180,7 @@ internal sealed class OutputFile
             {
                 File.Delete(backup);
                 _backup = null;
+                OpenOutputFiles.RemoveBackup(backup);
                 return null;
             }
         }

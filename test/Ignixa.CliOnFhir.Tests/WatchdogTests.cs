@@ -44,6 +44,59 @@ public class WatchdogTests
     }
 
     [Fact]
+    public async Task GivenARunThatCreatedDirectoriesForItsOutput_WhenEnded_ThenEachIsNamedAsPossiblyLeft()
+    {
+        using TestFolder root = Root();
+        string created = Path.Combine(root.Path, "out", "deeper");
+        OutputFile open = OutputTarget.ForFile(Data(root), Path.Combine(created, "rows.csv"), OutputTarget.Csv, overwrite: false).Begin([]);
+
+        (_, string output) = await CaptureAsync(() => Watchdog.RunAsync<ViewFacts>("view-timeout", 1, 30, 3600, _ => new TaskCompletionSource<ToolEnvelope<ViewFacts?>>().Task, pretty: false, TimeSpan.FromMilliseconds(50), _ => { }, CancellationToken.None));
+        open.Discard();
+
+        JsonArray issues = JsonNode.Parse(output)!["issues"]!.AsArray();
+        string[] left = [.. issues.Where(issue => (string)issue!["code"]! == "out-directory-left").Select(issue => (string)issue!["diagnostics"]!)];
+        left.ShouldContain(text => text.Contains($"'{created}'"));
+        left.ShouldContain(text => text.Contains($"'{Path.Combine(root.Path, "out")}'"));
+        Directory.Exists(Path.Combine(root.Path, "out")).ShouldBeFalse();
+    }
+
+    // Ended while a set of files was being renamed into place: an existing target renamed aside may be all that is left of it.
+    [Fact]
+    public async Task GivenARunEndedWhileReplacingAnExistingFile_WhenEnded_ThenThePreviousFileIsNamedAndTheErrorSaysAFileMayBeInPlace()
+    {
+        using TestFolder root = Root().Write("out/Patient.ndjson", "{}\n");
+        string target = Path.Combine(root.Path, "out", "Patient.ndjson");
+        OutputFile file = OutputTarget.ForFile(Data(root), target, OutputTarget.Ndjson, overwrite: true).Begin([]);
+        file.CommitWithBackup();
+
+        (_, string output) = await CaptureAsync(() => Watchdog.RunAsync<ViewFacts>("deid-timeout", 1, 30, 3600, _ => new TaskCompletionSource<ToolEnvelope<ViewFacts?>>().Task, pretty: false, TimeSpan.FromMilliseconds(50), _ => { }, CancellationToken.None));
+        file.DropBackup().ShouldBeNull();
+
+        JsonArray issues = JsonNode.Parse(output)!["issues"]!.AsArray();
+        ((string)issues[0]!["diagnostics"]!).ShouldContain("none was unless the run had reached that point");
+        issues.ShouldContain(issue => (string)issue!["code"]! == "out-backup-left" && ((string)issue["diagnostics"]!).Contains($"The previous '{target}' may have been left at '{Path.Combine(root.Path, "out", ".Patient.ndjson.")}"));
+    }
+
+    [Fact]
+    public async Task GivenABackupPutBackOrRemoved_WhenARunIsEndedLater_ThenItIsNotNamed()
+    {
+        using TestFolder root = Root().Write("out/Patient.ndjson", "{}\n").Write("out/Observation.ndjson", "{}\n");
+        string dropped = Path.Combine(root.Path, "out", "Patient.ndjson");
+        string restored = Path.Combine(root.Path, "out", "Observation.ndjson");
+        OutputFile first = OutputTarget.ForFile(Data(root), dropped, OutputTarget.Ndjson, overwrite: true).Begin([]);
+        OutputFile second = OutputTarget.ForFile(Data(root), restored, OutputTarget.Ndjson, overwrite: true).Begin([]);
+        first.CommitWithBackup();
+        second.CommitWithBackup();
+        first.DropBackup().ShouldBeNull();
+        second.Rollback().ShouldBeNull();
+
+        (_, string output) = await CaptureAsync(() => Watchdog.RunAsync<ViewFacts>("deid-timeout", 1, 30, 3600, _ => new TaskCompletionSource<ToolEnvelope<ViewFacts?>>().Task, pretty: false, TimeSpan.FromMilliseconds(50), _ => { }, CancellationToken.None));
+
+        output.ShouldNotContain(Path.Combine(root.Path, "out"));
+        (await File.ReadAllTextAsync(restored)).ShouldBe("{}\n");
+    }
+
+    [Fact]
     public async Task GivenARunThatReturnsInTime_WhenWatched_ThenItsEnvelopeIsPrintedAndTheProcessGoesOn()
     {
         using TestFolder root = Root();

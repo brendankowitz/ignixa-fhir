@@ -11,8 +11,9 @@ namespace Ignixa.CliOnFhir.Commands;
 /// <summary>
 /// The last line of a verb's timeout. The runners stop at their timeout by cancellation, which they check between steps; one step,
 /// a single call of the FHIRPath evaluator, cannot be interrupted. So the CLI runs the work off the main thread and, when it has not
-/// finished <see cref="Grace"/> after its timeout, prints the verb's timeout error itself, names the temporary output files the run may
-/// leave (it cannot clean up after a step that will not return), and ends the process with a non-zero exit code. An MCP host cannot
+/// finished <see cref="Grace"/> after its timeout, prints the verb's timeout error itself, names the temporary output files, previous
+/// targets renamed aside and directories the run may leave (it cannot clean up after a step that will not return), and ends the
+/// process with a non-zero exit code. An MCP host cannot
 /// end its process for one call; there the runners' cancellation is all there is until the Core evaluator can be cancelled.
 /// </summary>
 internal static class Watchdog
@@ -63,10 +64,14 @@ internal static class Watchdog
     {
         List<IssueItem> issues =
         [
-            new IssueItem("error", timeoutCode, $"The run did not finish within {seconds} seconds, and one step of it, an evaluation that cannot be interrupted, was still going {grace.TotalSeconds} seconds later, so the process was ended. No output file was renamed into place. Narrow the scope, or simplify the expression or map that is slow.", Location: null),
+            new IssueItem("error", timeoutCode, $"The run did not finish within {seconds} seconds, and one step of it, an evaluation that cannot be interrupted, was still going {grace.TotalSeconds} seconds later, so the process was ended. Output files are renamed into place only once every resource is done, so none was unless the run had reached that point; one it renamed is complete, and a previous file it was replacing is named below. Narrow the scope, or simplify the expression or map that is slow.", Location: null),
         ];
         issues.AddRange(OpenOutputFiles.TempPaths.Order(StringComparer.Ordinal).Select(path =>
             new IssueItem("information", "out-temp-left", $"The temporary file '{path}' (where it was as of the check) may have been left: the run was ended while it was writing it. Delete it when the directory is safe to use.", Location: null)));
+        issues.AddRange(OpenOutputFiles.BackedUp.Order().Select(backup =>
+            new IssueItem("information", "out-backup-left", $"The previous '{backup.Target}' may have been left at '{backup.Backup}' (where it was as of the check): the run was ended while it was replacing it. Rename it back if '{backup.Target}' is missing, or delete it.", Location: null)));
+        issues.AddRange(OpenOutputFiles.CreatedDirectories.Order(StringComparer.Ordinal).Select(directory =>
+            new IssueItem("information", "out-directory-left", $"The directory '{directory}', which this run created for its output, may have been left: the run was ended before it could remove it. Delete it if it is empty and not wanted.", Location: null)));
         return new ToolEnvelope<TFacts?>(null, [], [], [], issues, new FreshnessInfo(IndexBuiltAt: null, StaleFiles: null));
     }
 }
