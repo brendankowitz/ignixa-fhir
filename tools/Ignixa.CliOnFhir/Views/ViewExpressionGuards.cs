@@ -4,6 +4,9 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
+using Ignixa.FhirPath.Parser;
+using Superpower;
+using Superpower.Model;
 
 namespace Ignixa.CliOnFhir.Views;
 
@@ -13,9 +16,9 @@ namespace Ignixa.CliOnFhir.Views;
 /// parentheses deep, or a <c>repeat</c> that never moves on (<c>$this</c>), ends the whole process with a stack overflow, which no
 /// <c>catch</c> can stop. These guards refuse such a view with an error instead. They are the tool's cheap early errors. A repeat that stands still without being lexically <c>$this</c> is stopped by the
 /// evaluator (<c>repeat went deeper than 100 levels</c>); a depth limit in the Core FHIRPath parser is a separate follow-up. Iterating
-/// functions nested inside each other are limited too (<see cref="MaxIteratingDepth"/>), since their cost multiplies within one call of
-/// the evaluator, which cannot be cancelled; cancellation inside the Core evaluator is a separate follow-up. De-identification rules
-/// and maps are held to the same limits.
+/// functions nested inside each other are limited too (<see cref="MaxIteratingDepth"/>), and so is their number in all
+/// (<see cref="MaxIteratingCalls"/>), since their cost multiplies within one call of the evaluator, which cannot be cancelled;
+/// cancellation inside the Core evaluator is a separate follow-up. De-identification rules and maps are held to the same limits.
 /// </summary>
 internal static class ViewExpressionGuards
 {
@@ -32,11 +35,31 @@ internal static class ViewExpressionGuards
     /// </summary>
     public const int MaxIteratingDepth = 3;
 
-    // Functions that evaluate their argument once per input item.
-    private static readonly HashSet<string> IteratingWithArgument = new(StringComparer.Ordinal) { "where", "select", "all", "exists", "repeat", "aggregate", "sort" };
+    /// <summary>
+    /// The most iterating calls with an argument an expression may make in all, nested or not. Chained one after another they
+    /// multiply too: each <c>select</c> of ten items runs over the ten-fold result of the one before it. Six cover every expression
+    /// of the SQL-on-FHIR test suite and the FML test cases.
+    /// </summary>
+    public const int MaxIteratingCalls = 6;
+
+    /// <summary>
+    /// The functions that evaluate their argument once per item of their input, by the lowercased name the evaluator dispatches
+    /// on. <c>trace</c> runs its projection per item when a trace handler is set. Every other function the FHIRPath library marks as
+    /// taking expression arguments evaluates them once (<see cref="EvaluatedOnce"/>).
+    /// </summary>
+    internal static IReadOnlySet<string> IteratingWithArgument { get; } =
+        new HashSet<string>(StringComparer.Ordinal) { "where", "select", "all", "exists", "repeat", "repeatall", "aggregate", "sort", "trace" };
+
+    /// <summary>The functions taking expression arguments that evaluate each once, whatever their input (iif, coalesce, ...).</summary>
+    internal static IReadOnlySet<string> EvaluatedOnce { get; } =
+        new HashSet<string>(StringComparer.Ordinal) { "iif", "coalesce", "definevariable", "difference", "duration", "comparable", "highboundary", "lowboundary" };
 
     // Functions with no argument that multiply what follows them by the size of the tree below their input.
     private static readonly HashSet<string> Expanding = new(StringComparer.Ordinal) { "descendants", "children" };
+
+    // The tokenizer FhirPathParser uses (without trivia, as every consumer of these expressions constructs it), so a name is read as
+    // the parser reads it: comments and whitespace before its parenthesis dropped, a `delimited` or "delimited" name unwrapped.
+    private static readonly Tokenizer<FhirPathTokenKind> FhirPathTokens = FhirPathTokenizer.Create();
 
     /// <summary>
     /// The first expression of the ViewDefinition (its <c>where</c> paths, and in every select, nested select and <c>unionAll</c>
@@ -81,10 +104,18 @@ internal static class ViewExpressionGuards
             return $"is nested more than {MaxDepth} levels deep";
         }
 
-        return IteratingDepth(expression) > MaxIteratingDepth
-            ? $"nests iterating functions (where, select, all, exists, repeat, aggregate, sort, descendants, children) more than {MaxIteratingDepth} deep, each running over the result of the one around it"
+        (int depth, int calls) = Iterating(expression);
+        if (depth > MaxIteratingDepth)
+        {
+            return $"nests iterating functions ({IteratingNames}, descendants, children) more than {MaxIteratingDepth} deep, each running over the result of the one around it";
+        }
+
+        return calls > MaxIteratingCalls
+            ? $"calls iterating functions ({IteratingNames}) more than {MaxIteratingCalls} times, each running over the result of the one before it or around it"
             : null;
     }
+
+    private static string IteratingNames => "where, select, all, exists, repeat, repeatAll, aggregate, sort, trace";
 
     private static (string Where, string Reason)? Select(JsonObject select, string path)
     {
@@ -197,21 +228,30 @@ internal static class ViewExpressionGuards
         return deepest;
     }
 
-    // How many iterating calls are nested inside each other, read lexically: a call of a function that takes its argument per item
-    // (with an argument) opens an iterating level until its parenthesis closes, and descendants() or children() inside such levels
-    // counts as one more. As for Depth, quoted text and comments are not skipped, so a string holding "where(" counts too.
-    private static int IteratingDepth(string text)
+    // How deep iterating calls are nested inside each other, and how many there are, read from the parser's tokens: a call of a
+    // function that takes its argument per item (with an argument) opens an iterating level until its parenthesis closes, and
+    // descendants() or children() inside such levels counts as one more level. Text the tokenizer refuses never reaches the parser's
+    // recursion (the parser refuses it first), so it has neither.
+    private static (int Depth, int Calls) Iterating(string text)
     {
+        Result<TokenList<FhirPathTokenKind>> tokenized = FhirPathTokens.TryTokenize(text);
+        if (!tokenized.HasValue)
+        {
+            return (0, 0);
+        }
+
+        Token<FhirPathTokenKind>[] tokens = [.. tokenized.Value];
         Stack<bool> frames = new();
         int open = 0;
         int deepest = 0;
-        for (int i = 0; i < text.Length; i++)
+        int calls = 0;
+        for (int i = 0; i < tokens.Length; i++)
         {
-            char character = text[i];
-            if (character is '(' or '[' or '{')
+            FhirPathTokenKind kind = tokens[i].Kind;
+            if (kind is FhirPathTokenKind.LeftParen or FhirPathTokenKind.LeftBracket or FhirPathTokenKind.LeftBrace)
             {
-                string name = character == '(' ? NameBefore(text, i) : string.Empty;
-                bool iterating = IteratingWithArgument.Contains(name) && !EmptyArguments(text, i);
+                string name = kind == FhirPathTokenKind.LeftParen && i > 0 ? FunctionName(tokens[i - 1]) : string.Empty;
+                bool iterating = IteratingWithArgument.Contains(name) && !(i + 1 < tokens.Length && tokens[i + 1].Kind == FhirPathTokenKind.RightParen);
                 if (iterating || Expanding.Contains(name))
                 {
                     deepest = Math.Max(deepest, open + 1);
@@ -219,43 +259,31 @@ internal static class ViewExpressionGuards
 
                 frames.Push(iterating);
                 open += iterating ? 1 : 0;
+                calls += iterating ? 1 : 0;
             }
-            else if (character is ')' or ']' or '}' && frames.TryPop(out bool closed) && closed)
+            else if (kind is FhirPathTokenKind.RightParen or FhirPathTokenKind.RightBracket or FhirPathTokenKind.RightBrace && frames.TryPop(out bool closed) && closed)
             {
                 open--;
             }
         }
 
-        return deepest;
+        return (deepest, calls);
     }
 
-    // The identifier just before the opening parenthesis at index, spaces skipped; empty when there is none.
-    private static string NameBefore(string text, int index)
+    // The name a function call before a parenthesis dispatches on: the identifier unwrapped as FhirPathGrammar does, lowercased as
+    // the evaluator's dispatch does; empty when the token before is not a name.
+    private static string FunctionName(Token<FhirPathTokenKind> token)
     {
-        int end = index;
-        while (end > 0 && char.IsWhiteSpace(text[end - 1]))
+        if (token.Kind is not (FhirPathTokenKind.Identifier or FhirPathTokenKind.DelimitedIdentifier))
         {
-            end--;
+            return string.Empty;
         }
 
-        int start = end;
-        while (start > 0 && (char.IsLetterOrDigit(text[start - 1]) || text[start - 1] == '_'))
-        {
-            start--;
-        }
-
-        return text[start..end];
-    }
-
-    private static bool EmptyArguments(string text, int index)
-    {
-        int next = index + 1;
-        while (next < text.Length && char.IsWhiteSpace(text[next]))
-        {
-            next++;
-        }
-
-        return next < text.Length && text[next] == ')';
+        string name = token.ToStringValue();
+        bool delimited = name.Length >= 2 && ((name[0] == '`' && name[^1] == '`') || (name[0] == '"' && name[^1] == '"'));
+#pragma warning disable CA1308 // The evaluator's generated dispatch switches on ToLowerInvariant(); reading the name any other way could differ.
+        return (delimited ? name[1..^1] : name).ToLowerInvariant();
+#pragma warning restore CA1308
     }
 
     private static IEnumerable<(JsonObject Object, string Path)> Items(JsonNode? node, string path)
