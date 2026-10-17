@@ -12,7 +12,10 @@ namespace Ignixa.CliOnFhir.Views;
 /// recurse on the shape of an expression, so a ViewDefinition from the folder (which is untrusted) with a path nested hundreds of
 /// parentheses deep, or a <c>repeat</c> that never moves on (<c>$this</c>), ends the whole process with a stack overflow, which no
 /// <c>catch</c> can stop. These guards refuse such a view with an error instead. They are the tool's cheap early errors. A repeat that stands still without being lexically <c>$this</c> is stopped by the
-/// evaluator (<c>repeat went deeper than 100 levels</c>); a depth limit in the Core FHIRPath parser is a separate follow-up.
+/// evaluator (<c>repeat went deeper than 100 levels</c>); a depth limit in the Core FHIRPath parser is a separate follow-up. Iterating
+/// functions nested inside each other are limited too (<see cref="MaxIteratingDepth"/>), since their cost multiplies within one call of
+/// the evaluator, which cannot be cancelled; cancellation inside the Core evaluator is a separate follow-up. De-identification rules
+/// and maps are held to the same limits.
 /// </summary>
 internal static class ViewExpressionGuards
 {
@@ -21,6 +24,19 @@ internal static class ViewExpressionGuards
 
     /// <summary>The deepest bracket nesting an expression may have: parentheses, indexers and braces together, wherever they appear.</summary>
     public const int MaxDepth = 64;
+
+    /// <summary>
+    /// The most iterating functions an expression may nest inside each other. Each one runs its argument once per item of its input,
+    /// so their cost multiplies: seven nested <c>select(...).count()</c> over ten items took minutes, in one call of the evaluator
+    /// that no timeout can interrupt. Three are as deep as any real expression goes.
+    /// </summary>
+    public const int MaxIteratingDepth = 3;
+
+    // Functions that evaluate their argument once per input item.
+    private static readonly HashSet<string> IteratingWithArgument = new(StringComparer.Ordinal) { "where", "select", "all", "exists", "repeat", "aggregate", "sort" };
+
+    // Functions with no argument that multiply what follows them by the size of the tree below their input.
+    private static readonly HashSet<string> Expanding = new(StringComparer.Ordinal) { "descendants", "children" };
 
     /// <summary>
     /// The first expression of the ViewDefinition (its <c>where</c> paths, and in every select, nested select and <c>unionAll</c>
@@ -60,7 +76,14 @@ internal static class ViewExpressionGuards
             return $"is longer than {MaxLength} characters";
         }
 
-        return Depth(expression) > MaxDepth ? $"is nested more than {MaxDepth} levels deep" : null;
+        if (Depth(expression) > MaxDepth)
+        {
+            return $"is nested more than {MaxDepth} levels deep";
+        }
+
+        return IteratingDepth(expression) > MaxIteratingDepth
+            ? $"nests iterating functions (where, select, all, exists, repeat, aggregate, sort, descendants, children) more than {MaxIteratingDepth} deep, each running over the result of the one around it"
+            : null;
     }
 
     private static (string Where, string Reason)? Select(JsonObject select, string path)
@@ -172,6 +195,67 @@ internal static class ViewExpressionGuards
         }
 
         return deepest;
+    }
+
+    // How many iterating calls are nested inside each other, read lexically: a call of a function that takes its argument per item
+    // (with an argument) opens an iterating level until its parenthesis closes, and descendants() or children() inside such levels
+    // counts as one more. As for Depth, quoted text and comments are not skipped, so a string holding "where(" counts too.
+    private static int IteratingDepth(string text)
+    {
+        Stack<bool> frames = new();
+        int open = 0;
+        int deepest = 0;
+        for (int i = 0; i < text.Length; i++)
+        {
+            char character = text[i];
+            if (character is '(' or '[' or '{')
+            {
+                string name = character == '(' ? NameBefore(text, i) : string.Empty;
+                bool iterating = IteratingWithArgument.Contains(name) && !EmptyArguments(text, i);
+                if (iterating || Expanding.Contains(name))
+                {
+                    deepest = Math.Max(deepest, open + 1);
+                }
+
+                frames.Push(iterating);
+                open += iterating ? 1 : 0;
+            }
+            else if (character is ')' or ']' or '}' && frames.TryPop(out bool closed) && closed)
+            {
+                open--;
+            }
+        }
+
+        return deepest;
+    }
+
+    // The identifier just before the opening parenthesis at index, spaces skipped; empty when there is none.
+    private static string NameBefore(string text, int index)
+    {
+        int end = index;
+        while (end > 0 && char.IsWhiteSpace(text[end - 1]))
+        {
+            end--;
+        }
+
+        int start = end;
+        while (start > 0 && (char.IsLetterOrDigit(text[start - 1]) || text[start - 1] == '_'))
+        {
+            start--;
+        }
+
+        return text[start..end];
+    }
+
+    private static bool EmptyArguments(string text, int index)
+    {
+        int next = index + 1;
+        while (next < text.Length && char.IsWhiteSpace(text[next]))
+        {
+            next++;
+        }
+
+        return next < text.Length && text[next] == ')';
     }
 
     private static IEnumerable<(JsonObject Object, string Path)> Items(JsonNode? node, string path)
