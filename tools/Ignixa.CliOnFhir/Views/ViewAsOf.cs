@@ -29,12 +29,15 @@ internal static partial class ViewAsOf
     /// <summary>The day: <c>%asOfDate</c>.</summary>
     public const string DateName = "asOfDate";
 
-    /// <summary>The view to compile, what <c>facts.asOf</c> says it read as <c>%asOf</c>, and whether its expressions name <c>%asOf</c>.</summary>
-    public sealed record Applied(LoadedView View, AsOfFacts Facts, bool ReadsAsOf);
+    /// <summary>The view to compile, what <c>facts.asOf</c> says it read, and whether its expressions name <c>%asOf</c> or <c>%asOfDate</c>.</summary>
+    public sealed record Applied(LoadedView View, AsOfFacts Facts, bool ReadsClock);
 
-    /// <summary><paramref name="view"/> with the constants added that it does not declare; the notes go to <paramref name="issues"/>.</summary>
+    /// <summary>
+    /// <paramref name="view"/> with the constants added that it does not declare; the notes go to <paramref name="issues"/>.
+    /// <paramref name="extraWhere"/>, the call's own filter, is an expression of the view too.
+    /// </summary>
     /// <exception cref="ToolRequestException"><c>invalid-parameter</c>: a variable of either name that is not of its type.</exception>
-    public static Applied With(LoadedView view, AsOf asOf, IReadOnlyDictionary<string, string> variables, List<IssueItem> issues)
+    public static Applied With(LoadedView view, AsOf asOf, IReadOnlyDictionary<string, string> variables, string? extraWhere, List<IssueItem> issues)
     {
         ArgumentNullException.ThrowIfNull(view);
         ArgumentNullException.ThrowIfNull(asOf);
@@ -43,12 +46,12 @@ internal static partial class ViewAsOf
 
         CheckVariables(variables);
         JsonObject? declaredAsOf = Declared(view.Json, Name);
-        Note(Name, declaredAsOf is not null, variables, issues);
-        Note(DateName, Declared(view.Json, DateName) is not null, variables, issues);
-        AsOfFacts facts = variables.TryGetValue(Name, out string? variable)
-            ? new AsOfFacts(variable, AsOfSources.Variable)
-            : declaredAsOf is not null ? new AsOfFacts(ConstantValue(declaredAsOf), AsOfSources.ViewConstant) : AsOfFacts.Of(asOf);
-        bool reads = ReadsAsOf().IsMatch(view.Json.ToJsonString());
+        JsonObject? declaredDate = Declared(view.Json, DateName);
+        Note(Name, "instant", declaredAsOf is not null, variables, issues);
+        Note(DateName, "day", declaredDate is not null, variables, issues);
+        string day = asOf.Moment.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        AsOfFacts facts = InstantFacts(asOf, variables, declaredAsOf) with { Date = DateFacts(asOf, day, variables, declaredDate) };
+        bool reads = Expressions(view.Json).Append(extraWhere).OfType<string>().Any(expression => ReadsClock().IsMatch(expression));
 
         // A constant member that is not an array is the ViewDefinition's own error, which compiling it reports as it is.
         if (view.Json["constant"] is { } existing && existing is not JsonArray)
@@ -63,13 +66,91 @@ internal static partial class ViewAsOf
             list.Add(new JsonObject { ["name"] = Name, ["valueDateTime"] = asOf.Instant });
         }
 
-        if (Declared(view.Json, DateName) is null)
+        if (declaredDate is null)
         {
-            list.Add(new JsonObject { ["name"] = DateName, ["valueDate"] = asOf.Moment.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) });
+            list.Add(new JsonObject { ["name"] = DateName, ["valueDate"] = day });
         }
 
         json["constant"] = list;
         return new Applied(view with { Json = json }, facts, reads);
+    }
+
+    private static AsOfFacts InstantFacts(AsOf asOf, IReadOnlyDictionary<string, string> variables, JsonObject? declared)
+    {
+        if (variables.TryGetValue(Name, out string? variable))
+        {
+            return new AsOfFacts(variable, AsOfSources.Variable);
+        }
+
+        if (declared is null)
+        {
+            return AsOfFacts.Of(asOf);
+        }
+
+        string? value = ConstantValue(declared);
+        return FhirInstant.TryParse(value, out _)
+            ? new AsOfFacts(value, AsOfSources.ViewConstant)
+            : new AsOfFacts(null, AsOfSources.ViewConstant, value is null ? null : FhirIds.Digest(value));
+    }
+
+    private static AsOfDateFacts DateFacts(AsOf asOf, string day, IReadOnlyDictionary<string, string> variables, JsonObject? declared)
+    {
+        if (variables.TryGetValue(DateName, out string? variable))
+        {
+            return new AsOfDateFacts(variable, AsOfSources.Variable);
+        }
+
+        if (declared is null)
+        {
+            return new AsOfDateFacts(day, asOf.Source);
+        }
+
+        string? value = ConstantValue(declared);
+        return value is not null && IsDate(value)
+            ? new AsOfDateFacts(value, AsOfSources.ViewConstant)
+            : new AsOfDateFacts(null, AsOfSources.ViewConstant, value is null ? null : FhirIds.Digest(value));
+    }
+
+    // The members of a ViewDefinition that hold FHIRPath: a column's or a where's path, forEach, forEachOrNull and repeat. Constants
+    // are values, and names, titles and descriptions are text, so a mention of %asOf there reads nothing.
+    private static IEnumerable<string> Expressions(JsonNode? node)
+    {
+        if (node is JsonArray array)
+        {
+            foreach (string expression in array.SelectMany(Expressions))
+            {
+                yield return expression;
+            }
+
+            yield break;
+        }
+
+        if (node is not JsonObject json)
+        {
+            yield break;
+        }
+
+        foreach ((string key, JsonNode? value) in json)
+        {
+            if (key is "path" or "forEach" or "forEachOrNull" && value is JsonValue single && single.TryGetValue(out string? text))
+            {
+                yield return text;
+            }
+            else if (key == "repeat" && value is JsonArray repeats)
+            {
+                foreach (string path in repeats.OfType<JsonValue>().Select(item => item.TryGetValue(out string? repeat) ? repeat : null).OfType<string>())
+                {
+                    yield return path;
+                }
+            }
+            else if (key != "constant")
+            {
+                foreach (string expression in Expressions(value))
+                {
+                    yield return expression;
+                }
+            }
+        }
     }
 
     private static void CheckVariables(IReadOnlyDictionary<string, string> variables)
@@ -79,21 +160,22 @@ internal static partial class ViewAsOf
             throw ToolRequestException.Error("invalid-parameter", $"Variable asOf must be an instant, as --as-of is (for a day, set asOfDate); the value given {Shown(instant)} is {problem}.");
         }
 
-        if (variables.TryGetValue(DateName, out string? date) && !(DateShape().IsMatch(date) && DateOnly.TryParseExact(date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _)))
+        if (variables.TryGetValue(DateName, out string? date) && !IsDate(date))
         {
             throw ToolRequestException.Error("invalid-parameter", $"Variable asOfDate must be a FHIR date, for example 2024-05-01. The value given {Shown(date)} is not one.");
         }
     }
 
-    private static void Note(string name, bool declared, IReadOnlyDictionary<string, string> variables, List<IssueItem> issues)
+    private static void Note(string name, string what, bool declared, IReadOnlyDictionary<string, string> variables, List<IssueItem> issues)
     {
+        string fact = name == Name ? "facts.asOf" : "facts.asOf.date";
         if (variables.ContainsKey(name))
         {
-            issues.Add(new IssueItem("warning", "as-of-overridden", $"The variable {name} replaces {(declared ? $"the ViewDefinition's own constant {name}" : "the session's instant (see facts.asOf)")} as %{name} in this run.", Location: null));
+            issues.Add(new IssueItem("warning", "as-of-overridden", $"The variable {name} replaces {(declared ? $"the ViewDefinition's own constant {name}" : $"the session's {what}")} as %{name} in this run (see {fact}).", Location: null));
         }
         else if (declared)
         {
-            issues.Add(new IssueItem("warning", "as-of-shadowed", $"The ViewDefinition declares its own constant {name}, so %{name} is that constant's value, not the session's instant; rename the constant to use %{name} as the instant the data is read as of.", Location: null));
+            issues.Add(new IssueItem("warning", "as-of-shadowed", $"The ViewDefinition declares its own constant {name}, so %{name} is that constant's value, not the session's {what} (see {fact}); rename the constant to use %{name} as the {what} the data is read as of.", Location: null));
         }
     }
 
@@ -101,20 +183,21 @@ internal static partial class ViewAsOf
         ? constants.OfType<JsonObject>().FirstOrDefault(constant => constant["name"] is JsonValue value && value.TryGetValue(out string? text) && text == name)
         : null;
 
-    // The constant's value[x] as written when it is shaped like a FHIR date or dateTime; the ViewDefinition can be the folder's, so
-    // anything else is shown by its digest.
-    private static string ConstantValue(JsonObject constant)
-    {
-        string? text = constant.Where(member => member.Key.StartsWith("value", StringComparison.Ordinal)).Select(member => member.Value).OfType<JsonValue>()
-            .Select(value => value.TryGetValue(out string? written) ? written : value.ToJsonString()).FirstOrDefault();
-        return text is null ? "(no value)" : DateTimeShape().IsMatch(text) ? text : FhirIds.Digest(text);
-    }
+    // The constant's value[x] as written; null when it has none.
+    private static string? ConstantValue(JsonObject constant) => constant
+        .Where(member => member.Key.StartsWith("value", StringComparison.Ordinal))
+        .Select(member => member.Value)
+        .OfType<JsonValue>()
+        .Select(value => value.TryGetValue(out string? written) ? written : value.ToJsonString())
+        .FirstOrDefault();
+
+    private static bool IsDate(string value) => DateShape().IsMatch(value) && DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
 
     private static string Shown(string value) => DateTimeShape().IsMatch(value) ? $"'{value}'" : $"(digest {FhirIds.Digest(value)})";
 
-    // %asOf, plain or delimited, but not %asOfDate.
-    [GeneratedRegex(@"%(asOf|`asOf`)(?![A-Za-z0-9_])", RegexOptions.CultureInvariant)]
-    private static partial Regex ReadsAsOf();
+    // %asOf or %asOfDate, plain or delimited.
+    [GeneratedRegex(@"%(asOf|asOfDate|`asOf`|`asOfDate`)(?![A-Za-z0-9_])", RegexOptions.CultureInvariant)]
+    private static partial Regex ReadsClock();
 
     [GeneratedRegex(@"^\d{4}-\d{2}-\d{2}$", RegexOptions.CultureInvariant)]
     private static partial Regex DateShape();

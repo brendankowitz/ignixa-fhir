@@ -11,6 +11,7 @@ using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Output;
 using Ignixa.CliOnFhir.Session;
 using Ignixa.CliOnFhir.Terminology;
+using Ignixa.CliOnFhir.Terminology.Tools;
 using Ignixa.CliOnFhir.Validation;
 using Microsoft.Extensions.Logging;
 
@@ -145,6 +146,10 @@ public static class DraftService
                 cancellationToken.ThrowIfCancellationRequested();
                 file = await DraftOutput.WriteAsync(target, content.Resource, notes, seams, cancellationToken);
                 issues.AddRange(notes);
+                if (verdict == DraftFacts.Unknown)
+                {
+                    issues.Add(WrittenUnknown(file, checks));
+                }
             }
         }
 
@@ -159,6 +164,18 @@ public static class DraftService
         }
 
         return EnvelopeAssembler.Create<DraftFacts?>(session, facts, session.Catalog.BuiltAt, cited, [], [], issues, cancellationToken);
+    }
+
+    // Only an invalid draft is withheld; one written with checks that did not conclude says which, so the file is not taken as checked.
+    private static IssueItem WrittenUnknown(DraftFileFacts file, List<DraftCheck> checks)
+    {
+        IEnumerable<string> open = checks.Where(check => check.Outcome == DraftCheck.Unknown).Select(check => check.Details switch
+        {
+            TerminologyCheckDetails { Reason: TermValidate.DisplayMismatch or DraftTerminology.DisplayNotCheckedCode } => $"{check.Element} (its display could not be confirmed)",
+            TerminologyCheckDetails details => $"{check.Element} ({TerminologyNames.Token(details.Reason)})",
+            _ => $"{check.Check} of {check.Element}",
+        });
+        return new IssueItem("warning", "out-written-unknown", $"The draft was written to '{file.Path}' although its verdict is unknown, not valid: {string.Join("; ", open)} could not be checked (their issues say why). Check them before the file is used.", Location: null);
     }
 
     // R4 and R4B define these three resources alike. STU3 has no ServiceRequest and puts the encounter in 'context'; R5 makes the

@@ -79,4 +79,19 @@ public class DraftTxServerTests
 
         tx.Requests.ShouldBeEmpty();
     }
+
+    [Fact]
+    public async Task GivenAPrimaryDisplayOnlyTheServerCouldCompare_WhenDraftedWithOut_ThenItIsWrittenWithAWarningThatItsDisplayIsUnconfirmed()
+    {
+        using TestFolder root = ClinicRoot();
+        using var tx = new StubHttpHandler(_ => Valid("Glucose [Mass/volume] in Serum or Plasma"));
+        var session = new FolderSession(DeIdFixture.Data(root), new Ignixa.Specification.Generated.R4CoreSchemaProvider(), Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance, terminology: TerminologyOptions.None with { TxServer = new TxServerClient(Server, tx, TxServerClient.DefaultTimeout) });
+        string input = """{"patient":"p1","code":{"system":"http://loinc.org","code":"2345-7","display":"Blood glucose"}}""";
+
+        ToolEnvelope<DraftFacts?> envelope = await RunAsync(session, new DraftRequest("ServiceRequest", input, Out: DeIdFixture.Out(root)));
+
+        Facts(envelope).Verdict.ShouldBe(DraftFacts.Unknown);
+        Facts(envelope).File.ShouldNotBeNull();
+        envelope.Issues.Single(issue => issue.Code == "out-written-unknown").Diagnostics.ShouldContain("ServiceRequest.code.coding[0] (its display could not be confirmed)");
+    }
 }

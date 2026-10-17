@@ -111,7 +111,7 @@ internal static class TxAnswers
         string? expected = TxParameters.Value(parameters, "display");
 
         // Aligned with the local answer: a rejection where the server's display differs from the one given is a display mismatch.
-        bool? displayMatches = display is null || expected is null ? null : string.Equals(TextFolding.Fold(display), TextFolding.Fold(expected), StringComparison.Ordinal);
+        bool? displayMatches = display is null || expected is null ? null : string.Equals(TextFolding.FoldDisplay(display), TextFolding.FoldDisplay(expected), StringComparison.Ordinal);
         string reason = valid
             ? (valueSet is null ? "code-in-system" : "code-in-value-set")
             : displayMatches == false ? TermValidate.DisplayMismatch : "rejected-by-tx-server";

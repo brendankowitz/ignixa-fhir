@@ -187,4 +187,31 @@ public class DraftOutputTests
         Facts(envelope).File.ShouldBeNull();
         Directory.Exists(Out(root)).ShouldBeFalse();
     }
+
+    [Fact]
+    public async Task GivenADraftWhoseVerdictIsUnknown_WhenDraftedWithOut_ThenItIsWrittenWithAWarningSayingWhatWasNotChecked()
+    {
+        using TestFolder root = ClinicRoot();
+        string input = MagnesiumOrder.Replace(Loinc, "http://example.org/codes/labs", StringComparison.Ordinal);
+
+        ToolEnvelope<DraftFacts?> envelope = await RunInAsync(Data(root), new DraftRequest("ServiceRequest", input, Out: Out(root)));
+
+        DraftFacts facts = Facts(envelope);
+        facts.Verdict.ShouldBe(DraftFacts.Unknown);
+        File.Exists(facts.File.ShouldNotBeNull().Path).ShouldBeTrue();
+        IssueItem warning = envelope.Issues.Single(issue => issue.Code == "out-written-unknown");
+        warning.Severity.ShouldBe("warning");
+        warning.Diagnostics.ShouldContain("ServiceRequest.code.coding[0] (system-not-loaded)");
+    }
+
+    [Fact]
+    public async Task GivenAValidDraft_WhenDraftedWithOut_ThenThereIsNoUnknownWarning()
+    {
+        using TestFolder root = ClinicRoot();
+
+        ToolEnvelope<DraftFacts?> envelope = await RunInAsync(Data(root), new DraftRequest("ServiceRequest", MagnesiumOrder, Out: Out(root)));
+
+        Facts(envelope).Verdict.ShouldBe(DraftFacts.Valid);
+        envelope.Issues.ShouldNotContain(issue => issue.Code == "out-written-unknown");
+    }
 }

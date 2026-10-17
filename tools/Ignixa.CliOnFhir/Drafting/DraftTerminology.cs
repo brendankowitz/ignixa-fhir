@@ -23,6 +23,9 @@ internal static class DraftTerminology
 {
     public const string SystemNotLoadedCode = "system-not-loaded";
 
+    /// <summary>A display given for a code its code system gives no display or designation: nothing to compare it with.</summary>
+    public const string DisplayNotCheckedCode = "display-not-checked";
+
     /// <summary>One check per coding, in order, and the issues: the answers' own notes and one warning per system not loaded.</summary>
     public static async Task<(List<DraftCheck> Checks, List<IssueItem> Issues)> CheckAsync(FolderSession session, TerminologyState state, IReadOnlyList<DraftCoding> codings, CancellationToken cancellationToken)
     {
@@ -42,10 +45,23 @@ internal static class DraftTerminology
             // A local answer has compared the display with the designations too; a remote one was asked without it.
             bool? displayMatches = facts.DisplayMatches ?? (coding.Display is null || facts.Display is null ? null : Same(coding.Display, facts.Display));
             bool remote = facts.Source?.Kind == AnswerSource.TxServerKind;
-            string outcome = Outcome(facts, displayMatches, coding.Primary, remote);
+
+            // A concept the code system gives neither a display nor a designation has nothing a display can be compared with.
+            bool unconfirmed = displayMatches == false && !remote && facts.Display is null
+                && ConceptQuery.Find(state.Store, coding.System, null, coding.Code).Concept is { Designations.Count: 0 };
+            if (unconfirmed)
+            {
+                displayMatches = null;
+            }
+
+            string outcome = unconfirmed && coding.Primary ? DraftCheck.Unknown : Outcome(facts, displayMatches, coding.Primary, remote);
             if (displayMatches == false)
             {
                 issues.Add(Mismatch(coding, outcome));
+            }
+            else if (unconfirmed)
+            {
+                issues.Add(NothingToCompare(coding));
             }
 
             string result = outcome switch
@@ -58,7 +74,7 @@ internal static class DraftTerminology
                 "terminology",
                 coding.Element,
                 outcome,
-                new TerminologyCheckDetails(coding.System, coding.Code, result, displayMatches == false ? TermValidate.DisplayMismatch : facts.Reason, displayMatches, facts.Display, facts.Source)));
+                new TerminologyCheckDetails(coding.System, coding.Code, result, displayMatches == false ? TermValidate.DisplayMismatch : unconfirmed ? DisplayNotCheckedCode : facts.Reason, displayMatches, facts.Display, facts.Source)));
         }
 
         issues.AddRange(Unexplained(checks, issues));
@@ -113,6 +129,10 @@ internal static class DraftTerminology
         };
     }
 
+    private static IssueItem NothingToCompare(DraftCoding coding) => coding.Primary
+        ? new IssueItem("warning", DisplayNotCheckedCode, $"The code system gives {TerminologyNames.Coded(coding.System, coding.Code)} no display and no designation, so the display given at {coding.Element}, which says what the draft is, could not be confirmed and the draft is not reported valid. Leave display out, or load the code system's full content.", Location: null)
+        : new IssueItem("information", DisplayNotCheckedCode, $"The code system gives {TerminologyNames.Coded(coding.System, coding.Code)} no display and no designation, so the display given at {coding.Element} was not compared.", Location: null);
+
     // Every unknown check is explained by an issue: a system not loaded, once per system; a fragment without the code; and the server's
     // own notes (not found, not checked, unavailable). Any other reason gets a terminology-unknown warning, so none passes unseen.
     private static IEnumerable<IssueItem> Unexplained(List<DraftCheck> checks, List<IssueItem> issues)
@@ -134,7 +154,7 @@ internal static class DraftTerminology
                 Location: null);
         }
 
-        HashSet<string> explained = new(StringComparer.Ordinal) { TermValidate.DisplayMismatch, ConceptQuery.CodeNotInLoadedContent, TxAnswers.NotFoundOutcome, TxAnswers.NotCheckedOutcome };
+        HashSet<string> explained = new(StringComparer.Ordinal) { TermValidate.DisplayMismatch, DisplayNotCheckedCode, ConceptQuery.CodeNotInLoadedContent, TxAnswers.NotFoundOutcome, TxAnswers.NotCheckedOutcome };
         bool serverNoted = issues.Any(issue => issue.Code == StoreTerminologyService.TxUnavailableReason);
         foreach (var other in unknown.Where(item => !TxFallback.SystemMissing(item.Details.Reason) && !explained.Contains(item.Details.Reason) && !(serverNoted && item.Details.Reason.StartsWith(StoreTerminologyService.TxUnavailableReason, StringComparison.Ordinal))))
         {
@@ -150,5 +170,5 @@ internal static class DraftTerminology
             $"CodeSystem {TerminologyNames.Canonical(group.Key, null)} is not loaded, so the draft's codes from it ({string.Join(", ", group.Select(item => item.Check.Element))}) were not checked and the draft is not reported valid. Load a package that carries it (--terminology), or check it with a terminology server (--tx-server).",
             Location: null));
 
-    private static bool Same(string left, string right) => string.Equals(TextFolding.Fold(left), TextFolding.Fold(right), StringComparison.Ordinal);
+    private static bool Same(string left, string right) => string.Equals(TextFolding.FoldDisplay(left), TextFolding.FoldDisplay(right), StringComparison.Ordinal);
 }

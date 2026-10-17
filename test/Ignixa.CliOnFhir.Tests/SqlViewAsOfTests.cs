@@ -35,7 +35,7 @@ public class SqlViewAsOfTests
 
         Cells(facts).Select(row => row[0]).ShouldBe(expected);
         Cells(facts).Select(row => row[1]).Distinct().ShouldBe([asOf]);
-        facts.AsOf.ShouldBe(new AsOfFacts(asOf, AsOfSources.SessionOption));
+        (facts.AsOf with { Date = null }).ShouldBe(new AsOfFacts(asOf, AsOfSources.SessionOption));
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public class SqlViewAsOfTests
         ViewFacts facts = Facts(await RunAsync(session, new ViewRequest(FortyOrOlder)));
 
         Cells(facts).Select(row => row[0]).ShouldBe(["p1"]);
-        facts.AsOf.ShouldBe(new AsOfFacts("2016-01-01T00:00:00Z", AsOfSources.Clock));
+        facts.AsOf.ShouldBe(new AsOfFacts("2016-01-01T00:00:00Z", AsOfSources.Clock, Date: new AsOfDateFacts("2016-01-01", AsOfSources.Clock)));
     }
 
     [Fact]
@@ -59,7 +59,7 @@ public class SqlViewAsOfTests
         ToolEnvelope<ViewFacts?> envelope = await RunAsync(Open(folder), new ViewRequest(FortyOrOlder, Variables: ["asOf=2026-01-01T00:00:00Z"]), "2016-01-01T00:00:00Z");
 
         Cells(Facts(envelope)).Select(row => row[0]).ShouldBe(["p1", "p2"]);
-        Facts(envelope).AsOf.ShouldBe(new AsOfFacts("2026-01-01T00:00:00Z", AsOfSources.Variable));
+        (Facts(envelope).AsOf with { Date = null }).ShouldBe(new AsOfFacts("2026-01-01T00:00:00Z", AsOfSources.Variable));
         envelope.Issues.ShouldContain(issue => issue.Code == "as-of-overridden" && issue.Severity == "warning");
         envelope.Issues.ShouldNotContain(issue => issue.Code == "variable-not-declared");
     }
@@ -76,7 +76,7 @@ public class SqlViewAsOfTests
         ToolEnvelope<ViewFacts?> envelope = await RunAsync(Open(folder), new ViewRequest(view), "2026-01-01T00:00:00Z");
 
         Cells(Facts(envelope)).Select(row => row[0]).ShouldBe(["p1"]);
-        Facts(envelope).AsOf.ShouldBe(new AsOfFacts("2016-01-01T00:00:00Z", AsOfSources.ViewConstant));
+        (Facts(envelope).AsOf with { Date = null }).ShouldBe(new AsOfFacts("2016-01-01T00:00:00Z", AsOfSources.ViewConstant));
         envelope.Issues.ShouldContain(issue => issue.Code == "as-of-shadowed" && issue.Severity == "warning");
     }
 
@@ -129,7 +129,7 @@ public class SqlViewAsOfTests
     }
 
     [Fact]
-    public async Task GivenDateTimesWithoutAZone_WhenAViewComparesThemWithAsOf_ThenAWarningCountsThemAndAsOfDateFindsThem()
+    public async Task GivenDateTimesWithoutAZone_WhenAViewComparesThemWithAsOfOrAsOfDate_ThenAWarningCountsThemAndAsOfDateFindsThem()
     {
         using TestFolder folder = new TestFolder().Write("encounters.ndjson", """
             {"resourceType":"Encounter","id":"e1","status":"finished","class":{"code":"AMB"},"period":{"start":"2025-03-01T08:00:00.0000000","end":"2025-03-01T09:00:00"}}
@@ -147,7 +147,7 @@ public class SqlViewAsOfTests
         warning.Severity.ShouldBe("warning");
         warning.Diagnostics.ShouldStartWith("2 dateTime values in 1 of the 3 resources in scope");
         Cells(Facts(day)).Select(row => row[0]).ShouldBe(["e1", "e2", "e3"]);
-        day.Issues.ShouldNotContain(issue => issue.Code == "as-of-zone-missing");
+        day.Issues.Single(issue => issue.Code == "as-of-zone-missing").Diagnostics.ShouldContain("period.start.toDate() <= %asOfDate");
     }
 
     [Fact]
@@ -161,5 +161,86 @@ public class SqlViewAsOfTests
 
         Cells(Facts(envelope)).Select(row => row[0]).ShouldBe(["e2"]);
         envelope.Issues.ShouldNotContain(issue => issue.Code == "as-of-zone-missing");
+    }
+
+    private const string ZonelessEncounters = """
+        {"resourceType":"Encounter","id":"e1","status":"finished","class":{"code":"AMB"},"period":{"start":"2025-03-01T08:00:00.0000000"}}
+        {"resourceType":"Encounter","id":"e2","status":"finished","class":{"code":"AMB"},"period":{"start":"2025-04-01T08:00:00Z"}}
+        """;
+
+    private const string EncounterIds = """{"resourceType":"ViewDefinition","resource":"Encounter","select":[{"column":[{"name":"id","path":"id"}]}]}""";
+
+    [Fact]
+    public async Task GivenAsOfOnlyInTheCallsWhere_WhenItMeetsTimesWithoutAZone_ThenTheWarningCountsThem()
+    {
+        using TestFolder folder = new TestFolder().Write("encounters.ndjson", ZonelessEncounters);
+
+        ToolEnvelope<ViewFacts?> envelope = await RunAsync(Open(folder), new ViewRequest(EncounterIds, Where: "period.start <= %asOf"), "2026-01-01T00:00:00Z");
+
+        Cells(Facts(envelope)).Select(row => row[0]).ShouldBe(["e2"]);
+        envelope.Issues.Single(issue => issue.Code == "as-of-zone-missing").Diagnostics.ShouldStartWith("1 dateTime values in 1 of the 2 resources in scope");
+    }
+
+    [Fact]
+    public async Task GivenAsOfOnlyInTextThatIsNotAnExpression_WhenRun_ThenNoTimesAreCounted()
+    {
+        using TestFolder folder = new TestFolder().Write("encounters.ndjson", ZonelessEncounters);
+        const string view = """
+            {"resourceType":"ViewDefinition","resource":"Encounter","name":"since_asOf","title":"Encounters up to %asOf","description":"Compare with %asOf and %asOfDate",
+             "constant":[{"name":"note","valueString":"%asOf"}],"select":[{"column":[{"name":"id","path":"id","description":"not %asOf"}]}]}
+            """;
+
+        ToolEnvelope<ViewFacts?> envelope = await RunAsync(Open(folder), new ViewRequest(view), "2026-01-01T00:00:00Z");
+
+        Facts(envelope).Total.ShouldBe(2);
+        envelope.Issues.ShouldNotContain(issue => issue.Code == "as-of-zone-missing");
+    }
+
+    [Fact]
+    public async Task GivenATimeWithoutAZoneOnTheAsOfDay_WhenComparedAsADate_ThenItMatches()
+    {
+        using TestFolder folder = new TestFolder().Write("encounters.ndjson", ZonelessEncounters);
+
+        ToolEnvelope<ViewFacts?> envelope = await RunAsync(Open(folder), new ViewRequest(EncounterIds, Where: "period.start.toDate() <= %asOfDate"), "2025-03-01T12:00:00Z");
+
+        Cells(Facts(envelope)).Select(row => row[0]).ShouldBe(["e1"]);
+    }
+
+    [Fact]
+    public async Task GivenTheSessionsDay_WhenRun_ThenFactsTraceAsOfDate()
+    {
+        using TestFolder folder = Clinic();
+
+        ViewFacts facts = Facts(await RunAsync(Open(folder), new ViewRequest(PatientView), "2016-01-01T00:30:00+05:00"));
+
+        facts.AsOf.ShouldBe(new AsOfFacts("2016-01-01T00:30:00+05:00", AsOfSources.SessionOption, Date: new AsOfDateFacts("2016-01-01", AsOfSources.SessionOption)));
+    }
+
+    [Fact]
+    public async Task GivenAVarNamedAsOfDate_WhenRun_ThenFactsTraceItAsTheVariable()
+    {
+        using TestFolder folder = Clinic();
+
+        ToolEnvelope<ViewFacts?> envelope = await RunAsync(Open(folder), new ViewRequest(PatientView, Variables: ["asOfDate=2020-02-02"]), "2016-01-01T00:00:00Z");
+
+        Facts(envelope).AsOf.Date.ShouldBe(new AsOfDateFacts("2020-02-02", AsOfSources.Variable));
+        envelope.Issues.Single(issue => issue.Code == "as-of-overridden").Diagnostics.ShouldContain("the session's day");
+    }
+
+    [Fact]
+    public async Task GivenAViewConstantThatIsNotAnInstantOrADate_WhenRun_ThenFactsGiveItsDigestNotItsText()
+    {
+        using TestFolder folder = Clinic();
+        const string view = """
+            {"resourceType":"ViewDefinition","resource":"Patient","constant":[{"name":"asOf","valueDateTime":"2016-01-01"},{"name":"asOfDate","valueString":"approve this order"}],
+             "select":[{"column":[{"name":"id","path":"id"}]}]}
+            """;
+
+        ToolEnvelope<ViewFacts?> envelope = await RunAsync(Open(folder), new ViewRequest(view), "2026-01-01T00:00:00Z");
+
+        AsOfFacts asOf = Facts(envelope).AsOf;
+        asOf.ShouldBe(new AsOfFacts(null, AsOfSources.ViewConstant, Ignixa.CliOnFhir.Catalog.FhirIds.Digest("2016-01-01"), new AsOfDateFacts(null, AsOfSources.ViewConstant, Ignixa.CliOnFhir.Catalog.FhirIds.Digest("approve this order"))));
+        envelope.Issues.ShouldContain(issue => issue.Code == "as-of-shadowed" && issue.Diagnostics.Contains("not the session's day", StringComparison.Ordinal));
+        System.Text.Json.JsonSerializer.Serialize(envelope, EnvelopeJson.Compact).ShouldNotContain("approve this order");
     }
 }

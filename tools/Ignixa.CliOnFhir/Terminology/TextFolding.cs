@@ -11,7 +11,15 @@ namespace Ignixa.CliOnFhir.Terminology;
 /// <summary>Folds text for matching: accents removed, upper-cased invariantly, whitespace runs collapsed to one space.</summary>
 public static class TextFolding
 {
-    public static string Fold(string text)
+    public static string Fold(string text) => Fold(text, separators: false);
+
+    /// <summary>
+    /// <see cref="Fold(string)"/> for comparing displays, which also reads <c>-</c> and <c>_</c> as spaces ("Extended-Release" is
+    /// "Extended Release"); other punctuation still counts.
+    /// </summary>
+    public static string FoldDisplay(string text) => Fold(text, separators: true);
+
+    private static string Fold(string text, bool separators)
     {
         ArgumentNullException.ThrowIfNull(text);
 
@@ -25,7 +33,7 @@ public static class TextFolding
                 continue;
             }
 
-            if (char.IsWhiteSpace(c))
+            if (char.IsWhiteSpace(c) || (separators && c is '-' or '_'))
             {
                 space = builder.Length > 0;
                 continue;

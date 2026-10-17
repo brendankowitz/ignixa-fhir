@@ -199,5 +199,5 @@ public static class TermValidate
         $"The display given for {(system is null ? TerminologyNames.Code(code) : TerminologyNames.Coded(system, code))} matches neither its display nor any designation{(entry is null ? string.Empty : $" in {TerminologyNames.Canonical(entry.Url, entry.Version)}")}, so the code is not valid with it ('facts.result' is invalid); 'facts.display' has the expected one.",
         entry?.Origin.ToEvidence().File);
 
-    private static bool Same(string left, string right) => string.Equals(TextFolding.Fold(left), TextFolding.Fold(right), StringComparison.Ordinal);
+    private static bool Same(string left, string right) => string.Equals(TextFolding.FoldDisplay(left), TextFolding.FoldDisplay(right), StringComparison.Ordinal);
 }

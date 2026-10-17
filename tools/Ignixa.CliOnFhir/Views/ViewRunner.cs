@@ -130,7 +130,7 @@ public static class ViewRunner
         issues.AddRange(asOf.Issues);
         LoadedView loaded = ViewLocator.Resolve(session, request.View);
         IReadOnlyDictionary<string, string> variables = ViewVariables.Parse(request.Variables);
-        ViewAsOf.Applied applied = ViewAsOf.With(loaded, asOf.Value, variables, issues);
+        ViewAsOf.Applied applied = ViewAsOf.With(loaded, asOf.Value, variables, request.Where, issues);
         CompiledView view = ViewCompiler.Compile(session, applied.View, request.Where);
         issues.AddRange(ViewVariables.Undeclared(variables, view.Expression));
         issues.AddRange(ViewIssues.ResolveUse(loaded.Json));
@@ -142,7 +142,7 @@ public static class ViewRunner
 
         var evaluation = new ViewEvaluation(session, view, variables, JsonSourceNodeFactory.Parse(new JsonObject { ["resourceType"] = view.Resource }).ToElement(session.Schema))
         {
-            Zoneless = applied.ReadsAsOf ? new ZonelessTimes() : null,
+            Zoneless = applied.ReadsClock ? new ZonelessTimes() : null,
         };
         evaluation.CheckVariables();
         if (scope.Entries.Count == 0)
@@ -180,7 +180,7 @@ public static class ViewRunner
     private static IssueItem ZonelessIssue(ZonelessTimes zoneless, int resources) => new(
         "warning",
         "as-of-zone-missing",
-        $"{zoneless.Values} dateTime values in {zoneless.Resources} of the {resources} resources in scope have a time but no time zone (not valid FHIR). FHIRPath does not compare such a value with %asOf, which has one: it answers empty, so a where on them matches nothing and a column is null. Compare them with %asOfDate, the asOf day (a date compares with them unless they fall on that very day), or compare their text (period.start.substring(0, 10) <= %asOfDate.toString()).",
+        $"{zoneless.Values} dateTime values in {zoneless.Resources} of the {resources} resources in scope have a time but no time zone (not valid FHIR). FHIRPath answers empty when it compares such a value with %asOf, which has a zone, and with %asOfDate on that value's own day, so a where on them can match nothing and a column be null. Convert them to dates first: period.start.toDate() <= %asOfDate.",
         Location: null);
 
     private static void CheckResourceLimit(ViewRequest request, CompiledView view, ViewScope scope)

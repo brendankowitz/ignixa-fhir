@@ -418,4 +418,46 @@ public class DraftTests
         Text(json["facts"]!["asOf"]!["source"]).ShouldBe(AsOfSources.SessionOption);
         json["facts"]!["checks"]!.AsArray().Select(check => Text(check!["check"])).Distinct().ShouldBe(["validation", "terminology", "reference"]);
     }
+
+    [Fact]
+    public async Task GivenADisplayThatDiffersOnlyByHyphensAndUnderscores_WhenDrafted_ThenItMatches()
+    {
+        using TestFolder folder = Clinic();
+        string input = PotassiumOrder.Replace(PotassiumTabletDisplay, "Potassium_Chloride 20 MEQ Extended-Release Oral Tablet", StringComparison.Ordinal);
+
+        DraftFacts facts = Facts(await RunAsync(folder, new DraftRequest("MedicationRequest", input)));
+
+        Check(facts, "terminology", "MedicationRequest.medicationCodeableConcept.coding[0]").Outcome.ShouldBe(DraftCheck.Pass);
+    }
+
+    [Fact]
+    public void GivenTextWithHyphens_WhenFolded_ThenOnlyTheDisplayFoldReadsThemAsSpaces()
+    {
+        Terminology.TextFolding.FoldDisplay("Extended-Release").ShouldBe(Terminology.TextFolding.FoldDisplay("extended release"));
+        Terminology.TextFolding.FoldDisplay("a_b").ShouldBe("A B");
+        Terminology.TextFolding.FoldDisplay("a.b").ShouldBe("A.B");
+        Terminology.TextFolding.Fold("Extended-Release").ShouldBe("EXTENDED-RELEASE");
+    }
+
+    [Fact]
+    public async Task GivenADisplayForACodeItsSystemGivesNoDisplay_WhenDrafted_ThenThePrimaryCheckIsUnknownNotFailedAndASecondaryPasses()
+    {
+        using TestFolder folder = Clinic().Write("bare.json", """
+            {"resourceType":"CodeSystem","url":"http://example.org/bare","status":"active","content":"complete","caseSensitive":true,"concept":[{"code":"m1"},{"code":"r1"}]}
+            """);
+        JsonObject input = JsonNode.Parse(PotassiumOrder)!.AsObject();
+        input["medication"] = JsonNode.Parse("""{"system":"http://example.org/bare","code":"m1","display":"Some medicine"}""");
+        input["route"] = JsonNode.Parse("""{"system":"http://example.org/bare","code":"r1","display":"Some route"}""");
+
+        ToolEnvelope<DraftFacts?> envelope = await RunAsync(folder, new DraftRequest("MedicationRequest", input.ToJsonString()));
+
+        DraftFacts facts = Facts(envelope);
+        DraftCheck primary = Check(facts, "terminology", "MedicationRequest.medicationCodeableConcept.coding[0]");
+        primary.Outcome.ShouldBe(DraftCheck.Unknown);
+        ((TerminologyCheckDetails)primary.Details).Reason.ShouldBe(DraftTerminology.DisplayNotCheckedCode);
+        Check(facts, "terminology", "MedicationRequest.dosageInstruction[0].route.coding[0]").Outcome.ShouldBe(DraftCheck.Pass);
+        facts.Verdict.ShouldBe(DraftFacts.Unknown);
+        envelope.Issues.Where(issue => issue.Code == DraftTerminology.DisplayNotCheckedCode).Select(issue => issue.Severity).Order(StringComparer.Ordinal).ShouldBe(["information", "warning"]);
+        envelope.Issues.ShouldNotContain(issue => issue.Code == "display-mismatch");
+    }
 }
