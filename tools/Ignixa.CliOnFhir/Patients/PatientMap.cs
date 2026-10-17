@@ -167,6 +167,7 @@ public static partial class PatientMap
             dates.Count == 0 ? null : Day(dates.Max()!.Literal),
             context.AsOfGiven ? CohortInstant.Format(context.AsOf) : null,
             given?.Source ?? (context.AsOfFromClock ? AsOfSources.Clock : AsOfSources.PatientLatest),
+            context.Window,
             given?.ShownPrecision,
             given?.ShownZoneAssumed);
         Dictionary<string, int> other = context.Compartment.Members

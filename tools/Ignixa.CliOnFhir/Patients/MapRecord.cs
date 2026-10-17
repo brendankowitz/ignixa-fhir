@@ -17,6 +17,10 @@ namespace Ignixa.CliOnFhir.Patients;
 /// <c>asOf</c>), <c>session-option</c> (<c>--as-of</c>), <c>patient-latest</c> (the default) or <c>clock</c> (the default for a
 /// patient with no dated resource).
 /// </param>
+/// <param name="Window">
+/// The window the map's lists, latest values and counts were read in: <c>to</c> is asOf, the given one or the default, and
+/// <c>from</c> is null (no lower bound); a resource dated after <c>to</c> is in none of them (a <c>dated-after-as-of</c> note counts them).
+/// </param>
 /// <param name="AsOfPrecision">The given asOf's precision when it is not an instant (<c>year</c>, <c>month</c>, <c>date</c>); absent otherwise.</param>
 /// <param name="AsOfZoneAssumed"><c>true</c> when the given asOf was a date and time without a zone, read as UTC; absent otherwise.</param>
 public sealed record MapRecord(
@@ -25,5 +29,6 @@ public sealed record MapRecord(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? To,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? AsOf,
     string AsOfSource,
+    ContextWindow Window,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? AsOfPrecision = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? AsOfZoneAssumed = null);

@@ -41,6 +41,9 @@ internal sealed class PatientContext
 
     public const string AllergyRule = "every AllergyIntolerance, any status; newest first by date (onset, else recordedDate), then id";
 
+    /// <summary>The information issue that counts the record's resources dated after asOf.</summary>
+    public const string AfterAsOfCode = "dated-after-as-of";
+
     public const string EncounterRule = "period.start at or before asOf (default: the patient's latest dated resource), status not planned, cancelled or entered-in-error; newest first by period.start, then id";
 
     public const string LabRule =
@@ -55,6 +58,9 @@ internal sealed class PatientContext
     public const string ProblemLinkRule =
         "the Condition, then every MedicationRequest and MedicationStatement whose reasonReference references it (reasonReference) or whose reasonCode shares a system and code with its code (reasonCode)";
 
+    // The types the domains read, each with its main date (ClinicalRules.MainDate).
+    private static readonly string[] DomainTypes = ["Condition", "MedicationRequest", "MedicationStatement", "AllergyIntolerance", "Encounter", "Observation", "MedicationAdministration", "Immunization", "Procedure"];
+
     private readonly Lazy<IReadOnlyList<ContextEntry>> _problems;
     private readonly Lazy<IReadOnlyList<ContextEntry>> _medications;
     private readonly Lazy<IReadOnlyList<ContextEntry>> _allergies;
@@ -64,6 +70,7 @@ internal sealed class PatientContext
     private readonly Lazy<IReadOnlyList<ContextEntry>> _immunizations;
     private readonly Lazy<IReadOnlyList<ContextEntry>> _procedures;
     private readonly Lazy<(DateTimeOffset Instant, FhirTemporal Bound, bool FromClock)> _asOf;
+    private readonly Lazy<IReadOnlyDictionary<string, int>> _afterAsOf;
 
     private PatientContext(FolderSession session, PatientCompartment compartment, DateTimeOffset? asOf)
     {
@@ -74,16 +81,17 @@ internal sealed class PatientContext
         Elements = new ResourceElements(session);
         Shapes = new ValueShapes(session.Schema.Version, BindingMembership.IfLoaded(session));
         RulesApplied = ClinicalRules.Verified(session.Schema.Version);
-        _problems = new(() => ActiveFirst(Newest(Describe(Compartment.OfType("Condition"))), ClinicalRules.ActiveCondition));
+        _problems = new(() => ActiveFirst(Newest(Describe(Compartment.OfType("Condition")).Where(NotAfter)), ClinicalRules.ActiveCondition));
         _medications = new(() => ActiveFirst(
-            Newest([.. Describe(Compartment.OfType("MedicationRequest")), .. Describe(Compartment.OfType("MedicationStatement"))]),
+            Newest([.. Describe(Compartment.OfType("MedicationRequest")).Where(NotAfter), .. Describe(Compartment.OfType("MedicationStatement")).Where(NotAfter)]),
             ClinicalRules.ActiveMedication));
-        _allergies = new(() => Newest(Describe(Compartment.OfType("AllergyIntolerance"))));
+        _allergies = new(() => Newest(Describe(Compartment.OfType("AllergyIntolerance")).Where(NotAfter)));
         _encounters = new(() => Keep(Newest(Describe(Compartment.OfType("Encounter")).Where(InWindow)), ClinicalRules.RecordedEncounter));
         _labs = new(BuildLabs);
-        _administrations = new(() => Newest(Describe(Compartment.OfType("MedicationAdministration"))));
-        _immunizations = new(() => Newest(Describe(Compartment.OfType("Immunization"))));
-        _procedures = new(() => Newest(Describe(Compartment.OfType("Procedure"))));
+        _administrations = new(() => Newest(Describe(Compartment.OfType("MedicationAdministration")).Where(NotAfter)));
+        _immunizations = new(() => Newest(Describe(Compartment.OfType("Immunization")).Where(NotAfter)));
+        _procedures = new(() => Newest(Describe(Compartment.OfType("Procedure")).Where(NotAfter)));
+        _afterAsOf = new(CountAfterAsOf);
     }
 
     public FolderSession Session { get; }
@@ -234,6 +242,15 @@ internal sealed class PatientContext
     public List<IssueItem> Issues(List<OmittedItem> omitted, IEnumerable<CatalogEntry> shown)
     {
         List<IssueItem> issues = [];
+        if (_afterAsOf.Value is { Count: > 0 } after)
+        {
+            issues.Add(new IssueItem(
+                "information",
+                AfterAsOfCode,
+                $"{after.Values.Sum()} resources of the record are dated after asOf {CohortInstant.Format(AsOf)} ({string.Join(", ", after.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => $"{pair.Key} {pair.Value}"))}): they are in the data but in the future relative to asOf, so no list, latest value or count of the map includes them.",
+                Location: null));
+        }
+
         if (!RulesApplied)
         {
             issues.Add(UnsupportedVersionIssue(Session.Schema.Version));
@@ -333,6 +350,15 @@ internal sealed class PatientContext
 
     /// <summary>Whether the date <paramref name="entry"/> shows starts at or before <see cref="AsOf"/>; an undated entry is outside.</summary>
     private bool InWindow(ContextEntry entry) => entry.Date is { } date && date.CompareTo(_asOf.Value.Bound) <= 0;
+
+    /// <summary>Whether <paramref name="entry"/> is not dated after <see cref="AsOf"/>: undated, or starting at or before it.</summary>
+    private bool NotAfter(ContextEntry entry) => entry.Date is not { } date || date.CompareTo(_asOf.Value.Bound) <= 0;
+
+    // The domains' resources dated after asOf, by type: in the data, but in the future relative to asOf, so in no list or count.
+    private IReadOnlyDictionary<string, int> CountAfterAsOf() => DomainTypes
+        .Select(type => (Type: type, Count: Describe(Compartment.OfType(type)).Count(entry => !NotAfter(entry))))
+        .Where(pair => pair.Count > 0)
+        .ToDictionary(pair => pair.Type, pair => pair.Count, StringComparer.Ordinal);
 
     /// <summary>The entries <paramref name="rule"/> keeps, when rules are applied; all of them otherwise.</summary>
     private IReadOnlyList<ContextEntry> Keep(IReadOnlyList<ContextEntry> entries, string rule) =>
