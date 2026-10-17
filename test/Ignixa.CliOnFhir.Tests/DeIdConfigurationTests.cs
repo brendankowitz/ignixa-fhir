@@ -29,6 +29,10 @@ public class DeIdConfigurationTests
         { """{"fhirPathRules":[{"path":"Patient.gender","method":"generalize"}]}""", "deid-config-invalid", "needs 'cases'" },
         { $$$"""{"fhirPathRules":[{"path":"Patient.name","method":"redact"}],"parameters":{"cryptoHashKey":"{{{Secret}}}"} x""", "deid-config-invalid", "not valid JSON at line 1" },
         { $$$$"""{"fhirPathRules":[{"path":"Patient.name","method":"redact"}],"parameters":{"cryptoHashKey":{"k":"{{{{Secret}}}}"}}}""", "deid-config-invalid", "could not read the configuration" },
+        { $$$"""[{"cryptoHashKey":"{{{Secret}}}"}]""", "deid-config-invalid", "must be a JSON object" },
+        { $$$""" "cryptoHashKey":"{{{Secret}}}" """, "deid-config-invalid", "not valid JSON" },
+        { "\uFEFF" + $$$"""{"fhirPathRules":[{"path":"Patient.name","method":"redact"}],"parameters":{"cryptoHashKey":"{{{Secret}}}"} x""", "deid-config-invalid", "not valid JSON" },
+        { $"cryptoHashKey={Secret}", "deid-config-unreadable", "does not exist" },
     };
 
     [Theory]
@@ -104,5 +108,18 @@ public class DeIdConfigurationTests
         using TestFolder root = Root();
 
         Error(await RunAsync(Data(root), new DeIdRequest(Path.Combine(root.Path, "missing.json"), Out(root)))).Code.ShouldBe("deid-config-unreadable");
+    }
+
+    // A byte order mark in front of inline JSON is not text: the configuration is read, not taken for a path and repeated.
+    [Fact]
+    public async Task GivenInlineJsonAfterAByteOrderMark_WhenRun_ThenItIsReadAsInlineAndNoKeyIsRepeated()
+    {
+        using TestFolder root = Root();
+        string config = "\uFEFF" + $$$"""{"fhirPathRules":[{"path":"Patient.id","method":"cryptoHash"}],"parameters":{"cryptoHashKey":"{{{Secret}}}"}}""";
+
+        ToolEnvelope<DeIdFacts?> envelope = await RunAsync(Data(root), new DeIdRequest(config, Out(root)));
+
+        Facts(envelope).Config.Source.ShouldBe("inline");
+        Json(envelope).ShouldNotContain(Secret);
     }
 }

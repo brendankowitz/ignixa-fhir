@@ -189,6 +189,17 @@ public class DeIdTests
         Directory.Exists(Out(root)).ShouldBeFalse();
     }
 
+    // The CLI passes an empty list when no --reference is given: that is no scope, so the hint still says how to narrow it.
+    [Fact]
+    public async Task GivenNoReferencesAsAnEmptyList_WhenOverTheLimit_ThenTheHintSuggestsNarrowingTheScope()
+    {
+        using TestFolder root = Root();
+
+        IssueItem error = Error(await RunAsync(Data(root), new DeIdRequest(Config, Out(root), References: [], MaxResources: 3)));
+
+        error.Diagnostics.ShouldContain("Limit it to one patient's resources");
+    }
+
     [Fact]
     public async Task GivenARunThatTimesOut_WhenRun_ThenItIsATimeoutAndNothingIsWritten()
     {

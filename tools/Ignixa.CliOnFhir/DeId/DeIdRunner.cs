@@ -119,7 +119,7 @@ public static class DeIdRunner
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeout.IsCancellationRequested)
         {
-            string narrower = request.Patient is null && request.References is null ? "Limit it to one patient's resources with patient, or raise" : "Raise";
+            string narrower = request.Patient is null && request.References is not { Count: > 0 } ? "Limit it to one patient's resources with patient, or raise" : "Raise";
             string cold = progress.ResolvingScope
                 ? " The time ran out while the scope was being worked out, which a first run over a folder does from the search indexes it needs; a build cut by the timeout keeps nothing, so run it once with a higher timeout (for example --timeout 300) to build them and keep them in the index cache."
                 : string.Empty;
@@ -174,7 +174,7 @@ public static class DeIdRunner
 
         if (scope.Entries.Count > limit)
         {
-            string narrower = request.Patient is null && request.References is null ? "Limit it to one patient's resources with patient, a type, or a search, or raise" : "Raise";
+            string narrower = request.Patient is null && request.References is not { Count: > 0 } ? "Limit it to one patient's resources with patient, a type, or a search, or raise" : "Raise";
             throw ToolRequestException.Error("too-many-resources", $"The scope holds {scope.Entries.Count} resources, more than the limit of {limit}; nothing was read. {narrower} maxResources.");
         }
     }

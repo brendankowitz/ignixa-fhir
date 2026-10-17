@@ -249,6 +249,26 @@ public class MapTests
         error.Diagnostics.ShouldContain("never fetched from the network");
     }
 
+    // As for a de-identification configuration, text that cannot be a path is read as a map, never taken for a path and repeated.
+    [Theory]
+    [InlineData("\uFEFFmap \"http://example.org/fml/bom\" = \"Bom\"\ngroup B(source src : Patient, target tgt : Basic) {\n  src.id as id -> tgt.id = id;\n}\n", null)]
+    [InlineData("[{\"resourceType\":\"StructureMap\"}]", "map-invalid")]
+    public async Task GivenInlineMapTextAfterAByteOrderMarkOrAsAnArray_WhenRun_ThenItIsReadInline(string map, string? error)
+    {
+        using TestFolder root = Root();
+
+        ToolEnvelope<MapFacts?> envelope = await RunAsync(Data(root), new MapRequest(map));
+
+        if (error is null)
+        {
+            Facts(envelope).Map.Source.ShouldBe("inline");
+        }
+        else
+        {
+            Error(envelope).Code.ShouldBe(error);
+        }
+    }
+
     [Fact]
     public async Task GivenMoreResourcesThanTheLimit_WhenRun_ThenItFailsBeforeReading()
     {

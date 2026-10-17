@@ -26,6 +26,8 @@ internal static class MapLocator
 
     private const string StructureMapType = "StructureMap";
 
+    private static readonly char[] FmlMarks = ['\n', '\r', '"'];
+
     /// <summary>The map <paramref name="map"/> names (see <see cref="MapRequest.Map"/>).</summary>
     /// <param name="folderMaps">The folder's StructureMaps, read once per run.</param>
     /// <exception cref="ToolRequestException"><c>map-not-found</c>, <c>map-ambiguous</c>, <c>map-unreadable</c> or <c>map-invalid</c> (too large).</exception>
@@ -35,15 +37,15 @@ internal static class MapLocator
         ArgumentException.ThrowIfNullOrWhiteSpace(map);
         ArgumentNullException.ThrowIfNull(folderMaps);
 
-        string text = map.Trim();
-        if (text.StartsWith('{'))
+        string text = map.TrimStart('\uFEFF').Trim();
+        if (text.StartsWith('{') || text.StartsWith('['))
         {
-            return Inline(map, LoadedMap.StructureMap);
+            return Inline(text, LoadedMap.StructureMap);
         }
 
         if (IsFml(text))
         {
-            return Inline(map, LoadedMap.Fml);
+            return Inline(text, LoadedMap.Fml);
         }
 
         if (Directory.Exists(text))
@@ -103,9 +105,10 @@ internal static class MapLocator
         return found;
     }
 
-    // FML always has more than one line, or at least starts with its keyword or a comment; a path or a url has neither.
+    // FML has a line break, a quoted url or name, or at least starts with its keyword or a comment; a path, an id or a url has none
+    // of them (as for a de-identification configuration, text that could not be a path is never taken for one).
     private static bool IsFml(string text) =>
-        text.Contains('\n', StringComparison.Ordinal) || text.StartsWith("map ", StringComparison.Ordinal) || text.StartsWith("//", StringComparison.Ordinal) || text.StartsWith("/*", StringComparison.Ordinal);
+        text.IndexOfAny(FmlMarks) >= 0 || text.StartsWith("map ", StringComparison.Ordinal) || text.StartsWith("//", StringComparison.Ordinal) || text.StartsWith("/*", StringComparison.Ordinal);
 
     private static LoadedMap Inline(string text, string format) =>
         text.Length <= MaxBytes

@@ -87,34 +87,40 @@ internal sealed record DeIdConfiguration(DeIdOptions Options, DeIdConfigFacts Fa
         return new DeIdConfiguration(options, new DeIdConfigFacts(source, file, rules), NotesOf(options, rules, schema));
     }
 
+    // Text that holds any of these is never a path: it is inline configuration, and so never repeated.
+    private static readonly char[] InlineMarks = ['{', '[', '"', '\n', '\r'];
+
+    // A path is repeated by its digest only: text taken for one may be a piece of configuration that was meant inline.
     private static (string Text, string Source, string? File) Read(string config)
     {
-        if (config.TrimStart().StartsWith('{'))
+        string text = config.TrimStart('\uFEFF');
+        if (text.IndexOfAny(InlineMarks) >= 0)
         {
-            return Encoding.UTF8.GetByteCount(config) <= MaxBytes
-                ? (config, "inline", null)
+            return Encoding.UTF8.GetByteCount(text) <= MaxBytes
+                ? (text, "inline", null)
                 : throw ToolRequestException.Error(InvalidCode, $"The inline configuration is larger than {MaxBytes} bytes.");
         }
 
-        string path = Path.GetFullPath(config);
+        string named = $"The configuration file given (digest {FhirIds.Digest(config)})";
         try
         {
+            string path = Path.GetFullPath(text);
             var info = new FileInfo(path);
             if (!info.Exists)
             {
-                throw ToolRequestException.Error("deid-config-unreadable", $"The configuration file '{QueryEcho.Of(path)}' does not exist; give a file, or inline JSON starting with '{{'.");
+                throw ToolRequestException.Error("deid-config-unreadable", $"{named} does not exist; give a file, or inline JSON. The path is not repeated, in case it was configuration meant inline.");
             }
 
             if (info.Length > MaxBytes)
             {
-                throw ToolRequestException.Error(InvalidCode, $"The configuration file '{QueryEcho.Of(path)}' is larger than {MaxBytes} bytes.");
+                throw ToolRequestException.Error(InvalidCode, $"{named} is larger than {MaxBytes} bytes.");
             }
 
             return (File.ReadAllText(path), "file", path);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
-            throw ToolRequestException.Error("deid-config-unreadable", $"The configuration file '{QueryEcho.Of(path)}' cannot be read ({ex.GetType().Name}).");
+            throw ToolRequestException.Error("deid-config-unreadable", $"{named} cannot be read ({ex.GetType().Name}).");
         }
     }
 

@@ -58,7 +58,12 @@ public class DeIdCommandTests
             runs.Add(await RunCliAsync("deid", Data(root), "--config", Path.Combine(root.Path, config), "--out", Path.Combine(root.Path, "out-" + config), "--no-cache"));
         }
 
-        runs.Select(run => run.ExitCode).ShouldBe([0, 1, 1]);
+        foreach (string inline in new[] { "\uFEFF" + badJson, $$$"""[{"cryptoHashKey":"{{{HashKey}}}"}]""", $"\"cryptoHashKey\":\"{HashKey}\",\"dateShiftKey\":\"{DateKey}\"", $"{HashKey}-{DateKey}" })
+        {
+            runs.Add(await RunCliAsync("deid", Data(root), "--config", inline, "--out", Path.Combine(root.Path, "out-inline"), "--no-cache"));
+        }
+
+        runs.Select(run => run.ExitCode).ShouldBe([0, 1, 1, 1, 1, 1, 1]);
         JsonNode.Parse(runs[0].Output)!["issues"]!.AsArray().ShouldContain(issue => (string)issue!["code"]! == "deid-resource-incomplete");
         foreach ((_, string output, string errors) in runs)
         {
