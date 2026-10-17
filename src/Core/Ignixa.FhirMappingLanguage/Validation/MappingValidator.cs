@@ -74,7 +74,7 @@ internal class MappingValidator
         }
 
         // Check for duplicate group names
-        var groupNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var groupNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var group in map.Groups)
         {
             if (!groupNames.Add(group.Name))
@@ -136,7 +136,7 @@ internal class MappingValidator
 
         // First check in current map
         baseGroup = map.Groups.FirstOrDefault(g =>
-            g.Name.Equals(group.Extends, StringComparison.OrdinalIgnoreCase));
+            g.Name.Equals(group.Extends, StringComparison.Ordinal));
 
         // Then check imports if resolver available
         if (baseGroup == null && _importResolver != null)
@@ -151,24 +151,32 @@ internal class MappingValidator
         }
 
         // Check for circular inheritance
-        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { group.Name };
+        var visited = new HashSet<GroupExpression>(ReferenceEqualityComparer.Instance) { group };
         var current = baseGroup;
+        var currentMap = map;
 
-        while (current != null && !string.IsNullOrWhiteSpace(current.Extends))
+        while (current != null)
         {
-            if (!visited.Add(current.Extends))
+            if (!visited.Add(current))
             {
                 result.AddError($"Circular inheritance detected in group '{group.Name}'", location: location, code: "CIRCULAR_INHERITANCE");
                 break;
             }
 
-            current = map.Groups.FirstOrDefault(g =>
-                g.Name.Equals(current.Extends, StringComparison.OrdinalIgnoreCase));
-
-            if (current == null && _importResolver != null)
+            if (string.IsNullOrWhiteSpace(current.Extends))
             {
-                current = _importResolver.FindGroup(map, current?.Extends ?? string.Empty);
+                break;
             }
+
+            if (!currentMap.Groups.Contains(current))
+            {
+                currentMap = _importResolver!.FindOwningMap(current);
+            }
+
+            string baseName = current.Extends;
+            current = currentMap.Groups.FirstOrDefault(g =>
+                g.Name.Equals(baseName, StringComparison.Ordinal))
+                ?? _importResolver?.FindGroup(currentMap, baseName);
         }
     }
 
@@ -236,6 +244,11 @@ internal class MappingValidator
         if (target.Transform is TransformExpression transform)
         {
             ValidateTransform(transform, location, result);
+            if (transform.FunctionName == "cast" && transform.Arguments.Count == 1 && target.Context is null)
+            {
+                result.AddError("cast() requires an explicit type when no target is known",
+                    location: location, code: "MISSING_ARGUMENT");
+            }
         }
 
         // Validate list mode combinations
@@ -280,7 +293,7 @@ internal class MappingValidator
     {
         // Check if the group exists in the current map
         var groupExists = map.Groups.Any(g =>
-            string.Equals(g.Name, invocation.GroupName, StringComparison.OrdinalIgnoreCase));
+            string.Equals(g.Name, invocation.GroupName, StringComparison.Ordinal));
 
         if (!groupExists && _importResolver != null)
         {
@@ -319,9 +332,9 @@ internal class MappingValidator
                 location: location, code: "MISSING_ARGUMENT");
         }
 
-        if (transform.FunctionName == "cast" && transform.Arguments.Count < 2)
+        if (transform.FunctionName == "cast" && transform.Arguments.Count == 0)
         {
-            result.AddError("cast() requires source and type arguments",
+            result.AddError("cast() requires a source argument",
                 location: location, code: "MISSING_ARGUMENT");
         }
     }

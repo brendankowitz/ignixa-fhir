@@ -44,4 +44,9 @@ public interface ITransformContext
     /// ConceptMap resolver for terminology translation.
     /// </summary>
     Func<string, string, string, string?>? ConceptMapResolver { get; }
+
+    /// <summary>
+    /// Resolves translate(source, map_uri, output), including structured Coding/CodeableConcept results.
+    /// </summary>
+    Func<object, string, string, object?>? TranslationResolver => null;
 }

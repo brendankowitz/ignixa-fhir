@@ -631,10 +631,16 @@ internal class SchemaAwareElement : IElement
 #pragma warning restore CA1308
 
     /// <summary>
-    /// Retrieves metadata of the specified type (IElement interface).
+    /// Retrieves metadata of the specified type (IElement interface). <see cref="ISchema"/> returns the
+    /// schema this element was resolved against; everything else is answered by the source node.
     /// </summary>
     public T? Meta<T>() where T : class
     {
+        if (typeof(T) == typeof(ISchema))
+        {
+            return (T)_schema;
+        }
+
         return _source.Meta<T>();
     }
 
