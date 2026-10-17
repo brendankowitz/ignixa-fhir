@@ -44,7 +44,7 @@ public static class ContextExpander
             List<IssueItem> issues = [];
             int pageSize = Paging.Resolve(count, offset, issues);
             ElementsProjection? projection = elements is null ? null : ElementsProjection.Parse([elements], session.Schema);
-            PatientContext context = PatientContext.Open(session, patientId, session.UtcNow());
+            PatientContext context = PatientContext.Open(session, patientId, asOf: null);
             Node node = Resolve(context, nodeKey, issues);
             List<AbsentItem> absent = node.Entries.Count == 0 && nodeKey == ClinicalDomains.Allergies ? [ContextRoot.AllergyAbsence(context)] : [];
             return ContextPage.Build(

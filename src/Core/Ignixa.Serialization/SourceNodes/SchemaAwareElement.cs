@@ -59,8 +59,6 @@ internal class SchemaAwareElement : IElement
 
     private volatile object? _cachedTypeDefinition = TypeDefinitionNotComputed;
 
-    private ConcurrentDictionary<ChildListKey, IReadOnlyList<IElement>>? _childCache;
-
     // OPTIMIZATION: Child resolution is cached per (parent type, child name) for the whole process
     // rather than per element instance.
     //
@@ -122,57 +120,34 @@ internal class SchemaAwareElement : IElement
     /// </summary>
     private readonly record struct ChildResolution(IType? Definition, string? QualifiedInstanceType);
 
-    // OPTIMIZATION: The wrapper elements themselves are cached against the source node that backs them.
+    // OPTIMIZATION: The wrapper elements are cached on the element that handed them out.
     //
     // Resolution caching above removed the schema work from a navigation hop but not the wrappers: every
     // Children() call still built a fresh List and a fresh SchemaAwareElement per child, so walking
     // "component.valueQuantity.value" allocated a new object at each level on every evaluation, and an
     // indexing pass that runs a hundred expressions over one resource rebuilt the same tree a hundred
-    // times. Anchoring the wrappers to the source node instead makes the second and later walks free.
+    // times. Keeping each child list on its parent element makes the second and later walks free: the
+    // children handed out are themselves cached instances, so the whole tree below a root is built once.
     //
-    // The source layer already works this way - JsonNodeSourceNode snapshots its children into
-    // _cachedNodes on first navigation and hands back the same navigator instances forever - so this
-    // extends an existing lifetime rather than inventing one, and the elements it caches are documented
-    // immutable snapshots of exactly those nodes (see the class remarks).
+    // The cache used to be a process-wide ConditionalWeakTable keyed by source node, holding a
+    // ConcurrentDictionary per node. Every new node took the table's single lock to add its entry, and
+    // each entry was a dependent GC handle plus a dictionary whose lock array is sized by the processor
+    // count. Bulk indexing creates millions of nodes, so parallel extraction serialised on that lock and
+    // the collector spent much of its time scanning the handles (indexing MIMIC-IV Demo's 813K Observations
+    // took 632 s with the table and 72 s without it). On the instance there is no lock and no handle.
     //
-    // Mutation stays correct without an explicit invalidation hook: ResourceJsonNode.InvalidateCaches()
-    // drops _cachedSourceNode, so a patched document is re-derived from new navigators, which key a new
-    // and empty entry here. The stale wrappers become unreachable with the navigators they wrapped.
+    // The key is only the child name: an element's schema and instance type are fixed, so the parts of the
+    // old key that told different wrappings of one node apart are implied. Mutation stays correct for the
+    // same reason as before: ResourceJsonNode.InvalidateCaches() drops the cached tree, and a re-derived
+    // tree starts with empty caches.
     //
-    // The key carries the schema and the parent's instance type as well as the child name: one source
-    // node can legitimately be wrapped by more than one element - under a different schema, or typed
-    // differently through a choice element - and those wrappings have different children.
-    private static readonly ConditionalWeakTable<ISourceNavigator, ConcurrentDictionary<ChildListKey, IReadOnlyList<IElement>>> SharedChildElements = new();
+    // The cache is a small immutable array replaced by compare-and-swap: an element is asked for a handful
+    // of distinct names, readers never lock, and a losing race adopts the winner's list so every caller
+    // sees a single instance per name.
+    private ChildList[]? _childLists;
 
-    /// <summary>
-    /// Identifies one materialized child list for a given source node: which schema typed it, what the
-    /// parent's instance type resolved to, and which child name was asked for (null meaning "all").
-    /// </summary>
-    private readonly struct ChildListKey : IEquatable<ChildListKey>
-    {
-        private readonly ISchema _schema;
-        private readonly string? _parentInstanceType;
-        private readonly string? _name;
-
-        public ChildListKey(ISchema schema, string? parentInstanceType, string? name)
-        {
-            _schema = schema;
-            _parentInstanceType = parentInstanceType;
-            _name = name;
-        }
-
-        public bool Equals(ChildListKey other) =>
-            ReferenceEquals(_schema, other._schema)
-            && string.Equals(_parentInstanceType, other._parentInstanceType, StringComparison.Ordinal)
-            && string.Equals(_name, other._name, StringComparison.Ordinal);
-
-        public override bool Equals(object? obj) => obj is ChildListKey other && Equals(other);
-
-        public override int GetHashCode() => HashCode.Combine(
-            RuntimeHelpers.GetHashCode(_schema),
-            _parentInstanceType is null ? 0 : StringComparer.Ordinal.GetHashCode(_parentInstanceType),
-            _name is null ? 0 : StringComparer.Ordinal.GetHashCode(_name));
-    }
+    /// <summary>One materialized child list: the child name asked for (null meaning "all") and the elements.</summary>
+    private sealed record ChildList(string? Name, IReadOnlyList<IElement> Children);
 
     // OPTIMIZATION: FHIR primitive type mapping (static to avoid repeated allocations)
     // Reference: http://hl7.org/fhir/datatypes.html
@@ -389,25 +364,47 @@ internal class SchemaAwareElement : IElement
 
     public IReadOnlyList<IElement> Children(string? name)
     {
-        // The shared table entry for _source never changes once created, so the first lookup is kept on the instance:
-        // wrappers are themselves cached and reused, and validation asks one element for its children many times.
-        var childCache = _childCache ??= SharedChildElements.GetValue(
-            _source,
-            static _ => new ConcurrentDictionary<ChildListKey, IReadOnlyList<IElement>>());
-
-        var cacheKey = new ChildListKey(_schema, _instanceType, name);
-
-        if (childCache.TryGetValue(cacheKey, out var cachedChildren))
+        if (FindChildList(Volatile.Read(ref _childLists), name) is { } cached)
         {
-            return cachedChildren;
+            return cached;
         }
 
         var materialized = MaterializeChildren(name);
+        while (true)
+        {
+            var current = Volatile.Read(ref _childLists);
 
-        // A losing race produces an equivalent list; discarding it costs one wasted materialization and
-        // keeps every caller on a single instance, which matters because these are handed out as shared
-        // immutable snapshots.
-        return childCache.GetOrAdd(cacheKey, materialized);
+            // A losing race produces an equivalent list; adopting the winner's keeps every caller on a
+            // single instance, which matters because these are handed out as shared immutable snapshots.
+            if (FindChildList(current, name) is { } raced)
+            {
+                return raced;
+            }
+
+            ChildList[] extended = current is null ? [new(name, materialized)] : [.. current, new(name, materialized)];
+            if (ReferenceEquals(Interlocked.CompareExchange(ref _childLists, extended, current), current))
+            {
+                return materialized;
+            }
+        }
+    }
+
+    private static IReadOnlyList<IElement>? FindChildList(ChildList[]? lists, string? name)
+    {
+        if (lists is null)
+        {
+            return null;
+        }
+
+        foreach (var list in lists)
+        {
+            if (string.Equals(list.Name, name, StringComparison.Ordinal))
+            {
+                return list.Children;
+            }
+        }
+
+        return null;
     }
 
     private IReadOnlyList<IElement> MaterializeChildren(string? name)

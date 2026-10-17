@@ -36,6 +36,7 @@ public sealed class FolderSession
     private readonly Lazy<InMemoryCompartmentMembership> _compartments;
     private readonly Lazy<HashSet<string>> _catalogTypes;
     private readonly Lazy<CompartmentIndex> _patientCompartments;
+    private readonly Lazy<FolderKinds> _kinds;
     private readonly TimeProvider _timeProvider;
     private readonly Lock _staleGate = new();
     private readonly Lock _deliveredGate = new();
@@ -124,6 +125,7 @@ public sealed class FolderSession
             LazyThreadSafetyMode.ExecutionAndPublication);
 
         _patientCompartments = new Lazy<CompartmentIndex>(() => LoadOrBuildCompartments("Patient"), LazyThreadSafetyMode.ExecutionAndPublication);
+        _kinds = new Lazy<FolderKinds>(() => FolderKinds.From(Catalog), LazyThreadSafetyMode.ExecutionAndPublication);
 
         Terminology = new TerminologySession(this, terminology ?? TerminologyOptions.None);
         Validators = new ValidatorCache(this);
@@ -205,6 +207,9 @@ public sealed class FolderSession
     /// every type that can be in one (building or loading them) and persisted. One patient's context then reads no index.
     /// </summary>
     public CompartmentIndex PatientCompartments => _patientCompartments.Value;
+
+    /// <summary>The record kinds of each resource type (profiles, else Encounter class or Observation category), counted from the catalog on first use.</summary>
+    public FolderKinds Kinds => _kinds.Value;
 
     /// <summary>Whether the catalog holds at least one resource of <paramref name="resourceType"/>.</summary>
     public bool HoldsType(string resourceType) => _catalogTypes.Value.Contains(resourceType);

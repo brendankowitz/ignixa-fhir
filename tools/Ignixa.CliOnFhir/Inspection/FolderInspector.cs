@@ -53,7 +53,10 @@ public static class FolderInspector
         [
             .. catalog.Entries
                 .GroupBy(entry => entry.ResourceType, StringComparer.Ordinal)
-                .Select(group => new ResourceTypeCount(group.Key, group.Count()))
+                .Select(group => new ResourceTypeCount(
+                    group.Key,
+                    group.Count(),
+                    session.Kinds.IsMixed(group.Key) ? [.. session.Kinds.Of(group.Key).Select(kind => new KindFacts(kind.ShortName, kind.Count, kind.Filter))] : null))
                 .OrderByDescending(count => count.Count)
                 .ThenBy(count => count.ResourceType, StringComparer.Ordinal),
         ];

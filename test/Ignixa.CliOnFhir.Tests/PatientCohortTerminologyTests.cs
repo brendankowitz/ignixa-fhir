@@ -108,7 +108,8 @@ public class PatientCohortTerminologyTests
         ToolEnvelope<CohortFacts?> envelope = await Count(session, new CohortArguments(Medications: CohortFixture.Json("""{"classId":"N0000175589","source":"EPC"}""")));
 
         Facts(envelope).Count.ShouldBe(0);
-        envelope.Issues.Select(issue => issue.Code).ShouldBe([RxClassReads.AnsweredCode, TermClassMembers.EmptyClassCode, TermClassMembers.IngredientsOnlyCode], ignoreOrder: true);
+        envelope.Issues.Select(issue => issue.Code).ShouldBe([RxClassReads.AnsweredCode, TermClassMembers.EmptyClassCode, TermClassMembers.IngredientsOnlyCode, "cohort-empty-step"], ignoreOrder: true);
+        envelope.Issues.Single(issue => issue.Code == "cohort-empty-step").Diagnostics.ShouldBe("medications[0] is the first step that left no patient: the criterion has no code to search: its valueSet or class lists none that the folder uses.");
     }
 
     [Fact]

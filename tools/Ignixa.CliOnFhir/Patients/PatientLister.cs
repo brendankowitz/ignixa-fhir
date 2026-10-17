@@ -110,7 +110,7 @@ public static class PatientLister
             next.Add(new NextCall("patient_list", nextPage));
         }
 
-        next.AddRange(page.Take(1).Select(patient => new NextCall("patient_context", new Dictionary<string, object>(StringComparer.Ordinal) { ["operation"] = "root", ["patientId"] = FhirIds.Safe(patient.Id) })));
+        next.AddRange(page.Take(1).Select(patient => new NextCall("patient_summary", new Dictionary<string, object>(StringComparer.Ordinal) { ["patient"] = FhirIds.Safe(patient.Id) })));
         if (!ClinicalRules.Verified(session.Schema.Version))
         {
             issues.Add(PatientContext.UnsupportedVersionIssue(session.Schema.Version));

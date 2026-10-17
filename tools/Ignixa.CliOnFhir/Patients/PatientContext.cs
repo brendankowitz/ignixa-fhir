@@ -6,6 +6,7 @@
 using System.Globalization;
 using Ignixa.Abstractions;
 using Ignixa.CliOnFhir.Catalog;
+using Ignixa.CliOnFhir.Cohorts;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Indexing;
 using Ignixa.CliOnFhir.Search;
@@ -15,7 +16,8 @@ using Ignixa.FhirPath.Evaluation;
 namespace Ignixa.CliOnFhir.Patients;
 
 /// <summary>
-/// One patient's context as of one instant, for one call: the domains the root digest summarizes and the nodes
+/// One patient's context as of one instant, for one call (by default the patient's latest dated resource, see
+/// <see cref="Open"/>): the domains the root digest summarizes and the nodes
 /// <c>patient_context</c> expand opens, each computed on first use. Membership comes from the compartment, order from the in-memory
 /// engine's <c>_sort</c> over the compartment, and every value and rule from FHIRPath over the resources
 /// (<see cref="ClinicalRules"/>). Not thread-safe.
@@ -39,10 +41,11 @@ internal sealed class PatientContext
 
     public const string AllergyRule = "every AllergyIntolerance, any status; newest first by date (onset, else recordedDate), then id";
 
-    public const string EncounterRule = "period.start at or before asOf, status not planned, cancelled or entered-in-error; newest first by period.start, then id";
+    public const string EncounterRule = "period.start at or before asOf (default: the patient's latest dated resource), status not planned, cancelled or entered-in-error; newest first by period.start, then id";
 
     public const string LabRule =
-        "Observations whose date (effective, else issued) is at or before asOf, status not cancelled or entered-in-error, category laboratory, vital-signs or none; one series per first coding with system and code; "
+        "Observations whose date (effective, else issued) is at or before asOf (default: the patient's latest dated resource), status not cancelled or entered-in-error, "
+        + "category laboratory, vital-signs, none, or only categories outside observation-category; one series per first coding with system and code; "
         + "most observations first; latest = newest by that date, then id; trend: newest vs oldest of the last 3 values, numeric valueQuantity in one unit without a comparator only (else n/a), flat within 5%";
 
     public const string EncounterRuleUnverified = "period.start at or before asOf; newest first by period.start, then id";
@@ -57,18 +60,17 @@ internal sealed class PatientContext
     private readonly Lazy<IReadOnlyList<ContextEntry>> _allergies;
     private readonly Lazy<IReadOnlyList<ContextEntry>> _encounters;
     private readonly Lazy<(IReadOnlyList<LabSeries> Series, int Excluded)> _labs;
+    private readonly Lazy<IReadOnlyList<ContextEntry>> _administrations;
     private readonly Lazy<IReadOnlyList<ContextEntry>> _immunizations;
     private readonly Lazy<IReadOnlyList<ContextEntry>> _procedures;
-    private readonly FhirTemporal _asOf;
+    private readonly Lazy<(DateTimeOffset Instant, FhirTemporal Bound)> _asOf;
 
-    private PatientContext(FolderSession session, PatientCompartment compartment, DateTimeOffset asOf)
+    private PatientContext(FolderSession session, PatientCompartment compartment, DateTimeOffset? asOf)
     {
         Session = session;
         Compartment = compartment;
-        AsOf = asOf;
-        _asOf = FhirTemporal.TryParse(asOf.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture), FhirPrimitive.Instant, out FhirTemporal? parsed)
-            ? parsed
-            : throw new InvalidOperationException($"asOf {asOf:O} did not parse as a FHIR instant.");
+        AsOfGiven = asOf is not null;
+        _asOf = new(() => asOf is { } given ? Given(given) : Latest());
         Elements = new ResourceElements(session);
         Shapes = new ValueShapes(session.Schema.Version, BindingMembership.IfLoaded(session));
         RulesApplied = ClinicalRules.Verified(session.Schema.Version);
@@ -79,6 +81,7 @@ internal sealed class PatientContext
         _allergies = new(() => Newest(Describe(Compartment.OfType("AllergyIntolerance"))));
         _encounters = new(() => Keep(Newest(Describe(Compartment.OfType("Encounter")).Where(InWindow)), ClinicalRules.RecordedEncounter));
         _labs = new(BuildLabs);
+        _administrations = new(() => Newest(Describe(Compartment.OfType("MedicationAdministration"))));
         _immunizations = new(() => Newest(Describe(Compartment.OfType("Immunization"))));
         _procedures = new(() => Newest(Describe(Compartment.OfType("Procedure"))));
     }
@@ -87,8 +90,14 @@ internal sealed class PatientContext
 
     public PatientCompartment Compartment { get; }
 
-    /// <summary>The instant time-dependent domains are read at, to the second.</summary>
-    public DateTimeOffset AsOf { get; }
+    /// <summary>
+    /// The instant time-dependent domains are read at, to the second: the one the call gave, else the start of the patient's
+    /// latest dated resource (<see cref="Open"/>).
+    /// </summary>
+    public DateTimeOffset AsOf => _asOf.Value.Instant;
+
+    /// <summary>Whether the call gave <see cref="AsOf"/>, rather than it being the patient's latest dated resource.</summary>
+    public bool AsOfGiven { get; }
 
     public ResourceElements Elements { get; }
 
@@ -127,6 +136,9 @@ internal sealed class PatientContext
     /// <summary>Lab series in the window, most observations first.</summary>
     public IReadOnlyList<LabSeries> Labs => _labs.Value.Series;
 
+    /// <summary>Every MedicationAdministration, any status, newest first.</summary>
+    public IReadOnlyList<ContextEntry> Administrations => _administrations.Value;
+
     /// <summary>Every Immunization, any status, newest first.</summary>
     public IReadOnlyList<ContextEntry> Immunizations => _immunizations.Value;
 
@@ -136,15 +148,46 @@ internal sealed class PatientContext
     /// <summary>Observations of the compartment in no lab series: outside the window or the category rule, or without a coded code.</summary>
     public int LabsExcluded => _labs.Value.Excluded;
 
-    /// <summary>Opens the context of <c>Patient/<paramref name="patientId"/></c> as of <paramref name="asOf"/> (truncated to the second).</summary>
+    /// <summary>
+    /// Opens the context of <c>Patient/<paramref name="patientId"/></c> as of <paramref name="asOf"/> (truncated to the second).
+    /// Without one it is read as of the patient's own latest dated resource (the latest main date of any compartment member,
+    /// <see cref="ClinicalRules.MainDate"/>), never the clock: a record whose dates are shifted (MIMIC's are in the 2100s) or
+    /// that ended years ago is read whole, and a record with no dated resource is read as of the session clock.
+    /// </summary>
     /// <exception cref="ToolRequestException">The id is malformed or the folder holds no such Patient.</exception>
-    public static PatientContext Open(FolderSession session, string patientId, DateTimeOffset asOf)
+    public static PatientContext Open(FolderSession session, string patientId, DateTimeOffset? asOf)
     {
         ArgumentNullException.ThrowIfNull(session);
 
         ClinicalRules.Precompile();
+        return new PatientContext(session, PatientCompartment.Load(session, patientId), asOf);
+    }
+
+    private static (DateTimeOffset Instant, FhirTemporal Bound) Given(DateTimeOffset asOf)
+    {
         DateTimeOffset second = new(asOf.UtcTicks - (asOf.UtcTicks % TimeSpan.TicksPerSecond), TimeSpan.Zero);
-        return new PatientContext(session, PatientCompartment.Load(session, patientId), second);
+        return FhirTemporal.TryParse(second.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture), FhirPrimitive.Instant, out FhirTemporal? parsed)
+            ? (second, parsed)
+            : throw new InvalidOperationException($"asOf {asOf:O} did not parse as a FHIR instant.");
+    }
+
+    /// <summary>
+    /// The latest main date among the compartment's members, as the window's bound (so every dated resource is inside it)
+    /// and as the instant it starts at; the session clock when no member has one.
+    /// </summary>
+    private (DateTimeOffset Instant, FhirTemporal Bound) Latest()
+    {
+        FhirTemporal? latest = Compartment.Members
+            .Where(member => ClinicalRules.MainDate.ContainsKey(member.ResourceType))
+            .Select(member => Elements.Get(member) is { } element ? ClinicalValues.MainDate(member.ResourceType, element) : null)
+            .OfType<FhirTemporal>()
+            .Max();
+        if (latest is null || CohortInstant.Parse(latest.Literal) is not { } start)
+        {
+            return Given(Session.UtcNow());
+        }
+
+        return (new DateTimeOffset(start.UtcTicks - (start.UtcTicks % TimeSpan.TicksPerSecond), TimeSpan.Zero), latest);
     }
 
     /// <summary>The Patient's demographics.</summary>
@@ -225,7 +268,7 @@ internal sealed class PatientContext
         CodedConcept? concept = codes.Count > 0 ? codes[0] : null;
         List<CatalogEntry> sources = [resource];
         List<AbsentItem> absent = [];
-        if (concept is null && type is "MedicationRequest" or "MedicationStatement")
+        if (concept is null && type is "MedicationRequest" or "MedicationStatement" or "MedicationAdministration")
         {
             concept = ReferencedMedication(element, sources, absent);
         }
@@ -280,7 +323,7 @@ internal sealed class PatientContext
             .ThenBy(entry => entry.Resource.Id, StringComparer.Ordinal)];
 
     /// <summary>Whether the date <paramref name="entry"/> shows starts at or before <see cref="AsOf"/>; an undated entry is outside.</summary>
-    private bool InWindow(ContextEntry entry) => entry.Date is { } date && date.CompareTo(_asOf) <= 0;
+    private bool InWindow(ContextEntry entry) => entry.Date is { } date && date.CompareTo(_asOf.Value.Bound) <= 0;
 
     /// <summary>The entries <paramref name="rule"/> keeps, when rules are applied; all of them otherwise.</summary>
     private IReadOnlyList<ContextEntry> Keep(IReadOnlyList<ContextEntry> entries, string rule) =>

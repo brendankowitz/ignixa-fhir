@@ -68,7 +68,7 @@ internal sealed class PatientCompartment
         if (session.FindByName("Patient", patientId) is not { } patient)
         {
             int patients = session.Catalog.Entries.Count(entry => entry.ResourceType == "Patient");
-            throw ToolRequestException.Error("unknown-patient", $"The folder holds no Patient/{patientId} ({patients} Patient resources). Call patient_list (CLI: patients) for the patient ids.");
+            throw ToolRequestException.Error("unknown-patient", $"The folder holds no Patient/{patientId} ({patients} Patient resources). patient_summary also takes an MRN or system|value (CLI: summary); patient_list lists the ids (CLI: patients).");
         }
 
         return new PatientCompartment(session, session.PatientCompartments, patient);

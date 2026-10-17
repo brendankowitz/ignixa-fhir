@@ -121,14 +121,15 @@ public static partial class FolderCodeSystems
 
     /// <summary>
     /// The codes the folder uses whose display (or loaded designation) starts a word with any of the words of <paramref name="text"/>,
-    /// from the search indexes and without terminology or network; see <see cref="FolderCodeText"/>.
+    /// from the search indexes and without terminology or network; see <see cref="FolderCodeText"/>. <paramref name="patient"/>, a
+    /// Patient id, keeps only the codes of that patient's compartment.
     /// </summary>
-    public static ToolEnvelope<CodeTextFacts?> SearchText(FolderSession session, string text, string? resourceType, string? system, int? count, int offset, CancellationToken cancellationToken)
+    public static ToolEnvelope<CodeTextFacts?> SearchText(FolderSession session, string text, string? resourceType, string? system, string? patient, int? count, int offset, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(text);
 
-        return Guarded(session, () => FolderCodeText.Search(session, text, resourceType, system, count, offset, cancellationToken), cancellationToken);
+        return Guarded(session, () => FolderCodeText.Search(session, text, resourceType, system, patient, count, offset, cancellationToken), cancellationToken);
     }
 
     /// <summary>The ten most used systems, for <c>folder_inspect</c>.</summary>
@@ -181,7 +182,7 @@ public static partial class FolderCodeSystems
         }
 
         List<NextCall> next = Next(usages, terminology, session, offset, pageSize, inventory.Systems.Count, topCodes);
-        var facts = new CodeSystemsCompactFacts(inventory.Systems.Count, offset, systems.Count, systems, terminology is null ? "not loaded" : "loaded");
+        var facts = new CodeSystemsCompactFacts(inventory.Systems.Count, offset, systems.Count, systems, terminology is null ? "not loaded" : "loaded", session.Kinds.MixedCounts());
         return EnvelopeAssembler.Create<CodeSystemsCompactFacts?>(session, facts, session.Catalog.BuiltAt, [], omitted, [], issues, cancellationToken) with { Next = next };
     }
 

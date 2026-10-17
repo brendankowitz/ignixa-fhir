@@ -20,6 +20,9 @@ namespace Ignixa.CliOnFhir.Tests;
 
 public class IndexCacheTests
 {
+    // A type file's header is the magic, the layout and the manifest id (64 hex characters, so a one-byte length prefix).
+    private const int ManifestIdOffset = 8 + 4 + 1;
+
     private static readonly string[] FixtureTypes = ["Encounter", "Observation", "Patient"];
 
     private static readonly string[] NotBuilds = ["0123456789abcdef-R4", "packages", "rxclass", "index-notabuild"];
@@ -50,6 +53,23 @@ public class IndexCacheTests
         }
 
         reader.CacheIssues.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenMoreResourcesThanOneSegmentHolds_WhenReloaded_ThenTheSegmentsReadInParallelJoinInCatalogOrder()
+    {
+        int count = TypeIndexFile.SegmentSize * 2 + 17;
+        using TestFolder folder = new TestFolder().Write("patients.ndjson", string.Join('\n', Enumerable.Range(0, count).Select(index =>
+            $$"""{"resourceType":"Patient","id":"p{{index}}","name":[{"family":"F{{index % 97}}"}],"birthDate":"19{{10 + (index % 90)}}-0{{1 + (index % 9)}}-1{{index % 10}}","gender":"{{(index % 2 == 0 ? "female" : "male")}}"}""")));
+        using var cache = new TestFolder();
+
+        ResourceTypeIndex fresh = Open(folder, cache).GetIndex("Patient");
+        ResourceTypeIndex loaded = Open(folder, cache).GetIndex("Patient");
+
+        loaded.FromCache.ShouldBeTrue();
+        loaded.Resources.Count.ShouldBe(count);
+        loaded.Resources.Select(resource => resource.Key.Id).ShouldBe(fresh.Resources.Select(resource => resource.Key.Id));
+        SearchIndexCanon.Describe(loaded).ShouldBe(SearchIndexCanon.Describe(fresh));
     }
 
     [Fact]
@@ -233,7 +253,7 @@ public class IndexCacheTests
         FolderSession first = Open(folder, cache);
         first.GetIndex("Patient");
         first.GetIndex("Encounter");
-        File.WriteAllText(Path.Combine(first.CacheDirectory!, "Patient.index.json"), "{ not json");
+        File.WriteAllText(Path.Combine(first.CacheDirectory!, "Patient.index.bin"), "{ not json");
         FolderSession second = Open(folder, cache);
 
         ResourceTypeIndex patient = second.GetIndex("Patient");
@@ -253,13 +273,14 @@ public class IndexCacheTests
     [InlineData("[]")]
     [InlineData("null")]
     [InlineData("")]
+    [InlineData("CLIOFIDX")]
     public void GivenTypeFileOfTheWrongShape_WhenSessionOpens_ThenItIsRebuiltWithAWarning(string content)
     {
         using TestFolder folder = CreateFixture();
         using var cache = new TestFolder();
         FolderSession first = Open(folder, cache);
         first.GetIndex("Patient");
-        File.WriteAllText(Path.Combine(first.CacheDirectory!, "Patient.index.json"), content);
+        File.WriteAllText(Path.Combine(first.CacheDirectory!, "Patient.index.bin"), content);
         FolderSession second = Open(folder, cache);
 
         second.GetIndex("Patient").FromCache.ShouldBeFalse();
@@ -274,26 +295,33 @@ public class IndexCacheTests
         using var cache = new TestFolder();
         FolderSession first = Open(folder, cache);
         first.GetIndex("Patient");
-        string path = Path.Combine(first.CacheDirectory!, "Patient.index.json");
-        File.WriteAllText(path, File.ReadAllText(path).Replace("\"code\":\"family\"", "\"code\":\"no-such-parameter\"", StringComparison.Ordinal));
+        string path = Path.Combine(first.CacheDirectory!, "Patient.index.bin");
+        ReplaceBytes(path, "family", "fam1ly");
         FolderSession second = Open(folder, cache);
 
         second.GetIndex("Patient").FromCache.ShouldBeFalse();
 
         IssueItem issue = second.CacheIssues.ShouldHaveSingleItem();
         issue.Code.ShouldBe("index-cache-corrupt");
-        issue.Diagnostics.ShouldContain("no-such-parameter");
+        issue.Diagnostics.ShouldContain("fam1ly");
     }
 
     [Fact]
-    public void GivenTypeFileWithAnInvalidValue_WhenSessionOpens_ThenItIsRebuiltWithAWarning()
+    public void GivenTypeFileCutShortOrWithBytesAfterItsEnd_WhenSessionOpens_ThenItIsRebuiltWithAWarning()
     {
         using TestFolder folder = CreateFixture();
         using var cache = new TestFolder();
         FolderSession first = Open(folder, cache);
         first.GetIndex("Patient");
-        string path = Path.Combine(first.CacheDirectory!, "Patient.index.json");
-        File.WriteAllText(path, File.ReadAllText(path).Replace("\"k\":\"string\"", "\"k\":\"mystery\"", StringComparison.Ordinal));
+        string path = Path.Combine(first.CacheDirectory!, "Patient.index.bin");
+        byte[] bytes = File.ReadAllBytes(path);
+        File.WriteAllBytes(path, bytes[..^7]);
+        FolderSession cut = Open(folder, cache);
+
+        cut.GetIndex("Patient").FromCache.ShouldBeFalse();
+        cut.CacheIssues.ShouldHaveSingleItem().Code.ShouldBe("index-cache-corrupt");
+
+        File.WriteAllBytes(path, [.. bytes, 0]);
         FolderSession second = Open(folder, cache);
 
         second.GetIndex("Patient").FromCache.ShouldBeFalse();
@@ -436,7 +464,7 @@ public class IndexCacheTests
         session.CacheDirectory.ShouldNotBeNull().ShouldStartWith(cache.Path);
         session.CacheDirectory.ShouldEndWith("-R4");
         Directory.EnumerateFiles(session.CacheDirectory).Select(Path.GetFileName).Order(StringComparer.Ordinal)
-            .ShouldBe(["Encounter.index.json", "Observation.index.json", "Patient.index.json", "manifest.json"]);
+            .ShouldBe(["Encounter.index.bin", "Observation.index.bin", "Patient.index.bin", "manifest.json"]);
     }
 
     [Fact]
@@ -743,38 +771,26 @@ public class IndexCacheTests
     }
 
     [Theory]
-    [InlineData("resources-null")]
-    [InlineData("resources-null-element")]
-    [InlineData("resource-without-id")]
-    [InlineData("entries-null")]
-    [InlineData("entries-null-element")]
-    [InlineData("diagnostics-null")]
-    [InlineData("diagnostics-null-element")]
-    [InlineData("indexed-type-missing")]
     [InlineData("duplicate-resource")]
-    public void GivenTypeFileWithNullOrDuplicateMembers_WhenSessionOpens_ThenTheTypeIsRebuiltWithAWarningInsteadOfFailing(string damage)
+    [InlineData("uncatalogued-resource")]
+    [InlineData("other-type")]
+    [InlineData("other-catalog-count")]
+    public void GivenTypeFileThatDisagreesWithTheCatalog_WhenSessionOpens_ThenTheTypeIsRebuiltWithAWarningInsteadOfFailing(string damage)
     {
         using TestFolder folder = CreateFixture();
         using var cache = new TestFolder();
         FolderSession first = Open(folder, cache);
-        first.GetIndex("Observation");
-        string path = Path.Combine(first.CacheDirectory!, "Observation.index.json");
-        JsonNode index = JsonNode.Parse(File.ReadAllText(path))!;
-        JsonNode firstResource = index["resources"]![0]!;
-        switch (damage)
+        ResourceTypeIndex built = first.GetIndex("Observation");
+        string path = Path.Combine(first.CacheDirectory!, "Observation.index.bin");
+        IndexedResource firstResource = built.Resources[0];
+        (ResourceTypeIndex damaged, int catalogCount) = damage switch
         {
-            case "resources-null": index["resources"] = null; break;
-            case "resources-null-element": index["resources"]!.AsArray().Add(null); break;
-            case "resource-without-id": firstResource.AsObject().Remove("id"); break;
-            case "entries-null": firstResource["entries"] = null; break;
-            case "entries-null-element": firstResource["entries"]!.AsArray().Add(null); break;
-            case "diagnostics-null": index["diagnostics"] = null; break;
-            case "diagnostics-null-element": index["diagnostics"]!.AsArray().Add(null); break;
-            case "indexed-type-missing": index.AsObject().Remove("indexedType"); break;
-            default: index["resources"]!.AsArray().Add(firstResource.DeepClone()); break;
-        }
-
-        File.WriteAllText(path, index.ToJsonString());
+            "duplicate-resource" => (built with { Resources = [.. built.Resources, firstResource] }, 2),
+            "uncatalogued-resource" => (built with { Resources = [firstResource with { Key = firstResource.Key with { Id = "nope" } }] }, 2),
+            "other-type" => (built with { ResourceType = "Encounter" }, 2),
+            _ => (built, 3),
+        };
+        RewriteTypeFile(path, damaged, catalogCount);
         FolderSession second = Open(folder, cache);
 
         ResourceTypeIndex observation = second.GetIndex("Observation");
@@ -865,11 +881,8 @@ public class IndexCacheTests
         using var cache = new TestFolder();
         FolderSession first = Open(folder, cache);
         first.GetIndex("Patient");
-        string path = Path.Combine(first.CacheDirectory!, "Patient.index.json");
-        JsonNode index = JsonNode.Parse(File.ReadAllText(path))!;
-        index["manifestId"] = "0000";
-        index["resources"] = new JsonObject();
-        File.WriteAllText(path, index.ToJsonString());
+        string path = Path.Combine(first.CacheDirectory!, "Patient.index.bin");
+        RebindTypeFile(path, new string('0', 64), cutBody: true);
         FolderSession second = Open(folder, cache);
 
         second.GetIndex("Patient").FromCache.ShouldBeFalse();
@@ -1089,22 +1102,6 @@ public class IndexCacheTests
     }
 
     [Fact]
-    public void GivenTypeFileRepeatingAMemberName_WhenSessionOpens_ThenItIsCorruptAndRebuilt()
-    {
-        using TestFolder folder = CreateFixture();
-        using var cache = new TestFolder();
-        FolderSession first = Open(folder, cache);
-        first.GetIndex("Patient");
-        string path = Path.Combine(first.CacheDirectory!, "Patient.index.json");
-        File.WriteAllText(path, File.ReadAllText(path).Replace("\"catalogEntryCount\":", "\"catalogEntryCount\":0,\"catalogEntryCount\":", StringComparison.Ordinal));
-        FolderSession second = Open(folder, cache);
-
-        second.GetIndex("Patient").FromCache.ShouldBeFalse();
-
-        second.CacheIssues.ShouldHaveSingleItem().Code.ShouldBe("index-cache-corrupt");
-    }
-
-    [Fact]
     public void GivenRelativeLinkWithParentSegmentThroughAnotherLink_WhenCacheIsPlacedAtIt_ThenItIsResolvedLikeTheOperatingSystemAndRefused()
     {
         if (OperatingSystem.IsWindows())
@@ -1236,17 +1233,46 @@ public class IndexCacheTests
         byte[] manifestBytes = System.Text.Encoding.UTF8.GetBytes(manifest.ToJsonString());
         File.WriteAllBytes(manifestPath, manifestBytes);
         string manifestId = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(manifestBytes));
-        foreach (string typeFile in Directory.EnumerateFiles(cacheDirectory, "*.index.json"))
+        foreach (string typeFile in Directory.EnumerateFiles(cacheDirectory, "*" + TypeIndexFile.Suffix))
         {
-            JsonNode index = JsonNode.Parse(File.ReadAllText(typeFile))!;
-            index["manifestId"] = manifestId;
-            if (typeFilesInOlderShape)
-            {
-                index["resources"] = new JsonObject();
-            }
-
-            File.WriteAllText(typeFile, index.ToJsonString());
+            RebindTypeFile(typeFile, manifestId, cutBody: typeFilesInOlderShape);
         }
+    }
+
+    /// <summary>Names <paramref name="manifestId"/> in the type file's header; <paramref name="cutBody"/> leaves nothing readable after it.</summary>
+    private static void RebindTypeFile(string path, string manifestId, bool cutBody)
+    {
+        byte[] bytes = File.ReadAllBytes(path);
+        System.Text.Encoding.ASCII.GetBytes(manifestId).CopyTo(bytes, ManifestIdOffset);
+        File.WriteAllBytes(path, cutBody ? bytes[..(ManifestIdOffset + manifestId.Length + 3)] : bytes);
+    }
+
+    /// <summary>Writes <paramref name="index"/> over the type file at <paramref name="path"/>, under the manifest the file names.</summary>
+    private static void RewriteTypeFile(string path, ResourceTypeIndex index, int catalogEntryCount)
+    {
+        string manifestId = System.Text.Encoding.ASCII.GetString(File.ReadAllBytes(path), ManifestIdOffset, 64);
+        using var stream = new FileStream(path, FileMode.Create, FileAccess.Write);
+        TypeIndexFile.Write(stream, manifestId, catalogEntryCount, index);
+    }
+
+    /// <summary>Replaces every occurrence of <paramref name="text"/> in the file with <paramref name="replacement"/> of the same length.</summary>
+    private static void ReplaceBytes(string path, string text, string replacement)
+    {
+        byte[] bytes = File.ReadAllBytes(path);
+        byte[] from = System.Text.Encoding.UTF8.GetBytes(text);
+        byte[] to = System.Text.Encoding.UTF8.GetBytes(replacement);
+        int found = 0;
+        int at = bytes.AsSpan().IndexOf(from);
+        while (at >= 0)
+        {
+            to.CopyTo(bytes, at);
+            found++;
+            int next = bytes.AsSpan(at + 1).IndexOf(from);
+            at = next < 0 ? -1 : at + 1 + next;
+        }
+
+        found.ShouldBeGreaterThan(0);
+        File.WriteAllBytes(path, bytes);
     }
 
     private static string DirectoryOf(FolderSession session)

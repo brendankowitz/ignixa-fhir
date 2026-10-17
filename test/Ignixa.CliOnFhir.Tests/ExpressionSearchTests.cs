@@ -121,14 +121,18 @@ public class ExpressionSearchTests
     [InlineData(3, 0, null)]
     [InlineData(null, 1, null)]
     [InlineData(null, 0, "_count=2")]
-    public void GivenPaging_WhenEvaluated_ThenTheCallFailsBecauseTheExpressionSeesEveryMatch(int? count, int offset, string? countParameter)
+    public void GivenPaging_WhenEvaluated_ThenThePagingIsIgnoredWithAWarningAndTheExpressionSeesEveryMatch(int? count, int offset, string? countParameter)
     {
         using TestFolder folder = Synthea();
         SearchRequest request = Labs("entry.count()", countParameter is null ? A1c : $"{A1c}&{countParameter}") with { Count = count, Offset = offset };
 
         ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), request);
+        ToolEnvelope<SearchFacts?> unpaged = ResourceSearcher.Search(Open(folder), Labs("entry.count()"));
 
-        Error(envelope).Diagnostics.ShouldContain("do not apply");
+        envelope.Facts.ShouldNotBeNull().Value!.ToJsonString().ShouldBe(unpaged.Facts.ShouldNotBeNull().Value!.ToJsonString());
+        IssueItem adjusted = envelope.Issues.ShouldHaveSingleItem();
+        adjusted.Code.ShouldBe("argument-adjusted");
+        adjusted.Diagnostics.ShouldContain("'offset' were ignored");
     }
 
     [Fact]

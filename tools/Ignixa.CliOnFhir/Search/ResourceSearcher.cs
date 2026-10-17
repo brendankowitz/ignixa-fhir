@@ -94,8 +94,9 @@ public static class ResourceSearcher
     /// <exception cref="ToolRequestException">The query cannot be parsed.</exception>
     internal static (ParsedSearch Parsed, List<IssueItem> Issues, List<OmittedItem> Omitted) Parse(FolderSession session, SearchRequest request)
     {
-        ParsedSearch parsed = session.QueryParser.Parse(request with { Query = DigestIdQuery.Rewrite(session, request.ResourceType, request.Query) });
-        List<IssueItem> issues = [];
+        (string? query, IReadOnlyList<IssueItem> profileNames) = SearchKinds.ExpandProfileNames(session, request.ResourceType, DigestIdQuery.Rewrite(session, request.ResourceType, request.Query));
+        ParsedSearch parsed = session.QueryParser.Parse(request with { Query = query });
+        List<IssueItem> issues = [.. profileNames];
         int ignored = 0;
         foreach (IssueItem warning in parsed.Warnings)
         {
@@ -131,8 +132,10 @@ public static class ResourceSearcher
         _ = Evaluate(engine, parsed);
     }
 
-    private static ToolEnvelope<SearchFacts?> Execute(FolderSession session, SearchRequest request, int extraBytes, CancellationToken cancellationToken)
+    private static ToolEnvelope<SearchFacts?> Execute(FolderSession session, SearchRequest asked, int extraBytes, CancellationToken cancellationToken)
     {
+        // The adjusted request is the one answered, so next calls repeat it rather than the conflict.
+        (SearchRequest request, IReadOnlyList<IssueItem> adjustments) = LenientArguments.Apply(asked);
         ValidatePaging(request);
         (ParsedSearch parsed, List<IssueItem> issues, List<OmittedItem> parseOmitted) = Parse(session, request);
         string? perPatientSort = null;
@@ -145,27 +148,22 @@ public static class ResourceSearcher
             }
         }
 
+        issues.InsertRange(0, adjustments);
+
+        // LenientArguments has already kept columns over fhirpath and dropped paging beside fhirpath.
         IReadOnlyList<ColumnSearch.CompiledColumn>? columns = null;
         FhirPath.Expressions.Expression? expression = null;
-        if (request.Columns is not null && request.FhirPath is not null)
-        {
-            throw ToolRequestException.Error("invalid-parameter", "Pass either 'columns' (a row per match) or 'fhirpath' (one value over every match), not both.");
-        }
-
         if (request.Columns is { } requested)
         {
             RefuseBesideProjection("columns", request, parsed);
             columns = ColumnSearch.Compile(requested);
+            issues.AddRange(FhirPathHints.ForColumns(session.Schema, request.ResourceType, columns));
         }
         else if (request.FhirPath is { } text)
         {
             RefuseBesideProjection("fhirpath", request, parsed);
-            if (request.Count is not null || request.Offset != 0 || parsed.RequestedCount is not null)
-            {
-                throw ToolRequestException.Error("invalid-parameter", "'fhirpath' is evaluated once over every match, so 'count', '_count' and 'offset' do not apply; leave them out.");
-            }
-
             expression = ExpressionSearch.Compile(text);
+            issues.AddRange(FhirPathHints.ForFhirPath(session.Schema, request.ResourceType, expression));
         }
 
         int count = columns is null
@@ -177,11 +175,21 @@ public static class ResourceSearcher
         var source = new FolderSearchSource(session);
         var engine = new InMemorySearchEngine(source, Features, session.Compartments);
         List<IndexedResource> matches = Match(engine, source, parsed);
+        if (matches.Count == 0)
+        {
+            issues.AddRange(SearchCodeHints.ForEmptyResult(session, request.ResourceType, parsed, cancellationToken));
+        }
+
         PerPatientFacts? perPatient = null;
         if (request.PerPatient is { } chosen)
         {
             (matches, perPatient) = PerPatient.Select(session, request.ResourceType, matches, chosen, perPatientSort);
             budget -= PerPatient.SizeOf(perPatient);
+        }
+
+        if (SearchKinds.Mixed(session, request.ResourceType, matches) is { } mixed)
+        {
+            issues.Add(mixed);
         }
 
         // The selection's facts are added to whichever response the search gives; the budget above kept room for them.

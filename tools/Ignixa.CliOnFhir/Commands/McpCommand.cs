@@ -44,10 +44,17 @@ internal static class McpCommand
             }
         });
 
+        var toolsetOption = new Option<McpToolset>("--toolset")
+        {
+            Description = "query (default): the tools agents use to answer questions; all: every tool, operation and the fhirpath mode. Every CLI verb works whatever the toolset",
+            DefaultValueFactory = _ => McpToolset.Query,
+        };
+
         var command = new Command("mcp", "Serve a folder of FHIR data to an agent over MCP (stdio)");
         command.Arguments.Add(pathArgument);
         command.Options.Add(versionOption);
         command.Options.Add(maxResponseBytesOption);
+        command.Options.Add(toolsetOption);
         CommonOptions.AddCacheOptions(command, cacheDirOption, noCacheOption);
         terminology.AddTo(command);
 
@@ -58,6 +65,7 @@ internal static class McpCommand
             IndexCacheOptions cacheOptions = CommonOptions.ResolveCache(parseResult, cacheDirOption, noCacheOption);
             TerminologyOptions terminologyOptions = terminology.Resolve(parseResult, cacheDirOption);
             int maxResponseBytes = parseResult.GetValue(maxResponseBytesOption);
+            McpToolset toolset = parseResult.GetValue(toolsetOption);
 
             HostApplicationBuilder builder = Host.CreateEmptyApplicationBuilder(new HostApplicationBuilderSettings { Args = [] });
             builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
@@ -71,9 +79,11 @@ internal static class McpCommand
                 terminology: terminologyOptions,
                 maxResponseBytes: maxResponseBytes));
             builder.Services.AddHostedService<SessionWarmup>();
-            McpServerSetup.AddTools(builder.Services
-                .AddMcpServer(options => McpServerSetup.Configure(options))
-                .WithStdioServerTransport());
+            McpServerSetup.AddTools(
+                builder.Services
+                    .AddMcpServer(options => McpServerSetup.Configure(options, toolset))
+                    .WithStdioServerTransport(),
+                toolset);
 
             await builder.Build().RunAsync(cancellationToken);
             return 0;

@@ -34,8 +34,9 @@ internal static class FolderCodeText
 
     private static readonly (string Type, string Argument)[] CohortTypes = [("Condition", "conditions"), ("MedicationRequest", "medications"), ("Immunization", "immunizations")];
 
-    /// <exception cref="ToolRequestException">No usable word, an unknown resource type, or a bad page.</exception>
-    public static ToolEnvelope<CodeTextFacts?> Search(FolderSession session, string text, string? resourceType, string? system, int? count, int offset, CancellationToken cancellationToken)
+    /// <param name="patient">A Patient id: only the resources of its compartment are read; null reads the whole folder.</param>
+    /// <exception cref="ToolRequestException">No usable word, an unknown resource type or patient, or a bad page.</exception>
+    public static ToolEnvelope<CodeTextFacts?> Search(FolderSession session, string text, string? resourceType, string? system, string? patient, int? count, int offset, CancellationToken cancellationToken)
     {
         List<IssueItem> issues = [];
         int pageSize = Paging.Resolve(count ?? DefaultCount, offset, issues);
@@ -51,8 +52,9 @@ internal static class FolderCodeText
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)];
         TerminologyState? terminology = session.Terminology.Current is { IsUnusable: false } loaded ? loaded : null;
+        IReadOnlySet<(string Type, string Id)>? scope = patient is null ? null : CompartmentOf(session, patient);
 
-        Dictionary<(string System, string Code), CodeTally> tallies = ReadTallies(session, types, system, cancellationToken);
+        Dictionary<(string System, string Code), CodeTally> tallies = ReadTallies(session, types, system, scope, cancellationToken);
         List<CodeMatch> matches = [.. tallies
             .Select(pair => new CodeMatch(pair.Key, pair.Value, StoreConcept(terminology, pair.Key)))
             .Where(match => StartsAWord(match.Display, words) || (match.Concept?.Designations.Any(designation => StartsAWord(designation.Value, words)) ?? false))
@@ -61,7 +63,7 @@ internal static class FolderCodeText
             .ThenBy(match => match.Key.Code, StringComparer.Ordinal)];
 
         List<CodeMatch> page = [.. matches.Skip(offset).Take(pageSize)];
-        Dictionary<(string System, string Code), int> patients = PatientsPerCode(session, types, [.. page.Select(match => match.Key)], cancellationToken);
+        Dictionary<(string System, string Code), int> patients = PatientsPerCode(session, types, [.. page.Select(match => match.Key)], scope, cancellationToken);
         List<CodeTextMatch> rows = [.. page.Select(match => new CodeTextMatch(
             CodeAliases.Of(match.Key.System) + "|" + match.Key.Code,
             match.Display is { } display ? display[..Math.Min(display.Length, TermText.MaxShortText)] : null,
@@ -71,8 +73,12 @@ internal static class FolderCodeText
             match.Tally.Types.ContainsKey("Condition") ? match.Tally.Active : null))];
 
         issues.AddRange(Paging.BeyondTotal(offset, matches.Count, "matching codes"));
+        if (matches.Count == 0 && system is not null && UnusedCodeSystemHint.ForSystemArgument(session, resourceType, system, cancellationToken) is { } unused)
+        {
+            issues.Add(unused);
+        }
         List<AbsentItem> absent = matches.Count == 0
-            ? [new AbsentItem("codes whose display matches the words", $"{tallies.Count} distinct codes of {string.Join(", ", types)} in the folder's search indexes{(terminology is null ? string.Empty : " and the displays and designations of the loaded terminology")}", session.Catalog.BuiltAt)]
+            ? [new AbsentItem("codes whose display matches the words", $"{tallies.Count} distinct codes of {string.Join(", ", types)} in {(patient is null ? "the folder's" : $"Patient/{FhirIds.Safe(patient)}'s")} search indexes{(terminology is null ? string.Empty : " and the displays and designations of the loaded terminology")}", session.Catalog.BuiltAt)]
             : [];
 
         // Assembled once: the assembler hands over the session's one-time cache notices, so each candidate size is a copy of it.
@@ -96,10 +102,16 @@ internal static class FolderCodeText
                     args["system"] = system;
                 }
 
+                if (patient is not null)
+                {
+                    args["patient"] = patient;
+                }
+
                 next.Add(new NextCall("folder_code_systems", args));
             }
 
-            if (CohortCall([.. page.Take(kept)]) is { } cohort)
+            // A cohort over one patient's codes counts that patient alone, so only a folder-wide search suggests one.
+            if (patient is null && CohortCall([.. page.Take(kept)]) is { } cohort)
             {
                 next.Add(cohort);
             }
@@ -174,12 +186,22 @@ internal static class FolderCodeText
         return false;
     }
 
-    private static Dictionary<(string System, string Code), CodeTally> ReadTallies(FolderSession session, List<string> types, string? system, CancellationToken cancellationToken)
+    /// <summary>The Patient and the members of its compartment, as (type, id).</summary>
+    private static HashSet<(string Type, string Id)> CompartmentOf(FolderSession session, string patient)
+    {
+        PatientCompartment compartment = PatientCompartment.Load(session, patient);
+        return [(compartment.Patient.ResourceType, compartment.Patient.Id), .. compartment.Members.Select(member => (member.ResourceType, member.Id))];
+    }
+
+    private static bool InScope(IReadOnlySet<(string Type, string Id)>? scope, IndexedResource resource) =>
+        scope is null || scope.Contains((resource.Entry.ResourceType, resource.Entry.Id));
+
+    private static Dictionary<(string System, string Code), CodeTally> ReadTallies(FolderSession session, List<string> types, string? system, IReadOnlySet<(string Type, string Id)>? scope, CancellationToken cancellationToken)
     {
         Dictionary<(string System, string Code), CodeTally> tallies = [];
         foreach (string type in types)
         {
-            foreach (IndexedResource resource in session.GetIndex(type).Resources)
+            foreach (IndexedResource resource in session.GetIndex(type).Resources.Where(resource => InScope(scope, resource)))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 Dictionary<(string System, string Code), string?> codes = [];
@@ -220,7 +242,7 @@ internal static class FolderCodeText
     }
 
     /// <summary>Per code, the patients whose compartment holds a resource carrying it.</summary>
-    private static Dictionary<(string System, string Code), int> PatientsPerCode(FolderSession session, List<string> types, List<(string System, string Code)> codes, CancellationToken cancellationToken)
+    private static Dictionary<(string System, string Code), int> PatientsPerCode(FolderSession session, List<string> types, List<(string System, string Code)> codes, IReadOnlySet<(string Type, string Id)>? scope, CancellationToken cancellationToken)
     {
         Dictionary<(string System, string Code), int> counts = [];
         if (codes.Count == 0)
@@ -232,7 +254,7 @@ internal static class FolderCodeText
         Dictionary<(string Type, string Id), List<(string System, string Code)>> carriers = [];
         foreach (string type in types)
         {
-            foreach (IndexedResource resource in session.GetIndex(type).Resources)
+            foreach (IndexedResource resource in session.GetIndex(type).Resources.Where(resource => InScope(scope, resource)))
             {
                 List<(string System, string Code)> carried = [];
                 foreach (SearchIndexEntry entry in resource.Index)

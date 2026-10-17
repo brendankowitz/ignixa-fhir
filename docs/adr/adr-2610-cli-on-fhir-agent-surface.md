@@ -6,7 +6,8 @@ Proposed
 
 > Shapes what `cli-on-fhir mcp` offers an agent by default from benchmark evidence: a `patient_summary` first call, a
 > small `query` toolset, lenient handling of argument combinations whose intent is clear, and FHIRPath hints from the
-> static analyzer before evaluation. Implemented as cli-on-fhir V14.
+> static analyzer before evaluation. Implemented as cli-on-fhir V14; V15 adds grounded hints and V17 record kinds and report
+> text (see Consequences).
 
 ## Context
 
@@ -138,17 +139,22 @@ hints:
 
 The engine must not reject an expression the evaluator answers. So only the unknown-element finding blocks, and only on a
 concrete type. Everything the analyzer cannot decide (after `resolve()`, on an abstract `Resource`, an unknown function
-such as `patientSearch`) produces no issue at all. Three analyzer defects surfaced while measuring this against the
+such as `patientSearch`) produces no issue at all. Four analyzer defects surfaced while measuring this against the
 expressions the tool's own tests and help use, and they are fixed in Core:
 
 - a lower-case element named like a resource type (`medication`, `encounter`) was typed as that resource;
 - every element on an abstract `Resource` focus was an error;
-- `ofType(Observation)` on a `Resource` focus was "always empty".
+- `ofType(Observation)` on a `Resource` focus was "always empty";
+- an unknown function's result took its focus's type, so navigation after `patientSearch()` was checked against Patient.
+
+Unresolved properties become structured issues (`ValidationIssueKind.UnresolvedProperty` with the property and focus
+types), so the hint is built from the schema rather than from message text.
 
 ### 5. A smaller menu and help
 
-The `query` menu, with the instructions, is held to a test budget of 2,000 tokens (V13: 2,985 for everything). `all` keeps
-the V13 budget. `help` lists only the topics of the toolset in use.
+The `query` menu, with the instructions, is held to a test budget of 2,000 tokens (V13: 2,985 for everything; V14 measures
+1,760). `all` gains `patient_summary` and is held to 3,300 (V14: 3,188). Both are measured with LF line breaks, since a
+CRLF checkout adds a character per description line. `help` lists only the topics of the toolset in use.
 
 ## Consequences
 
@@ -169,7 +175,38 @@ the V13 budget. `help` lists only the topics of the toolset in use.
   well under the 87 in 548 of V13); `help` calls per attempt; and whether `patient_summary` as the first call (the
   instructed route, no map in the prompt) matches the warm-map arm. If it does, the bench can drop the prompt-injected map
   in favour of the resource template.
+- **The resource URI puts the id in the authority.** `patient://{id}/summary` is what was asked for, and hosts that send
+  the URI as written work with any id, MRN or encoded `system|value`. A client that normalizes it through a URI parser
+  (`System.Uri` does) lowercases the authority, so a mixed-case id names nobody, and an unencoded `|` or `:` is not a
+  valid host. A path form (`patient:///summary/{id}`, or `patient://summary/{id}`) avoids both; decide before hosts
+  depend on the template.
 - **Reversibility.** `--toolset all` restores the V13 surface, less the failure modes the lenient rules remove.
+- **V15 adds four grounded hints** from the MAI-Code-1.1-Flash transcript on the "LDL not at goal" cohort (it searched
+  ICD-10 codes in a SNOMED-only folder, let `asOf` default to the clock two months after the data, and met an empty cohort
+  with no reason). Each states a fact the tool computed and is silent otherwise: `code-system-not-in-folder`,
+  `asOfSource` with an `asof-after-data` warning, `cohort-empty-step`, and a "values disagree at the same time" extension of
+  the `patient_summary` quirk for one analyte under several LOINC codes. They live in issue text and help topics, so the
+  menu and instructions budgets are unchanged. See the README section "Grounded hints (V15)".
+- **V17 adds record kinds, report text and a binary index cache**, from 80 FHIR-AgentBench questions over the MIMIC-IV demo
+  on FHIR, where GPT-6 Luna scored 51/80 with the tool against 57/80 shell-only: MIMIC keeps hospital, ED and ICU encounters
+  and chart, lab and output events in one type each, which a shell sees as file names and a merged search hides ("hospital
+  visits" counted 4 for a gold of 2).
+  - *Kinds.* A resource's kind is its `meta.profile`, else an Encounter's `class` or an Observation's `category`, split by
+    `identifier.system` when every resource of that kind has one system and they differ. The split is needed on this corpus:
+    all MIMIC encounters carry the one profile `mimic-encounter`, and only `identifier.system` (`encounter-hosp`, `-ed`,
+    `-icu`) tells them apart; `class` cannot, since hospital admissions are also `EMER`. Kinds are read by the catalog sniffer,
+    counted in `folder_code_systems` / `folder_inspect` and `patient_summary` (`facts.kinds`, types of more than one kind
+    only), shown per row by the `%kind` column, and a search whose matches mix kinds gets a `results-mix-kinds` note with
+    each kind's count and filter. `_profile` takes a profile's short name. A folder with one kind per type is unchanged.
+  - *Report text.* `read_resources` decodes inline text/plain and text/html attachments of DiagnosticReport and
+    DocumentReference into `facts.texts` (HTML stripped by fixed rules, 4,000 bytes each with a truncation marker) and lists a
+    DocumentReference's `relatesTo` chain in `facts.versions`, so the tool knows what a shell gets from `base64 -d`.
+  - *Load time.* A new MCP process paid 22 s to load MIMIC's Observation index from 1.5 GB of JSON, more than the 15 s build.
+    The type index is now a binary file (strings written once per segment, dates as ticks, 190 MB) read in parallel segments
+    from a memory map: Observation loads in 1.1 s, a cold compartment Observation search takes 4.7 s (was 24.0 s) and a cold
+    folder-wide `patient_cohort` 5.4 s (was 26.2 s), with identical results. `patient_summary` was never index-bound: its cold
+    6.5 s (5.8 s at V16) is the 1.8 s catalog walk and about 4 s building the map from some 30K compartment resources.
+  - *Budgets.* The MIMIC map grows by about 350 bytes (4.5 to 4.9 KB for MRN 10021487); the menu budgets are unchanged.
 
 ## References
 

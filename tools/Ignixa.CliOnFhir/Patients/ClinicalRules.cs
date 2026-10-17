@@ -30,9 +30,24 @@ internal static class ClinicalRules
     /// <summary>A MedicationRequest or MedicationStatement is an active medication: active, and not an order not to give it.</summary>
     public const string ActiveMedication = "status = 'active' and (doNotPerform.empty() or doNotPerform = false)";
 
-    /// <summary>An Observation counts as a lab or vital sign: its category says so, or it has no category.</summary>
+    /// <summary>
+    /// An Observation counts as a lab or vital sign unless the HL7 observation-category system places it elsewhere: its category
+    /// is laboratory or vital-signs, or it has no category, or none of its categories is coded in that system (a local
+    /// category such as MIMIC's "Routine Vital Signs" says nothing the rule can read, so it is not taken as "not a lab").
+    /// </summary>
     public const string LabCategory =
-        "category.empty() or category.coding.where(system = 'http://terminology.hl7.org/CodeSystem/observation-category' and (code = 'laboratory' or code = 'vital-signs')).exists()";
+        "category.empty()"
+        + " or category.coding.where(system = 'http://terminology.hl7.org/CodeSystem/observation-category' and (code = 'laboratory' or code = 'vital-signs')).exists()"
+        + " or category.coding.where(system = 'http://terminology.hl7.org/CodeSystem/observation-category').empty()";
+
+    /// <summary>The category an Observation is counted under in the map: the code of its first category coding with one.</summary>
+    public const string FirstCategoryCode = "category.coding.where(code.exists()).code.first()";
+
+    /// <summary>A Condition with no clinical status: unknown, not inactive (R4 requires one only on a problem-list item).</summary>
+    public const string NoClinicalStatus = "clinicalStatus.empty() and verificationStatus.coding.where(system = 'http://terminology.hl7.org/CodeSystem/condition-ver-status' and (code = 'refuted' or code = 'entered-in-error')).empty()";
+
+    /// <summary>Where an Encounter's patient was, one entry per location stay; more than one means a transfer.</summary>
+    public const string EncounterLocations = "location";
 
     /// <summary>An Observation that records a result: not cancelled or entered in error.</summary>
     public const string Recorded = "status != 'cancelled' and status != 'entered-in-error'";
@@ -135,7 +150,7 @@ internal static class ClinicalRules
     {
         IEnumerable<string> all =
         [
-            ActiveCondition, ActiveMedication, Recorded, RecordedEncounter, LabCategory, LabKeyCoding, QuantityValue, ReasonReferences, ReasonCodes, MedicationReference,
+            ActiveCondition, ActiveMedication, Recorded, RecordedEncounter, LabCategory, FirstCategoryCode, NoClinicalStatus, EncounterLocations, LabKeyCoding, QuantityValue, ReasonReferences, ReasonCodes, MedicationReference,
             .. PatientName, .. MainDate.Values.SelectMany(expressions => expressions), .. MainCode.Values, .. StatusCode.Values,
         ];
         foreach (string expression in all)

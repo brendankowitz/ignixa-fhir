@@ -83,10 +83,9 @@ public class PerPatientSearchTests
     }
 
     [Theory]
-    [InlineData(PerPatient.Latest, Ldl + "&_sort=-date", "leave _sort out")]
     [InlineData(PerPatient.First, Ldl, "has no _sort")]
     [InlineData("newest", Ldl, "'perPatient' takes")]
-    public void GivenAPickAndSortThatDisagree_WhenSearched_ThenTheCallFailsSayingWhatToChange(string pick, string query, string message)
+    public void GivenAPickThatCannotBeApplied_WhenSearched_ThenTheCallFailsSayingWhatToChange(string pick, string query, string message)
     {
         using TestFolder folder = Cohort();
 
@@ -214,5 +213,23 @@ public class PerPatientSearchTests
 
         Ids(envelope).ShouldBe(["shared"]);
         envelope.Facts.ShouldNotBeNull().PerPatient.ShouldBe(new PerPatientFacts(PerPatient.Latest, "-date", Matches: 3, Patients: 2, Kept: 1, WithoutPatient: 1));
+    }
+
+    // V14 lenient rule (ADR 2610); at V13 this failed asking to leave _sort out.
+    [Theory]
+    [InlineData(PerPatient.Latest, "_sort=-date")]
+    [InlineData(PerPatient.Earliest, "_sort=value-quantity")]
+    public void GivenADatePickWithASortOfItsOwn_WhenSearched_ThenTheSortIsDroppedWithAWarning(string pick, string sort)
+    {
+        using TestFolder folder = Cohort();
+
+        ToolEnvelope<SearchFacts?> sorted = ResourceSearcher.Search(Open(folder), Labs(pick, $"{Ldl}&{sort}"));
+        ToolEnvelope<SearchFacts?> plain = ResourceSearcher.Search(Open(folder), Labs(pick));
+
+        Ids(sorted).ShouldBe(Ids(plain));
+        IssueItem adjusted = sorted.Issues[0];
+        adjusted.Code.ShouldBe("argument-adjusted");
+        adjusted.Diagnostics.ShouldContain($"perPatient={pick} orders the matches by date itself");
+        sorted.Issues.Skip(1).ShouldBe(plain.Issues);
     }
 }

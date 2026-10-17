@@ -43,6 +43,8 @@ internal sealed class CohortEvaluation
     private readonly List<CohortStep> _steps = [];
     private DateTimeOffset _builtAt;
     private int _read;
+    private bool _explainedEmpty;
+    private (int Resources, int Patients) _lastSearch;
 
     /// <param name="session">The folder.</param>
     /// <param name="request">The checked request.</param>
@@ -100,24 +102,30 @@ internal sealed class CohortEvaluation
         _patients.AddRange(index.Resources.Select(resource => resource.Entry));
         _remaining.UnionWith(_patients.Select(patient => patient.Id));
         _steps.Add(new CohortStep("patients", "every Patient in the folder", _remaining.Count));
+        if (_remaining.Count == 0)
+        {
+            ExplainEmpty("patients", "the folder has no Patient resources.");
+        }
 
         DateTimeOffset asOf = _request.AsOf;
         if (_request.LivingOnly)
         {
+            int before = _remaining.Count;
             Keep(patient => CohortRules.Living(patient, asOf));
-            _steps.Add(new CohortStep("living", "alive at asOf: no deceasedBoolean true and no deceasedDateTime at or before asOf", _remaining.Count));
+            AddDemographicStep("living", "alive at asOf: no deceasedBoolean true and no deceasedDateTime at or before asOf", before);
         }
 
         if (_request.AgeMin is not null || _request.AgeMax is not null)
         {
             int unknown = 0;
+            int before = _remaining.Count;
             Keep(patient =>
             {
                 int? age = CohortRules.Age(patient, asOf);
                 unknown += age is null ? 1 : 0;
                 return age is { } years && !(years < _request.AgeMin) && !(years > _request.AgeMax);
             });
-            _steps.Add(new CohortStep("age", $"whole years at asOf from birthDate: {Band(_request.AgeMin, _request.AgeMax)}", _remaining.Count));
+            AddDemographicStep("age", $"whole years at asOf from birthDate: {Band(_request.AgeMin, _request.AgeMax)}", before);
             if (unknown > 0)
             {
                 _issues.Add(new IssueItem("warning", "age-unknown", $"{unknown} patients have no full birthDate (YYYY-MM-DD), so their age at asOf is unknown and they were left out by the age criterion.", Location: null));
@@ -126,8 +134,9 @@ internal sealed class CohortEvaluation
 
         if (_request.Gender is { } gender)
         {
+            int before = _remaining.Count;
             Keep(patient => ClinicalValues.Literal(patient, "gender") == gender);
-            _steps.Add(new CohortStep("gender", $"Patient.gender = {gender}", _remaining.Count));
+            AddDemographicStep("gender", $"Patient.gender = {gender}", before);
         }
     }
 
@@ -141,7 +150,7 @@ internal sealed class CohortEvaluation
         string rule = $"a Condition with one of {Count(codes.Codes)}, {status}, {verification}, onset at or before asOf or not recorded";
         DateTimeOffset asOf = _request.AsOf;
         Dictionary<string, CatalogEntry?> met = Matching(where, "Condition", [$"code={Tokens(codes.Codes)}"], codes.Codes.Count, condition => CohortRules.Condition(condition, criterion, asOf));
-        Apply(where, rule, met, codes);
+        Apply(where, rule, met, codes, why: before => CodedReason("Condition", codes.Codes.Count, before, rule));
     }
 
     private void Medication(int index, MedicationCriterion criterion, CriterionCodes codes)
@@ -152,7 +161,7 @@ internal sealed class CohortEvaluation
         string tokens = Tokens(codes.Codes);
         DateTimeOffset asOf = _request.AsOf;
         Dictionary<string, CatalogEntry?> met = Matching(where, "MedicationRequest", [$"code={tokens}", $"medication:Medication.code={tokens}"], codes.Codes.Count, order => CohortRules.MedicationRequest(order, criterion, asOf));
-        Apply(where, rule, met, codes);
+        Apply(where, rule, met, codes, why: before => CodedReason("MedicationRequest", codes.Codes.Count, before, rule));
     }
 
     private void Immunization(int index, ImmunizationCriterion criterion)
@@ -162,7 +171,7 @@ internal sealed class CohortEvaluation
         string rule = $"a completed Immunization with one of {Count(criterion.Codes)}, {when}";
         DateTimeOffset asOf = _request.AsOf;
         Dictionary<string, CatalogEntry?> met = Matching(where, "Immunization", [$"vaccine-code={Tokens(criterion.Codes)}"], criterion.Codes.Count, immunization => CohortRules.Immunization(immunization, criterion, asOf));
-        Apply(where, rule, met, new CriterionCodes(criterion.Codes, null));
+        Apply(where, rule, met, new CriterionCodes(criterion.Codes, null), why: before => CodedReason("Immunization", criterion.Codes.Count, before, rule));
     }
 
     private void Observation(int index, ObservationCriterion criterion)
@@ -172,6 +181,7 @@ internal sealed class CohortEvaluation
         Dictionary<string, CatalogEntry?> met = new(StringComparer.Ordinal);
         Dictionary<string, int> mismatchedUnits = new(StringComparer.Ordinal);
         int withoutReading = 0;
+        int withReading = 0;
         foreach (string patient in _remaining)
         {
             List<(CatalogEntry Entry, CohortReading Reading)> readings = [.. (candidates.GetValueOrDefault(patient) ?? [])
@@ -189,6 +199,7 @@ internal sealed class CohortEvaluation
                 continue;
             }
 
+            withReading++;
             if (Decide(criterion, readings, mismatchedUnits) is { } deciding)
             {
                 met[patient] = deciding;
@@ -214,7 +225,7 @@ internal sealed class CohortEvaluation
         string comparison = criterion.Comparator is { } comparator ? $" is {Symbol(comparator)} {criterion.Value!.Value.ToString(CultureInfo.InvariantCulture)}{(criterion.Unit is { } unit ? " " + unit : string.Empty)}" : " exists";
         string missing = criterion.IncludeMissing ? "; a patient with no reading in the window counts" : string.Empty;
         string rule = $"{pick} final/amended/corrected reading of one of {Count(criterion.Codes)} (Observation.code or a component) with instant in {criterion.Window.Describe()}{comparison}{missing}";
-        Apply(where, rule, met, new CriterionCodes(criterion.Codes, null), criterion.IncludeMissing ? withoutReading : null);
+        Apply(where, rule, met, new CriterionCodes(criterion.Codes, null), criterion.IncludeMissing ? withoutReading : null, before => ObservationReason(criterion, before, withReading, comparison, rule));
     }
 
     /// <summary>The reading that puts the patient in the cohort, or null when none does.</summary>
@@ -280,6 +291,7 @@ internal sealed class CohortEvaluation
     private Dictionary<string, List<(CatalogEntry Entry, IElement Element)>> Candidates(string where, string resourceType, IReadOnlyList<string> queries)
     {
         Dictionary<string, List<(CatalogEntry, IElement)>> byPatient = new(StringComparer.Ordinal);
+        _lastSearch = (0, 0);
         if (_remaining.Count == 0)
         {
             return byPatient;
@@ -315,6 +327,7 @@ internal sealed class CohortEvaluation
             }
         }
 
+        _lastSearch = (seen.Count, byPatient.Count);
         return byPatient;
     }
 
@@ -371,8 +384,9 @@ internal sealed class CohortEvaluation
         }
     }
 
-    private void Apply(string where, string rule, Dictionary<string, CatalogEntry?> met, CriterionCodes codes, int? withoutReading = null)
+    private void Apply(string where, string rule, Dictionary<string, CatalogEntry?> met, CriterionCodes codes, int? withoutReading = null, Func<int, string>? why = null)
     {
+        int before = _remaining.Count;
         _remaining.IntersectWith(met.Keys);
         foreach ((string patient, CatalogEntry? entry) in met)
         {
@@ -388,6 +402,62 @@ internal sealed class CohortEvaluation
             CodeCount = codes.Found is null ? null : codes.Codes.Count,
             WithoutReading = withoutReading,
         });
+        if (before > 0 && _remaining.Count == 0 && why is not null)
+        {
+            ExplainEmpty(where, why(before));
+        }
+    }
+
+    private void AddDemographicStep(string criterion, string rule, int before)
+    {
+        _steps.Add(new CohortStep(criterion, rule, _remaining.Count));
+        if (before > 0 && _remaining.Count == 0)
+        {
+            ExplainEmpty(criterion, $"it removed all {before} remaining patients ({rule}).");
+        }
+    }
+
+    /// <summary>Names the first step that left no patient, once; later steps start from nothing and say nothing.</summary>
+    private void ExplainEmpty(string step, string reason)
+    {
+        if (_explainedEmpty)
+        {
+            return;
+        }
+
+        _explainedEmpty = true;
+        _issues.Add(new IssueItem("information", "cohort-empty-step", $"{step} is the first step that left no patient: {reason}", Location: null));
+    }
+
+    /// <summary>Why a criterion over codes met no patient, from what its search just matched (<see cref="_lastSearch"/>).</summary>
+    private string CodedReason(string noun, int codeCount, int before, string rule)
+    {
+        if (codeCount == 0)
+        {
+            return "the criterion has no code to search: its valueSet or class lists none that the folder uses.";
+        }
+
+        if (_lastSearch.Resources == 0)
+        {
+            return $"no {noun} in the folder has any of the given codes (0 of {codeCount} given codes occur in the folder).";
+        }
+
+        return _lastSearch.Patients == 0
+            ? $"{_lastSearch.Resources} {noun} resources in the folder have those codes, but none belongs to any of the {before} remaining patients."
+            : $"{_lastSearch.Patients} of the {before} remaining patients have a {noun} with those codes, but none met the rule: {rule}.";
+    }
+
+    private string ObservationReason(ObservationCriterion criterion, int before, int withReading, string comparison, string rule)
+    {
+        if (_lastSearch.Resources == 0 || _lastSearch.Patients == 0)
+        {
+            return CodedReason("Observation", criterion.Codes.Count, before, rule);
+        }
+
+        string needsValue = criterion.Comparator is null ? string.Empty : " and a numeric value";
+        return withReading == 0
+            ? $"{_lastSearch.Patients} of the {before} remaining patients have an Observation with those codes, but none had a reading in the window {criterion.Window.Describe()} (a final, amended or corrected Observation of those codes with an instant in the window{needsValue})."
+            : $"{withReading} of the {before} remaining patients had a reading in the window {criterion.Window.Describe()}, but none met the comparison:{comparison}.";
     }
 
     private static string Tokens(IReadOnlyList<CohortCode> codes) => string.Join(',', codes.Select(code => code.Token));

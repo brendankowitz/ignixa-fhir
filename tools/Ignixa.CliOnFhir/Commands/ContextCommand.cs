@@ -29,7 +29,7 @@ internal static class ContextCommand
         };
         var compactOption = new Option<bool>("--compact")
         {
-            Description = "Print the patient map, exactly what the patient_context MCP tool's root returns by default, instead of the full root digest",
+            Description = "Print the patient map, exactly what the patient_summary MCP tool returns, instead of the full root digest",
         };
         var countOption = new Option<int?>("--count") { Description = $"With --node: items per page (default {ResourceSearcher.DefaultCount}, maximum {ResourceSearcher.MaxCount})" };
         var offsetOption = new Option<int>("--offset") { Description = "With --node: items to skip" };
@@ -74,8 +74,8 @@ internal static class ContextCommand
             int exitCode = parseResult.GetValue(nodeOption) is { } nodeKey
                 ? EnvelopeOutput.Write(ContextExpander.Expand(session, patientId, nodeKey, parseResult.GetValue(countOption), parseResult.GetValue(offsetOption), parseResult.GetValue(elementsOption), parseResult.GetValue(maxBytesOption), cancellationToken), pretty)
                 : parseResult.GetValue(compactOption)
-                    ? EnvelopeOutput.Write(PatientMap.Get(session, patientId, cancellationToken), pretty)
-                    : EnvelopeOutput.Write(ContextRoot.Get(session, patientId, cancellationToken), pretty);
+                    ? EnvelopeOutput.Write(PatientMap.Get(session, patientId, cancellationToken: cancellationToken), pretty)
+                    : EnvelopeOutput.Write(ContextRoot.Get(session, patientId, cancellationToken: cancellationToken), pretty);
             return Task.FromResult(exitCode);
         });
 

@@ -4,12 +4,11 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Serialization;
-using Ignixa.Search.Indexing.SearchValues;
-using Ignixa.Search.Serialization;
 
-namespace Ignixa.CliOnFhir.Caching;
+namespace Ignixa.CliOnFhir.Inspection;
 
-/// <summary>One persisted search index entry: the parameter's code, re-bound to the real definition on load, and its value.</summary>
-internal sealed record CachedEntry(
-    string Code,
-    [property: JsonConverter(typeof(CompactSearchValueConverter))] ISearchValue Value);
+/// <summary>One record kind of a type: its short name, how many resources have it and the search parameters that keep it.</summary>
+public sealed record KindFacts(
+    string Kind,
+    int Count,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Filter);

@@ -85,7 +85,7 @@ public class SearchToolArgumentTests
         {
             ToolCollection = [McpServerTool.Create(typeof(ResourceTools).GetMethod(nameof(ResourceTools.SearchFhirResources))!, tools)],
         };
-        McpServerSetup.Configure(options);
+        McpServerSetup.Configure(options, McpToolset.All);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(60));
 
         await using var serverTransport = new StreamServerTransport(clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream());

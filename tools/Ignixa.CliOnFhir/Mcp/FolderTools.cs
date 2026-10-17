@@ -17,6 +17,10 @@ namespace Ignixa.CliOnFhir.Mcp;
 [McpServerToolType]
 public sealed class FolderTools(FolderSession session)
 {
+    private const string QueryCodeSystemsDescription = """
+        The folder's own codes whose display has a word starting a or b: text=a|b, with resource and patient counts, from the data with no terminology and no network. patient=<id> keeps one patient's codes. Without text: the code systems the codings use.
+        """;
+
     [McpServerTool(Name = "folder_inspect", ReadOnly = true, Idempotent = true)]
     [Description("""
         Folder overview: resource types and counts, patients, top code systems, problems (invalid JSON, duplicate ids). Skip it when you know the patient id and the type.
@@ -28,9 +32,10 @@ public sealed class FolderTools(FolderSession session)
         ToolResults.From(await FolderInspector.InspectAsync(session, issueLimit ?? FolderInspector.DefaultIssueLimit, buildIndexes: false, withTerminology, cancellationToken));
 
     [McpServerTool(Name = "folder_code_systems", ReadOnly = true, Idempotent = true)]
+    [QueryToolset(Description = QueryCodeSystemsDescription, HiddenArguments = ["top", "withTerminology", "detail"])]
     [Description("""
         Code systems the folder's codings use (SNOMED CT, LOINC, RxNorm...), counted from the data with no terminology and no network. top=n adds top codes; detail=full more.
-        text=a|b lists instead the folder's codes whose display has a word starting a or b, with counts.
+        text=a|b lists instead the folder's codes whose display has a word starting a or b, with counts; patient=<id> keeps one patient's.
         """)]
     public async Task<CallToolResult> FolderCodeSystems(
         int? count = null,
@@ -41,18 +46,19 @@ public sealed class FolderTools(FolderSession session)
         [Description("'diabet|glyc'")] string? text = null,
         string? resourceType = null,
         string? system = null,
+        string? patient = null,
         CancellationToken cancellationToken = default)
     {
         if (text is not null)
         {
-            return ToolResults.From(CodeSystems.FolderCodeSystems.SearchText(session, text, resourceType, system, count, offset, cancellationToken));
+            return ToolResults.From(CodeSystems.FolderCodeSystems.SearchText(session, text, resourceType, system, patient, count, offset, cancellationToken));
         }
 
-        if (resourceType is not null || system is not null)
+        if (resourceType is not null || system is not null || patient is not null)
         {
             return ToolResults.From(EnvelopeAssembler.Failure<object>(
                 session,
-                new IssueItem("error", "invalid-parameter", "'resourceType' and 'system' narrow a text search; give 'text' too.", Location: null),
+                new IssueItem("error", "invalid-parameter", "'resourceType', 'system' and 'patient' narrow a text search; give 'text' too.", Location: null),
                 cancellationToken));
         }
 

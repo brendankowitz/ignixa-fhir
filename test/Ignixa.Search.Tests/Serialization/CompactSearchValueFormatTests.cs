@@ -120,7 +120,7 @@ public class CompactSearchValueFormatTests
         return JsonSerializer.Deserialize<List<SearchIndexEntry>>(json, IndexOptions)!.ShouldHaveSingleItem().Value;
     }
 
-    private static List<(string Name, ISearchValue Value)> AllValues() =>
+    internal static List<(string Name, ISearchValue Value)> AllValues() =>
         [.. Tokens(), .. Quantities(), .. Numbers(), .. Strings(), .. References(), .. Dates(), .. Uris(), .. Composites()];
 
     private static IEnumerable<(string, ISearchValue)> Tokens()

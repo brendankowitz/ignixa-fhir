@@ -47,7 +47,6 @@ internal sealed partial class FolderIndexCache
 
     private const string BuildDirectoryPrefix = "index-";
     private const string ManifestFileName = "manifest.json";
-    private const string TypeFileSuffix = ".index.json";
     private const string CompartmentFileSuffix = ".compartments.json";
     private const int FileBufferSize = 1 << 16;
 
@@ -128,33 +127,9 @@ internal sealed partial class FolderIndexCache
         var stopwatch = Stopwatch.StartNew();
         try
         {
-            CachedTypeIndex? cached;
-            using (FileStream stream = OpenShared(path, FileOptions.SequentialScan))
-            {
-                try
-                {
-                    cached = JsonSerializer.Deserialize<CachedTypeIndex>(stream, JsonOptions);
-                }
-                catch (Exception ex) when (IsUnreadableCacheFile(ex) && WrittenUnderAnotherManifest(path, manifestId))
-                {
-                    // A file of an older shape from an older manifest is simply not ours.
-                    return null;
-                }
-            }
-
-            if (cached?.ManifestId is not { } writtenUnder)
-            {
-                throw new InvalidDataException("the file names no manifest.");
-            }
-
-            // Written under a different manifest (an older run, or a concurrent one): not corrupt, just not ours.
-            if (!string.Equals(writtenUnder, manifestId, StringComparison.Ordinal))
-            {
-                return null;
-            }
-
-            cached.Validate();
-            return Materialize(cached, resourceType, stopwatch);
+            // Null when written under a different manifest (an older run, or a concurrent one): not corrupt, just not ours.
+            using FileStream stream = OpenShared(path, FileOptions.RandomAccess);
+            return TypeIndexFile.Read(stream, manifestId, resourceType, EntriesOf(resourceType), _definitions, stopwatch);
         }
         catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
         {
@@ -182,25 +157,14 @@ internal sealed partial class FolderIndexCache
         }
 
         var stopwatch = Stopwatch.StartNew();
-        var cached = new CachedTypeIndex(
-            manifestId,
-            index.ResourceType,
-            EntriesOf(index.ResourceType).Length,
-            index.BuiltAt,
-            index.Diagnostics,
-            [.. index.Resources.Select(resource => CachedResource.From(
-                resource.Key.Id,
-                [.. resource.Index.Select(entry => new CachedEntry(entry.SearchParameter.Code, entry.Value))],
-                resource.BundleReferences))]);
 
-        // A value type the format does not know throws here (a programmer error). Ignixa's compact value format is
-        // lossless for every value the indexer produces (Ignixa.Search.Tests' CompactSearchValueFormatTests), so what is
-        // written reloads as it was built; a file that does not read back is reported as corrupt and rebuilt.
-        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(cached, JsonOptions);
-
+        // A value type the format does not know throws while writing (a programmer error; the partial file is deleted).
+        // The binary value format is lossless for every value the indexer produces (Ignixa.Search.Tests'
+        // SearchValueBinaryFormatTests), so what is written reloads as it was built; a file that does not read back is
+        // reported as corrupt and rebuilt. Written straight to the file: a type index can be hundreds of megabytes.
         try
         {
-            WriteAtomically(TypeFilePath(index.ResourceType), stream => stream.Write(bytes));
+            WriteAtomically(TypeFilePath(index.ResourceType), stream => TypeIndexFile.Write(stream, manifestId, EntriesOf(index.ResourceType).Length, index));
             return stopwatch.ElapsedMilliseconds;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -319,26 +283,8 @@ internal sealed partial class FolderIndexCache
     }
 
     private static bool IsUnreadableCacheFile(Exception ex) =>
-        ex is JsonException or InvalidDataException or ArgumentException or FormatException or InvalidOperationException
+        ex is JsonException or InvalidDataException or EndOfStreamException or ArgumentException or FormatException or InvalidOperationException
             or NotSupportedException or OverflowException or IOException or UnauthorizedAccessException;
-
-    // Reads only as far as needed to tell whether a file that no longer deserializes belongs to another manifest.
-    private static bool WrittenUnderAnotherManifest(string path, string manifestId)
-    {
-        try
-        {
-            using FileStream stream = OpenShared(path, FileOptions.None);
-            using JsonDocument document = JsonDocument.Parse(stream, DocumentOptions);
-            return document.RootElement.ValueKind == JsonValueKind.Object
-                && document.RootElement.TryGetProperty("manifestId", out JsonElement id)
-                && id.ValueKind == JsonValueKind.String
-                && !string.Equals(id.GetString(), manifestId, StringComparison.Ordinal);
-        }
-        catch (Exception ex) when (IsUnreadableCacheFile(ex))
-        {
-            return false;
-        }
-    }
 
     // Delete sharing lets another process replace the file (File.Move over it) while this one is still reading.
     private static FileStream OpenShared(string path, FileOptions options) =>
@@ -381,7 +327,7 @@ internal sealed partial class FolderIndexCache
     private CatalogEntry[] EntriesOf(string resourceType) =>
         [.. _catalog.Entries.Where(entry => string.Equals(entry.ResourceType, resourceType, StringComparison.Ordinal))];
 
-    private string TypeFilePath(string resourceType) => Path.Combine(CacheDirectory!, resourceType + TypeFileSuffix);
+    private string TypeFilePath(string resourceType) => Path.Combine(CacheDirectory!, resourceType + TypeIndexFile.Suffix);
 
     private string CompartmentFilePath(string compartmentType) => Path.Combine(CacheDirectory!, compartmentType + CompartmentFileSuffix);
 
@@ -573,57 +519,4 @@ internal sealed partial class FolderIndexCache
     }
 
     private static string IdOf(byte[] manifestBytes) => Convert.ToHexStringLower(SHA256.HashData(manifestBytes));
-
-    private ResourceTypeIndex Materialize(CachedTypeIndex cached, string resourceType, Stopwatch stopwatch)
-    {
-        if (!string.Equals(cached.IndexedType, resourceType, StringComparison.Ordinal))
-        {
-            throw new InvalidDataException($"the file holds a {cached.IndexedType} index.");
-        }
-
-        CatalogEntry[] entries = EntriesOf(resourceType);
-        if (cached.CatalogEntryCount != entries.Length)
-        {
-            throw new InvalidDataException($"it was written for {cached.CatalogEntryCount} catalogued resources but the folder has {entries.Length}.");
-        }
-
-        Dictionary<string, CatalogEntry> entriesById = entries.ToDictionary(entry => entry.Id, StringComparer.Ordinal);
-        Dictionary<string, SearchParameterInfo> parametersByCode = new(StringComparer.Ordinal);
-        List<IndexedResource> resources = new(cached.Resources.Count);
-        foreach (CachedResource resource in cached.Resources)
-        {
-            if (!entriesById.TryGetValue(resource.Id, out CatalogEntry? entry))
-            {
-                throw new InvalidDataException($"{FhirIds.Reference(resourceType, resource.Id)} is not in the folder's catalog.");
-            }
-
-            resources.Add(new IndexedResource(new ResourceKey(resourceType, resource.Id), entry, Rebind(resource, resourceType, parametersByCode), resource.ToResolution()));
-        }
-
-        return new ResourceTypeIndex(resourceType, resources, cached.Diagnostics, cached.BuiltAt, stopwatch.ElapsedMilliseconds, FromCache: true);
-    }
-
-    // Entries persist only the parameter's code; searching needs the real definition, so every entry is re-pointed
-    // at the session's own and an unknown code invalidates the file.
-    private List<SearchIndexEntry> Rebind(CachedResource resource, string resourceType, Dictionary<string, SearchParameterInfo> parametersByCode)
-    {
-        List<SearchIndexEntry> bound = new(resource.Entries.Count);
-        foreach (CachedEntry entry in resource.Entries)
-        {
-            string code = entry.Code;
-            if (!parametersByCode.TryGetValue(code, out SearchParameterInfo? parameter))
-            {
-                if (!_definitions.TryGetSearchParameter(resourceType, code, out parameter))
-                {
-                    throw new InvalidDataException($"search parameter '{code}' is not defined for {resourceType}.");
-                }
-
-                parametersByCode.Add(code, parameter);
-            }
-
-            bound.Add(new SearchIndexEntry(parameter, entry.Value));
-        }
-
-        return bound;
-    }
 }

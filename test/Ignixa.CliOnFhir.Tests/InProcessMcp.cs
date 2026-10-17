@@ -31,13 +31,31 @@ internal sealed class InProcessMcp : IAsyncDisposable
 
     public CancellationToken CancellationToken => _cancellation.Token;
 
-    /// <summary>Serves the tools of <paramref name="toolTypes"/>, each constructed with <paramref name="constructorArguments"/> (a type with no constructor parameters takes none).</summary>
-    public static async Task<InProcessMcp> StartAsync(IEnumerable<Type> toolTypes, params object?[] constructorArguments)
+    /// <summary>Serves the tools of <paramref name="toolTypes"/> under <see cref="McpToolset.All"/>; see <see cref="StartAsync(McpToolset, IEnumerable{Type}, object?[])"/>.</summary>
+    public static Task<InProcessMcp> StartAsync(IEnumerable<Type> toolTypes, params object?[] constructorArguments) =>
+        StartAsync(McpToolset.All, toolTypes, constructorArguments);
+
+    /// <summary>
+    /// Serves what <paramref name="toolset"/> offers of the tools and resources of <paramref name="toolTypes"/>, built as the
+    /// server builds them; each type is constructed with <paramref name="constructorArguments"/> in order, and the toolset for
+    /// a <see cref="McpToolset"/> parameter.
+    /// </summary>
+    public static async Task<InProcessMcp> StartAsync(McpToolset toolset, IEnumerable<Type> toolTypes, params object?[] constructorArguments)
     {
+        List<Type> types = [.. toolTypes];
         var clientToServer = new Pipe();
         var serverToClient = new Pipe();
-        var options = new McpServerOptions { ToolCollection = [.. toolTypes.SelectMany(type => Tools(type, constructorArguments))] };
-        McpServerSetup.Configure(options);
+        var options = new McpServerOptions
+        {
+            ToolCollection = [.. McpServerSetup.Tools(toolset, (type, _) => Construct(type, toolset, constructorArguments)).Where(tool => types.Contains(DeclaringType(tool)))],
+        };
+        List<McpServerResource> resources = [.. types.Where(McpServerSetup.ResourceTypes.Contains).SelectMany(type => Resources(type, toolset, constructorArguments))];
+        if (resources.Count > 0)
+        {
+            options.ResourceCollection = [.. resources];
+        }
+
+        McpServerSetup.Configure(options, toolset);
         var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(60));
 
         var serverTransport = new StreamServerTransport(clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream());
@@ -57,12 +75,22 @@ internal sealed class InProcessMcp : IAsyncDisposable
         _cancellation.Dispose();
     }
 
-    private static IEnumerable<McpServerTool> Tools(Type type, object?[] constructorArguments)
+    private static Type DeclaringType(McpServerTool tool) =>
+        tool.Metadata.OfType<MethodInfo>().First().DeclaringType!;
+
+    private static IEnumerable<McpServerResource> Resources(Type type, McpToolset toolset, object?[] constructorArguments)
+    {
+        object target = Construct(type, toolset, constructorArguments);
+        return type.GetMethods()
+            .Where(method => method.GetCustomAttribute<McpServerResourceAttribute>() is not null)
+            .Select(method => McpServerResource.Create(method, target));
+    }
+
+    private static object Construct(Type type, McpToolset toolset, object?[] constructorArguments)
     {
         ConstructorInfo constructor = type.GetConstructors().Single();
-        object target = constructor.Invoke(constructor.GetParameters().Length == 0 ? [] : constructorArguments);
-        return type.GetMethods()
-            .Where(method => method.GetCustomAttribute<McpServerToolAttribute>() is not null)
-            .Select(method => method.IsStatic ? McpServerTool.Create(method) : McpServerTool.Create(method, target));
+        int next = 0;
+        object?[] arguments = [.. constructor.GetParameters().Select(parameter => parameter.ParameterType == typeof(McpToolset) ? toolset : constructorArguments[next++])];
+        return constructor.Invoke(arguments);
     }
 }

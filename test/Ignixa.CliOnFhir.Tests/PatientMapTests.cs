@@ -34,7 +34,7 @@ public class PatientMapTests
     {
         using TestFolder folder = Layout(layout);
 
-        PatientMapFacts facts = PatientMap.Get(Open(folder), "p1").Facts.ShouldNotBeNull();
+        PatientMapFacts facts = PatientMap.Get(Open(folder), "p1", AsOf).Facts.ShouldNotBeNull();
 
         facts.Demographics.ShouldBe(new Demographics("Patient/p1", "Ann B Smith", "female", "1975-03-04", null));
         facts.Record.Resources.ShouldBe(32);
@@ -52,7 +52,7 @@ public class PatientMapTests
         facts.Domains["labs"].More.ShouldNotBeNull().ShouldContain("loinc|8480-6 Systolic blood pressure");
         facts.Domains["labs"].Excluded.ShouldBe(3);
         facts.Domains["immunizations"].ShouldBe(new MapDomain(0));
-        facts.CodeSystems.Take(3).ShouldBe(["loinc=http://loinc.org", "http://terminology.hl7.org/CodeSystem/v3-ActCode", "rxnorm=http://www.nlm.nih.gov/research/umls/rxnorm"]);
+        facts.CodeSystems.Take(3).ShouldBe(["loinc=http://loinc.org", "v3-ActCode=http://terminology.hl7.org/CodeSystem/v3-ActCode", "rxnorm=http://www.nlm.nih.gov/research/umls/rxnorm"]);
         facts.CodeSystems.ShouldContain($"sct={Snomed}");
     }
 

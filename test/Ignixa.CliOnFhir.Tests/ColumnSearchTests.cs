@@ -169,22 +169,17 @@ public class ColumnSearchTests
         Error(envelope).Diagnostics.ShouldContain("could not be evaluated on an empty MedicationRequest");
     }
 
+    // Still refused under the V14 lenient rules: what the caller wanted (a count, included resources) is not decidable.
     [Theory]
     [InlineData("summary", "summary=count")]
-    [InlineData("elements", "'elements'")]
     [InlineData("_include", "_include")]
-    [InlineData("_elements", "'elements'")]
-    [InlineData("fhirpath", "not both")]
     public void GivenColumnsWithSomethingThatReturnsResources_WhenSearched_ThenTheCallFailsWithInvalidParameter(string other, string named)
     {
         using TestFolder folder = Synthea();
         SearchRequest request = other switch
         {
             "summary" => Medications() with { Summary = "count" },
-            "elements" => Medications() with { Elements = "status" },
-            "_include" => Medications(query: "_include=MedicationRequest:requester"),
-            "_elements" => Medications(query: "_elements=status"),
-            _ => Medications() with { FhirPath = "entry.count()" },
+            _ => Medications(query: "_include=MedicationRequest:requester"),
         };
 
         ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), request);
@@ -194,16 +189,55 @@ public class ColumnSearchTests
         error.Diagnostics.ShouldContain(named);
     }
 
-    [Theory]
-    [InlineData("ref", "key column")]
-    [InlineData("", "blank name")]
-    public void GivenAReservedOrBlankColumnName_WhenSearched_ThenTheCallFailsWithInvalidParameter(string name, string named)
+    [Fact]
+    public void GivenABlankColumnName_WhenSearched_ThenTheCallFailsWithInvalidParameter()
     {
         using TestFolder folder = Synthea();
 
-        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), Medications([new(name, "status")]));
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), Medications([new(string.Empty, "status")]));
 
-        Error(envelope).Diagnostics.ShouldContain(named);
+        Error(envelope).Diagnostics.ShouldContain("blank name");
+    }
+
+    // V14 lenient rules (ADR 2610): each failed the call before, and the intent is clear, so the call is answered with a
+    // warning naming what was adjusted. A regression test for each: at V13 every one returned null facts.
+    [Theory]
+    [InlineData("elements", "'elements' was ignored")]
+    [InlineData("_elements", "_elements was dropped")]
+    [InlineData("fhirpath", "'fhirpath' ignored")]
+    public void GivenColumnsWithElementsOrFhirpath_WhenSearched_ThenTheRowsAreReturnedWithAWarning(string other, string warning)
+    {
+        using TestFolder folder = Synthea();
+        SearchRequest request = other switch
+        {
+            "elements" => Medications() with { Elements = "status" },
+            "_elements" => Medications(query: "_sort=authoredon&_elements=status"),
+            _ => Medications() with { FhirPath = "entry.count()" },
+        };
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), request);
+
+        envelope.Facts.ShouldNotBeNull().Rows.ShouldNotBeNull().ShouldNotBeEmpty();
+        envelope.Issues.Count(issue => issue.Code == "argument-adjusted").ShouldBe(1);
+        IssueItem adjusted = envelope.Issues[0];
+        adjusted.Severity.ShouldBe("warning");
+        adjusted.Code.ShouldBe("argument-adjusted");
+        adjusted.Diagnostics.ShouldContain(warning);
+        envelope.Next.ShouldAllBe(call => !call.Args.ContainsKey("elements") && !call.Args.ContainsKey("fhirpath"));
+    }
+
+    [Fact]
+    public void GivenAColumnNamedRef_WhenSearched_ThenItIsRenamedRef1WithAWarning()
+    {
+        using TestFolder folder = Synthea();
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), Medications([new("ref", "status"), new("ref_1", "authoredOn")]));
+
+        envelope.Facts.ShouldNotBeNull().Columns.ShouldBe(["ref", "ref_2", "ref_1"]);
+        envelope.Issues.Count(issue => issue.Code == "argument-adjusted").ShouldBe(1);
+        IssueItem adjusted = envelope.Issues[0];
+        adjusted.Code.ShouldBe("argument-adjusted");
+        adjusted.Diagnostics.ShouldContain("renamed 'ref_2'");
     }
 
     [Fact]
