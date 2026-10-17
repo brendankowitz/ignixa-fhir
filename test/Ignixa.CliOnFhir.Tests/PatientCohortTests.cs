@@ -475,7 +475,6 @@ public class PatientCohortTests
     }
 
     [Theory]
-    [InlineData("yesterday", null, null, null, "asOf 'yesterday' is not a date")]
     [InlineData(null, 80, 18, null, "ageMin <= ageMax")]
     [InlineData(null, -1, null, null, "at least 0")]
     [InlineData(null, null, null, "f", "gender is male, female, other, unknown")]

@@ -15,16 +15,18 @@ namespace Ignixa.CliOnFhir.Clock;
 /// <param name="Source">One of <see cref="AsOfSources"/>.</param>
 /// <param name="Digest">When the value is not an instant, its digest (it can be the folder's text); absent otherwise.</param>
 /// <param name="Date">For a view, what it read as <c>%asOfDate</c>.</param>
+/// <param name="Precision"><see cref="AsOf.DatePrecision"/> when the session's value was given as a date (<see cref="AsOf.Precision"/>); absent otherwise.</param>
 public sealed record AsOfFacts(
     string? Instant,
     string Source,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Digest = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AsOfDateFacts? Date = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AsOfDateFacts? Date = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Precision = null)
 {
     public static AsOfFacts Of(AsOf asOf)
     {
         ArgumentNullException.ThrowIfNull(asOf);
 
-        return new AsOfFacts(asOf.Instant, asOf.Source);
+        return new AsOfFacts(asOf.Instant, asOf.Source, Precision: asOf.Precision);
     }
 }

@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using Ignixa.Abstractions;
 using Ignixa.CliOnFhir.Catalog;
+using Ignixa.CliOnFhir.Clock;
 using Ignixa.CliOnFhir.Cohorts;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Session;
@@ -86,7 +87,7 @@ public static partial class PatientMap
     /// unknown patient) yields null facts and an <c>error</c> issue.
     /// </summary>
     public static ToolEnvelope<PatientMapFacts?> Get(FolderSession session, string patientId, DateTimeOffset? asOf = null, CancellationToken cancellationToken = default) =>
-        Answer(session, () => patientId, () => asOf, cancellationToken);
+        Answer(session, () => patientId, () => asOf is { } given ? new AsOf(given, AsOfSources.Argument) : null, cancellationToken);
 
     /// <summary>
     /// The map of the Patient <paramref name="patient"/> names: its id, an identifier value (an MRN) or <c>system|value</c>
@@ -96,18 +97,31 @@ public static partial class PatientMap
     /// <param name="session">The folder.</param>
     /// <param name="patient">The Patient's id, an identifier value or <c>system|value</c>.</param>
     /// <param name="asOf">
-    /// The date or dateTime the question is asked on (<c>2134-09-01</c>, <c>2134-09-01T12:00:00Z</c>); null for the patient's
-    /// latest dated resource. Not a date: an <c>invalid-parameter</c> error.
+    /// The call's <c>asOf</c> argument, read by <see cref="AsOfClock.Argument"/>: a date (<c>2134-09-01</c>, that day's first instant in
+    /// UTC) or an instant (<c>2134-09-01T12:00:00Z</c>); null for the patient's latest dated resource. Neither: an
+    /// <see cref="AsOfClock.InvalidCode"/> error.
     /// </param>
     /// <param name="cancellationToken">Cancels the call.</param>
     public static ToolEnvelope<PatientMapFacts?> Summarize(FolderSession session, string patient, string? asOf = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(patient);
 
-        return Answer(session, () => PatientLookup.Resolve(session, patient), () => asOf is null ? null : CohortInstant.Argument(asOf, "asOf"), cancellationToken);
+        return Answer(session, () => PatientLookup.Resolve(session, patient), () => AsOfClock.Argument(asOf), cancellationToken);
     }
 
-    private static ToolEnvelope<PatientMapFacts?> Answer(FolderSession session, Func<string> patientId, Func<DateTimeOffset?> asOf, CancellationToken cancellationToken)
+    /// <summary>
+    /// <see cref="Summarize(FolderSession, string, string?, CancellationToken)"/> as of what <paramref name="asOf"/> was stated (the
+    /// session's <c>--as-of</c>), else as of the patient's latest dated resource: the <c>summary</c> verb.
+    /// </summary>
+    public static ToolEnvelope<PatientMapFacts?> Summarize(FolderSession session, string patient, AsOfClock asOf, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(patient);
+        ArgumentNullException.ThrowIfNull(asOf);
+
+        return Answer(session, () => PatientLookup.Resolve(session, patient), () => asOf.Stated(argument: null), cancellationToken);
+    }
+
+    private static ToolEnvelope<PatientMapFacts?> Answer(FolderSession session, Func<string> patientId, Func<AsOf?> asOf, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
 
@@ -118,8 +132,8 @@ public static partial class PatientMap
 
         try
         {
-            DateTimeOffset? given = asOf();
-            return Execute(PatientContext.Open(session, patientId(), given), cancellationToken);
+            AsOf? given = asOf();
+            return Execute(PatientContext.Open(session, patientId(), given?.Moment), given?.Source, cancellationToken);
         }
         catch (ToolRequestException ex)
         {
@@ -127,7 +141,7 @@ public static partial class PatientMap
         }
     }
 
-    private static ToolEnvelope<PatientMapFacts?> Execute(PatientContext context, CancellationToken cancellationToken)
+    private static ToolEnvelope<PatientMapFacts?> Execute(PatientContext context, string? givenSource, CancellationToken cancellationToken)
     {
         List<ContextEntry> labObservations = [.. context.Labs.SelectMany(series => series.Observations)];
         IReadOnlyList<ContextEntry> described =
@@ -151,7 +165,8 @@ public static partial class PatientMap
             context.Compartment.Members.Count,
             dates.Count == 0 ? null : Day(dates.Min()!.Literal),
             dates.Count == 0 ? null : Day(dates.Max()!.Literal),
-            context.AsOfGiven ? CohortInstant.Format(context.AsOf) : null);
+            context.AsOfGiven ? CohortInstant.Format(context.AsOf) : null,
+            givenSource ?? (context.AsOfFromClock ? AsOfSources.Clock : AsOfSources.PatientLatest));
         Dictionary<string, int> other = context.Compartment.Members
             .Where(member => !MapTypes.Contains(member.ResourceType))
             .GroupBy(member => member.ResourceType, StringComparer.Ordinal)

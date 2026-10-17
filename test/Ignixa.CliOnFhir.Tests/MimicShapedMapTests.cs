@@ -111,14 +111,14 @@ public class MimicShapedMapTests
     }
 
     [Fact]
-    public void GivenAnAsOfThatIsNoDate_WhenSummarized_ThenTheCallFailsWithInvalidParameter()
+    public void GivenAnAsOfThatIsNoDate_WhenSummarized_ThenTheCallFailsWithInvalidAsOf()
     {
         using TestFolder folder = Chart();
 
         ToolEnvelope<PatientMapFacts?> envelope = PatientMap.Summarize(Open(folder), "m1", "yesterday");
 
         envelope.Facts.ShouldBeNull();
-        envelope.Issues.ShouldHaveSingleItem().Code.ShouldBe("invalid-parameter");
+        envelope.Issues.ShouldHaveSingleItem().Code.ShouldBe("invalid-as-of");
     }
 
     [Fact]

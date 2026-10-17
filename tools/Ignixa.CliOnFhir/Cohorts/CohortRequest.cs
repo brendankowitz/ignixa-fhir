@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.CliOnFhir.Clock;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Terminology.DrugClasses;
 
@@ -14,7 +15,10 @@ namespace Ignixa.CliOnFhir.Cohorts;
 /// <param name="AgeMin">Youngest age in whole years at <paramref name="AsOf"/>, inclusive.</param>
 /// <param name="AgeMax">Oldest age in whole years at <paramref name="AsOf"/>, inclusive.</param>
 /// <param name="Gender">Patient.gender, when asked.</param>
-/// <param name="AsOfDefaulted">True when the request gave no asOf and <paramref name="AsOf"/> is the clock's now.</param>
+/// <param name="AsOfSource">
+/// Where <paramref name="AsOf"/> came from (<see cref="AsOfSources"/>, <c>facts.asOfSource</c>): <c>argument</c> when the request
+/// gave it, <c>clock</c> when it defaulted to the session clock's now (V15 named that <c>default-now</c>).
+/// </param>
 internal sealed record CohortRequest(
     DateTimeOffset AsOf,
     bool LivingOnly,
@@ -25,14 +29,8 @@ internal sealed record CohortRequest(
     IReadOnlyList<MedicationCriterion> Medications,
     IReadOnlyList<ImmunizationCriterion> Immunizations,
     IReadOnlyList<ObservationCriterion> Observations,
-    bool AsOfDefaulted = false)
+    string AsOfSource)
 {
-    /// <summary>The <c>asOf</c> source when the request gave one.</summary>
-    public const string Argument = "argument";
-
-    /// <summary>The <c>asOf</c> source when the request gave none and the clock's now was used.</summary>
-    public const string DefaultNow = "default-now";
-
     public const string Active = "active";
     public const string AnyStatus = "any";
     public const string ConfirmedOrUnspecified = "confirmed-or-unspecified";
@@ -51,13 +49,23 @@ internal sealed record CohortRequest(
     private static readonly string[] ObservationProperties = ["codes", "window", "pick", "comparator", "value", "unit", "missing"];
     private static readonly string[] WindowProperties = ["after", "before"];
 
-    /// <summary>Checks <paramref name="arguments"/>; <paramref name="now"/> is asOf when they give none.</summary>
-    /// <exception cref="ToolRequestException">An argument or criterion is malformed, contradictory or incomplete (invalid-parameter).</exception>
+    /// <summary>Whether asOf defaulted to the clock, the request having stated none.</summary>
+    public bool AsOfDefaulted => AsOfSource == AsOfSources.Clock;
+
+    /// <summary>
+    /// Checks <paramref name="arguments"/>; their <c>asOf</c> is read by <see cref="AsOfClock.Argument"/> (a date is that day's first
+    /// instant in UTC), and <paramref name="now"/> is asOf when they give none.
+    /// </summary>
+    /// <exception cref="ToolRequestException">
+    /// An argument or criterion is malformed, contradictory or incomplete (invalid-parameter); asOf is not a FHIR date or instant
+    /// (<see cref="AsOfClock.InvalidCode"/>).
+    /// </exception>
     public static CohortRequest Parse(CohortArguments arguments, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(arguments);
 
-        DateTimeOffset asOf = arguments.AsOf is { } text ? CohortInstant.Argument(text, "asOf") : now;
+        AsOf? stated = AsOfClock.Argument(arguments.AsOf);
+        DateTimeOffset asOf = stated?.Moment.ToUniversalTime() ?? now;
         if (arguments.AgeMin is < 0 || arguments.AgeMax is < 0 || arguments.AgeMax < arguments.AgeMin)
         {
             throw CriterionObject.Invalid($"ageMin ({arguments.AgeMin?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none"}) and ageMax ({arguments.AgeMax?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none"}) are whole years, at least 0, with ageMin <= ageMax.");
@@ -78,7 +86,7 @@ internal sealed record CohortRequest(
             [.. CriterionObject.List(arguments.Medications, "medications", MedicationProperties).Select(Medication)],
             [.. CriterionObject.List(arguments.Immunizations, "immunizations", ImmunizationProperties).Select(criterion => Immunization(criterion, asOf))],
             [.. CriterionObject.List(arguments.Observations, "observations", ObservationProperties).Select(criterion => Observation(criterion, asOf))],
-            AsOfDefaulted: arguments.AsOf is null);
+            stated?.Source ?? AsOfSources.Clock);
     }
 
     private static ConditionCriterion Condition(CriterionObject criterion)

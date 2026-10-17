@@ -3,7 +3,6 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Globalization;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Ignixa.CliOnFhir.Catalog;
@@ -18,8 +17,9 @@ namespace Ignixa.CliOnFhir.Views;
 /// The engine applies a variable only where the ViewDefinition declares a constant of its name, and refuses a reference to one it
 /// does not declare, so the run gives the view a constant of each name it does not declare itself. A ViewDefinition's own constant
 /// is kept, with a warning that the variable is then not the session's; a <c>--var</c> of either name replaces the value, as a
-/// variable replaces any constant, with a warning, and must be of the variable's type: an instant for <c>asOf</c> (as
-/// <c>--as-of</c> is), a date for <c>asOfDate</c>.
+/// variable replaces any constant, with a warning, and must be of the variable's type: an instant for <c>asOf</c>, a date for
+/// <c>asOfDate</c>. A session value given as a date (<c>--as-of 2024-05-01</c>) is <c>%asOf</c> 2024-05-01T00:00:00Z and
+/// <c>%asOfDate</c> 2024-05-01.
 /// </summary>
 internal static partial class ViewAsOf
 {
@@ -49,7 +49,7 @@ internal static partial class ViewAsOf
         JsonObject? declaredDate = Declared(view.Json, DateName);
         Note(Name, "instant", declaredAsOf is not null, variables, issues);
         Note(DateName, "day", declaredDate is not null, variables, issues);
-        string day = asOf.Moment.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        string day = asOf.Day;
         AsOfFacts facts = InstantFacts(asOf, variables, declaredAsOf) with { Date = DateFacts(asOf, day, variables, declaredDate) };
         bool reads = Expressions(view.Json).Append(extraWhere).OfType<string>().Any(expression => ReadsClock().IsMatch(expression));
 
@@ -157,7 +157,7 @@ internal static partial class ViewAsOf
     {
         if (variables.TryGetValue(Name, out string? instant) && FhirInstant.Problem(instant, out _) is { } problem)
         {
-            throw ToolRequestException.Error("invalid-parameter", $"Variable asOf must be an instant, as --as-of is (for a day, set asOfDate); the value given {Shown(instant)} is {problem}.");
+            throw ToolRequestException.Error("invalid-parameter", $"Variable asOf must be an instant (for a day, set asOfDate); the value given {Shown(instant)} is {problem}.");
         }
 
         if (variables.TryGetValue(DateName, out string? date) && !IsDate(date))
@@ -191,16 +191,13 @@ internal static partial class ViewAsOf
         .Select(value => value.TryGetValue(out string? written) ? written : value.ToJsonString())
         .FirstOrDefault();
 
-    private static bool IsDate(string value) => DateShape().IsMatch(value) && DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
+    private static bool IsDate(string value) => FhirDate.TryParse(value, out _);
 
     private static string Shown(string value) => DateTimeShape().IsMatch(value) ? $"'{value}'" : $"(digest {FhirIds.Digest(value)})";
 
     // %asOf or %asOfDate, plain or delimited.
     [GeneratedRegex(@"%(asOf|asOfDate|`asOf`|`asOfDate`)(?![A-Za-z0-9_])", RegexOptions.CultureInvariant)]
     private static partial Regex ReadsClock();
-
-    [GeneratedRegex(@"^\d{4}-\d{2}-\d{2}$", RegexOptions.CultureInvariant)]
-    private static partial Regex DateShape();
 
     [GeneratedRegex(@"^[0-9TZ:.+\-]{1,40}$", RegexOptions.CultureInvariant)]
     private static partial Regex DateTimeShape();

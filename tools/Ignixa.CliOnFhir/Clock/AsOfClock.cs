@@ -12,16 +12,21 @@ namespace Ignixa.CliOnFhir.Clock;
 
 /// <summary>
 /// The session's <see cref="AsOf"/>: the instant its answers are anchored to. Resolved once, on first use, in this order: the
-/// session's <c>--as-of</c> option; the <c>transactionTime</c> of a Bulk Data export manifest at the folder's root
-/// (<see cref="BulkExportManifests"/>); the <c>timestamp</c> of the folder's container Bundles, the latest when they differ
-/// (<see cref="BundleTimestamps"/>); otherwise the session's clock (<see cref="FolderSession.UtcNow"/>). Detection only reads,
-/// and reads little: the manifest candidates at the root, and of each container Bundle the bytes before its first catalogued
-/// entry and after its last. A call may name its own instant (<see cref="ForCall"/>). Safe to use concurrently.
+/// session's <c>--as-of</c> option (a FHIR instant, or a FHIR date read as that day's first instant in UTC); the
+/// <c>transactionTime</c> of a Bulk Data export manifest at the folder's root (<see cref="BulkExportManifests"/>); the
+/// <c>timestamp</c> of the folder's container Bundles, the latest when they differ (<see cref="BundleTimestamps"/>); otherwise
+/// the session's clock (<see cref="FolderSession.UtcNow"/>). Detection only reads, and reads little: the manifest candidates at
+/// the root, and of each container Bundle the bytes before its first catalogued entry and after its last. A call may name its own
+/// instant (<see cref="ForCall"/>); a verb with a default of its own reads only what the caller stated (<see cref="Stated"/>).
+/// Every <c>--as-of</c> and <c>asOf</c> argument is read here, by one grammar. Safe to use concurrently.
 /// </summary>
 public sealed partial class AsOfClock
 {
-    /// <summary>The error code of an <c>--as-of</c> (or <c>asOf</c> argument) that is not a FHIR instant.</summary>
+    /// <summary>The error code of an <c>--as-of</c> (or <c>asOf</c> argument) that is not a FHIR instant or date.</summary>
     public const string InvalidCode = "invalid-as-of";
+
+    private const string NotADateOrInstant = "not a FHIR date or instant: give a date, such as 2024-05-01 (read as that day's first instant in UTC), "
+        + "or a date and a time to the second with a time zone, such as 2024-05-01T08:30:00-05:00";
 
     private readonly FolderSession _session;
     private readonly string? _option;
@@ -41,13 +46,26 @@ public sealed partial class AsOfClock
     }
 
     /// <summary>The session's instant, worked out on the first call and the same on every later one.</summary>
-    /// <exception cref="ToolRequestException"><see cref="InvalidCode"/>: the session's <c>--as-of</c> is not a FHIR instant.</exception>
+    /// <exception cref="ToolRequestException"><see cref="InvalidCode"/>: the session's <c>--as-of</c> is not a FHIR instant or date.</exception>
     public AsOfResolution Resolve() => _resolution.Value;
 
     /// <summary>The instant of one call: its own <paramref name="argument"/> when it gives one, otherwise the session's.</summary>
-    /// <exception cref="ToolRequestException"><see cref="InvalidCode"/>: the argument, or the session's option, is not a FHIR instant.</exception>
+    /// <exception cref="ToolRequestException"><see cref="InvalidCode"/>: the argument, or the session's option, is not a FHIR instant or date.</exception>
     public AsOfResolution ForCall(string? argument) =>
-        argument is null ? Resolve() : new AsOfResolution(Parse(argument, "asOf", AsOfSources.Argument), []);
+        Argument(argument) is { } given ? new AsOfResolution(given, []) : Resolve();
+
+    /// <summary>
+    /// What the caller stated: the call's own <paramref name="argument"/>, else the session's <c>--as-of</c>; null when neither gives
+    /// one, so that a verb with a default of its own applies it (<c>summary</c>: the patient's latest dated resource;
+    /// <c>patient_cohort</c>: the clock). Nothing of the folder is read.
+    /// </summary>
+    /// <exception cref="ToolRequestException"><see cref="InvalidCode"/>: the argument, or the session's option, is not a FHIR instant or date.</exception>
+    public AsOf? Stated(string? argument) =>
+        Argument(argument) ?? (_option is null ? null : Parse(_option, "--as-of", AsOfSources.SessionOption));
+
+    /// <summary>A call's own <c>asOf</c> argument, source <see cref="AsOfSources.Argument"/>; null when it gives none.</summary>
+    /// <exception cref="ToolRequestException"><see cref="InvalidCode"/>: the argument is not a FHIR instant or date.</exception>
+    public static AsOf? Argument(string? argument) => argument is null ? null : Parse(argument, "asOf", AsOfSources.Argument);
 
     private AsOfResolution Detect()
     {
@@ -73,9 +91,23 @@ public sealed partial class AsOfClock
     // The clock's own precision (ticks) says nothing the data could; an instant to the millisecond is how FHIR data usually reads.
     private static DateTimeOffset ToMilliseconds(DateTimeOffset now) => new(now.Ticks - (now.Ticks % TimeSpan.TicksPerMillisecond), now.Offset);
 
-    private static AsOf Parse(string text, string name, string source) => FhirInstant.Problem(text, out DateTimeOffset value) is { } problem
-        ? throw ToolRequestException.Error(InvalidCode, $"'{name}' {Shown(text)} is {problem}.")
-        : new AsOf(value, source);
+    // Surrounding whitespace is dropped, as patient_summary and patient_cohort always dropped it from their asOf.
+    private static AsOf Parse(string text, string name, string source)
+    {
+        string trimmed = text.Trim();
+        if (FhirDate.TryParse(trimmed, out DateOnly day))
+        {
+            return AsOf.OfDate(day, source);
+        }
+
+        if (FhirInstant.Problem(trimmed, out DateTimeOffset value) is not { } problem)
+        {
+            return new AsOf(value, source);
+        }
+
+        string reason = FhirDate.HasShape(trimmed) ? "not a date of the calendar" : FhirInstant.HasShape(trimmed) ? problem : NotADateOrInstant;
+        throw ToolRequestException.Error(InvalidCode, $"'{name}' {Shown(text)} is {reason}.");
+    }
 
     // The caller's own text, shown when it is shaped like a date and time, by its digest otherwise.
     private static string Shown(string text) => InstantLike().IsMatch(text) ? $"'{text}'" : $"(digest {FhirIds.Digest(text)})";

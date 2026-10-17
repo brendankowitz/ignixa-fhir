@@ -8,7 +8,7 @@ using System.Text.Json;
 namespace Ignixa.CliOnFhir.Cohorts;
 
 /// <summary>The arguments of <c>patient_cohort</c> as the client sent them, before <see cref="CohortRequest.Parse"/> checks them.</summary>
-/// <param name="AsOf">The date (or dateTime) the question is asked on; null for now.</param>
+/// <param name="AsOf">The date (or instant) the question is asked on; null for now.</param>
 /// <param name="Living">False counts the deceased too; null or true counts only the living.</param>
 /// <param name="AgeMin">Youngest age in whole years at asOf, inclusive.</param>
 /// <param name="AgeMax">Oldest age in whole years at asOf, inclusive.</param>

@@ -9,21 +9,22 @@ using System.CommandLine.Parsing;
 namespace Ignixa.CliOnFhir.Commands;
 
 /// <summary>
-/// <c>--as-of &lt;instant&gt;</c>: one option on the root command, recursive, so it can be written before or after any verb. Only the
-/// verbs in <see cref="Consumers"/> read it; every other verb refuses it, since answering without the instant asked for would read
-/// as an answer anchored to it. Its value is checked by the verb that reads it, so a malformed instant is a request error in the
-/// envelope, not a parse error.
+/// <c>--as-of &lt;instant|date&gt;</c>: the one <c>--as-of</c> of the tool, an option on the root command, recursive, so it can be
+/// written before or after any verb (no verb declares its own). Only the verbs in <see cref="Consumers"/> read it; every other verb
+/// refuses it, since answering without the instant asked for would read as an answer anchored to it. Its value is checked by the
+/// verb that reads it (<see cref="Clock.AsOfClock"/>), so a malformed value is a request error in the envelope, not a parse error.
 /// </summary>
 internal static class AsOfOption
 {
     /// <summary>The verbs that read the option.</summary>
-    public static readonly IReadOnlySet<string> Consumers = new HashSet<string>(StringComparer.Ordinal) { "view", "draft" };
+    public static readonly IReadOnlySet<string> Consumers = new HashSet<string>(StringComparer.Ordinal) { "view", "draft", "summary" };
 
     /// <summary>The option, shared by the root command and the verbs that read it.</summary>
     public static Option<string?> Option { get; } = new("--as-of")
     {
-        Description = "The instant the data is read as of, a FHIR instant such as 2024-05-01T00:00:00Z (default: the folder's data-pull time, "
-            + "from a Bulk Data export manifest or its Bundles' timestamp, else the clock). Used by view (%asOf) and draft (authoredOn, effective, issued) only for now",
+        Description = "The instant the data is read as of: a FHIR instant such as 2024-05-01T08:30:00-05:00, or a date such as 2024-05-01 (that day's first instant in UTC). "
+            + "Read by view (%asOf, %asOfDate) and draft (authoredOn, effective, issued), default the folder's data-pull time (a Bulk Data export manifest, "
+            + "else its Bundles' timestamp) else the clock; and by summary, default the patient's latest dated resource",
         Recursive = true,
     };
 
@@ -47,7 +48,8 @@ internal static class AsOfOption
     {
         if (result.GetResult(Option) is not null)
         {
-            result.AddError($"--as-of is used only by {string.Join(" and ", Consumers.Order(StringComparer.Ordinal))} for now; '{result.Command.Name}' would answer without it.");
+            string[] verbs = [.. Consumers.Order(StringComparer.Ordinal)];
+            result.AddError($"--as-of is used only by {string.Join(", ", verbs[..^1])} and {verbs[^1]} for now; '{result.Command.Name}' would answer without it.");
         }
     }
 }

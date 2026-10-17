@@ -196,7 +196,7 @@ public class AsOfClockTests
     }
 
     [Theory]
-    [InlineData("2024-05-01")]
+    [InlineData("2024-05")]
     [InlineData("2024-05-01T08:30:00")]
     [InlineData("2024-05-01T08:30Z")]
     [InlineData("2024-02-30T00:00:00Z")]
@@ -249,11 +249,45 @@ public class AsOfClockTests
         asOf.Instant.ShouldBe("2024-05-01T08:30:00.1234567Z");
     }
 
+    [Fact]
+    public void GivenADateOption_WhenResolved_ThenItIsThatDaysFirstInstantInUtcMarkedAsADate()
+    {
+        using TestFolder folder = new TestFolder().Write("Patient.ndjson", Patients).Write("manifest.json", Manifest("2024-03-01T12:00:00Z"));
+
+        AsOf asOf = Open(folder, "2024-05-01").Clock.Resolve().Value;
+
+        asOf.ShouldBe(new AsOf(At("2024-05-01T00:00:00Z"), AsOfSources.SessionOption, IsDateOnly: true));
+        asOf.Instant.ShouldBe("2024-05-01T00:00:00Z");
+        asOf.Day.ShouldBe("2024-05-01");
+        asOf.Precision.ShouldBe(AsOf.DatePrecision);
+    }
+
+    [Fact]
+    public void GivenNoOptionAndNoArgument_WhenStated_ThenThereIsNoneAndTheFolderIsNotConsulted()
+    {
+        using TestFolder folder = new TestFolder().Write("Patient.ndjson", Patients).Write("manifest.json", Manifest("2024-03-01T12:00:00Z"));
+
+        Open(folder).Clock.Stated(argument: null).ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenAnOptionAndAnArgument_WhenStated_ThenTheArgumentWinsAndEachNamesItsSource()
+    {
+        using TestFolder folder = new TestFolder().Write("Patient.ndjson", Patients);
+        AsOfClock clock = Open(folder, "2024-05-01").Clock;
+
+        clock.Stated("2025-01-02T03:04:05Z").ShouldBe(new AsOf(At("2025-01-02T03:04:05Z"), AsOfSources.Argument));
+        clock.Stated(argument: null).ShouldBe(AsOf.OfDate(new DateOnly(2024, 5, 1), AsOfSources.SessionOption));
+    }
+
     [Theory]
     [InlineData("9999-12-31T23:00:00-14:00", "outside the instants the tool can hold")]
     [InlineData("0001-01-01T00:00:00+14:00", "outside the instants the tool can hold")]
     [InlineData("2023-02-29T00:00:00Z", "not a date of the calendar")]
-    [InlineData("2024-05-01", "not a FHIR instant")]
+    [InlineData("2023-02-29", "not a date of the calendar")]
+    [InlineData("2024-05", "not a FHIR date or instant")]
+    [InlineData("2024-05-01T08:30:00", "not a FHIR date or instant")]
+    [InlineData("yesterday", "not a FHIR date or instant")]
     public void GivenAnOptionThatNamesNoInstantTheToolCanHold_WhenResolved_ThenTheMessageSaysWhy(string option, string reason)
     {
         using TestFolder folder = new TestFolder().Write("Patient.ndjson", Patients);

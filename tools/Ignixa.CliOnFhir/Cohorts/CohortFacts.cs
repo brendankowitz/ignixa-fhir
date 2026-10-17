@@ -7,7 +7,10 @@ namespace Ignixa.CliOnFhir.Cohorts;
 
 /// <summary>The facts of <c>patient_cohort</c>.</summary>
 /// <param name="AsOf">The instant the criteria were evaluated at.</param>
-/// <param name="AsOfSource"><c>argument</c> when the request gave asOf; <c>default-now</c> when it defaulted to the clock's now.</param>
+/// <param name="AsOfSource">
+/// One of <see cref="Clock.AsOfSources"/>: <c>argument</c> when the request gave asOf; <c>clock</c> when it defaulted to the clock's now
+/// (<c>default-now</c> before the asOf sources were unified).
+/// </param>
 /// <param name="Count">How many patients meet every criterion: exact, never cut.</param>
 /// <param name="Steps">Each criterion in the order applied, with the patients left after it.</param>
 /// <param name="Patients">The patients counted, as Patient/&lt;id&gt;, in folder order; as many as fit, the rest counted in omitted.</param>

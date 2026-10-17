@@ -44,6 +44,9 @@ internal static partial class FhirInstant
             : "not a date of the calendar";
     }
 
+    /// <summary>Whether <paramref name="text"/> is written as an instant (date, time to the second, zone), valid date or not.</summary>
+    public static bool HasShape(string? text) => text is not null && Shape().IsMatch(text);
+
     /// <summary>
     /// <paramref name="value"/> as a FHIR instant: to the second, with the fraction it has (trailing zeros dropped), and <c>Z</c>
     /// for UTC or its offset otherwise.

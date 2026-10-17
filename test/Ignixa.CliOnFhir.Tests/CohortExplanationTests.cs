@@ -37,7 +37,7 @@ public class CohortExplanationTests
     private static IReadOnlyList<IssueItem> Explanations(ToolEnvelope<CohortFacts?> envelope) => [.. envelope.Issues.Where(issue => issue.Code == "cohort-empty-step")];
 
     [Fact]
-    public async Task GivenNoAsOfAndDataThatEndsEarlier_WhenCounted_ThenAsOfIsEchoedAsDefaultNowWithAWarningNamingBothDates()
+    public async Task GivenNoAsOfAndDataThatEndsEarlier_WhenCounted_ThenAsOfIsEchoedAsTheClockWithAWarningNamingBothDates()
     {
         using TestFolder folder = DatedFolder();
 
@@ -45,7 +45,7 @@ public class CohortExplanationTests
 
         CohortFacts facts = Facts(envelope);
         facts.AsOf.ShouldBe("2026-10-15T12:00:00Z");
-        facts.AsOfSource.ShouldBe("default-now");
+        facts.AsOfSource.ShouldBe("clock");
         IssueItem warning = Warning(envelope).ShouldNotBeNull();
         warning.Severity.ShouldBe("warning");
         warning.Diagnostics.ShouldBe("asOf defaulted to 2026-10-15; the latest dated resource in this folder is 2026-03-01. Pass asOf if the question has its own 'now'.");
@@ -73,7 +73,7 @@ public class CohortExplanationTests
 
         ToolEnvelope<CohortFacts?> envelope = await PatientCohort.RunAsync(OpenAt(folder, new DateTimeOffset(year, month, day, 12, 0, 0, TimeSpan.Zero)), PrediabetesCriterion(), CancellationToken.None);
 
-        Facts(envelope).AsOfSource.ShouldBe("default-now");
+        Facts(envelope).AsOfSource.ShouldBe("clock");
         Warning(envelope).ShouldBeNull();
     }
 

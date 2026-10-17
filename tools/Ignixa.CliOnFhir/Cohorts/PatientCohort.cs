@@ -136,7 +136,7 @@ internal static class PatientCohort
                 omitted.Add(new OmittedItem($"{evidence.Count - evidenceShown} more evidence items (the listed patients and the resources that decided each criterion)", "size-budget"));
             }
 
-            var facts = new CohortFacts(CohortInstant.Format(request.AsOf), request.AsOfDefaulted ? CohortRequest.DefaultNow : CohortRequest.Argument, outcome.Counted.Count, isFull ? outcome.Steps : [.. outcome.Steps.Select(Compact)], [.. listed.Select(ResourceReader.Describe)]);
+            var facts = new CohortFacts(CohortInstant.Format(request.AsOf), request.AsOfSource, outcome.Counted.Count, isFull ? outcome.Steps : [.. outcome.Steps.Select(Compact)], [.. listed.Select(ResourceReader.Describe)]);
             return shell with
             {
                 Facts = facts,

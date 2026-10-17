@@ -63,7 +63,7 @@ internal sealed class PatientContext
     private readonly Lazy<IReadOnlyList<ContextEntry>> _administrations;
     private readonly Lazy<IReadOnlyList<ContextEntry>> _immunizations;
     private readonly Lazy<IReadOnlyList<ContextEntry>> _procedures;
-    private readonly Lazy<(DateTimeOffset Instant, FhirTemporal Bound)> _asOf;
+    private readonly Lazy<(DateTimeOffset Instant, FhirTemporal Bound, bool FromClock)> _asOf;
 
     private PatientContext(FolderSession session, PatientCompartment compartment, DateTimeOffset? asOf)
     {
@@ -98,6 +98,9 @@ internal sealed class PatientContext
 
     /// <summary>Whether the call gave <see cref="AsOf"/>, rather than it being the patient's latest dated resource.</summary>
     public bool AsOfGiven { get; }
+
+    /// <summary>Whether <see cref="AsOf"/> is the session clock's, the default for a patient with no dated resource.</summary>
+    public bool AsOfFromClock => _asOf.Value.FromClock;
 
     public ResourceElements Elements { get; }
 
@@ -163,11 +166,11 @@ internal sealed class PatientContext
         return new PatientContext(session, PatientCompartment.Load(session, patientId), asOf);
     }
 
-    private static (DateTimeOffset Instant, FhirTemporal Bound) Given(DateTimeOffset asOf)
+    private static (DateTimeOffset Instant, FhirTemporal Bound, bool FromClock) Given(DateTimeOffset asOf)
     {
         DateTimeOffset second = new(asOf.UtcTicks - (asOf.UtcTicks % TimeSpan.TicksPerSecond), TimeSpan.Zero);
         return FhirTemporal.TryParse(second.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture), FhirPrimitive.Instant, out FhirTemporal? parsed)
-            ? (second, parsed)
+            ? (second, parsed, false)
             : throw new InvalidOperationException($"asOf {asOf:O} did not parse as a FHIR instant.");
     }
 
@@ -175,7 +178,7 @@ internal sealed class PatientContext
     /// The latest main date among the compartment's members, as the window's bound (so every dated resource is inside it)
     /// and as the instant it starts at; the session clock when no member has one.
     /// </summary>
-    private (DateTimeOffset Instant, FhirTemporal Bound) Latest()
+    private (DateTimeOffset Instant, FhirTemporal Bound, bool FromClock) Latest()
     {
         FhirTemporal? latest = Compartment.Members
             .Where(member => ClinicalRules.MainDate.ContainsKey(member.ResourceType))
@@ -184,10 +187,10 @@ internal sealed class PatientContext
             .Max();
         if (latest is null || CohortInstant.Parse(latest.Literal) is not { } start)
         {
-            return Given(Session.UtcNow());
+            return Given(Session.UtcNow()) with { FromClock = true };
         }
 
-        return (new DateTimeOffset(start.UtcTicks - (start.UtcTicks % TimeSpan.TicksPerSecond), TimeSpan.Zero), latest);
+        return (new DateTimeOffset(start.UtcTicks - (start.UtcTicks % TimeSpan.TicksPerSecond), TimeSpan.Zero), latest, false);
     }
 
     /// <summary>The Patient's demographics.</summary>

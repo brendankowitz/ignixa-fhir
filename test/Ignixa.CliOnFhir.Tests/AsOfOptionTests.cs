@@ -12,7 +12,7 @@ using static Ignixa.CliOnFhir.Tests.ViewFixture;
 
 namespace Ignixa.CliOnFhir.Tests;
 
-/// <summary>The one recursive root --as-of option (Task 12): read by view and draft, refused by every other verb.</summary>
+/// <summary>The one recursive root --as-of option (Task 12, and the V14 merge): read by view, draft and summary, refused by every other verb.</summary>
 [Collection("Console")]
 public class AsOfOptionTests
 {
@@ -39,6 +39,36 @@ public class AsOfOptionTests
     }
 
     [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task GivenAsOfBeforeOrAfterTheVerb_WhenSummaryRuns_ThenTheMapIsReadAsOfTheSessionOption(bool before)
+    {
+        using TestFolder folder = Clinic();
+        string[] summary = ["summary", folder.Path, "p1", "--no-cache"];
+        string[] asOf = ["--as-of", "2020-02-29"];
+
+        (int exitCode, string output, string errors) = await RunAsync(before ? [.. asOf, .. summary] : [.. summary, .. asOf]);
+
+        exitCode.ShouldBe(0, errors);
+        JsonNode record = JsonNode.Parse(output)!["facts"]!["record"]!;
+        ((string)record["asOf"]!).ShouldBe("2020-02-29");
+        ((string)record["asOfSource"]!).ShouldBe("session-option");
+    }
+
+    [Fact]
+    public async Task GivenNoAsOfAndAPatientWithNoDatedResource_WhenSummaryRuns_ThenTheMapSaysTheClockIsTheSource()
+    {
+        using TestFolder folder = Clinic();
+
+        (int exitCode, string output, _) = await RunAsync(["summary", folder.Path, "p1", "--no-cache"]);
+
+        exitCode.ShouldBe(0);
+        JsonNode record = JsonNode.Parse(output)!["facts"]!["record"]!;
+        record["asOf"].ShouldBeNull();
+        ((string)record["asOfSource"]!).ShouldBe("clock");
+    }
+
+    [Theory]
     [InlineData("search", "Patient")]
     [InlineData("inspect")]
     [InlineData("term", "list")]
@@ -52,7 +82,7 @@ public class AsOfOptionTests
 
         exitCode.ShouldNotBe(0);
         output.ShouldNotContain("\"facts\"");
-        errors.ShouldContain("--as-of is used only by draft and view for now");
+        errors.ShouldContain("--as-of is used only by draft, summary and view for now");
     }
 
     [Fact]
@@ -75,6 +105,7 @@ public class AsOfOptionTests
         root.Subcommands.Add(TermCommand.Create());
         root.Subcommands.Add(ViewCommand.Create());
         root.Subcommands.Add(DraftCommand.Create());
+        root.Subcommands.Add(SummaryCommand.Create());
         root.Subcommands.Add(McpCommand.Create());
         AsOfOption.Register(root);
         TextWriter originalOut = Console.Out;

@@ -20,7 +20,16 @@ public static class AsOfSources
     /// <summary>The <c>timestamp</c> of the folder's container Bundles (the latest when they differ).</summary>
     public const string BundleTimestamp = "bundle-timestamp";
 
-    /// <summary>The session's clock: the folder records no data-pull time.</summary>
+    /// <summary>
+    /// The start of the patient's own latest dated resource: the default of <c>summary</c> / <c>patient_summary</c>, which read one
+    /// patient's record whole however long ago it ended or however far its dates are shifted.
+    /// </summary>
+    public const string PatientLatest = "patient-latest";
+
+    /// <summary>
+    /// The session's clock: the folder records no data-pull time (view, draft), the patient has no dated resource (summary), or the
+    /// default of <c>patient_cohort</c>, which has always counted as of now.
+    /// </summary>
     public const string Clock = "clock";
 
     /// <summary>A view's <c>--var asOf=...</c>, which replaced the session's instant for that run.</summary>
