@@ -86,7 +86,8 @@ public class AsOfOptionTests
     {
         using TestFolder folder = Clinic();
 
-        (int exitCode, string output, string errors) = await RunAsync(["mcp", folder.Path, "--as-of", "soon"]);
+        // A server that started would wait on stdin for ever, so the call is bounded: started is a failure, not a hang.
+        (int exitCode, string output, string errors) = await RunAsync(["mcp", folder.Path, "--as-of", "soon"]).WaitAsync(TimeSpan.FromSeconds(60));
 
         exitCode.ShouldBe(1);
         output.ShouldBeEmpty();
