@@ -178,6 +178,11 @@ public static class FolderCatalogBuilder
     {
         private readonly Dictionary<(string ResourceType, string Id), CatalogEntry> _seen = [];
 
+        // One instance per distinct type, kind or identifier system: a folder repeats a handful of each over every resource.
+        private readonly Dictionary<string, string> _shared = new(StringComparer.Ordinal);
+
+        private readonly RecentStrings _recent = new();
+
         public List<CatalogEntry> Entries { get; } = [];
 
         public List<CatalogDiagnostic> Diagnostics { get; } = [];
@@ -210,7 +215,7 @@ public static class FolderCatalogBuilder
 
         public void Add(string relativePath, ReadOnlySpan<byte> json, long offset, int? line, int ordinal, string? fullUrl = null)
         {
-            var (resourceType, id) = ResourceSniffer.Sniff(json);
+            var (resourceType, id, kind, identifierSystem) = ResourceSniffer.SniffWithKind(json, _recent);
             if (string.IsNullOrEmpty(resourceType))
             {
                 Diagnostics.Add(new CatalogDiagnostic("not-a-resource", relativePath, line, "JSON object has no resourceType."));
@@ -225,7 +230,7 @@ public static class FolderCatalogBuilder
 
             bool synthetic = string.IsNullOrEmpty(id);
             string resourceId = synthetic ? FullUrlId(fullUrl, resourceType) ?? SyntheticId(relativePath, ordinal) : id!;
-            var entry = new CatalogEntry(resourceType, resourceId, relativePath, offset, json.Length, line, synthetic, fullUrl);
+            var entry = new CatalogEntry(Intern(resourceType)!, resourceId, relativePath, offset, json.Length, line, synthetic, fullUrl, Intern(kind), Intern(identifierSystem));
             if (fullUrl is not null)
             {
                 // Recorded for a duplicate too: its fullUrl still names this Type/id, which the first occurrence holds.
@@ -254,6 +259,22 @@ public static class FolderCatalogBuilder
                     line,
                     $"A {resourceType} resource has an id that is not a FHIR id (1 to 64 letters, digits, '-' or '.'); every tool names it {FhirIds.Reference(resourceType, resourceId)}, which get, search (_id, compartment) and the patient tools accept, and returns its JSON as written."));
             }
+        }
+
+        private string? Intern(string? value)
+        {
+            if (value is null)
+            {
+                return null;
+            }
+
+            if (!_shared.TryGetValue(value, out string? shared))
+            {
+                _shared.Add(value, value);
+                shared = value;
+            }
+
+            return shared;
         }
 
         private static string Describe(CatalogEntry entry) =>

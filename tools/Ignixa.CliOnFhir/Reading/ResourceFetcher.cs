@@ -84,8 +84,10 @@ public static class ResourceFetcher
 
         int budget = ResponseBudget.Resolve(maxBytes, session.MaxResponseBytes, issues);
 
-        // The listed resolutions can only shrink once the resources are read, so each resource is charged for its candidates.
-        Dictionary<string, IReadOnlyDictionary<string, string>> resolutions = Resolutions(session, found);
+        // The listed resolutions can only shrink once the resources are read, so each resource is charged for its candidates;
+        // each is also charged for the text of its attachments, which is listed only for the resources returned.
+        (Dictionary<string, IReadOnlyDictionary<string, string>> resolutions, Dictionary<string, IReadOnlyList<AttachmentText>> texts) = ReadAhead(session, found);
+        IReadOnlyList<IReadOnlyList<DocumentVersion>> chains = DocumentVersions.Chains(session, found);
         Dictionary<string, Dictionary<string, string>> candidates = ResolvedReferences.Candidates(
             found.Select(entry => (ResourceReader.Describe(entry), resolutions[ResourceReader.Describe(entry)])),
             ResolvedReferences.Limit);
@@ -104,7 +106,10 @@ public static class ResourceFetcher
         {
             Next = cutBySize && found.Count > 1 ? Remaining([.. found.Skip(1).Select(ResourceReader.Describe)], elements, maxBytes, budget, session.MaxResponseBytes) : [],
         });
-        Func<int, JsonObject, int> costs = ResolvedReferences.Charge([.. found.Select(entry => (ResourceReader.Describe(entry), resolutions[ResourceReader.Describe(entry)]))]);
+        Func<int, JsonObject, int> resolutionCosts = ResolvedReferences.Charge([.. found.Select(entry => (ResourceReader.Describe(entry), resolutions[ResourceReader.Describe(entry)]))]);
+        Dictionary<int, int> chainBytes = ChainBytes(found, chains);
+        Func<int, JsonObject, int> costs = (index, resource) =>
+            resolutionCosts(index, resource) + TextBytes(texts[ResourceReader.Describe(found[index])]) + chainBytes.GetValueOrDefault(index);
         ResourceBatch batch = ResourceBatch.Collect(session.RootPath, found, projection, Reserved(cutBySize: false), budget, costs, cancellationToken);
         if (batch.Consumed < found.Count)
         {
@@ -126,26 +131,69 @@ public static class ResourceFetcher
             next = Remaining([.. found.Skip(batch.Consumed).Select(ResourceReader.Describe)], elements, maxBytes, budget, session.MaxResponseBytes);
         }
 
-        return EnvelopeAssembler.Create<ReadFacts?>(session, new ReadFacts(parsed.Count, batch.Resources, ResolvedReferences.ToFacts(shown)), builtAt, batch.Evidence, omitted, absent, issues, cancellationToken) with { Next = next };
+        List<AttachmentText> returnedTexts = [.. batch.Evidence.SelectMany(item => texts.GetValueOrDefault(item.Reference) ?? [])];
+        HashSet<string> returned = [.. batch.Evidence.Select(item => item.Reference)];
+        List<IReadOnlyList<DocumentVersion>> returnedChains = [.. chains.Where(chain => chain.Any(version => returned.Contains(version.Reference)))];
+        var facts = new ReadFacts(
+            parsed.Count,
+            batch.Resources,
+            ResolvedReferences.ToFacts(shown),
+            returnedTexts.Count == 0 ? null : returnedTexts,
+            returnedChains.Count == 0 ? null : returnedChains);
+        return EnvelopeAssembler.Create<ReadFacts?>(session, facts, builtAt, batch.Evidence, omitted, absent, issues, cancellationToken) with { Next = next };
     }
 
     /// <summary>
-    /// Each found resource's Bundle references and the <c>Type/id</c> they name, by <c>Type/id</c>, resolved as the index
+    /// For each found resource, by <c>Type/id</c>: its Bundle references and the <c>Type/id</c> they name, resolved as the index
     /// resolves them (<see cref="Indexing.BundleReferenceResolver"/>, conditional references included) but without building
-    /// any index; a resource that cannot be read resolves nothing here and is reported by the batch.
+    /// any index; and the decoded text of its inline report or document attachments (<see cref="AttachmentText"/>), from the
+    /// resource as stored whatever 'elements' keeps. A resource that cannot be read has neither here and is reported by the batch.
     /// </summary>
-    private static Dictionary<string, IReadOnlyDictionary<string, string>> Resolutions(FolderSession session, List<CatalogEntry> found)
+    private static (Dictionary<string, IReadOnlyDictionary<string, string>> Resolutions, Dictionary<string, IReadOnlyList<AttachmentText>> Texts) ReadAhead(FolderSession session, List<CatalogEntry> found)
     {
         Dictionary<string, IReadOnlyDictionary<string, string>> resolutions = new(StringComparer.Ordinal);
+        Dictionary<string, IReadOnlyList<AttachmentText>> texts = new(StringComparer.Ordinal);
         foreach (CatalogEntry entry in found)
         {
-            resolutions[ResourceReader.Describe(entry)] = ResourceReader.Read(session.RootPath, entry).Resource is { } resource
-                ? session.BundleReferences.Rewrite(entry, resource).Resolution.Resolved
-                : Indexing.ReferenceResolution.None.Resolved;
+            string reference = ResourceReader.Describe(entry);
+            if (ResourceReader.Read(session.RootPath, entry).Resource is { } resource)
+            {
+                texts[reference] = AttachmentText.Of(reference, resource);
+                resolutions[reference] = session.BundleReferences.Rewrite(entry, resource).Resolution.Resolved;
+            }
+            else
+            {
+                texts[reference] = [];
+                resolutions[reference] = Indexing.ReferenceResolution.None.Resolved;
+            }
         }
 
-        return resolutions;
+        return (resolutions, texts);
     }
+
+    /// <summary>
+    /// What each chain adds to the response, charged to the first found resource in it (a chain is listed once, and only with a
+    /// returned member), by that resource's position in <paramref name="found"/>.
+    /// </summary>
+    private static Dictionary<int, int> ChainBytes(List<CatalogEntry> found, IReadOnlyList<IReadOnlyList<DocumentVersion>> chains)
+    {
+        Dictionary<int, int> bytes = [];
+        foreach (IReadOnlyList<DocumentVersion> chain in chains)
+        {
+            HashSet<string> members = [.. chain.Select(version => version.Reference)];
+            int first = found.FindIndex(entry => members.Contains(ResourceReader.Describe(entry)));
+            if (first >= 0)
+            {
+                bytes[first] = bytes.GetValueOrDefault(first) + EnvelopeJson.SizeOf(chain) + 16;
+            }
+        }
+
+        return bytes;
+    }
+
+    /// <summary>What a resource's attachment texts add to the response: each item and its separator, and the member's name once (overestimated per resource).</summary>
+    private static int TextBytes(IReadOnlyList<AttachmentText> texts) =>
+        texts.Count == 0 ? 0 : texts.Sum(text => EnvelopeJson.SizeOf(text) + 1) + 16;
 
     /// <summary>
     /// The call that reads the references a size-cut response left out. The references are listed once, so the way to fit

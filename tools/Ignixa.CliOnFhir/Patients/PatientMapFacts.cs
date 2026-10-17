@@ -25,6 +25,7 @@ public sealed record PatientMapFacts(
     MapRecord Record,
     IReadOnlyDictionary<string, MapDomain> Domains,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyDictionary<string, int>? Other,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyDictionary<string, IReadOnlyDictionary<string, int>>? Kinds,
     IReadOnlyList<string> CodeSystems,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Quirks,
     string Note);

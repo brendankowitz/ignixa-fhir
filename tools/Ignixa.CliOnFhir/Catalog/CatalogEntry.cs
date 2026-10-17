@@ -22,6 +22,8 @@ namespace Ignixa.CliOnFhir.Catalog;
 /// its type (R4 bundle.html §2.36.4.1), otherwise a hash of its location.
 /// </param>
 /// <param name="FullUrl">The Bundle entry's <c>fullUrl</c>; null outside a Bundle or when the entry has none.</param>
+/// <param name="Kind">The resource's <see cref="RecordKind"/>; null when it has none.</param>
+/// <param name="IdentifierSystem">The system every identifier of the resource has; null when it has none, or several.</param>
 public sealed record CatalogEntry(
     string ResourceType,
     string Id,
@@ -30,4 +32,6 @@ public sealed record CatalogEntry(
     int Length,
     int? Line,
     bool HasSyntheticId,
-    string? FullUrl = null);
+    string? FullUrl = null,
+    string? Kind = null,
+    string? IdentifierSystem = null);

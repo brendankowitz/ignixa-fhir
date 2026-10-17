@@ -50,6 +50,9 @@ public static partial class PatientMap
     /// <summary>The <c>byCategory</c> key of observations with no coded category.</summary>
     public const string NoCategory = "(none)";
 
+    /// <summary>Most record kinds counted per type in <c>kinds</c>; the rest are summed under <see cref="FolderKinds.Other"/>.</summary>
+    public const int TopKinds = 6;
+
     /// <summary>Most lab codes named in quirks as coded several ways.</summary>
     public const int TopQuirks = 3;
 
@@ -160,6 +163,7 @@ public static partial class PatientMap
             record,
             domains,
             other.Count == 0 ? null : other,
+            Kinds(context),
             CodeSystems(described, aliases),
             NonEmpty(Quirks(context, aliases)),
             Note);
@@ -180,6 +184,29 @@ public static partial class PatientMap
         }
 
         return EnvelopeAssembler.Create<PatientMapFacts?>(context.Session, facts, builtAt, [], omitted, absent, issues, cancellationToken);
+    }
+
+    /// <summary>
+    /// For each type whose resources in the compartment are of more than one record kind (<see cref="FolderKinds"/>), the count of
+    /// each kind by short name; null when there is none. A search over such a type mixes its kinds unless it filters on one.
+    /// </summary>
+    private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, int>>? Kinds(PatientContext context)
+    {
+        FolderKinds kinds = context.Session.Kinds;
+        Dictionary<string, IReadOnlyDictionary<string, int>> mixed = new(StringComparer.Ordinal);
+        foreach (IGrouping<string, CatalogEntry> type in context.Compartment.Members
+            .Where(member => kinds.IsMixed(member.ResourceType))
+            .GroupBy(member => member.ResourceType, StringComparer.Ordinal)
+            .OrderBy(group => group.Key, StringComparer.Ordinal))
+        {
+            IReadOnlyDictionary<string, int> tally = kinds.Tally(type, TopKinds);
+            if (tally.Count > 1)
+            {
+                mixed[type.Key] = tally;
+            }
+        }
+
+        return mixed.Count == 0 ? null : mixed;
     }
 
     private static MapDomain Problems(PatientContext context, Lines lines)

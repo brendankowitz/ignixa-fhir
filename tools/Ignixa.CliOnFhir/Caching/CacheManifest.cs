@@ -42,7 +42,7 @@ internal sealed record CacheManifest(
     string ModuleVersions,
     IReadOnlyList<CatalogFile> Files)
 {
-    public const int CurrentFormatVersion = 15;
+    public const int CurrentFormatVersion = 16;
 
     public static CacheManifest For(FolderCatalog catalog, string folderPath, string fhirVersion, ISearchParameterDefinitionManager definitions)
     {

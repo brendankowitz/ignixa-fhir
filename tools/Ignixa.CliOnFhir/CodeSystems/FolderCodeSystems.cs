@@ -182,7 +182,7 @@ public static partial class FolderCodeSystems
         }
 
         List<NextCall> next = Next(usages, terminology, session, offset, pageSize, inventory.Systems.Count, topCodes);
-        var facts = new CodeSystemsCompactFacts(inventory.Systems.Count, offset, systems.Count, systems, terminology is null ? "not loaded" : "loaded");
+        var facts = new CodeSystemsCompactFacts(inventory.Systems.Count, offset, systems.Count, systems, terminology is null ? "not loaded" : "loaded", session.Kinds.MixedCounts());
         return EnvelopeAssembler.Create<CodeSystemsCompactFacts?>(session, facts, session.Catalog.BuiltAt, [], omitted, [], issues, cancellationToken) with { Next = next };
     }
 

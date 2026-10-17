@@ -99,7 +99,7 @@ public sealed class ResourceTools(FolderSession session, McpToolset toolset = Mc
     [McpServerTool(Name = "read_resources", ReadOnly = true, Idempotent = true)]
     [QueryToolset(HiddenArguments = ["maxBytes"])]
     [Description("""
-        Reads up to 50 resources by reference ('Type/id') with file evidence; 'absent' lists those not held. 'elements' keeps responses small.
+        Reads up to 50 resources by reference ('Type/id') with file evidence; 'absent' lists those not held. 'elements' keeps responses small. Report and document text attachments come back decoded in facts.texts, document version chains in facts.versions.
         """)]
     public CallToolResult ReadResources(
         string[] references,

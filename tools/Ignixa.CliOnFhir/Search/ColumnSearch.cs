@@ -30,6 +30,12 @@ internal static class ColumnSearch
 
     public const int MaxColumns = 20;
 
+    /// <summary>
+    /// The path of a column holding each row's record kind (<see cref="FolderKinds"/>'s short name) instead of a FHIRPath value:
+    /// the profile, or the class or category, that tells the type's kinds apart.
+    /// </summary>
+    public const string KindPath = "%kind";
+
     /// <summary>Parses every column, failing the request on the first that is malformed or not valid FHIRPath.</summary>
     /// <exception cref="ToolRequestException">No columns, too many, a blank, repeated or reserved name, or an invalid expression.</exception>
     public static IReadOnlyList<CompiledColumn> Compile(IReadOnlyList<SearchColumn> columns)
@@ -62,7 +68,9 @@ internal static class ColumnSearch
                         : $"'columns' names '{column.Name}' twice.");
             }
 
-            compiled.Add(new CompiledColumn(column.Name, column.Path, FolderFhirPath.Compile($"Column '{column.Name}'", column.Path)));
+            compiled.Add(IsKind(column.Path)
+                ? new CompiledColumn(column.Name, column.Path, Expression: null)
+                : new CompiledColumn(column.Name, column.Path, FolderFhirPath.Compile($"Column '{column.Name}'", column.Path)));
         }
 
         return compiled;
@@ -96,15 +104,15 @@ internal static class ColumnSearch
         foreach (IndexedResource match in page)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            rows.Add(Evaluate(fhirPath, columns, match.Entry));
+            rows.Add(Evaluate(fhirPath, session.Kinds, columns, match.Entry));
         }
 
         if (page.Count == 0)
         {
             IElement empty = fhirPath.Empty(request.ResourceType);
-            foreach (CompiledColumn column in columns)
+            foreach (CompiledColumn column in columns.Where(column => column.Expression is not null))
             {
-                _ = fhirPath.Evaluate(empty, column.Expression, $"Column '{column.Name}'", column.Path, $"an empty {request.ResourceType}");
+                _ = fhirPath.Evaluate(empty, column.Expression!, $"Column '{column.Name}'", column.Path, $"an empty {request.ResourceType}");
             }
         }
 
@@ -117,7 +125,7 @@ internal static class ColumnSearch
     }
 
     /// <summary>The row of <paramref name="entry"/>, or null when it cannot be read now (the reason is in the reader's problems).</summary>
-    private static Row? Evaluate(FolderFhirPath fhirPath, IReadOnlyList<CompiledColumn> columns, CatalogEntry entry)
+    private static Row? Evaluate(FolderFhirPath fhirPath, FolderKinds kinds, IReadOnlyList<CompiledColumn> columns, CatalogEntry entry)
     {
         if (fhirPath.Read(entry) is not { } resource)
         {
@@ -130,6 +138,12 @@ internal static class ColumnSearch
         for (int index = 0; index < columns.Count; index++)
         {
             CompiledColumn column = columns[index];
+            if (column.Expression is null)
+            {
+                cells.Add(JsonValue.Create(kinds.KindOf(entry).ShortName));
+                continue;
+            }
+
             IReadOnlyList<IElement> values = fhirPath.Evaluate(resource, column.Expression, $"Column '{column.Name}'", column.Path, reference);
             if (values.Count == 0)
             {
@@ -142,8 +156,10 @@ internal static class ColumnSearch
         return new Row(entry, cells, empty, fhirPath.TakeResolved(), fhirPath.TakeUnresolved());
     }
 
-    /// <summary>A column after parsing.</summary>
-    public sealed record CompiledColumn(string Name, string Path, Expression Expression);
+    private static bool IsKind(string path) => string.Equals(path.Trim(), KindPath, StringComparison.Ordinal);
+
+    /// <summary>A column after parsing; a <see cref="KindPath"/> column has no expression.</summary>
+    public sealed record CompiledColumn(string Name, string Path, Expression? Expression);
 
     /// <summary>One evaluated row: its resource, its cells (key first), which columns are empty and what <c>resolve()</c> reached or missed.</summary>
     private sealed record Row(CatalogEntry Entry, JsonArray Cells, IReadOnlyList<int> EmptyColumns, IReadOnlyList<CatalogEntry> Resolved, IReadOnlyList<string> Unresolved);

@@ -37,7 +37,7 @@ internal static class FhirPathHints
     /// <summary>The warnings of every column, each column analysed with the searched type as its root.</summary>
     /// <exception cref="ToolRequestException">A column names an element its type does not declare.</exception>
     public static IReadOnlyList<IssueItem> ForColumns(IFhirSchemaProvider schema, string resourceType, IReadOnlyList<ColumnSearch.CompiledColumn> columns) =>
-        [.. columns.SelectMany(column => Check(schema, $"Column '{column.Name}'", column.Expression, resourceType, resourceType))];
+        [.. columns.Where(column => column.Expression is not null).SelectMany(column => Check(schema, $"Column '{column.Name}'", column.Expression!, resourceType, resourceType))];
 
     /// <summary>The warnings of a <c>fhirpath</c> expression, analysed over the searchset Bundle whose entries are <paramref name="resourceType"/>.</summary>
     /// <exception cref="ToolRequestException">The expression names an element its type does not declare.</exception>

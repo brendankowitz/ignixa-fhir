@@ -94,8 +94,9 @@ public static class ResourceSearcher
     /// <exception cref="ToolRequestException">The query cannot be parsed.</exception>
     internal static (ParsedSearch Parsed, List<IssueItem> Issues, List<OmittedItem> Omitted) Parse(FolderSession session, SearchRequest request)
     {
-        ParsedSearch parsed = session.QueryParser.Parse(request with { Query = DigestIdQuery.Rewrite(session, request.ResourceType, request.Query) });
-        List<IssueItem> issues = [];
+        (string? query, IReadOnlyList<IssueItem> profileNames) = SearchKinds.ExpandProfileNames(session, request.ResourceType, DigestIdQuery.Rewrite(session, request.ResourceType, request.Query));
+        ParsedSearch parsed = session.QueryParser.Parse(request with { Query = query });
+        List<IssueItem> issues = [.. profileNames];
         int ignored = 0;
         foreach (IssueItem warning in parsed.Warnings)
         {
@@ -184,6 +185,11 @@ public static class ResourceSearcher
         {
             (matches, perPatient) = PerPatient.Select(session, request.ResourceType, matches, chosen, perPatientSort);
             budget -= PerPatient.SizeOf(perPatient);
+        }
+
+        if (SearchKinds.Mixed(session, request.ResourceType, matches) is { } mixed)
+        {
+            issues.Add(mixed);
         }
 
         // The selection's facts are added to whichever response the search gives; the budget above kept room for them.
