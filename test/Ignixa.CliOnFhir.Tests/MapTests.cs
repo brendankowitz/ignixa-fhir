@@ -145,22 +145,61 @@ public class MapTests
             facts.Map.Source.ShouldBe("folder");
             facts.Map.Format.ShouldBe("structuremap");
             facts.Map.Reference.ShouldBe("StructureMap/sm1");
-            facts.Transformed.ShouldBe(2);
+            facts.Resources.ShouldNotBeNull().Select(resource => (string)resource["id"]!).ShouldBe(["p1", "p2"]);
             envelope.Evidence[0].ShouldBe(new EvidenceItem("StructureMap/sm1", "maps.ndjson", 1, 0));
         }
     }
 
-    // A StructureMap assigns every value through a transform (copy), which this version of the library does not write into the
-    // target, so the output is empty; the run must say so rather than look like a success.
     [Fact]
-    public async Task GivenTransformedResourcesThatHoldOnlyTheirType_WhenRun_ThenAWarningSaysSo()
+    public async Task GivenAMapWhoseRulesMatchNothing_WhenRun_ThenAWarningSaysTheResultsAreEmpty()
     {
         using TestFolder root = Root();
+        const string nothing = "map \"http://example.org/fml/nothing\" = \"Nothing\"\ngroup N(source src : Patient, target tgt : Basic) {\n  src.maritalStatus as m -> tgt.code = m;\n}\n";
 
-        ToolEnvelope<MapFacts?> envelope = await RunAsync(Data(root), new MapRequest(MapFixture.StructureMap("sm1", "http://example.org/sm/patient-basic")));
+        ToolEnvelope<MapFacts?> envelope = await RunAsync(Data(root), new MapRequest(nothing));
 
         Facts(envelope).Transformed.ShouldBe(2);
         envelope.Issues.Single(issue => issue.Code == "map-output-empty").Diagnostics.ShouldStartWith("2 of the 2 transformed resources hold nothing but their resourceType");
+    }
+
+    // Transform functions and StructureMap JSON (which states every assignment as one) write into the target.
+    [Fact]
+    public async Task GivenTransformFunctionsInFmlAndInAStructureMap_WhenRun_ThenTheirResultsAreWritten()
+    {
+        using TestFolder root = Root();
+        const string functions = """
+            map "http://example.org/fml/functions" = "Functions"
+            group F(source src : Patient, target tgt : Basic) {
+              src.id as id -> tgt.id = truncate(id, 1);
+              src.birthDate as b -> tgt.created = copy(b);
+              src.gender as g -> tgt.code = cc('http://hl7.org/fhir/administrative-gender', g);
+            }
+            """;
+
+        ToolEnvelope<MapFacts?> fml = await RunAsync(Data(root), new MapRequest(functions, References: ["Patient/p1"]));
+        ToolEnvelope<MapFacts?> json = await RunAsync(Data(root), new MapRequest(MapFixture.StructureMap("sm1", "http://example.org/sm/patient-basic")));
+
+        Facts(fml).Resources.ShouldHaveSingleItem().ToJsonString().ShouldBe("""{"resourceType":"Basic","id":"p","created":"1975-03-04","code":{"coding":[{"system":"http://hl7.org/fhir/administrative-gender","code":"female"}]}}""");
+        Facts(json).Resources.ShouldNotBeNull().Select(resource => (string)resource["id"]!).ShouldBe(["p1", "p2"]);
+        fml.Issues.ShouldNotContain(issue => issue.Code == "map-output-empty");
+        json.Issues.ShouldNotContain(issue => issue.Code == "map-output-empty");
+    }
+
+    // An invoked group writes into its own target parameter, whatever it is called.
+    [Fact]
+    public async Task GivenAnImportedGroupWhoseTargetHasAnotherName_WhenCalled_ThenItWritesIntoTheTarget()
+    {
+        const string helpers = """
+            map "http://example.org/fml/helpers" = "Helpers"
+            group Copy(source s : Patient, target t : Basic) {
+              s.id as id -> t.id = id;
+            }
+            """;
+        using TestFolder root = Root().Write("helpers.fml", helpers);
+
+        MapFacts facts = Facts(await RunAsync(Data(root), new MapRequest(Main, Imports: [Path.Combine(root.Path, "helpers.fml")])));
+
+        facts.Resources.ShouldNotBeNull().Select(resource => (string)resource["id"]!).ShouldBe(["p1", "p2"]);
     }
 
     [Fact]

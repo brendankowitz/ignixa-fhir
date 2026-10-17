@@ -168,7 +168,7 @@ public static partial class MapRunner
         issues.AddRange(tally.FailureIssues);
         if (tally.Empty > 0)
         {
-            issues.Add(new IssueItem("warning", "map-output-empty", $"{tally.Empty} of the {tally.Transformed} transformed resources hold nothing but their resourceType: the map's rules matched nothing in them, or assign through a transform function (copy, truncate, evaluate, cc, uuid, ...), whose result this version of Ignixa.FhirMappingLanguage does not write into the target; a StructureMap states every assignment as one. Assign a source variable or a literal directly in FML (tgt.id = id).", Location: null));
+            issues.Add(new IssueItem("warning", "map-output-empty", $"{tally.Empty} of the {tally.Transformed} transformed resources hold nothing but their resourceType: none of the map's rules wrote anything for them (their sources matched nothing, or a condition held them back).", Location: null));
         }
 
         issues.AddRange(run.Notes);

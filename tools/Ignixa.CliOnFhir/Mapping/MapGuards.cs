@@ -81,7 +81,7 @@ internal static class MapGuards
         typeof(TargetExpression), typeof(TransformExpression), typeof(GroupInvocationExpression), typeof(QualifiedIdentifierExpression),
         typeof(IndexExpression), typeof(ConstantDeclarationExpression), typeof(FhirPathExpression), typeof(LiteralExpression),
         typeof(IdentifierExpression), typeof(ParameterExpression), typeof(UsesExpression), typeof(ImportsExpression),
-        typeof(ConceptMapDeclarationExpression), typeof(ConceptMapGroupExpression), typeof(ConceptMapCodeMapExpression), typeof(ConceptMapPrefixExpression),
+        typeof(DependentExpression), typeof(NamedArgumentExpression), typeof(ConceptMapDeclarationExpression), typeof(ConceptMapGroupExpression), typeof(ConceptMapCodeMapExpression), typeof(ConceptMapPrefixExpression),
     ];
 
     // The text a node holds that is, or may be read as, FHIRPath.
@@ -98,6 +98,8 @@ internal static class MapGuards
         GroupExpression group => [.. group.Parameters, .. group.Rules],
         RuleExpression rule => [.. rule.Sources, .. rule.Targets, .. Present(rule.Dependent)],
         RuleSetExpression rules => rules.Rules,
+        DependentExpression dependent => [.. dependent.Invocations, .. Present(dependent.Rules)],
+        NamedArgumentExpression argument => [argument.Value],
         SourceExpression source => [source.Context, .. Present(source.Condition), .. Present(source.Check), .. Present(source.Log), .. Present(source.Default)],
         TargetExpression target => [.. Present(target.Context), .. Present(target.Transform)],
         TransformExpression transform => transform.Arguments,

@@ -107,7 +107,8 @@ internal static class MapImports
             [.. map.ConceptMaps, .. imported.SelectMany(item => item.Map.ConceptMaps)],
             [.. map.Constants, .. imported.SelectMany(item => item.Map.Constants)],
             map.Metadata,
-            map.Location);
+            map.Location,
+            map.MetadataDeclarations);
         List<MapImportFacts> facts = [.. imported.Select(item => new MapImportFacts(FhirIds.Written(item.Map.Url), item.Loaded.Source, item.Loaded.Reference))];
         return new Resolved(merged, facts, notes);
     }
