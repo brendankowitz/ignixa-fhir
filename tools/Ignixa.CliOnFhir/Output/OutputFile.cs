@@ -35,6 +35,11 @@ internal sealed class OutputFile
     private bool _closed;
     private bool _moved;
 
+    // For a commit that can be rolled back: the existing target renamed aside, and the identities of it and of the file written.
+    private string? _backup;
+    private DirectoryIdentity? _backupIdentity;
+    private DirectoryIdentity? _writtenIdentity;
+
     /// <param name="target">The checked target.</param>
     /// <param name="handle">The temporary file, created exclusively and checked to be at <paramref name="tempPath"/>; owned from here.</param>
     /// <param name="tempPath">Its path, as checked.</param>
@@ -70,13 +75,115 @@ internal sealed class OutputFile
         try
         {
             CheckInPlace();
-            string? landed = Rename();
+            string? landed = Rename(replace: _target.Overwrite);
             _target.CheckFinal(landed);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             throw ToolRequestException.Error("out-write-failed", $"Writing '{_target.Path}' failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// <see cref="Commit"/> for a file of a set that is committed all or none: an existing target is first renamed aside, beside it,
+    /// so that <see cref="Rollback"/> can put it back if a later file of the set fails, and the file is then renamed into the free
+    /// place without replacing anything. <see cref="DropBackup"/> removes the old target once the whole set is in place.
+    /// </summary>
+    /// <exception cref="ToolRequestException">As for <see cref="Commit"/>.</exception>
+    public void CommitWithBackup()
+    {
+        try
+        {
+            CheckInPlace();
+            _writtenIdentity = IdentityOf(TempPath);
+            if (File.Exists(_target.Path))
+            {
+                if (!_target.Overwrite)
+                {
+                    throw ToolRequestException.Error("out-refused", $"The output file '{_target.Path}' appeared while the run was writing it; choose another path, or set overwrite to replace it.");
+                }
+
+                string backup = Path.Combine(Path.GetDirectoryName(_target.Path)!, $".{Path.GetFileName(_target.Path)}.{Guid.NewGuid():N}.bak");
+                _backupIdentity = IdentityOf(_target.Path);
+                NoReplaceRename.Move(_target.Path, backup);
+                _backup = backup;
+            }
+
+            string? landed = Rename(replace: false);
+            _target.CheckFinal(landed);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw ToolRequestException.Error("out-write-failed", $"Writing '{_target.Path}' failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Undoes <see cref="CommitWithBackup"/> when a later file of the set failed: the file this run renamed into place is deleted, and
+    /// the target it replaced is renamed back. Both go only through the directory that was checked, and the file is deleted only when it
+    /// is still the one this run wrote (by device and inode, where they can be read). Nothing here throws for a file system failure.
+    /// </summary>
+    /// <returns>An <c>out-rollback-left</c> warning when something could not be put back; otherwise null.</returns>
+    public IssueItem? Rollback()
+    {
+        string directory = Path.GetDirectoryName(_target.Path)!;
+        if ((_moved || _backup is not null) && !OutputTarget.DirectoryUnchanged(directory))
+        {
+            return RollbackLeft($"its directory '{directory}' no longer resolves to the path that was checked, so nothing was changed through it");
+        }
+
+        try
+        {
+            if (_moved)
+            {
+                if (!SameFile(_target.Path, _writtenIdentity))
+                {
+                    return RollbackLeft("the file at that path is no longer the one this run wrote, so it was not deleted");
+                }
+
+                File.Delete(_target.Path);
+                _moved = false;
+            }
+
+            if (_backup is { } backup)
+            {
+                NoReplaceRename.Move(backup, _target.Path);
+                _backup = null;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return RollbackLeft($"it could not be put back ({ex.GetType().Name}: {ex.Message})");
+        }
+
+        return null;
+    }
+
+    /// <summary>Removes the old target <see cref="CommitWithBackup"/> renamed aside, once the whole set is in place.</summary>
+    /// <returns>An <c>out-backup-left</c> information issue when it could not be removed; otherwise null.</returns>
+    public IssueItem? DropBackup()
+    {
+        if (_backup is not { } backup)
+        {
+            return null;
+        }
+
+        string directory = Path.GetDirectoryName(_target.Path)!;
+        try
+        {
+            if (OutputTarget.DirectoryUnchanged(directory) && SameFile(backup, _backupIdentity))
+            {
+                File.Delete(backup);
+                _backup = null;
+                return null;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return new IssueItem("information", "out-backup-left", $"The previous '{_target.Path}' was kept at '{backup}' (where it was as of the check): it could not be deleted ({ex.GetType().Name}: {ex.Message}).", Location: null);
+        }
+
+        return new IssueItem("information", "out-backup-left", $"The previous '{_target.Path}' was kept at '{backup}' (where it was as of the check): its directory or the file there changed, so it was not deleted.", Location: null);
     }
 
     /// <summary>
@@ -182,6 +289,15 @@ internal sealed class OutputFile
         }
     }
 
+    private IssueItem RollbackLeft(string why) =>
+        new("warning", "out-rollback-left", $"'{_target.Path}' could not be rolled back after a later file of the run failed: {why}.{(_backup is null ? string.Empty : $" The file it replaced is kept at '{_backup}'.")}", Location: null);
+
+    private static DirectoryIdentity? IdentityOf(string path) => DirectoryIdentity.IsAvailable ? DirectoryIdentity.Of(path) : null;
+
+    // Whether the file at path is the one recorded; with no identity to compare (another system), only that something is there.
+    private static bool SameFile(string path, DirectoryIdentity? recorded) =>
+        recorded is { } identity ? DirectoryIdentity.Of(path) == identity : File.Exists(path);
+
     private static IssueItem Left(string location, string why) =>
         new("information", "out-temp-left", $"The temporary file was left at '{location}' (where it was as of the check): {why}. Delete it when the directory is safe to use.", Location: null);
 
@@ -192,7 +308,7 @@ internal sealed class OutputFile
 
     // Renames the file over the target and returns where the handle shows it landed, or null when that cannot be read. Windows cannot
     // rename a file this process holds open without sharing delete, so it is closed first there.
-    private string? Rename()
+    private string? Rename(bool replace)
     {
         bool renameOpen = OpenFilePath.IsAvailable && !OperatingSystem.IsWindows();
         if (!renameOpen)
@@ -202,9 +318,16 @@ internal sealed class OutputFile
 
         try
         {
-            File.Move(TempPath, _target.Path, _target.Overwrite);
+            if (replace)
+            {
+                File.Move(TempPath, _target.Path, overwrite: true);
+            }
+            else
+            {
+                NoReplaceRename.Move(TempPath, _target.Path);
+            }
         }
-        catch (IOException ex) when (!_target.Overwrite && File.Exists(_target.Path))
+        catch (IOException ex) when (!replace && File.Exists(_target.Path))
         {
             throw ToolRequestException.Error("out-refused", $"The output file '{_target.Path}' appeared while the run was writing it ({ex.GetType().Name}); choose another path, or set overwrite to replace it.");
         }

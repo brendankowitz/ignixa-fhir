@@ -135,30 +135,62 @@ public class DeIdOutputSafetyTests
         Directory.Exists(Path.Combine(root.Path, "made")).ShouldBeFalse();
     }
 
-    // The renames are one per file: a rename that fails after another succeeded must say which file is already in place.
+    // The renames are one per file: a rename that fails after another succeeded rolls that one back, so nothing new is left.
     [Fact]
-    public async Task GivenARenameThatFailsAfterAnotherSucceeded_WhenRun_ThenTheFailureNamesTheFileAlreadyInPlace()
+    public async Task GivenARenameThatFailsAfterAnotherSucceeded_WhenRun_ThenTheFirstIsRolledBackAndNoNewFileIsLeft()
     {
         using TestFolder root = Root();
         string output = Directory.CreateDirectory(Out(root)).FullName;
         int begun = 0;
-        string? second = null;
 
-        ToolEnvelope<DeIdFacts?> envelope = await RunAsync(Data(root), new DeIdRequest(Config, output), afterBegin: file =>
+        ToolEnvelope<DeIdFacts?> envelope = await RunAsync(Data(root), new DeIdRequest(Config, output), afterBegin: _ =>
         {
             if (++begun == 2)
             {
-                // A directory where the second file is to be renamed to: the rename fails, after the first one's.
-                second = Path.Combine(output, Path.GetFileName(file.TempPath).Split(".ndjson.")[0].TrimStart('.') + ".ndjson");
-                Directory.CreateDirectory(second);
+                // A directory where the second file is to be renamed to: its rename fails, after the first one's.
+                Directory.CreateDirectory(Path.Combine(output, "Patient.ndjson"));
             }
         });
 
         Error(envelope).Code.ShouldBe("out-write-failed");
-        IssueItem partly = envelope.Issues.Single(issue => issue.Code == "out-partly-committed");
-        string first = Directory.GetFiles(output).ShouldHaveSingleItem();
-        partly.Diagnostics.ShouldContain(first);
-        partly.Diagnostics.ShouldNotContain(second!);
+        envelope.Issues.ShouldNotContain(issue => issue.Code == "out-rollback-left");
+        Directory.GetFiles(output).ShouldBeEmpty();
+    }
+
+    // With overwrite, the targets a failed run had already replaced are restored byte for byte.
+    [Fact]
+    public async Task GivenARenameThatFailsAfterAnotherReplacedAFileWithOverwrite_WhenRun_ThenThatFileIsRestored()
+    {
+        using TestFolder root = Root().Write("out/Observation.ndjson", "old observations\n").Write("out/Patient.ndjson", "old patients\n");
+        string output = Out(root);
+        byte[] observations = await File.ReadAllBytesAsync(Path.Combine(output, "Observation.ndjson"));
+        int begun = 0;
+
+        ToolEnvelope<DeIdFacts?> envelope = await RunAsync(Data(root), new DeIdRequest(Config, output, Overwrite: true), afterBegin: _ =>
+        {
+            if (++begun == 2)
+            {
+                File.Delete(Path.Combine(output, "Patient.ndjson"));
+                Directory.CreateDirectory(Path.Combine(output, "Patient.ndjson"));
+            }
+        });
+
+        Error(envelope).Code.ShouldBe("out-write-failed");
+        envelope.Issues.ShouldNotContain(issue => issue.Code == "out-rollback-left");
+        (await File.ReadAllBytesAsync(Path.Combine(output, "Observation.ndjson"))).ShouldBe(observations);
+        Directory.GetFiles(output).ShouldBe([Path.Combine(output, "Observation.ndjson")]);
+    }
+
+    [Fact]
+    public async Task GivenASuccessfulRunWithOverwrite_WhenTheTargetsExisted_ThenTheyAreReplacedAndNoBackupIsLeft()
+    {
+        using TestFolder root = Root().Write("out/Observation.ndjson", "old\n").Write("out/Patient.ndjson", "old\n");
+
+        DeIdFacts facts = Facts(await RunAsync(Data(root), new DeIdRequest(Config, Out(root), Overwrite: true)));
+
+        facts.Written.ShouldBe(4);
+        Directory.GetFileSystemEntries(Out(root)).Order(StringComparer.Ordinal).ShouldBe([Path.Combine(Out(root), "Observation.ndjson"), Path.Combine(Out(root), "Patient.ndjson")]);
+        (await File.ReadAllTextAsync(Path.Combine(Out(root), "Patient.ndjson"))).ShouldNotBe("old\n");
     }
 
     [Fact]

@@ -18,9 +18,9 @@ namespace Ignixa.CliOnFhir.Output;
 /// that fails calls <see cref="DiscardAsync"/>, which leaves no new file and every existing one as it was. Not thread-safe.
 /// </summary>
 /// <remarks>
-/// The renames are one per file, so they are not one atomic step: a rename that fails after others succeeded (a disk failure, or a
-/// link swapped in during the microseconds after the last check) leaves those in place, and the failure says which
-/// (<c>out-partly-committed</c>).
+/// The renames are one per file, so they are not one atomic step. Each existing target is renamed aside before its file takes its
+/// place (<see cref="OutputFile.CommitWithBackup"/>), and a rename that fails after others succeeded rolls those back: the new files
+/// are removed and the old ones restored, through the checked directory only (<c>out-rollback-left</c> when that cannot be done).
 /// </remarks>
 /// <param name="directory">The checked directory.</param>
 /// <param name="notes">Receives what the run could not clean up (<c>out-temp-left</c>, <c>out-directory-left</c>) and other notes on the files.</param>
@@ -68,8 +68,8 @@ internal sealed partial class NdjsonDirectory(OutputDirectory directory, List<Is
     /// </summary>
     /// <returns>The files written, in the order they were begun.</returns>
     /// <exception cref="ToolRequestException">
-    /// <c>out-refused</c> or <c>out-write-failed</c>. Nothing was renamed when the failure came before the first rename; otherwise an
-    /// <c>out-partly-committed</c> warning in the notes names the files already in place. The caller then calls <see cref="DiscardAsync"/>.
+    /// <c>out-refused</c> or <c>out-write-failed</c>. What was renamed before the failure has been rolled back (or an
+    /// <c>out-rollback-left</c> warning in the notes says what could not be). The caller then calls <see cref="DiscardAsync"/>.
     /// </exception>
     public async Task<IReadOnlyList<NdjsonFileFacts>> CommitAsync()
     {
@@ -87,13 +87,20 @@ internal sealed partial class NdjsonDirectory(OutputDirectory directory, List<Is
         {
             try
             {
-                _files[i].Output.Commit();
+                _files[i].Output.CommitWithBackup();
             }
-            catch (ToolRequestException) when (i > 0)
+            catch (ToolRequestException)
             {
-                string committed = string.Join(", ", _files.Take(i).Select(file => $"'{file.Target.Path}'"));
-                notes.Add(new IssueItem("warning", "out-partly-committed", $"{i} of the run's {_files.Count} output files were already renamed into place when the next one failed, and are kept: {committed}. The others were not written.", Location: null));
+                RollBack(i);
                 throw;
+            }
+        }
+
+        foreach (TypeFile file in _files)
+        {
+            if (file.Output.DropBackup() is { } left)
+            {
+                notes.Add(left);
             }
         }
 
@@ -106,6 +113,20 @@ internal sealed partial class NdjsonDirectory(OutputDirectory directory, List<Is
         }
 
         return [.. _files.Select(file => new NdjsonFileFacts(file.ResourceType, file.Target.Path, file.Resources, file.Bytes))];
+    }
+
+    // Puts back what the files up to and including the one that failed changed, last first: the files renamed into place are removed
+    // and the targets they replaced restored, so a failed run leaves no new file and every existing one as it was. What cannot be put
+    // back is a warning in the notes.
+    private void RollBack(int failed)
+    {
+        for (int i = failed; i >= 0; i--)
+        {
+            if (_files[i].Output.Rollback() is { } left)
+            {
+                notes.Add(left);
+            }
+        }
     }
 
     /// <summary>
