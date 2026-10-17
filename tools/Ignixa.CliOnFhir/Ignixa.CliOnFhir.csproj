@@ -45,6 +45,7 @@
     <ProjectReference Include="..\..\src\Core\Ignixa.SqlOnFhir\Ignixa.SqlOnFhir.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.SqlOnFhir.Writers\Ignixa.SqlOnFhir.Writers.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.DeId\Ignixa.DeId.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.FhirMappingLanguage\Ignixa.FhirMappingLanguage.csproj" />
   </ItemGroup>
 
 </Project>
