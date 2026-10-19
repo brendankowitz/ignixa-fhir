@@ -8,6 +8,7 @@ using Ignixa.Api.BackgroundServices;
 using Ignixa.Api.Configuration;
 using Ignixa.Api.Infrastructure;
 using Ignixa.Api.Services;
+using Ignixa.Application.BackgroundOperations.BulkDelete;
 using Ignixa.Application.BackgroundOperations.Export;
 using Ignixa.Application.BackgroundOperations.Import;
 using Ignixa.Application.BackgroundOperations.Jobs;
@@ -48,6 +49,14 @@ public static class BackgroundServicesRegistration
         // TTL cleanup options
         services.Configure<TtlCleanupOptions>(configuration.GetSection(TtlCleanupOptions.SectionName));
 
+        // Bulk delete options: an out-of-range batch size fails host start rather than the first job.
+        services.AddOptions<BulkDeleteOptions>()
+            .Bind(configuration.GetSection(BulkDeleteOptions.SectionName))
+            .Validate(
+                options => options.IsValid(),
+                $"{BulkDeleteOptions.SectionName}:BatchSize must be between {BulkDeleteOptions.MinBatchSize} and {BulkDeleteOptions.MaxBatchSize}.")
+            .ValidateOnStart();
+
         // Transaction watcher options (used by eternal orchestration)
         services.Configure<TransactionWatcherOptions>(configuration.GetSection(TransactionWatcherOptions.SectionName));
 
@@ -79,6 +88,19 @@ public static class BackgroundServicesRegistration
 
         builder.RegisterType<GetJobStatusHandler>()
             .As<IRequestHandler<GetJobStatusQuery, GetJobStatusResult>>()
+            .InstancePerDependency();
+
+        // Bulk delete job handlers
+        builder.RegisterType<CreateBulkDeleteJobHandler>()
+            .As<IRequestHandler<CreateBulkDeleteJobCommand, CreateBulkDeleteJobResult>>()
+            .InstancePerDependency();
+
+        builder.RegisterType<GetBulkDeleteStatusHandler>()
+            .As<IRequestHandler<GetBulkDeleteStatusQuery, GetBulkDeleteStatusResult>>()
+            .InstancePerDependency();
+
+        builder.RegisterType<CancelBulkDeleteHandler>()
+            .As<IRequestHandler<CancelBulkDeleteCommand, CancelBulkDeleteOutcome>>()
             .InstancePerDependency();
 
         return builder;

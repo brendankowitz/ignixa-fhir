@@ -303,7 +303,7 @@ public class EmitTests
             "    ORDER BY m.T1 ASC, m.Sid1 ASC\n" +
             "),\n" +
             "inc0 AS (\n" +
-            "    SELECT DISTINCT TOP (1001) r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n" +
+            "    SELECT DISTINCT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n" +
             "    FROM dbo.ReferenceSearchParam rsp\n" +
             "    INNER JOIN dbo.Resource r\n" +
             "        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
@@ -316,13 +316,15 @@ public class EmitTests
             "      AND EXISTS (\n" +
             "        SELECT 1 FROM cteMatchPage m WHERE m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId\n" +
             "    )\n" +
-            "    ORDER BY T1 ASC, Sid1 ASC\n" +
             "),\n" +
             "inc0lim AS (\n" +
-            "    SELECT TOP (1001) T1, Sid1,\n" +
+            "    SELECT T1, Sid1,\n" +
             "           CAST(CASE WHEN COUNT_BIG(*) OVER() > 1000 THEN 1 ELSE 0 END AS bit) AS IsPartial\n" +
-            "    FROM inc0\n" +
-            "    ORDER BY T1 ASC, Sid1 ASC\n" +
+            "    FROM (\n" +
+            "        SELECT TOP (1001) T1, Sid1\n" +
+            "        FROM inc0\n" +
+            "        ORDER BY T1 ASC, Sid1 ASC\n" +
+            "    ) ranked\n" +
             ")\n" +
             "SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial FROM cteMatchPage\n" +
             "UNION ALL\n" +
@@ -358,18 +360,21 @@ public class EmitTests
         // Act
         var emitted = SqlBuilder.Run(plan);
 
-        // Assert -- the body over-fetches one row (TOP (1)); the companion forwards that sentinel (TOP (1), never
-        // TOP (0)) and flags partiality when the body held more than the zero budget (COUNT_BIG(*) OVER() > 0), so
+        // Assert -- the body is uncapped; the companion over-fetches the one-row sentinel (TOP (1), never TOP (0))
+        // and flags partiality when that capped set holds more than the zero budget (COUNT_BIG(*) OVER() > 0), so
         // a caller can still detect that included resources exist.
         emitted.Sql.ShouldContain(
             "inc0 AS (\n" +
-            "    SELECT DISTINCT TOP (1) r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n");
+            "    SELECT DISTINCT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n");
         emitted.Sql.ShouldContain(
             "inc0lim AS (\n" +
-            "    SELECT TOP (1) T1, Sid1,\n" +
+            "    SELECT T1, Sid1,\n" +
             "           CAST(CASE WHEN COUNT_BIG(*) OVER() > 0 THEN 1 ELSE 0 END AS bit) AS IsPartial\n" +
-            "    FROM inc0\n" +
-            "    ORDER BY T1 ASC, Sid1 ASC\n" +
+            "    FROM (\n" +
+            "        SELECT TOP (1) T1, Sid1\n" +
+            "        FROM inc0\n" +
+            "        ORDER BY T1 ASC, Sid1 ASC\n" +
+            "    ) ranked\n" +
             ")");
         emitted.Sql.ShouldNotContain("TOP (0)");
     }
@@ -406,7 +411,7 @@ public class EmitTests
             "    FROM cte0 m\n" +
             "),\n" +
             "inc0 AS (\n" +
-            "    SELECT DISTINCT TOP (1001) rsp.ResourceTypeId AS T1, rsp.ResourceSurrogateId AS Sid1\n" +
+            "    SELECT DISTINCT rsp.ResourceTypeId AS T1, rsp.ResourceSurrogateId AS Sid1\n" +
             "    FROM dbo.ReferenceSearchParam rsp\n" +
             "    INNER JOIN dbo.Resource r\n" +
             "        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
@@ -419,13 +424,15 @@ public class EmitTests
             "      AND EXISTS (\n" +
             "        SELECT 1 FROM cteMatchPage m WHERE m.T1 = r.ResourceTypeId AND m.Sid1 = r.ResourceSurrogateId\n" +
             "    )\n" +
-            "    ORDER BY T1 ASC, Sid1 ASC\n" +
             "),\n" +
             "inc0lim AS (\n" +
-            "    SELECT TOP (1001) T1, Sid1,\n" +
+            "    SELECT T1, Sid1,\n" +
             "           CAST(CASE WHEN COUNT_BIG(*) OVER() > 1000 THEN 1 ELSE 0 END AS bit) AS IsPartial\n" +
-            "    FROM inc0\n" +
-            "    ORDER BY T1 ASC, Sid1 ASC\n" +
+            "    FROM (\n" +
+            "        SELECT TOP (1001) T1, Sid1\n" +
+            "        FROM inc0\n" +
+            "        ORDER BY T1 ASC, Sid1 ASC\n" +
+            "    ) ranked\n" +
             ")\n" +
             "SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial FROM cteMatchPage\n" +
             "UNION ALL\n" +
@@ -466,7 +473,8 @@ public class EmitTests
     [Fact]
     public void GivenAnIterateStageSeededFromAPredecessorInclude_WhenEmitted_ThenTheExistsClauseUnionsBothBranches()
     {
-        // Arrange -- inc1 seeds from BOTH cteMatchPage and inc0lim.
+        // Arrange -- inc1 seeds from BOTH cteMatchPage and inc0. It reads the uncapped stage body, not the
+        // inc0lim companion: a parent ranked past the budget can still have a child that ranks inside it.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var stage0 = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
@@ -485,8 +493,9 @@ public class EmitTests
             "      AND EXISTS (\n" +
             "        SELECT 1 FROM cteMatchPage m WHERE m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId\n" +
             "        UNION ALL\n" +
-            "        SELECT 1 FROM inc0lim m WHERE m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId\n" +
+            "        SELECT 1 FROM inc0 m WHERE m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId\n" +
             "    )");
+        emitted.Sql.ShouldContain("inc0 AS (\n    SELECT DISTINCT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n");
     }
 
     [Fact]
@@ -956,6 +965,29 @@ public class EmitTests
             "SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial, NULL FROM inc0lim i\n" +
             "WHERE NOT EXISTS (SELECT 1 FROM cteMatchPage m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)\n" +
             "ORDER BY IsMatch DESC, SortValue0 ASC, Sid1 ASC");
+    }
+
+    [Fact]
+    public void GivenABoundedIncludeStageUnderACustomSort_WhenEmitted_ThenTheLimitCompanionRanksRowsInTheOuterIncludeOrder()
+    {
+        // Arrange -- a custom sort drops T1 from the outer ORDER BY, so include rows are ordered by Sid1 alone.
+        // The per-stage TOP must rank by the same key, or a multi-type stage keeps the wrong Limit + 1 rows.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
+        var includeStage = new IncludeStage(IncludeDirection.Forward, 55, [103], [105, 106], [], SeedFromMatch: true, Iterate: false, Limit: 10);
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 50, Sort: sort), [includeStage]);
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain("ORDER BY IsMatch DESC, SortValue0 ASC, Sid1 ASC");
+        emitted.Sql.ShouldContain(
+            "        SELECT TOP (11) T1, Sid1\n" +
+            "        FROM inc0\n" +
+            "        ORDER BY Sid1 ASC\n");
+        emitted.Sql.ShouldNotContain("ORDER BY T1 ASC, Sid1 ASC");
     }
 
     [Fact]
@@ -2206,7 +2238,7 @@ public class EmitTests
             "    ORDER BY m.T1 ASC, m.Sid1 ASC\n" +
             "),\n" +
             "inc0 AS (\n" +
-            "    SELECT DISTINCT TOP (1001) r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n" +
+            "    SELECT DISTINCT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n" +
             "    FROM dbo.ReferenceSearchParam rsp\n" +
             "    INNER JOIN dbo.Resource r\n" +
             "        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
@@ -2219,13 +2251,15 @@ public class EmitTests
             "      AND EXISTS (\n" +
             "        SELECT 1 FROM cteMatchPage m WHERE m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId\n" +
             "    )\n" +
-            "    ORDER BY T1 ASC, Sid1 ASC\n" +
             "),\n" +
             "inc0lim AS (\n" +
-            "    SELECT TOP (1001) T1, Sid1,\n" +
+            "    SELECT T1, Sid1,\n" +
             "           CAST(CASE WHEN COUNT_BIG(*) OVER() > 1000 THEN 1 ELSE 0 END AS bit) AS IsPartial\n" +
-            "    FROM inc0\n" +
-            "    ORDER BY T1 ASC, Sid1 ASC\n" +
+            "    FROM (\n" +
+            "        SELECT TOP (1001) T1, Sid1\n" +
+            "        FROM inc0\n" +
+            "        ORDER BY T1 ASC, Sid1 ASC\n" +
+            "    ) ranked\n" +
             ")\n" +
             "SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial FROM cteMatchPage\n" +
             "UNION ALL\n" +

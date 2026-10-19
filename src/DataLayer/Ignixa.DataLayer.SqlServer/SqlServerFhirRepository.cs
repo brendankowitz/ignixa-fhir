@@ -830,8 +830,8 @@ public class SqlServerFhirRepository(
             throw new ArgumentException("An expired SQL resource must include its selected version identity.", nameof(resource));
         }
 
-        return await HardDeleteResourceCoreAsync(
-            resource.ResourceTypeId, resource.ResourceId, resource, cancellationToken);
+        return (await HardDeleteResourceCoreAsync(
+            resource.ResourceTypeId, resource.ResourceId, resource, cancellationToken)).Success;
     }
 
     /// <inheritdoc/>
@@ -850,7 +850,132 @@ public class SqlServerFhirRepository(
         await HardDeleteResourceCoreAsync(resourceTypeId, resourceId, null, cancellationToken);
     }
 
-    private async Task<bool> HardDeleteResourceCoreAsync(
+    /// <inheritdoc/>
+    public bool SupportsPhysicalDeletion => true;
+
+    /// <inheritdoc/>
+    public async Task<bool> HardDeleteAsync(ResourceKey key, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // Unlike every write path's GetOrCreateResourceTypeIdAsync, this must NOT mint a dbo.ResourceType
+        // row for a type the schema has never seen: a type nothing has ever written cannot have a version
+        // of key.Id either, so there is nothing here to delete and no reason to allocate a type ID for it.
+        var resourceTypeId = await TryGetResourceTypeIdAsync(key.ResourceType, cancellationToken);
+        if (resourceTypeId is null)
+        {
+            return false;
+        }
+
+        var (_, deletedVersionCount) = await HardDeleteResourceCoreAsync(
+            resourceTypeId.Value, key.Id, null, cancellationToken);
+        return deletedVersionCount > 0;
+    }
+
+    /// <inheritdoc/>
+    public async Task<int> PurgeHistoryAsync(ResourceKey key, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var resourceTypeId = await TryGetResourceTypeIdAsync(key.ResourceType, cancellationToken);
+        if (resourceTypeId is null)
+        {
+            // No version of this type was ever written, so there is no history to purge.
+            return 0;
+        }
+
+        _logger.LogDebug(
+            "Purging history for resource {ResourceType}/{ResourceId}", key.ResourceType, key.Id);
+
+        // One transaction, same justification as HardDeleteResourceCoreAsync above: a mid-batch failure
+        // must not leave index rows deleted for a dbo.Resource row that is still there (or vice versa).
+        //
+        // Unlike that method, this one CAN lead with "DELETE ... OUTPUT deleted.ResourceSurrogateId INTO
+        // @SurrogateIds" -- the comment on that method explains why it could not adopt that shape without
+        // reordering a statement sequence it inherited from the EF port; this method has no such inherited
+        // order to preserve. The set of surrogate IDs therefore comes from the rows this DELETE actually
+        // removed, not from a snapshot SELECT that a concurrent writer could invalidate between the
+        // snapshot and the later deletes: there is no window in which a version committed after this
+        // statement runs could be removed here, and no window in which an index row for a version this
+        // statement removed is left behind.
+        var purgedCount = await _sqlExecutionService.ExecuteInTransactionAsync(
+            _tenantId,
+            async (transaction, ct) =>
+            {
+                var deleteStatements = BuildSearchIndexDeleteStatements();
+
+                // CA2100 suppressed: deleteStatements is built exclusively from the fixed, hardcoded
+                // SearchIndexTables array below -- never from caller/user input -- matching the identical
+                // rationale used by HardDeleteResourceCoreAsync above.
+#pragma warning disable CA2100
+                using var command = new SqlCommand(
+                    $"""
+                    SET XACT_ABORT ON;
+
+                    DECLARE @SurrogateIds TABLE (ResourceSurrogateId BIGINT PRIMARY KEY);
+
+                    -- IsHistory = 1 is every non-current version: a current soft-deleted tombstone has
+                    -- IsHistory = 0 and is deliberately left untouched, which is what keeps it readable.
+                    DELETE dbo.Resource
+                    OUTPUT deleted.ResourceSurrogateId INTO @SurrogateIds (ResourceSurrogateId)
+                    WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId AND IsHistory = 1;
+
+                    {deleteStatements}
+
+                    SELECT @PurgedCount = COUNT(*) FROM @SurrogateIds;
+                    """);
+#pragma warning restore CA2100
+                command.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId.Value;
+                command.Parameters.Add("@ResourceId", SqlDbType.VarChar).Value = key.Id;
+                var purgedCountParameter = command.Parameters.Add("@PurgedCount", SqlDbType.Int);
+                purgedCountParameter.Direction = ParameterDirection.Output;
+
+                await transaction.ExecuteNonQueryAsync(command, ct);
+                return (int)purgedCountParameter.Value;
+            },
+            cancellationToken);
+
+        _logger.LogDebug(
+            "Purged {PurgedCount} historical version(s) for resource {ResourceType}/{ResourceId}",
+            purgedCount, key.ResourceType, key.Id);
+
+        return purgedCount;
+    }
+
+    // Fourteen of the fifteen tables are clustered AND partitioned on
+    // (ResourceTypeId, ResourceSurrogateId), so leading with the resource type buys partition
+    // elimination and a seek on the clustering key instead of a probe across every partition. It also
+    // matches HardDeleteResource.sql, which carries the same predicate on the same tables.
+    // TableWithoutResourceTypeId is the exception and has no such column. Shared by
+    // HardDeleteResourceCoreAsync and PurgeHistoryAsync, which both delete every search-index row for a
+    // caller-supplied set of surrogate IDs in @SurrogateIds and must stay byte-for-byte identical to
+    // each other.
+    private static string BuildSearchIndexDeleteStatements() =>
+        string.Join("\n              ", SearchIndexTables.Select(table =>
+        {
+            var partitionPredicate =
+                table == TableWithoutResourceTypeId ? string.Empty : "ResourceTypeId = @ResourceTypeId AND ";
+            return $"DELETE FROM dbo.{table} WHERE {partitionPredicate}ResourceSurrogateId IN (SELECT ResourceSurrogateId FROM @SurrogateIds);";
+        }));
+
+    // Looks up an existing resource type without creating one -- the inverse of
+    // GetOrCreateResourceTypeIdAsync, which every write path uses because a write is about to need the
+    // ID. HardDeleteAsync and PurgeHistoryAsync must NOT mint a dbo.ResourceType row for a type the
+    // schema has never seen: nothing can exist for an unwritten type, so there is nothing to resolve.
+    private async Task<short?> TryGetResourceTypeIdAsync(string resourceType, CancellationToken cancellationToken)
+    {
+        var cached = _cache.TryGetResourceTypeIdFromCache(resourceType);
+        if (cached.HasValue)
+        {
+            return cached.Value;
+        }
+
+        return await _cache.GetResourceTypeIdAsync(resourceType, cancellationToken);
+    }
+
+    private async Task<(bool Success, int DeletedVersionCount)> HardDeleteResourceCoreAsync(
         short resourceTypeId,
         string resourceId,
         ExpiredResourceInfo? expiredResource,
@@ -918,6 +1043,7 @@ public class SqlServerFhirRepository(
         // The snapshot race described above applies only to explicit erasure. TTL cleanup first
         // locks and validates the selected current version and expiry for this transaction's lifetime.
         var survivingVersions = 0;
+        var deletedVersionCount = 0;
         var deleted = false;
 
         await _sqlExecutionService.ExecuteInTransactionAsync(
@@ -925,23 +1051,14 @@ public class SqlServerFhirRepository(
             async (transaction, ct) =>
             {
                 deleted = false;
+                deletedVersionCount = 0;
                 if (expiredResource is not null &&
                     !await LockExpiredResourceAsync(transaction, expiredResource, ct))
                 {
                     return;
                 }
 
-                // Fourteen of the fifteen tables are clustered AND partitioned on
-                // (ResourceTypeId, ResourceSurrogateId), so leading with the resource type buys partition
-                // elimination and a seek on the clustering key instead of a probe across every partition.
-                // It also matches HardDeleteResource.sql, which carries the same predicate on the same
-                // tables. TableWithoutResourceTypeId is the exception and has no such column.
-                var deleteStatements = string.Join("\n              ", SearchIndexTables.Select(table =>
-                {
-                    var partitionPredicate =
-                        table == TableWithoutResourceTypeId ? string.Empty : "ResourceTypeId = @ResourceTypeId AND ";
-                    return $"DELETE FROM dbo.{table} WHERE {partitionPredicate}ResourceSurrogateId IN (SELECT ResourceSurrogateId FROM @SurrogateIds);";
-                }));
+                var deleteStatements = BuildSearchIndexDeleteStatements();
 
                 // CA2100 suppressed: deleteStatements is built exclusively from the fixed, hardcoded
                 // SearchIndexTables array above -- never from caller/user input -- matching the identical
@@ -981,6 +1098,11 @@ public class SqlServerFhirRepository(
                     SELECT @SurvivingVersions = COUNT(*)
                     FROM dbo.Resource
                     WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId;
+
+                    -- Report how many versions this sweep found (and so attempted to delete), so a caller
+                    -- distinguishes "nothing ever existed for this ID" from "something did". @SurrogateIds
+                    -- is unaffected by the index/Resource deletes above, since none of them delete FROM it.
+                    SELECT @DeletedVersionCount = COUNT(*) FROM @SurrogateIds;
                     """);
 #pragma warning restore CA2100
                 command.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId;
@@ -988,10 +1110,13 @@ public class SqlServerFhirRepository(
 
                 var survivingVersionsParameter = command.Parameters.Add("@SurvivingVersions", SqlDbType.Int);
                 survivingVersionsParameter.Direction = ParameterDirection.Output;
+                var deletedVersionCountParameter = command.Parameters.Add("@DeletedVersionCount", SqlDbType.Int);
+                deletedVersionCountParameter.Direction = ParameterDirection.Output;
 
                 await transaction.ExecuteNonQueryAsync(command, ct);
 
                 survivingVersions = (int)survivingVersionsParameter.Value;
+                deletedVersionCount = (int)deletedVersionCountParameter.Value;
                 deleted = true;
             },
             cancellationToken);
@@ -1001,7 +1126,7 @@ public class SqlServerFhirRepository(
             _logger.LogInformation(
                 "Skipped stale TTL candidate: ResourceTypeId={ResourceTypeId}, ResourceId={ResourceId}",
                 resourceTypeId, resourceId);
-            return false;
+            return (false, 0);
         }
 
         // A healthcare audit trail should not record a completed deletion that did not complete. The
@@ -1027,7 +1152,7 @@ public class SqlServerFhirRepository(
                 survivingVersions);
         }
 
-        return survivingVersions == 0;
+        return (survivingVersions == 0, deletedVersionCount);
     }
 
     private static async Task<bool> LockExpiredResourceAsync(

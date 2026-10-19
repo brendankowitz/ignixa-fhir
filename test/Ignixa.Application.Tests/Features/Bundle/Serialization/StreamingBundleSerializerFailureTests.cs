@@ -10,6 +10,7 @@ using Ignixa.Application.Features.Bundle;
 using Ignixa.Application.Features.Bundle.Serialization;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
+using Microsoft.AspNetCore.Http;
 using NSubstitute;
 using Shouldly;
 
@@ -580,6 +581,51 @@ public class StreamingBundleSerializerFailureTests
         result.Succeeded.ShouldBeFalse();
         result.Exception.ShouldNotBeNull();
         result.ClientDisconnected.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task GivenABodyLimitBreachAfterTheFirstFlush_WhenStreamingABatchResponse_ThenAFatal413TooCostlyEntryIsWritten()
+    {
+        // Arrange
+        var stream = new MemoryStream();
+        var bodyLimitException = new BadHttpRequestException(
+            "Request body too large.",
+            StatusCodes.Status413PayloadTooLarge);
+
+        // Act
+        var result = await StreamingBundleSerializer.SerializeStreamAsync(
+            stream, "batch-response", ThrowAfterResponseAsync(1, bodyLimitException));
+
+        // Assert
+        var entries = JsonDocument.Parse(stream.ToArray()).RootElement.GetProperty("entry").EnumerateArray().ToList();
+        entries.Count.ShouldBe(2);
+        entries[^1].GetProperty("response").GetProperty("status").GetString().ShouldBe("413 Payload Too Large");
+        entries[^1].GetProperty("resource").GetProperty("issue")[0].GetProperty("severity").GetString().ShouldBe("fatal");
+        entries[^1].GetProperty("resource").GetProperty("issue")[0].GetProperty("code").GetString().ShouldBe("too-costly");
+        entries[^1].GetProperty("resource").GetProperty("issue")[0].GetProperty("diagnostics").GetString()
+            .ShouldContain("request body limit");
+
+        result.Succeeded.ShouldBeFalse();
+        result.Exception.ShouldBeSameAs(bodyLimitException);
+        result.ClientDisconnected.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task GivenABodyLimitBreachBeforeTheFirstFlush_WhenStreamingABatchResponse_ThenTheExceptionPropagatesWithoutWritingAResponse()
+    {
+        // Arrange
+        var stream = new MemoryStream();
+        var bodyLimitException = new BadHttpRequestException(
+            "Request body too large.",
+            StatusCodes.Status413PayloadTooLarge);
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeStreamAsync(
+            stream, "batch-response", ThrowAfterResponseAsync(0, bodyLimitException));
+
+        // Assert
+        (await act.ShouldThrowAsync<BadHttpRequestException>()).ShouldBeSameAs(bodyLimitException);
+        stream.ToArray().ShouldBeEmpty();
     }
 
     [Fact]

@@ -356,6 +356,10 @@
               "value": "ignixa"
             },
             {
+              "name": "BackgroundJobs__Repository",
+              "value": "SqlServer"
+            },
+            {
               "name": "Tenants__Mode",
               "value": "[parameters('tenantMode')]"
             },

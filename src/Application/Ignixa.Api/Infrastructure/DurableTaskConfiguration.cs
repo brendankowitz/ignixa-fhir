@@ -4,6 +4,7 @@ using Azure.Storage.Common;
 using DurableTask.AzureStorage;
 using DurableTask.Core;
 using DurableTask.SqlServer;
+using Ignixa.Application.BackgroundOperations.BulkDelete.Orchestrations;
 using Ignixa.Application.BackgroundOperations.Export.Activities;
 using Ignixa.Application.BackgroundOperations.Export.Orchestrations;
 using Ignixa.Application.BackgroundOperations.Import.Orchestrations;
@@ -14,6 +15,7 @@ using Ignixa.DataLayer.FileSystem.DurableTask;
 using Ignixa.DataLayer.SqlServer;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
+using BulkDeleteActivities = Ignixa.Application.BackgroundOperations.BulkDelete.Activities;
 using ExportCompleteJobActivity = Ignixa.Application.BackgroundOperations.Export.Activities.CompleteJobActivity;
 using ImportActivities = Ignixa.Application.BackgroundOperations.Import.Activities;
 using TerminologyActivities = Ignixa.Application.BackgroundOperations.Terminology.Activities;
@@ -57,6 +59,7 @@ public static class DurableTaskConfiguration
             worker.AddTaskOrchestrations(typeof(ExportOrchestration));
             worker.AddTaskOrchestrations(typeof(ImportOrchestration));
             worker.AddTaskOrchestrations(typeof(TerminologyImportOrchestration));
+            worker.AddTaskOrchestrations(typeof(BulkDeleteOrchestration));
 
             // Register orchestrations with DI dependencies
             worker.AddTaskOrchestrationsFromInterface<TransactionWatcherOrchestration>(sp);
@@ -72,6 +75,10 @@ public static class DurableTaskConfiguration
             worker.AddTaskActivitiesFromInterface<ImportActivities.StreamingImportFileActivity>(sp);
             worker.AddTaskActivitiesFromInterface<ImportActivities.UpdateProgressActivity>(sp);
             worker.AddTaskActivitiesFromInterface<ImportActivities.CompleteJobActivity>(sp);
+
+            // Register Bulk Delete activities with service provider for DI
+            worker.AddTaskActivitiesFromInterface<BulkDeleteActivities.BulkDeleteBatchActivity>(sp);
+            worker.AddTaskActivitiesFromInterface<BulkDeleteActivities.CompleteBulkDeleteJobActivity>(sp);
 
             // Register Terminology activities with service provider for DI
             worker.AddTaskActivitiesFromInterface<TerminologyActivities.ImportTerminologyResourceActivity>(sp);

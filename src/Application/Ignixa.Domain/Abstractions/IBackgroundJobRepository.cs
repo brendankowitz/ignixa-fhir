@@ -34,6 +34,20 @@ public interface IBackgroundJobRepository<T> where T : class, IJobDefinition
     Task<BackgroundJob<T>?> GetAsync(string jobId, int tenantId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Gets a background job by ID only if it has the given <see cref="BackgroundJob{T}.JobType"/>, with the
+    /// same tenant validation as <see cref="GetAsync(string, int, CancellationToken)"/>.
+    /// Job IDs are shared by every job type and <typeparamref name="T"/> describes only one of them, so the
+    /// type is filtered before the definition is deserialized: a job of another type is reported as absent
+    /// rather than failing to deserialize into <typeparamref name="T"/>.
+    /// </summary>
+    /// <param name="jobId">Job ID.</param>
+    /// <param name="tenantId">Tenant ID for authorization check.</param>
+    /// <param name="jobType">Required job type (see <see cref="BackgroundJobType"/>).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A detached snapshot if found with that type and accessible to the tenant, null otherwise.</returns>
+    Task<BackgroundJob<T>?> GetAsync(string jobId, int tenantId, int jobType, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Updates a background job with tenant validation.
     /// The stored owner is immutable. The first Completed, Failed, or Cancelled state is authoritative:
     /// subsequent updates, including repeated terminal writes, are rejected atomically.

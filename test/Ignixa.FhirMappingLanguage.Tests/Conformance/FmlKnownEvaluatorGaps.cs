@@ -26,7 +26,6 @@ public static class FmlKnownEvaluatorGaps
             ["qr2patgender"] = "Target alias binds to the source element rather than the target resource; the QuestionnaireResponse tree is emitted under a 'patient' key instead of a Patient with 'gender'.",
             ["qr2pathumannametwice"] = "Nested/recursive 'then' groups are not evaluated, so repeated HumanName rules yield an empty Patient.",
             ["qr2pathumannameshared"] = "'share' combined with nested 'then' groups is not evaluated, so shared-variable HumanName rules yield an empty Patient.",
-            ["reference"] = "The create()/reference() builtins throw TARGET_RESOURCE_NOT_FOUND because the 'ext' target resource is never registered.",
             ["qr2pat-gender-conformstoqr"] = "Depends on the FHIRPath conformsTo() function, which FhirSpecificFunctions declares unsupported (requires profile validation infrastructure)."
         }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 

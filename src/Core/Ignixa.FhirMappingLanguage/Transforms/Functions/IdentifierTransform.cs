@@ -10,7 +10,7 @@ using System.Text.Json.Nodes;
 namespace Ignixa.FhirMappingLanguage.Transforms;
 
 /// <summary>
-/// id(value, [system]) - Creates an Identifier.
+/// id(system, value, [type]) - Creates an Identifier.
 /// </summary>
 internal class IdentifierTransform : ITransformFunction
 {
@@ -18,11 +18,14 @@ internal class IdentifierTransform : ITransformFunction
 
     public object Execute(IReadOnlyList<object> arguments, ITransformContext context)
     {
-        if (arguments.Count == 0)
-            throw new ArgumentException("id() requires a value argument");
+        if (arguments.Count is < 1 or > 3)
+        {
+            throw new ArgumentException("id() requires system and value with an optional identifier type");
+        }
 
-        var value = arguments[0].ToString()!;
-        var system = arguments.Count > 1 ? arguments[1].ToString() : null;
+        // Retain the legacy single-value form without reversing the standard system/value form.
+        var value = TransformValue.String(arguments[arguments.Count == 1 ? 0 : 1]);
+        var system = arguments.Count > 1 ? TransformValue.String(arguments[0]) : null;
 
         var identifier = new JsonObject
         {
@@ -32,6 +35,18 @@ internal class IdentifierTransform : ITransformFunction
         if (system != null)
         {
             identifier["system"] = system;
+        }
+
+        if (arguments.Count == 3)
+        {
+            identifier["type"] = new JsonObject
+            {
+                ["coding"] = new JsonArray(new JsonObject
+                {
+                    ["system"] = "http://terminology.hl7.org/CodeSystem/v2-0203",
+                    ["code"] = TransformValue.String(arguments[2])
+                })
+            };
         }
 
         return identifier;

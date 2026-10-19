@@ -101,25 +101,24 @@ public class FmlTransformOracleTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "OfficialTestSuite")]
-    public void GivenTheInScopeCases_WhenPartitioningByKnownGaps_ThenTwoPassAndTenAreRatchetedGapExecutions()
+    public void GivenTheInScopeCases_WhenPartitioningByKnownGaps_ThenFourPassAndEightAreRatchetedGapExecutions()
     {
         var cases = SupportedCases().Select(row => (FmlOracleCase)row[0]).ToList();
 
         cases.Count.ShouldBe(12);
-        cases.Count(c => FmlKnownEvaluatorGaps.IsKnownGap(c.Name)).ShouldBe(10);
-        cases.Count(c => !FmlKnownEvaluatorGaps.IsKnownGap(c.Name)).ShouldBe(2);
+        cases.Count(c => FmlKnownEvaluatorGaps.IsKnownGap(c.Name)).ShouldBe(8);
+        cases.Count(c => !FmlKnownEvaluatorGaps.IsKnownGap(c.Name)).ShouldBe(4);
     }
 
     [Fact]
     [Trait("Category", "OfficialTestSuite")]
-    public void GivenTheKnownEvaluatorGaps_WhenListingEntries_ThenContainsExactlyTheFiveDocumentedGaps()
+    public void GivenTheKnownEvaluatorGaps_WhenListingEntries_ThenContainsExactlyTheFourDocumentedGaps()
     {
         var expected = new List<string>
         {
             "qr2patgender",
             "qr2pathumannametwice",
             "qr2pathumannameshared",
-            "reference",
             "qr2pat-gender-conformstoqr"
         };
 
@@ -206,10 +205,11 @@ public class FmlTransformOracleTests(ITestOutputHelper output)
 
         var fhirPathParser = new FhirPathParser();
         var fhirPathEvaluator = new FhirPathEvaluator();
+        var mutator = new JsonNodeMutator(fhirPathEvaluator, fhirPathParser, () => schema);
         var context = new MappingContext
         {
             ErrorMode = ErrorMode.Strict,
-            ResourceCreator = type => JsonSourceNodeFactory.Parse<ResourceJsonNode>($"{{\"resourceType\":\"{type}\"}}").ToElement(schema),
+            ResourceCreator = type => mutator.CreateElement(type),
             Logger = message => output.WriteLine(message),
             FhirPathEvaluator = (expression, element) =>
                 string.IsNullOrWhiteSpace(expression)
@@ -221,7 +221,6 @@ public class FmlTransformOracleTests(ITestOutputHelper output)
         context.SetTarget("tgt", target.ToElement(schema));
         context.SetTargetResource("tgt", target);
 
-        var mutator = new JsonNodeMutator(fhirPathEvaluator, fhirPathParser, () => schema);
         new MappingEvaluator(MappingEvaluatorOptions.Default, mutator).Execute(map, context);
 
         var expected = CanonicalJson.Canonicalize(File.ReadAllText(Path.Combine(directory, oracleCase.OutputFile), Encoding.UTF8));

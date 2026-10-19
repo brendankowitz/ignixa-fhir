@@ -42,6 +42,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
     private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly IFhirVersionContext _fhirVersionContext;
     private readonly Func<FhirVersion, IValidationSchemaResolver> _schemaResolverFactory;
+    private readonly ResourceElementOrdering _elementOrdering;
     private readonly ILogger<CreateOrUpdateResourceHandler> _logger;
 
     public CreateOrUpdateResourceHandler(
@@ -50,6 +51,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         IFhirRequestContextAccessor contextAccessor,
         IFhirVersionContext fhirVersionContext,
         Func<FhirVersion, IValidationSchemaResolver> schemaResolverFactory,
+        ResourceElementOrdering elementOrdering,
         ILogger<CreateOrUpdateResourceHandler> logger)
     {
         _partitionStrategy = partitionStrategy ?? throw new ArgumentNullException(nameof(partitionStrategy));
@@ -57,6 +59,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
         _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
         _schemaResolverFactory = schemaResolverFactory ?? throw new ArgumentNullException(nameof(schemaResolverFactory));
+        _elementOrdering = elementOrdering ?? throw new ArgumentNullException(nameof(elementOrdering));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -269,6 +272,8 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         // - PUT with explicit ID: URL ID takes precedence
         command.JsonNode.Id = command.Id;
 
+        _elementOrdering.OrderForStorage(command.JsonNode, schemaProvider);
+
         return new ResourceWrapper(
             command.ResourceType,
             command.Id,
@@ -363,6 +368,8 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
                 $"Failed to extract search indices for Provenance/{provenanceId}: {ex.Message}. See logs for details.",
                 ex);
         }
+
+        _elementOrdering.OrderForStorage(provenanceTemplate, schemaProvider);
 
         var provenanceWrapper = new ResourceWrapper(
             "Provenance",

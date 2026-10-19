@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Application.Features.Authorization.Models;
+using Ignixa.Application.Infrastructure;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.Authorization.Handlers;
@@ -59,9 +60,9 @@ public class RbacAuthorizationHandler : IAuthorizationHandler
 
         _logger.LogDebug(
             "RBAC check: User {UserId} with roles [{Roles}] requesting {ResourceType}.{Interaction}",
-            context.UserId,
-            string.Join(", ", context.Roles!),
-            requiredPermission.ResourceType,
+            context.UserId.SanitizeForLog(),
+            string.Join(", ", context.Roles!).SanitizeForLog(),
+            requiredPermission.ResourceType.SanitizeForLog(),
             requiredPermission.Interaction);
 
         // Check if any permission matches the required permission
@@ -70,8 +71,8 @@ public class RbacAuthorizationHandler : IAuthorizationHandler
             _logger.LogWarning(
                 "RBAC check: Request denied - no permission grants {Interaction} access to {ResourceType} for roles [{Roles}]",
                 requiredPermission.Interaction,
-                requiredPermission.ResourceType,
-                string.Join(", ", context.Roles!));
+                requiredPermission.ResourceType.SanitizeForLog(),
+                string.Join(", ", context.Roles!).SanitizeForLog());
 
             return AuthorizationResult.InsufficientPermissions(
                 requiredPermission.ResourceType,
@@ -80,8 +81,8 @@ public class RbacAuthorizationHandler : IAuthorizationHandler
 
         _logger.LogDebug(
             "RBAC check: User {UserId} authorized for {ResourceType}.{Interaction}",
-            context.UserId,
-            requiredPermission.ResourceType,
+            context.UserId.SanitizeForLog(),
+            requiredPermission.ResourceType.SanitizeForLog(),
             requiredPermission.Interaction);
 
         return AuthorizationResult.Success();

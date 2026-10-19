@@ -124,6 +124,79 @@ public static class JsonSourceNodeFactory
         JsonSerializer.Serialize(outStream, resource.MutableNode, options);
     }
     
+    /// <summary>
+    /// Writes the resource to <paramref name="outStream"/> asynchronously, element by element for top-level
+    /// arrays (such as Bundle.entry), flushing whenever <paramref name="flushThresholdBytes"/> are pending. The
+    /// output is identical to <see cref="SerializeToString"/>, but a large resource is never held as one
+    /// string or byte array, and the stream is only written asynchronously (Kestrel disallows synchronous I/O).
+    /// </summary>
+    public static async Task SerializeToStreamAsync(
+        this ResourceJsonNode resource,
+        Stream outStream,
+        bool pretty = false,
+        int flushThresholdBytes = DefaultStreamFlushThresholdBytes,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(resource);
+        ArgumentNullException.ThrowIfNull(outStream);
+
+        var options = pretty ? _indentedJsonSerializerOptions : _jsonSerializerOptions;
+        await using var writer = new Utf8JsonWriter(
+            outStream,
+            new JsonWriterOptions { Encoder = options.Encoder, Indented = options.WriteIndented });
+
+        if (resource.MutableNode is not JsonObject root)
+        {
+            resource.MutableNode.WriteTo(writer, options);
+            await writer.FlushAsync(cancellationToken);
+            return;
+        }
+
+        writer.WriteStartObject();
+        foreach (var (name, value) in root)
+        {
+            writer.WritePropertyName(name);
+            if (value is JsonArray array)
+            {
+                writer.WriteStartArray();
+                foreach (var item in array)
+                {
+                    WriteNode(writer, item, options);
+                    await FlushIfPendingAsync(writer, flushThresholdBytes, cancellationToken);
+                }
+
+                writer.WriteEndArray();
+            }
+            else
+            {
+                WriteNode(writer, value, options);
+            }
+
+            await FlushIfPendingAsync(writer, flushThresholdBytes, cancellationToken);
+        }
+
+        writer.WriteEndObject();
+        await writer.FlushAsync(cancellationToken);
+    }
+
+    private const int DefaultStreamFlushThresholdBytes = 256 * 1024;
+
+    private static void WriteNode(Utf8JsonWriter writer, JsonNode? node, JsonSerializerOptions options)
+    {
+        if (node is null)
+        {
+            writer.WriteNullValue();
+            return;
+        }
+
+        node.WriteTo(writer, options);
+    }
+
+    private static ValueTask FlushIfPendingAsync(Utf8JsonWriter writer, int flushThresholdBytes, CancellationToken cancellationToken)
+        => writer.BytesPending >= flushThresholdBytes
+            ? new ValueTask(writer.FlushAsync(cancellationToken))
+            : ValueTask.CompletedTask;
+
     public static ReadOnlyMemory<byte> SerializeToBytes(this ResourceJsonNode resource, bool pretty = false)
     {
         var options = pretty ? _indentedJsonSerializerOptions : _jsonSerializerOptions;

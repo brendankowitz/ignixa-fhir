@@ -152,4 +152,36 @@ public class TenantResolutionHostnameTests
         // Assert
         ctx.Items["TenantId"].ShouldBe(1);
     }
+
+    [Theory]
+    [InlineData("DELETE", "/$bulk-delete")]
+    [InlineData("DELETE", "/Patient/$bulk-delete")]
+    [InlineData("GET", "/_operations/bulk-delete/job-1")]
+    [InlineData("DELETE", "/_operations/bulk-delete/job-1")]
+    public async Task GivenABulkDeleteAgnosticRoute_WhenResolved_ThenSingleTenantAutoDetectSetsTenantId(string method, string path)
+    {
+        // Arrange — IsResourceEndpoint must recognize these bulk-delete paths as resource endpoints (not
+        // treat them like /health or /.well-known), so single-tenant auto-detection still applies to them.
+        var store = Substitute.For<ITenantConfigurationStore>();
+        store.ResolveByHostAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<TenantConfiguration?>((TenantConfiguration?)null));
+        store.GetAllTenantsAsync(Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<IReadOnlyList<TenantConfiguration>>(new[] { Tenant(1) }));
+        store.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<TenantConfiguration?>(Tenant(1)));
+
+        var ctx = new DefaultHttpContext();
+        ctx.Request.Host = new HostString("fhir.example.org");
+        ctx.Request.Path = path;
+        ctx.Request.Method = method;
+        var nextCalled = false;
+        var mw = new TenantResolutionMiddleware(_ => { nextCalled = true; return Task.CompletedTask; }, store, NullLogger<TenantResolutionMiddleware>.Instance);
+
+        // Act
+        await mw.InvokeAsync(ctx);
+
+        // Assert
+        ctx.Items["TenantId"].ShouldBe(1);
+        nextCalled.ShouldBeTrue();
+    }
 }

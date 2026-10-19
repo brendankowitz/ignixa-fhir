@@ -23,7 +23,7 @@ namespace Ignixa.Search.Parsing;
 public class SearchOptionsBuilder : ISearchOptionsBuilder
 {
     private const int DefaultMaxItemCount = 10;
-    private const int MaxAllowedItemCount = 1000;
+    public const int MaxAllowedItemCount = 1000;
 
     private readonly IExpressionParser _expressionParser;
     private readonly ISearchParameterDefinitionManager _searchParameterDefinitionManager;
@@ -229,6 +229,13 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                         break;
 
                     case ParameterCategory.IncludesContinuationToken:
+                        // Validated once here so no data layer or serializer can quietly restart an
+                        // undecodable token at the first include page.
+                        if (!IncludesContinuationToken.TryDecode(param.Value, out _, out _))
+                        {
+                            throw new BadSearchRequestException(IncludesContinuationToken.InvalidTokenMessage);
+                        }
+
                         options.IncludesContinuationToken = param.Value;
                         break;
 
@@ -321,6 +328,13 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         if (revIncludeParameters.Count > 0)
         {
             options.RevInclude = ParseIncludeParameters(resourceTypes, revIncludeParameters, isReversed: true);
+        }
+
+        // Every include-bearing page is capped, so a data layer can bound the included rows it reads; the
+        // remainder is reachable through the bundle's related $includes link.
+        if (options.Include.Count > 0 || options.RevInclude.Count > 0)
+        {
+            options.IncludesMaxItemCount ??= MaxAllowedItemCount;
         }
 
         // STEP 6: Parse and validate elements

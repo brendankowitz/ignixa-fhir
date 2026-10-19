@@ -92,6 +92,17 @@ public partial class InMemoryBackgroundJobRepository<T> : IBackgroundJobReposito
     }
 
     /// <inheritdoc/>
+    public Task<BackgroundJob<T>?> GetAsync(string jobId, int tenantId, int jobType, CancellationToken cancellationToken)
+    {
+        if (!_jobs.TryGetValue(jobId, out var job) || job.JobType != jobType)
+        {
+            return Task.FromResult<BackgroundJob<T>?>(null);
+        }
+
+        return GetAsync(jobId, tenantId, cancellationToken);
+    }
+
+    /// <inheritdoc/>
     public Task UpdateAsync(BackgroundJob<T> job, int tenantId, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(job);

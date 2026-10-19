@@ -202,6 +202,20 @@ public class StructureMapBuilder
                     // Group invocation
                     ruleNode.Dependent.Add(BuildDependent(groupInvocation));
                     break;
+
+                case DependentExpression dependent:
+                    foreach (var invocation in dependent.Invocations)
+                    {
+                        ruleNode.Dependent.Add(BuildDependent(invocation));
+                    }
+                    if (dependent.Rules is not null)
+                    {
+                        foreach (var nestedRule in dependent.Rules.Rules)
+                        {
+                            ruleNode.Rule.Add(BuildRule(nestedRule));
+                        }
+                    }
+                    break;
             }
         }
 
@@ -225,6 +239,12 @@ public class StructureMapBuilder
 
         // Inherit FhirVersion from builder
         sourceNode.FhirVersion = _targetVersion;
+
+        if (source.ListMode.HasValue)
+        {
+            sourceNode.ListMode = EnumUtility.ParseLiteral<MapSourceListMode>(
+                ConvertToListModeString(source.ListMode.Value));
+        }
 
         // Add cardinality
         if (source.Cardinality is not null)
@@ -269,7 +289,8 @@ public class StructureMapBuilder
     {
         var targetNode = new StructureMapGroupRuleTarget
         {
-            Variable = target.Variable
+            Variable = target.Variable,
+            ListRuleId = target.ListRuleId
         };
 
         // Inherit FhirVersion from builder
@@ -326,6 +347,13 @@ public class StructureMapBuilder
                     qualParam.FhirVersion = _targetVersion;
                     qualParam.SetValue("String", JsonValue.Create(ExpressionToString(qualifiedId)));
                     targetNode.Parameter.Add(qualParam);
+                    break;
+
+                case FhirPathExpression fhirPath:
+                    targetNode.Transform = MapTransform.Evaluate;
+                    var expressionParam = BuildParameter(fhirPath);
+                    expressionParam.FhirVersion = _targetVersion;
+                    targetNode.Parameter.Add(expressionParam);
                     break;
             }
         }
@@ -388,6 +416,10 @@ public class StructureMapBuilder
 
         switch (expression)
         {
+            case NamedArgumentExpression:
+                throw new NotSupportedException(
+                    "Named transform parameters cannot be represented by this StructureMap parameter model. Use FML rendering to preserve parameter names.");
+
             case LiteralExpression literal:
                 switch (literal.Value)
                 {

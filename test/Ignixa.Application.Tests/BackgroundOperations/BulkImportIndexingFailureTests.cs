@@ -20,10 +20,8 @@ namespace Ignixa.Application.Tests.BackgroundOperations;
 
 public class BulkImportIndexingFailureTests
 {
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task GivenIndexExtractionFailure_WhenImportRuns_ThenResourceIsReportedAsAnError(bool streaming)
+    [Fact]
+    public async Task GivenIndexExtractionFailure_WhenImportRuns_ThenResourceIsReportedAsAnError()
     {
         var tenants = Substitute.For<ITenantConfigurationStore>();
         tenants.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>()).Returns(
@@ -43,27 +41,20 @@ public class BulkImportIndexingFailureTests
         var blobs = Substitute.For<IBlobStorageClient>();
         blobs.ReadBlobAsync("input.ndjson", Arg.Any<CancellationToken>())
             .Returns(new MemoryStream(Encoding.UTF8.GetBytes("{\"resourceType\":\"Patient\",\"id\":\"p1\"}\n")));
-        TaskActivity activity = streaming
-            ? new StreamingImportFileActivity(factory, versions, tenants, blobs,
-                new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Import:ConsumerCount"] = "1" }).Build(),
-                new FhirRequestContextAccessor(), NullLogger<StreamingImportFileActivity>.Instance)
-            : new ImportBatchActivity(factory, versions, tenants, new FhirRequestContextAccessor(), NullLogger<ImportBatchActivity>.Instance);
-        object input = streaming
-            ? new StreamingImportFileInput
-            {
-                JobId = "job", TenantId = 1, FileUrl = "input.ndjson", ResourceType = "Patient",
-                Mode = "IncrementalLoad", BatchSize = 1, ChannelCapacity = 1
-            }
-            : new ImportBatchInput
-            {
-                JobId = "job", TenantId = 1, ResourceType = "Patient", Mode = "IncrementalLoad",
-                Resources = ["{\"resourceType\":\"Patient\",\"id\":\"p1\"}"]
-            };
+        var activity = new StreamingImportFileActivity(factory, versions, tenants, blobs,
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Import:ConsumerCount"] = "1" }).Build(),
+            new FhirRequestContextAccessor(), new ResourceElementOrdering(new SerializationOptions()),
+            NullLogger<StreamingImportFileActivity>.Instance);
+        var input = new StreamingImportFileInput
+        {
+            JobId = "job", TenantId = 1, FileUrl = "input.ndjson", ResourceType = "Patient",
+            Mode = "IncrementalLoad", BatchSize = 1, ChannelCapacity = 1
+        };
 
         var json = await activity.RunAsync(new TaskContext(new OrchestrationInstance { InstanceId = "job" }),
             JsonSerializer.Serialize(new[] { input }));
 
-        var result = JsonSerializer.Deserialize<ImportBatchOutput>(json)!;
+        var result = JsonSerializer.Deserialize<StreamingImportFileOutput>(json)!;
         result.SuccessCount.ShouldBe(0);
         result.ErrorCount.ShouldBe(1);
         result.Errors.Single().ErrorMessage.ShouldContain("Index extraction failed");

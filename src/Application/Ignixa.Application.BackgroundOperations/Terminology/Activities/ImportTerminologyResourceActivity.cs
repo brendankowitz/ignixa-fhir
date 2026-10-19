@@ -60,7 +60,7 @@ public class ImportTerminologyResourceActivity : AsyncTaskActivity<ImportTermino
 
         // Establish the ambient request context for the duration of the activity so any reference
         // resolution the importer performs resolves the same tenant-scoped base URIs the HTTP request
-        // path would have. See ImportBatchActivity for the failure mode this prevents.
+        // path would have. See StreamingImportFileActivityBaseUriWiringTests for the failure mode this prevents.
         var previousContext = fhirContextAccessor.RequestContext;
         fhirContextAccessor.RequestContext = FhirRequestContextFactory.CreateBackgroundContext(input.TenantId);
 

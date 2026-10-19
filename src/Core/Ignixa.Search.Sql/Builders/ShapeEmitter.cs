@@ -271,7 +271,7 @@ internal static class ShapeEmitter
         writer.Append(",\n");
         using (writer.Section(IncludeLabel(index), SqlRangeKind.Include))
         {
-            writer.Append($"{IncludeLabel(index)} AS (\n{EmitIncludeStage(plan, stage, visibility, includesOnly, matchSeedLabel)}\n)");
+            writer.Append($"{IncludeLabel(index)} AS (\n{EmitIncludeStage(plan, stage, visibility, matchSeedLabel)}\n)");
         }
 
         if (includesOnly)
@@ -282,25 +282,31 @@ internal static class ShapeEmitter
         writer.Append(",\n");
         using (writer.Section(IncludeLimitLabel(index), SqlRangeKind.IncludeLimit))
         {
-            writer.Append($"{IncludeLimitLabel(index)} AS (\n{EmitIncludeLimitStage(stage, index)}\n)");
+            writer.Append($"{IncludeLimitLabel(index)} AS (\n{EmitIncludeLimitStage(stage, index, plan.Sort)}\n)");
         }
     }
 
     /// <summary>
-    /// Renders an include stage's limit-applying companion: <c>TOP (Limit + 1)</c> rows (budget plus the
-    /// one-row truncation sentinel), each stamped with an IsPartial flag from the window count.
+    /// Renders an include stage's limit-applying companion: the stage's first <c>TOP (Limit + 1)</c> rows
+    /// (budget plus the one-row truncation sentinel), each stamped with an IsPartial flag from the window count.
     /// </summary>
     /// <remarks>
-    /// IsPartial is cast to <c>bit</c> to match the match arm's type in the union; leaving it int promotes the
-    /// union column and breaks the documented bit contract.
+    /// The rows are ranked by the include tail of the final ORDER BY (<see cref="EmitIncludeIdentityOrderBy"/>),
+    /// so each stage keeps exactly the rows that can occupy the first Limit + 1 include positions of the result.
+    /// The window count runs over the capped derived table, not the uncapped stage body, so it never counts
+    /// more than Limit + 1 rows. IsPartial is cast to <c>bit</c> to match the match arm's type in the union;
+    /// leaving it int promotes the union column and breaks the documented bit contract.
     /// </remarks>
-    private static string EmitIncludeLimitStage(IncludeStage stage, int index)
+    private static string EmitIncludeLimitStage(IncludeStage stage, int index, SortSpec? sort)
         => stage.Limit is null
             ? $"    SELECT T1, Sid1, CAST(0 AS bit) AS IsPartial\n    FROM {IncludeLabel(index)}"
-            : $"    SELECT TOP ({stage.Limit + 1}) T1, Sid1,\n" +
-           $"           CAST(CASE WHEN COUNT_BIG(*) OVER() > {stage.Limit} THEN 1 ELSE 0 END AS bit) AS IsPartial\n" +
-           $"    FROM {IncludeLabel(index)}\n" +
-           $"    ORDER BY T1 ASC, Sid1 ASC";
+            : $"    SELECT T1, Sid1,\n" +
+              $"           CAST(CASE WHEN COUNT_BIG(*) OVER() > {stage.Limit} THEN 1 ELSE 0 END AS bit) AS IsPartial\n" +
+              $"    FROM (\n" +
+              $"        SELECT TOP ({stage.Limit + 1}) T1, Sid1\n" +
+              $"        FROM {IncludeLabel(index)}\n" +
+              $"        ORDER BY {EmitIncludeIdentityOrderBy(sort)}\n" +
+              $"    ) ranked";
 
     /// <summary>
     /// Builds the arms of the final UNION ALL: the match page (unless IncludesOnly) followed by one arm per

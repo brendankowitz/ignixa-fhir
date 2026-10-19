@@ -1,0 +1,171 @@
+@hostname = https://127.0.0.1:7058
+@tenantId = 1
+@baseUrl = {{hostname}}/tenant/{{tenantId}}
+@patientId = bulk-delete-http-patient
+@observationId = bulk-delete-http-observation
+@tagSystem = https://example.org/ignixa/samples
+@tagCode = bulk-delete-http
+
+# Use a disposable test tenant, never tenant 0 or production.
+# These examples only delete the tagged sample IDs below, not the whole tenant.
+# The seed PUTs create or replace those IDs. Change the IDs/tag for a separate run.
+#
+# Prerequisites:
+# - SQL-backed FHIR storage for hard delete and history purge.
+# - DurableTask:Provider=SqlServer (or AzureStorage), NOT FileSystem.
+# - BackgroundJobs:Repository=SqlServer for persistent job status.
+# - If authorization is enabled, add your Authorization header to every request;
+#   use a test principal with create/update/read/delete/search on the sample types
+#   and wildcard search/delete for system kickoff, polling, and cancellation.
+#
+# Run the three seed PUTs, then ONE scenario at a time. Poll its named request's
+# Content-Location until it stops returning 202 before verifying the result.
+# Re-run the seed PUTs before trying another scenario. Do not use "Send All".
+# Named-response variables work with VS Code REST Client / Visual Studio HTTP files.
+# Alternatively, copy the returned Content-Location URL into a GET or DELETE request.
+# In single-tenant mode, set baseUrl to {{hostname}} to test tenant-agnostic routes.
+
+### Seed 1: create the sample Patient
+PUT {{baseUrl}}/Patient/{{patientId}}
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "id": "{{patientId}}",
+  "meta": {
+    "tag": [{ "system": "{{tagSystem}}", "code": "{{tagCode}}" }]
+  },
+  "active": true,
+  "name": [{ "family": "BulkDeleteSample", "given": ["Test"] }]
+}
+
+### Seed 2: create another Patient version for the history-purge scenario
+PUT {{baseUrl}}/Patient/{{patientId}}
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "id": "{{patientId}}",
+  "meta": {
+    "tag": [{ "system": "{{tagSystem}}", "code": "{{tagCode}}" }]
+  },
+  "active": false,
+  "name": [{ "family": "BulkDeleteSample", "given": ["Test"] }]
+}
+
+### Seed 3: create a sample Observation referencing the Patient
+PUT {{baseUrl}}/Observation/{{observationId}}
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Observation",
+  "id": "{{observationId}}",
+  "meta": {
+    "tag": [{ "system": "{{tagSystem}}", "code": "{{tagCode}}" }]
+  },
+  "status": "final",
+  "code": {
+    "coding": [{ "system": "http://loinc.org", "code": "29463-7", "display": "Body weight" }]
+  },
+  "subject": { "reference": "Patient/{{patientId}}" },
+  "valueQuantity": { "value": 70, "unit": "kg", "system": "http://unitsofmeasure.org", "code": "kg" }
+}
+
+### Preview the exact Patient filter before deleting (one match after seeding)
+GET {{baseUrl}}/Patient?_id={{patientId}}&_tag={{tagSystem}}%7C{{tagCode}}
+Accept: application/fhir+json
+
+### Scenario A: type-level soft delete with search filtering
+# Expected: 202, empty body, absolute Content-Location header.
+# @name softDelete
+DELETE {{baseUrl}}/Patient/$bulk-delete?_id={{patientId}}&_tag={{tagSystem}}%7C{{tagCode}}
+Prefer: respond-async
+
+### Poll soft delete: 202 while running, then 200 with Patient count 1
+GET {{softDelete.response.headers.Content-Location}}
+Accept: application/fhir+json
+
+### Verify soft delete: 410 Gone (the Observation is not deleted)
+GET {{baseUrl}}/Patient/{{patientId}}
+Accept: application/fhir+json
+
+### Verify soft delete retains Patient history, including a deletion entry
+GET {{baseUrl}}/Patient/{{patientId}}/_history
+Accept: application/fhir+json
+
+### Scenario B: hard delete (re-run seed PUTs first; SQL storage required)
+# Physically removes every version of the matched Patient.
+# @name hardDelete
+DELETE {{baseUrl}}/Patient/$bulk-delete?_id={{patientId}}&_tag={{tagSystem}}%7C{{tagCode}}&_hardDelete=true
+Prefer: respond-async
+
+### Poll hard delete: 202 while running, then 200 with Patient count 1
+GET {{hardDelete.response.headers.Content-Location}}
+Accept: application/fhir+json
+
+### Verify hard delete: 404 Not Found
+GET {{baseUrl}}/Patient/{{patientId}}
+Accept: application/fhir+json
+
+### Scenario C: purge history (re-run seed PUTs first; SQL storage required)
+# Keeps the current Patient version and removes its historical versions.
+# @name purgeHistory
+DELETE {{baseUrl}}/Patient/$bulk-delete?_id={{patientId}}&_tag={{tagSystem}}%7C{{tagCode}}&_purgeHistory=true
+Prefer: respond-async
+
+### Poll history purge: 202 while running, then 200 with Patient count 1
+GET {{purgeHistory.response.headers.Content-Location}}
+Accept: application/fhir+json
+
+### Verify history purge: 200 with only the current Patient version in history
+GET {{baseUrl}}/Patient/{{patientId}}/_history
+Accept: application/fhir+json
+
+### Scenario D: system-level hard delete using a Parameters body (re-seed first)
+# Only the two tagged sample resources are targeted, not all Patient/Observation data.
+# Ignixa honors these body flags; fhir-server reads flags only from the query.
+# hardDelete takes precedence when both flags are true. SQL storage required.
+# @name systemDelete
+DELETE {{baseUrl}}/$bulk-delete?_type=Patient,Observation&_id={{patientId}},{{observationId}}&_tag={{tagSystem}}%7C{{tagCode}}
+Prefer: respond-async
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Parameters",
+  "parameter": [
+    { "name": "hardDelete", "valueBoolean": true },
+    { "name": "purgeHistory", "valueBoolean": true }
+  ]
+}
+
+### Poll system delete: 200 on completion, with Patient and Observation counts
+GET {{systemDelete.response.headers.Content-Location}}
+Accept: application/fhir+json
+
+### Optional: cancel Scenario D immediately after kickoff, instead of polling
+# Expected: 202 when cancellation is accepted, or 409 if already terminal.
+# Two sample resources may finish before cancellation arrives. Cancellation does
+# not undo deletions; poll the same URL for partial counts and "Job Canceled".
+DELETE {{systemDelete.response.headers.Content-Location}}
+
+### Scenario E: exclude Observation from a system-level soft delete (re-seed first)
+# @name excludedTypesDelete
+DELETE {{baseUrl}}/$bulk-delete?_type=Patient,Observation&_id={{patientId}},{{observationId}}&_tag={{tagSystem}}%7C{{tagCode}}&excludedResourceTypes=Observation
+Prefer: respond-async
+
+### Poll excluded-types delete: only Patient appears in the completed counts
+GET {{excludedTypesDelete.response.headers.Content-Location}}
+Accept: application/fhir+json
+
+### Verify the excluded Observation remains: 200 OK
+GET {{baseUrl}}/Observation/{{observationId}}
+Accept: application/fhir+json
+
+### Scenario F: no matches still creates a successful asynchronous job
+# @name noMatchDelete
+DELETE {{baseUrl}}/Patient/$bulk-delete?_id={{patientId}}-missing&_tag={{tagSystem}}%7C{{tagCode}}
+Prefer: respond-async
+
+### Poll no-match delete: 200 with {"resourceType":"Parameters"} and no counts
+GET {{noMatchDelete.response.headers.Content-Location}}
+Accept: application/fhir+json

@@ -3,7 +3,6 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Api.Extensions;
 using Ignixa.Api.Http;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
@@ -11,6 +10,7 @@ using Ignixa.Domain.Models;
 using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
+using static Ignixa.Application.Infrastructure.LogSanitizationExtensions;
 
 namespace Ignixa.Api.Middleware;
 

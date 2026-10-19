@@ -3,4 +3,4 @@ extensions:
       pack: codeql/csharp-all
       extensible: barrierModel
     data:
-      - ["Ignixa.Api.Extensions", "LogSanitizationExtensions", false, "SanitizeForLog", "(System.String)", "", "ReturnValue", "log-injection", "manual"]
+      - ["Ignixa.Application.Infrastructure", "LogSanitizationExtensions", false, "SanitizeForLog", "(System.String)", "", "ReturnValue", "log-injection", "manual"]

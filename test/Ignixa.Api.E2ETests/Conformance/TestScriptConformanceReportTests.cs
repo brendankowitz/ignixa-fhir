@@ -39,7 +39,6 @@ public sealed class TestScriptConformanceReportTests
         "CRUD/vread.json",
 
         // Bulk/import/export and reindex operations are not implemented
-        "Microsoft/ms-bulk-delete.json",
         "Microsoft/ms-bulk-update.json",
         "Microsoft/ms-convert-data.json",
         "Microsoft/ms-import-basic.json",

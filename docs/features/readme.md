@@ -121,6 +121,7 @@ docs/features/
 | [architecture](architecture/) | Research | v2-architecture, core-shims, jsonobject-based, +7 more |
 | [authorization](authorization/) | Viable | rbac-capabilities |
 | [background-jobs](background-jobs/) | Complete | durabletask, watchdog-patterns |
+| [bulk-delete](bulk-delete/) | Decided | — |
 | [bulk-import](bulk-import/) | Proposed | import-operation |
 | [bundle-processing](bundle-processing/) | Research | architecture, streaming, deferred-writes, +5 more |
 | [caching](caching/) | Complete | architecture, abstraction-architecture |

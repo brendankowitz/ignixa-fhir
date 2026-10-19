@@ -75,6 +75,15 @@ public class SystemValueTypeMatchingTests
     }
     """;
 
+    private const string Integer64ParametersJson = """
+    {
+      "resourceType": "Parameters",
+      "parameter": [
+        { "name": "large", "valueInteger64": "2147483648" }
+      ]
+    }
+    """;
+
     /// <summary>
     /// One literal expected answer per expression, captured from the interpreter rather than compared
     /// only against the compiled path.
@@ -89,9 +98,9 @@ public class SystemValueTypeMatchingTests
     /// <c>boolean|Boolean</c>, <c>string|String</c>) are recorded engine output copied from a single run,
     /// because <see cref="Describe"/> bakes both into its rendering and neither has independent spec
     /// content to check against. A bug that changed those two columns identically on both paths would
-    /// still be invisible to this snapshot - the residual risk is concrete, not hypothetical:
-    /// <see cref="GivenQuantityLiteral_WhenItsTypeIsReported_ThenItRemainsFhirQuantity"/> a few tests down
-    /// pins exactly that shape of thing, a known <c>InstanceType</c> deviation from the specification.
+    /// still be invisible to this snapshot. Specification-derived namespace assertions, such as
+    /// <see cref="GivenEngineProducedQuantity_WhenItsTypeIsReported_ThenItIsSystemQuantity"/>, are
+    /// therefore checked separately rather than inferred from this snapshot.
     /// </para>
     /// <para>
     /// What this snapshot does close is the hole the class remarks describe: agreement between the
@@ -596,10 +605,14 @@ public class SystemValueTypeMatchingTests
         // Act
         var isSystemQuantity = Interpret(element, "value is System.Quantity", schema);
         var isFhirQuantity = Interpret(element, "value is FHIR.Quantity", schema);
+        var typeNamespace = Interpret(element, "value.type().namespace", schema);
+        var typeName = Interpret(element, "value.type().name", schema);
 
         // Assert
         isSystemQuantity.ShouldHaveSingleItem().Value.ShouldBe(false);
         isFhirQuantity.ShouldHaveSingleItem().Value.ShouldBe(true);
+        typeNamespace.ShouldHaveSingleItem().Value.ShouldBe("FHIR");
+        typeName.ShouldHaveSingleItem().Value.ShouldBe("Quantity");
     }
 
     [Fact]
@@ -624,32 +637,108 @@ public class SystemValueTypeMatchingTests
     }
 
     /// <summary>
-    /// Pins what <c>type()</c> answers for a quantity literal. That answer is a known deviation from
-    /// the specification, not a settled classification.
+    /// Engine-produced quantities belong to System for both type tests and type introspection.
     /// </summary>
-    /// <remarks>
-    /// The specification puts a quantity literal in the System namespace, so this should answer
-    /// System/Quantity. Marking <c>QuantityElement</c> as a System value closed the <c>is</c> half of
-    /// that divergence and left this half open, so <c>(1 'mg') is System.Quantity</c> is now true while
-    /// <c>(1 'mg').type()</c> still says FHIR/Quantity - the two contradict each other. The cause is the
-    /// <c>"quantity"</c> case in <c>CollectionFunctions.Type</c>, which maps to FHIR from inside the
-    /// <c>isSystemLiteral</c> branch. Correcting it is a separate spec fix needing its own evidence;
-    /// this guard exists so that correction is deliberate and visible rather than incidental.
-    /// </remarks>
-    [Fact]
-    public void GivenQuantityLiteral_WhenItsTypeIsReported_ThenItRemainsFhirQuantity()
+    [Theory]
+    [InlineData(FhirVersion.Stu3, "1 'mg'")]
+    [InlineData(FhirVersion.Stu3, "1.toQuantity()")]
+    [InlineData(FhirVersion.R4, "1 'mg'")]
+    [InlineData(FhirVersion.R4, "1.toQuantity()")]
+    [InlineData(FhirVersion.R4B, "1 'mg'")]
+    [InlineData(FhirVersion.R4B, "1.toQuantity()")]
+    [InlineData(FhirVersion.R5, "1 'mg'")]
+    [InlineData(FhirVersion.R5, "1.toQuantity()")]
+    [InlineData(FhirVersion.R6, "1 'mg'")]
+    [InlineData(FhirVersion.R6, "1.toQuantity()")]
+    public void GivenEngineProducedQuantity_WhenItsTypeIsReported_ThenItIsSystemQuantity(
+        FhirVersion version,
+        string quantityExpression)
     {
         // Arrange
-        var schema = FhirVersion.R5.GetSchemaProvider();
+        var schema = version.GetSchemaProvider();
         var element = ResourceJsonNode.Parse(ObservationJson).ToElement(schema);
 
         // Act
-        var typeNamespace = Interpret(element, "(1 'mg').type().namespace", schema);
-        var typeName = Interpret(element, "(1 'mg').type().name", schema);
+        var quantity = Interpret(element, quantityExpression, schema);
+        var typeNamespace = Interpret(element, $"({quantityExpression}).type().namespace", schema);
+        var typeName = Interpret(element, $"({quantityExpression}).type().name", schema);
 
         // Assert
-        typeNamespace.ShouldHaveSingleItem().Value.ShouldBe("FHIR");
+        quantity.ShouldHaveSingleItem().ShouldBeAssignableTo<ISystemValueElement>();
+        typeNamespace.ShouldHaveSingleItem().Value.ShouldBe("System");
         typeName.ShouldHaveSingleItem().Value.ShouldBe("Quantity");
+    }
+
+    [Theory]
+    [InlineData(FhirVersion.Stu3)]
+    [InlineData(FhirVersion.R4)]
+    [InlineData(FhirVersion.R4B)]
+    [InlineData(FhirVersion.R5)]
+    [InlineData(FhirVersion.R6)]
+    public void GivenNativeLongConversion_WhenMatchedAndReflected_ThenItRemainsSystemLong(FhirVersion version)
+    {
+        var schema = version.GetSchemaProvider();
+        var element = ResourceJsonNode.Parse(ObservationJson).ToElement(schema);
+        const string expression = "'2147483648'.toLong()";
+
+        var converted = Interpret(element, expression, schema).ShouldHaveSingleItem();
+        var isSystemLong = Interpret(element, $"{expression}.is(System.Long)", schema);
+        var cast = Interpret(element, $"{expression}.as(System.Long)", schema);
+        var selected = Interpret(element, $"{expression}.ofType(Long)", schema);
+        var typeNamespace = Interpret(element, $"{expression}.type().namespace", schema);
+        var typeName = Interpret(element, $"{expression}.type().name", schema);
+
+        converted.ShouldBeAssignableTo<ISystemValueElement>();
+        converted.Value.ShouldBe(2147483648L);
+        isSystemLong.ShouldHaveSingleItem().Value.ShouldBe(true);
+        cast.ShouldHaveSingleItem().Value.ShouldBe(2147483648L);
+        cast[0].ShouldBeAssignableTo<ISystemValueElement>();
+        selected.ShouldHaveSingleItem().Value.ShouldBe(2147483648L);
+        selected[0].ShouldBeAssignableTo<ISystemValueElement>();
+        typeNamespace.ShouldHaveSingleItem().Value.ShouldBe("System");
+        typeName.ShouldHaveSingleItem().Value.ShouldBe("Long");
+    }
+
+    [Theory]
+    [InlineData(FhirVersion.R5)]
+    [InlineData(FhirVersion.R6)]
+    public void GivenSystemLongAndResourceInteger64_WhenTypeTested_ThenTheirNamespacesRemainDistinct(FhirVersion version)
+    {
+        var schema = version.GetSchemaProvider();
+        var element = ResourceJsonNode.Parse(Integer64ParametersJson).ToElement(schema);
+
+        var resourceValue = Interpret(element, "parameter.value", schema).ShouldHaveSingleItem();
+        var systemIsFhir = Interpret(element, "'2147483648'.toLong().is(FHIR.integer64)", schema);
+        var resourceIsSystem = Interpret(element, "parameter.value.is(System.Long)", schema);
+        var resourceIsFhir = Interpret(element, "parameter.value.is(FHIR.integer64)", schema);
+        var convertedIsSystem = Interpret(element, "parameter.value.toLong().is(System.Long)", schema);
+        var typeNamespace = Interpret(element, "parameter.value.type().namespace", schema);
+        var typeName = Interpret(element, "parameter.value.type().name", schema);
+
+        (resourceValue is ISystemValueElement).ShouldBeFalse();
+        resourceValue.InstanceType.ShouldBe("integer64");
+        systemIsFhir.ShouldHaveSingleItem().Value.ShouldBe(false);
+        resourceIsSystem.ShouldHaveSingleItem().Value.ShouldBe(false);
+        resourceIsFhir.ShouldHaveSingleItem().Value.ShouldBe(true);
+        convertedIsSystem.ShouldHaveSingleItem().Value.ShouldBe(true);
+        typeNamespace.ShouldHaveSingleItem().Value.ShouldBe("FHIR");
+        typeName.ShouldHaveSingleItem().Value.ShouldBe("integer64");
+    }
+
+    [Theory]
+    [InlineData(FhirVersion.Stu3)]
+    [InlineData(FhirVersion.R4)]
+    [InlineData(FhirVersion.R4B)]
+    [InlineData(FhirVersion.R5)]
+    [InlineData(FhirVersion.R6)]
+    public void GivenNativeLong_WhenAnUnqualifiedFhirLongIsRequested_ThenTheUnknownTypeIsRejected(FhirVersion version)
+    {
+        var schema = version.GetSchemaProvider();
+        var element = ResourceJsonNode.Parse(ObservationJson).ToElement(schema);
+
+        Should.Throw<FhirPathEvaluationException>(() => Interpret(element, "1.toLong().is(long)", schema));
+        Should.Throw<FhirPathEvaluationException>(() => Interpret(element, "1.toLong().as(long)", schema));
+        Should.Throw<FhirPathEvaluationException>(() => Interpret(element, "1.toLong().ofType(long)", schema));
     }
 
     private static IReadOnlyList<FhirVersion> AllVersions =>

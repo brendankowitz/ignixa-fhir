@@ -19,7 +19,7 @@ namespace Ignixa.FhirMappingLanguage.Mutator;
 /// Handles array vs single value detection, primitive vs complex types, and intermediate object creation.
 /// Request-aware via schema provider factory function.
 /// </summary>
-public class JsonNodeMutator : IJsonNodeMutator
+public partial class JsonNodeMutator : IMappingTargetMutator
 {
     private readonly FhirPathEvaluator _evaluator;
     private readonly FhirPathParser _parser;

@@ -208,6 +208,12 @@ resource appService 'Microsoft.Web/sites@2023-12-01' = {
           name: 'DurableTask__AzureStorage__TaskHubName'
           value: 'ignixa'
         }
+        // Job rows ($export/$import/$bulk-delete status) must survive restarts and be shared across
+        // instances; the InMemory default loses them, so status polls 404. Stored in tenant 1's database.
+        {
+          name: 'BackgroundJobs__Repository'
+          value: 'SqlServer'
+        }
         // BlobStorage configuration for FHIR import/export data files
         {
           name: 'BlobStorage__Provider'

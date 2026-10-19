@@ -215,4 +215,36 @@ public interface IFhirRepository
         short resourceTypeId,
         string resourceId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when this provider can physically remove resource versions -- i.e. when
+    /// <see cref="HardDeleteAsync"/> and <see cref="PurgeHistoryAsync"/> are supported rather than
+    /// throwing <see cref="NotSupportedException"/>. Callers must check this before invoking either
+    /// method on a provider-agnostic code path (e.g. <c>$bulk-delete</c> kickoff validation).
+    /// </summary>
+    bool SupportsPhysicalDeletion { get; }
+
+    /// <summary>
+    /// Physically removes every version of <paramref name="key"/>'s resource (<c>key.ResourceType</c>/
+    /// <c>key.Id</c>), its search indexes, and its TTL entry. Unlike
+    /// <see cref="DeleteAsync(ResourceKey, ResourceRequest, TransactionId?, CancellationToken)"/>, no
+    /// tombstone is created and the deletion does not appear in history. Used by <c>$bulk-delete</c>
+    /// with hard-delete semantics.
+    /// </summary>
+    /// <param name="key">Resource key (resourceType and resourceId, versionId ignored).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>False if no version of the resource existed; true if at least one version was removed.</returns>
+    /// <exception cref="NotSupportedException">The provider does not support physical deletion; see <see cref="SupportsPhysicalDeletion"/>.</exception>
+    Task<bool> HardDeleteAsync(ResourceKey key, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Physically removes historical (non-current) versions of <paramref name="key"/>'s resource and
+    /// their search-index rows, keeping the current version -- including a current soft-deleted
+    /// tombstone. Used by <c>$bulk-delete</c> with purge-history semantics.
+    /// </summary>
+    /// <param name="key">Resource key (resourceType and resourceId, versionId ignored).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The number of historical versions removed; zero if the resource has no history.</returns>
+    /// <exception cref="NotSupportedException">The provider does not support physical deletion; see <see cref="SupportsPhysicalDeletion"/>.</exception>
+    Task<int> PurgeHistoryAsync(ResourceKey key, CancellationToken cancellationToken = default);
 }

@@ -9,6 +9,7 @@ using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.FhirFakes.Builders;
 using Ignixa.Models;
+using Ignixa.Search.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 
@@ -334,55 +335,51 @@ public class IncludesOperationTests : IncludeTestBase
     /// Tests that $includes endpoint returns error for invalid continuation token.
     /// </summary>
     [Fact]
-    public async Task GivenInvalidContinuationToken_WhenCallingIncludesEndpoint_ThenHandlesGracefully()
+    public async Task GivenInvalidContinuationToken_WhenCallingIncludesEndpoint_ThenRejectsWithBadRequest()
     {
         // Arrange
         var invalidToken = "this-is-not-a-valid-token";
 
         // Act
-        var response = await Client.GetAsync($"/Location/$includes?_includesContinuationToken={invalidToken}");
+        var response = await Client.GetAsync($"/Location/$includes?_include=Location:organization&_includesContinuationToken={invalidToken}");
 
-        // Assert - should handle gracefully (either return empty results or error)
-        // The implementation decodes the token and returns empty if invalid
-        var responseJson = await response.Content.ReadAsStringAsync();
+        // Assert - a token that cannot be decoded must not silently restart at the first include page
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
 
-        // Could be successful with empty results or an error response
-        if (response.IsSuccessStatusCode)
-        {
-            var bundle = JsonSourceNodeFactory.Parse<Bundle>(responseJson);
-            bundle.ShouldNotBeNull();
-            bundle.GetTypeRaw().ShouldBe("searchset");
-        }
-        else
-        {
-            response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        }
+    /// <summary>
+    /// Tests that an includes offset beyond the supported maximum is rejected rather than restarted at offset 0.
+    /// </summary>
+    [Fact]
+    public async Task GivenIncludesOffsetBeyondMaximum_WhenCallingIncludesEndpoint_ThenRejectsWithBadRequest()
+    {
+        // Arrange
+        var token = Uri.EscapeDataString(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(
+            $"{{\"IncludesOffset\":{IncludesContinuationToken.MaxAllowedOffset + 1},\"PageSize\":10}}")));
+
+        // Act
+        var response = await Client.GetAsync($"/Location/$includes?_include=Location:organization&_includesContinuationToken={token}");
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).ShouldContain(
+            IncludesContinuationToken.MaxAllowedOffset.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 
     /// <summary>
     /// Tests that $includes endpoint returns error for malformed base64 token.
     /// </summary>
     [Fact]
-    public async Task GivenMalformedBase64Token_WhenCallingIncludesEndpoint_ThenHandlesGracefully()
+    public async Task GivenMalformedBase64Token_WhenCallingIncludesEndpoint_ThenRejectsWithBadRequest()
     {
         // Arrange - valid base64 but not valid JSON inside
-        var malformedToken = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("not-json"));
+        var malformedToken = Uri.EscapeDataString(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("not-json")));
 
         // Act
-        var response = await Client.GetAsync($"/Location/$includes?_includesContinuationToken={malformedToken}");
+        var response = await Client.GetAsync($"/Location/$includes?_include=Location:organization&_includesContinuationToken={malformedToken}");
 
-        // Assert - should handle gracefully
-        var responseJson = await response.Content.ReadAsStringAsync();
-
-        if (response.IsSuccessStatusCode)
-        {
-            var bundle = JsonSourceNodeFactory.Parse<Bundle>(responseJson);
-            bundle.ShouldNotBeNull();
-        }
-        else
-        {
-            response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        }
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
 
     #endregion

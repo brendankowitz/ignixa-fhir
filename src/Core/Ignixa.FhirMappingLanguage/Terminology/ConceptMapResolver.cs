@@ -46,7 +46,7 @@ internal class ConceptMapResolver
         foreach (var group in groups.EnumerateArray())
         {
             // If target system is specified, filter by target
-            if (targetSystem is not null)
+            if (!string.IsNullOrEmpty(targetSystem))
             {
                 if (!group.TryGetProperty("target", out var target) ||
                     target.GetString() != targetSystem)

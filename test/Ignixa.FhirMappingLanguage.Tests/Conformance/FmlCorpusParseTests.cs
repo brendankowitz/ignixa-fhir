@@ -27,44 +27,14 @@ public class FmlCorpusParseTests(ITestOutputHelper output)
 {
     /// <summary>
     /// Theory data: version, expected total .map files, expected failing file names (sorted).
-    /// Keep entries sorted by file name (StringComparer.Ordinal) and document each with a reason.
-    ///
-    /// Failure classifications:
-    ///   (a) real Part A gap — a construct Tasks 1–5 were supposed to handle but did not
-    ///   (b) explicitly deferred — known out-of-scope construct
-    ///   (c) other — new/unknown failure mode
-    ///
-    /// qr2cda-eval.map is classification (b): it uses nested function calls of the form
-    /// evaluate(src, iif(src.is(X),"a","b")) as a transform. The inner iif() is a
-    /// TransformArgumentExpression which the greedy FhirPathExpression fallback cannot safely
-    /// expand without a parenthesised-only guard — and the RightParen that closes iif() is
-    /// not in the fallback terminator set. This construct is explicitly deferred: the file
-    /// produces XML-format CDA output and is excluded from the end-to-end oracle.
+    /// Nested FHIRPath arguments now parse, including qr2cda-eval.map.
+    /// CDA execution remains outside the JSON evaluator oracle's scope.
     /// </summary>
     public static TheoryData<string, int, string[]> CorpusTheoryData() => new()
     {
-        // r5: 15 .map files measured in vendored release 1.7.46.
-        // parsed: 14/15
-        // Remaining failure — classification (b) explicitly deferred:
-        //   qr2cda-eval.map: evaluate(src, iif(src.is(QuestionnaireResponse),"Hello CDA","badbadbad"))
-        //   nested iif() inside evaluate() — greedy-swallow hazard; CDA output excluded from oracle.
-        {
-            "r5", 15,
-            [
-                "qr2cda-eval.map",
-            ]
-        },
-
-        // r4b: 12 .map files measured in vendored release 1.7.46.
-        // parsed: 11/12
-        // Remaining failure — classification (b) explicitly deferred:
-        //   qr2cda-eval.map: same nested evaluate/iif as r5 variant.
-        {
-            "r4b", 12,
-            [
-                "qr2cda-eval.map",
-            ]
-        },
+        // File counts measured in vendored release 1.7.46.
+        { "r5", 15, [] },
+        { "r4b", 12, [] },
     };
 
     [Theory]

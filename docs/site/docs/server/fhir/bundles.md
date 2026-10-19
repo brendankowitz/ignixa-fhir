@@ -8,6 +8,26 @@ description: Batch and transaction bundle processing
 
 Ignixa supports FHIR Bundle resources for submitting multiple operations in a single request.
 
+## Request and Transaction Limits
+
+`Kestrel:Limits:MaxRequestBodySize` defaults to **30,000,000 bytes**. A body whose
+`Content-Length` exceeds that size is rejected before any entry executes; the server returns a FHIR
+`OperationOutcome` with HTTP 413 and issue code `too-costly`. A chunked body with an unknown length
+is checked as it is read. If it exceeds the limit, a transaction is rejected with HTTP 413 and no
+entries commit because parsing reaches EOF before execution. A batch is non-atomic: entries read
+before the limit breach may already have executed, and its HTTP 200 batch response ends with a fatal
+`too-costly` OperationOutcome entry whose response status is 413. The value must be a positive
+integer; `null` and unlimited request bodies are not supported.
+
+`Bundle:MaxTransactionEntries` defaults to **500**. Transactions with more than 500 entries are
+rejected before any entry is validated or executed. This is a behavior change for clients that
+submit larger transactions; split them into smaller transactions or use a batch when atomicity is
+not required. Batch bundles are not subject to this entry cap.
+
+These are request-size and transaction-cardinality guards, not a memory guarantee. Individual
+entry shape, concurrent requests, response construction, and other server work still affect memory
+use.
+
 ## Batch vs Transaction
 
 Choose the right bundle type for your use case:

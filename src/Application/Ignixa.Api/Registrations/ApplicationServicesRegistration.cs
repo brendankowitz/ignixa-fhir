@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Globalization;
 using Autofac;
 using DurableTask.Core;
 using Ignixa.Abstractions;
@@ -11,6 +12,7 @@ using Ignixa.Api.Infrastructure;
 using Ignixa.Application.Features.Admin;
 using Ignixa.Application.Features.Bundle;
 using Ignixa.Application.Features.Bundle.Serialization;
+using Ignixa.Application.Features.BulkDelete;
 using Ignixa.Application.Features.Compartment;
 using Ignixa.Application.Features.ConditionalOperations.ConditionalCreate;
 using Ignixa.Application.Features.ConditionalOperations.ConditionalDelete;
@@ -57,13 +59,29 @@ public static class ApplicationServicesRegistration
         this ContainerBuilder builder,
         IConfiguration configuration)
     {
+        return RegisterApplicationServices(builder, configuration, GetMaxRequestBodySize(configuration));
+    }
+
+    internal static ContainerBuilder RegisterApplicationServices(
+        this ContainerBuilder builder,
+        IConfiguration configuration,
+        int maxRequestBodySize)
+    {
         ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        if (maxRequestBodySize <= 0)
+        {
+            throw new InvalidOperationException(
+                "Configuration setting 'Kestrel:Limits:MaxRequestBodySize' must be a positive integer.");
+        }
+        var maxTransactionEntries = GetMaxTransactionEntries(configuration);
 
         // Medino (MediatR-like) infrastructure
         RegisterMedinoServices(builder);
 
         // Resource CRUD handlers
-        RegisterResourceHandlers(builder);
+        RegisterResourceHandlers(builder, configuration);
 
         // Conditional operations handlers
         RegisterConditionalOperationHandlers(builder);
@@ -86,7 +104,7 @@ public static class ApplicationServicesRegistration
         RegisterCapabilityServices(builder);
 
         // Bundle processing services
-        RegisterBundleServices(builder);
+        RegisterBundleServices(builder, maxRequestBodySize, maxTransactionEntries);
 
         // Package management handlers
         RegisterPackageManagementHandlers(builder);
@@ -107,6 +125,43 @@ public static class ApplicationServicesRegistration
         RegisterAuthorizationServices(builder);
 
         return builder;
+    }
+
+    internal static int GetMaxRequestBodySize(IConfiguration configuration) =>
+        GetPositiveConfigurationValue(
+            configuration,
+            "Kestrel:Limits:MaxRequestBodySize",
+            defaultValue: 30_000_000);
+
+    private static int GetMaxTransactionEntries(IConfiguration configuration) =>
+        GetPositiveConfigurationValue(
+            configuration,
+            "Bundle:MaxTransactionEntries",
+            defaultValue: 500);
+
+    private static int GetPositiveConfigurationValue(
+        IConfiguration configuration,
+        string key,
+        int defaultValue)
+    {
+        var configuredValue = configuration[key];
+        if (configuredValue == null)
+        {
+            if (!configuration.AsEnumerable()
+                .Any(entry => string.Equals(entry.Key, key, StringComparison.OrdinalIgnoreCase)))
+            {
+                return defaultValue;
+            }
+
+            throw new InvalidOperationException(
+                $"Configuration setting '{key}' must be a positive integer.");
+        }
+        if (!int.TryParse(configuredValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) || value <= 0)
+        {
+            throw new InvalidOperationException(
+                $"Configuration setting '{key}' must be a positive integer.");
+        }
+        return value;
     }
 
     private static void RegisterMedinoServices(ContainerBuilder builder)
@@ -131,11 +186,28 @@ public static class ApplicationServicesRegistration
             .InstancePerLifetimeScope();
     }
 
-    private static void RegisterResourceHandlers(ContainerBuilder builder)
+    private static void RegisterResourceHandlers(ContainerBuilder builder, IConfiguration configuration)
     {
+        // Bound when resolved rather than at registration so configuration sources added later apply,
+        // and resolved once the container is built so a bad value fails startup instead of every write.
+        builder.Register(_ =>
+            {
+                var options = new SerializationOptions();
+                configuration.GetSection(SerializationOptions.SectionName)
+                    .Bind(options, binder => binder.ErrorOnUnknownConfiguration = true);
+                return options;
+            })
+            .AsSelf()
+            .SingleInstance();
+        builder.RegisterBuildCallback(scope => scope.Resolve<SerializationOptions>());
+
         builder.RegisterType<GetResourceHandler>()
             .As<IRequestHandler<GetResourceQuery, SearchEntryResult?>>()
             .InstancePerDependency();
+
+        builder.RegisterType<ResourceElementOrdering>()
+            .AsSelf()
+            .SingleInstance();
 
         builder.RegisterType<CreateOrUpdateResourceHandler>()
             .As<IRequestHandler<CreateOrUpdateResourceCommand, UpdateResult>>()
@@ -365,8 +437,24 @@ public static class ApplicationServicesRegistration
             .SingleInstance();
     }
 
-    private static void RegisterBundleServices(ContainerBuilder builder)
+    private static void RegisterBundleServices(
+        ContainerBuilder builder,
+        int maxRequestBodySize,
+        int maxTransactionEntries)
     {
+        var maxTokenBytes = Math.Max(
+            8_192,
+            Math.Min(StreamingBundleParser.DefaultMaxTokenBytes, maxRequestBodySize));
+
+        builder.RegisterInstance(new BundleProcessingOptions
+            {
+                MaxParallelism = 10,
+                ChannelCapacity = 100,
+                MaxTransactionEntries = maxTransactionEntries
+            })
+            .AsSelf()
+            .SingleInstance();
+
         builder.RegisterType<BundleReferencePreProcessor>()
             .InstancePerDependency();
 
@@ -382,7 +470,9 @@ public static class ApplicationServicesRegistration
         builder.RegisterType<BundleProcessor>()
             .InstancePerDependency();
 
-        builder.RegisterType<StreamingBundleParser>()
+        builder.Register(c => new StreamingBundleParser(
+                c.Resolve<ILogger<StreamingBundleParser>>(),
+                maxTokenBytes))
             .InstancePerDependency();
 
         // Pipeline executor for bundle entry routing
@@ -419,6 +509,11 @@ public static class ApplicationServicesRegistration
 
         // Package feature ($includes operation for independent pagination of _include/_revinclude results)
         builder.RegisterType<IncludesOperationFeature>()
+            .As<IPackageFeature>()
+            .SingleInstance();
+
+        // Package feature ($bulk-delete operation, system-level and on every resource type)
+        builder.RegisterType<BulkDeleteFeature>()
             .As<IPackageFeature>()
             .SingleInstance();
     }
@@ -524,6 +619,11 @@ public static class ApplicationServicesRegistration
         // Authorization service
         builder.RegisterType<Ignixa.Application.Features.Authorization.Services.FhirAuthorizationService>()
             .As<Ignixa.Application.Features.Authorization.Services.IFhirAuthorizationService>()
+            .InstancePerLifetimeScope();
+
+        // $bulk-delete kickoff: authorizes the deletes/updates the job performs, not just the operation route
+        builder.RegisterType<Ignixa.Api.Endpoints.BulkDeleteKickoffAuthorizer>()
+            .AsSelf()
             .InstancePerLifetimeScope();
 
         // MCP authorization service

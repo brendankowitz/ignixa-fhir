@@ -3,6 +3,9 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using DurableTask.Core;
 using Ignixa.Abstractions;
 using Ignixa.Application.BackgroundOperations.Import.Activities;
@@ -16,7 +19,7 @@ using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
-using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
@@ -25,16 +28,16 @@ using Xunit;
 namespace Ignixa.Application.Tests.BackgroundOperations;
 
 /// <summary>
-/// ImportBatchActivity indexes resources with no HTTP request. Before this activity established an
-/// ambient <see cref="IFhirRequestContext"/> for its own duration, <see cref="FhirRequestContextBaseUriProvider"/>
-/// found no context, fell back to a null tenant, and only recognized the deployment root. An absolute
-/// self-reference in tenant-scoped form (e.g. <c>https://host/tenant/1/Patient/p1</c>) then indexed as
-/// External here while the request path that first wrote the same reference collapsed it to Internal, so
-/// a re-imported row silently dropped out of <c>?subject=Patient/p1</c> searches. This test runs the
-/// actual activity (not a hand-constructed context) and asserts it reaches the same classification the
-/// request path reaches for the same tenant and the same reference.
+/// Bulk import indexes resources with no HTTP request. Unless the activity establishes an ambient
+/// <see cref="IFhirRequestContext"/> for its own duration, <see cref="FhirRequestContextBaseUriProvider"/>
+/// finds no context, falls back to a null tenant, and only recognizes the deployment root. An absolute
+/// self-reference in tenant-scoped form (e.g. <c>https://host/tenant/1/Patient/p1</c>) then indexes as
+/// External here while the request path that first wrote the same reference collapses it to Internal, so
+/// a re-imported row silently drops out of <c>?subject=Patient/p1</c> searches. This test runs the
+/// actual activity and asserts it reaches the same classification the request path reaches for the same
+/// tenant and the same reference.
 /// </summary>
-public class ImportBatchActivityBaseUriWiringTests
+public class StreamingImportFileActivityBaseUriWiringTests
 {
     private const int TenantId = 1;
     private const string ObservationId = "obs1";
@@ -52,12 +55,12 @@ public class ImportBatchActivityBaseUriWiringTests
         """;
 
     [Fact]
-    public async Task GivenAnImportBatchActivity_WhenIndexingAnAbsoluteSelfReference_ThenItAgreesWithTheRequestPath()
+    public async Task GivenAStreamingImport_WhenIndexingAnAbsoluteSelfReference_ThenItAgreesWithTheRequestPath()
     {
         var accessor = new FhirRequestContextAccessor();
         var resolver = new FhirServiceBaseUriResolver(ServiceRoot);
         var baseUriProvider = new FhirRequestContextBaseUriProvider(accessor, resolver, Substitute.For<ITenantConfigurationStore>());
-        var versionContext = new FhirVersionContext(
+        using var versionContext = new FhirVersionContext(
             NullLoggerFactory.Instance,
             new SearchParameterResolutionOptions(),
             baseUriProvider);
@@ -77,26 +80,6 @@ public class ImportBatchActivityBaseUriWiringTests
         actualReference.Kind.ShouldBe(expectedReference.Kind);
         actualReference.BaseUri.ShouldBe(expectedReference.BaseUri);
         actualReference.Kind.ShouldBe(ReferenceKind.Internal);
-    }
-
-    [Fact]
-    public async Task GivenAnImportBatchActivity_WhenItCompletes_ThenThePreviousAmbientContextIsRestored()
-    {
-        var accessor = new FhirRequestContextAccessor();
-        var resolver = new FhirServiceBaseUriResolver(ServiceRoot);
-        var baseUriProvider = new FhirRequestContextBaseUriProvider(accessor, resolver, Substitute.For<ITenantConfigurationStore>());
-        var versionContext = new FhirVersionContext(
-            NullLoggerFactory.Instance,
-            new SearchParameterResolutionOptions(),
-            baseUriProvider);
-
-        var callerContext = new FhirRequestContext { TenantId = 42 };
-        accessor.RequestContext = callerContext;
-
-        await ExtractSubjectReferenceViaActivityAsync(versionContext, accessor);
-
-        // A pooled thread must not carry this activity's context into whatever runs on it next.
-        accessor.RequestContext.ShouldBeSameAs(callerContext);
     }
 
     private static ReferenceSearchValue ExtractSubjectReference(IFhirVersionContext versionContext)
@@ -140,27 +123,36 @@ public class ImportBatchActivityBaseUriWiringTests
         var repositoryFactory = Substitute.For<IFhirRepositoryFactory>();
         repositoryFactory.GetRepositoryAsync(TenantId, Arg.Any<CancellationToken>()).Returns(repository);
 
-        var activity = new TestableImportBatchActivity(
+        var blobs = Substitute.For<IBlobStorageClient>();
+        blobs.ReadBlobAsync("input.ndjson", Arg.Any<CancellationToken>())
+            .Returns(new MemoryStream(Encoding.UTF8.GetBytes(JsonNode.Parse(ObservationJson)!.ToJsonString() + "\n")));
+
+        var activity = new StreamingImportFileActivity(
             repositoryFactory,
             versionContext,
             tenantConfigurationStore,
+            blobs,
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Import:ConsumerCount"] = "1" }).Build(),
             accessor,
-            NullLogger<ImportBatchActivity>.Instance);
+            new ResourceElementOrdering(new SerializationOptions()),
+            NullLogger<StreamingImportFileActivity>.Instance);
 
-        var input = new ImportBatchInput
+        var input = new StreamingImportFileInput
         {
             JobId = "job-1",
             TenantId = TenantId,
+            FileUrl = "input.ndjson",
             ResourceType = "Observation",
-            Resources = [ObservationJson],
-            Mode = "IncrementalLoad"
+            Mode = "IncrementalLoad",
+            BatchSize = 1,
+            ChannelCapacity = 1
         };
 
-        var taskContext = new TaskContext(new OrchestrationInstance { InstanceId = "test-instance" });
+        var json = await activity.RunAsync(
+            new TaskContext(new OrchestrationInstance { InstanceId = "test-instance" }),
+            JsonSerializer.Serialize(new[] { input }));
 
-        var output = await activity.RunExecuteAsync(taskContext, input);
-
-        output.ErrorCount.ShouldBe(0);
+        JsonSerializer.Deserialize<StreamingImportFileOutput>(json)!.ErrorCount.ShouldBe(0);
         capturedSearchIndexes.ShouldNotBeNull();
 
         return GetSubjectReference(capturedSearchIndexes!.Cast<SearchIndexEntry>());
@@ -168,21 +160,4 @@ public class ImportBatchActivityBaseUriWiringTests
 
     private static ReferenceSearchValue GetSubjectReference(IEnumerable<SearchIndexEntry> entries) =>
         (ReferenceSearchValue)entries.Single(entry => entry.SearchParameter.Name == "subject").Value;
-
-    /// <summary>
-    /// DurableTask's <see cref="AsyncTaskActivity{TInput,TResult}.ExecuteAsync"/> is protected. This
-    /// subclass exposes it so the test invokes the real production method rather than a hand-constructed
-    /// substitute for it.
-    /// </summary>
-    private sealed class TestableImportBatchActivity(
-        IFhirRepositoryFactory repositoryFactory,
-        IFhirVersionContext fhirVersionContext,
-        ITenantConfigurationStore tenantConfigurationStore,
-        IFhirRequestContextAccessor fhirContextAccessor,
-        ILogger<ImportBatchActivity> logger)
-        : ImportBatchActivity(repositoryFactory, fhirVersionContext, tenantConfigurationStore, fhirContextAccessor, logger)
-    {
-        public Task<ImportBatchOutput> RunExecuteAsync(TaskContext context, ImportBatchInput input) =>
-            ExecuteAsync(context, input);
-    }
 }

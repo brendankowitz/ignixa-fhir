@@ -46,6 +46,35 @@ namespace Ignixa.Api.Endpoints;
 /// </summary>
 public static class FhirEndpoints
 {
+    /// <summary>
+    /// Writes a committed transaction's response bundle entry by entry rather than as one string: the bundle is
+    /// already in memory, so a second full UTF-16 copy plus its UTF-8 encoding is pure overhead.
+    /// </summary>
+    /// <remarks>
+    /// Unlike the searchset serializer there is no tier-2 bundle close for a failure after the first flush, and
+    /// FhirExceptionMiddleware deliberately returns quietly once the response has started. Left alone, Kestrel
+    /// would then finish the response cleanly as a truncated 200, so the connection is aborted instead and the
+    /// client sees a transport failure.
+    /// </remarks>
+    internal static async Task WriteTransactionResponseAsync(
+        HttpContext context,
+        Bundle responseBundle,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        context.Response.ContentType = KnownContentTypes.ApplicationFhirJson;
+        try
+        {
+            await responseBundle.SerializeToStreamAsync(context.Response.Body, cancellationToken: cancellationToken);
+        }
+        catch (Exception ex) when (context.Response.HasStarted)
+        {
+            logger.LogError(ex, "Transaction response failed after the response started; aborting the connection");
+            context.Abort();
+            throw;
+        }
+    }
+
     private static readonly string[] ReadMethods = [HttpMethods.Get, HttpMethods.Head];
     /// <summary>
     /// Registers FHIR RESTful endpoints for all resource types.
@@ -283,8 +312,9 @@ public static class FhirEndpoints
 
         // POST / - Transaction/Batch bundle (agnostic)
         agnosticGroup.MapPost("/", (HttpContext context, [FromServices] BundleProcessor bundleProcessor,
-            [FromServices] StreamingBundleParser streamingParser, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILoggerFactory loggerFactory, CancellationToken ct) =>
-            HandleBundle(context, fhirContextAccessor.RequestContext!.TenantId, bundleProcessor, streamingParser, loggerFactory, ct))
+            [FromServices] StreamingBundleParser streamingParser, [FromServices] BundleProcessingOptions bundleOptions,
+            [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILoggerFactory loggerFactory, CancellationToken ct) =>
+            HandleBundle(context, fhirContextAccessor.RequestContext!.TenantId, bundleProcessor, streamingParser, bundleOptions, loggerFactory, ct))
             .WithName("BundleAgnostic")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
@@ -1073,6 +1103,7 @@ public static class FhirEndpoints
         [FromRoute] int tenantId,
         [FromServices] BundleProcessor bundleProcessor,
         [FromServices] StreamingBundleParser streamingParser,
+        [FromServices] BundleProcessingOptions bundleOptions,
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
@@ -1114,12 +1145,7 @@ public static class FhirEndpoints
 
         logger.LogDebug("Bundle type: {BundleType}", bundleType);
 
-        var options = new BundleProcessingOptions
-        {
-            MaxParallelism = 10,
-            ChannelCapacity = 100,
-            Type = bundleType
-        };
+        var options = bundleOptions with { Type = bundleType };
 
         // Phase 2: Dual-mode routing
         if (options.Type == BundleType.Transaction)
@@ -1130,25 +1156,14 @@ public static class FhirEndpoints
             Bundle responseBundle = await bundleProcessor.ProcessAsync(
                 bundleContext.Entries, options, ct);
 
-            // Serialize response bundle with System.Text.Json
-            string responseJson;
-            try
-            {
-                responseJson = responseBundle.SerializeToString();
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to serialize response bundle");
-                return Results.StatusCode(StatusCodes.Status500InternalServerError);
-            }
-
             logger.LogInformation("Successfully processed bundle (buffered mode)");
             if (validationOverride.HasValue)
             {
                 context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(validationOverride.Value));
             }
-                
-            return Results.Content(responseJson, KnownContentTypes.ApplicationFhirJson);
+
+            await WriteTransactionResponseAsync(context, responseBundle, logger, ct);
+            return Results.Empty;
         }
         else
         {
@@ -1156,63 +1171,55 @@ public static class FhirEndpoints
             // True end-to-end streaming - responses written as they complete
             logger.LogInformation("Using streaming processing (Batch bundle, no urn:uuid references)");
 
-            try
+            // Get streaming context
+            var streamingContext = await bundleProcessor.ProcessBatchStreamingAsync(
+                bundleContext.Entries, options, ct);
+
+            // Set response content type and headers BEFORE streaming starts (headers are locked once body writes begin)
+            context.Response.ContentType = "application/fhir+json; charset=utf-8";
+
+            // Add Preference-Applied header if validation override was used (MUST be before SerializeStreamAsync)
+            if (validationOverride.HasValue)
             {
-                // Get streaming context
-                var streamingContext = await bundleProcessor.ProcessBatchStreamingAsync(
-                    bundleContext.Entries, options, ct);
-
-                // Set response content type and headers BEFORE streaming starts (headers are locked once body writes begin)
-                context.Response.ContentType = "application/fhir+json; charset=utf-8";
-
-                // Add Preference-Applied header if validation override was used (MUST be before SerializeStreamAsync)
-                if (validationOverride.HasValue)
-                {
-                    context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(validationOverride.Value));
-                }
-
-                // Check for _pretty parameter
-                bool pretty = context.Request.Query.GetPrettyParameter();
-
-                // Stream responses directly to HTTP (headers are now locked)
-                var streamResult = await StreamingBundleSerializer.SerializeStreamAsync(
-                    outputStream: context.Response.Body,
-                    bundleType: "batch-response",
-                    entryResponses: streamingContext.ResponseStream,
-                    total: null,
-                    selfLink: null,
-                    nextLink: null,
-                    pretty: pretty,
-                    cancellationToken: ct);
-
-                // Complete background tasks
-                await streamingContext.CompleteAsync();
-
-                // The response body is already committed at this point (design doc Section 8), so the
-                // HTTP status cannot change - but a failed or truncated bundle must not be logged as a
-                // success, or there is nothing left for anyone to alert on.
-                if (streamResult.Succeeded)
-                {
-                    logger.LogInformation("Successfully processed bundle (streaming mode)");
-                }
-                else if (streamResult.ClientDisconnected)
-                {
-                    // Nobody is listening for this response any more - log quietly rather than as an error.
-                    logger.LogDebug(streamResult.Exception, "Client disconnected while streaming bundle response");
-                }
-                else
-                {
-                    logger.LogError(streamResult.Exception, "Streaming bundle response ended early; a fatal entry was appended for the client");
-                }
-
-                // Response already written to stream
-                return Results.Empty;
+                context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(validationOverride.Value));
             }
-            catch (Exception ex)
+
+            // Check for _pretty parameter
+            bool pretty = context.Request.Query.GetPrettyParameter();
+
+            // Stream responses directly to HTTP (headers are now locked)
+            var streamResult = await StreamingBundleSerializer.SerializeStreamAsync(
+                outputStream: context.Response.Body,
+                bundleType: "batch-response",
+                entryResponses: streamingContext.ResponseStream,
+                total: null,
+                selfLink: null,
+                nextLink: null,
+                pretty: pretty,
+                cancellationToken: ct);
+
+            // Complete background tasks
+            await streamingContext.CompleteAsync();
+
+            // The response body is already committed at this point (design doc Section 8), so the
+            // HTTP status cannot change - but a failed or truncated bundle must not be logged as a
+            // success, or there is nothing left for anyone to alert on.
+            if (streamResult.Succeeded)
             {
-                logger.LogError(ex, "Failed to process streaming bundle");
-                return Results.StatusCode(StatusCodes.Status500InternalServerError);
+                logger.LogInformation("Successfully processed bundle (streaming mode)");
             }
+            else if (streamResult.ClientDisconnected)
+            {
+                // Nobody is listening for this response any more - log quietly rather than as an error.
+                logger.LogDebug(streamResult.Exception, "Client disconnected while streaming bundle response");
+            }
+            else
+            {
+                logger.LogError(streamResult.Exception, "Streaming bundle response ended early; a fatal entry was appended for the client");
+            }
+
+            // Response already written to stream
+            return Results.Empty;
         }
     }
 

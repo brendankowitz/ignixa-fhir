@@ -534,7 +534,7 @@ public class EmitProbeRowIncludeSeedTests
             "      AND EXISTS (\n" +
             "        SELECT 1 FROM cteMatchSeed m WHERE m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId\n" +
             "    )");
-        sql.ShouldContain("SELECT DISTINCT TOP (");
+        sql.ShouldContain("inc0 AS (\n    SELECT DISTINCT ");
     }
 
     [Fact]
@@ -618,7 +618,7 @@ public class EmitProbeRowIncludeSeedTests
     [Fact]
     public void GivenAnOverFetchingPageWithChainedIncludeStages_WhenEmitted_ThenTheEmittedSqlIsValidAndFullyDefined()
     {
-        // Arrange -- an :iterate stage seeds from the earlier stage's limit companion, not from the match
+        // Arrange -- an :iterate stage seeds from the earlier stage's uncapped body, not from the match
         // page, so the two seed labels coexist in one statement.
         var stage0 = ForwardIncludeStage(103, 111);
         var stage1 = ForwardIncludeStage(111, 112) with { SeedStages = [0], Iterate = true };
@@ -634,7 +634,7 @@ public class EmitProbeRowIncludeSeedTests
         SqlGrammar.AssertValid(sql);
         SqlGrammar.AssertEveryReferencedCteIsDefined(sql);
         sql.ShouldContain("SELECT 1 FROM cteMatchSeed m WHERE");
-        sql.ShouldContain("SELECT 1 FROM inc0lim m WHERE");
+        sql.ShouldContain("SELECT 1 FROM inc0 m WHERE");
     }
 
     [Fact]

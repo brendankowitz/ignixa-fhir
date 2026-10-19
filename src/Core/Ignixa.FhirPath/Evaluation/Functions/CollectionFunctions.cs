@@ -1085,6 +1085,10 @@ internal static class CollectionFunctions
                         ns = "System";
                         name = "Integer";
                         break;
+                    case "long":
+                        ns = "System";
+                        name = "Long";
+                        break;
                     case "decimal":
                         ns = "System";
                         name = "Decimal";
@@ -1102,7 +1106,7 @@ internal static class CollectionFunctions
                         name = "Time";
                         break;
                     case "quantity":
-                        ns = "FHIR";
+                        ns = "System";
                         name = "Quantity";
                         break;
                     default:

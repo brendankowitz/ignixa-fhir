@@ -8,7 +8,7 @@
 namespace Ignixa.FhirMappingLanguage.Transforms;
 
 /// <summary>
-/// append(source, suffix) - Appends suffix to source string.
+/// append(source...) - Concatenates source values in order.
 /// </summary>
 internal class AppendTransform : ITransformFunction
 {
@@ -16,12 +16,6 @@ internal class AppendTransform : ITransformFunction
 
     public object Execute(IReadOnlyList<object> arguments, ITransformContext context)
     {
-        if (arguments.Count < 2)
-            throw new ArgumentException("append() requires source and suffix arguments");
-
-        var source = arguments[0].ToString() ?? string.Empty;
-        var suffix = arguments[1].ToString() ?? string.Empty;
-
-        return source + suffix;
+        return string.Concat(arguments.Select(TransformValue.String));
     }
 }
