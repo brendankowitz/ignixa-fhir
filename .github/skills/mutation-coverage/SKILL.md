@@ -124,9 +124,10 @@ Removal candidates come from the summary's last two sections. Before removing an
 - **Check what the test is for.** Stryker mutates one production project. A test aimed at a
   different project, a test helper, fixture integrity, or round-trips against vendored data
   will show zero kills and may still be essential.
-- **Parameterized tests count as one.** Stryker reports an xUnit `[Theory]` (or NUnit
-  `[TestCase]` set) as a single test, so redundancy between data rows is invisible; prune rows
-  only by reasoning about the inputs.
+- **Parameterized tests are judged per method.** Depending on the runner, Stryker reports a
+  `[Theory]` (or NUnit `[TestCase]` set) as one test or as one test per data row. The summary
+  script merges rows into their method, so redundancy between rows is invisible; prune rows
+  only by reasoning about the inputs, and remove whole methods only when the script flags them.
 - **Prefer merging over deleting.** Fold a redundant test's unique assertions into the test that
   covers it, then remove it.
 - **Respect the profile's never-remove list**, and by default never remove regression,
@@ -162,8 +163,10 @@ make Stryker disable comments or production edits in a separate pass with its ow
 
 ## Troubleshooting
 
-- **Many `CompileError` mutants**: expected for some code shapes; Stryker removes them safely
-  and they do not affect the score.
+- **Many `CompileError` mutants**: expected for some code shapes; they do not affect the score.
+  But when the log reports a method rolled back in **safe mode** (for example CS0165 on pattern
+  variables), Stryker drops every mutant in that method, so gaps there are invisible. List those
+  methods to the user as untested by mutation rather than treating them as covered.
 - **`Timeout` mutants**: usually mutated loop conditions; they count as killed. Timeout counts
   can vary slightly between runs.
 - **Static initializers**: with the default `perTest` coverage, mutants in static constructors

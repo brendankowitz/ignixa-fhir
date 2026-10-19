@@ -87,15 +87,26 @@ function Get-Mutants($report) {
     }
 }
 
-function Get-TestNames($report) {
-    $names = @{}
+# Maps each test id to its test method. Runners may report one id per theory or one per data row
+# (with or without arguments in the name), so redundancy is judged per method, never per row.
+function Get-TestMethods($report) {
+    $methods = @{}
     foreach ($file in (Get-OptionalProperty $report 'testFiles' ([pscustomobject]@{})).PSObject.Properties) {
         foreach ($test in $file.Value.tests) {
-            $names[[string]$test.id] = $test.name
+            $methods[[string]$test.id] = $test.name -replace '\s*\(.*\)\s*$', ''
         }
     }
 
-    return $names
+    return $methods
+}
+
+function ConvertTo-MethodKills($killedMutants, $testMethods) {
+    foreach ($mutant in $killedMutants) {
+        [pscustomobject]@{
+            Id       = $mutant.Id
+            KilledBy = @($mutant.KilledBy | ForEach-Object { if ($testMethods.ContainsKey($_)) { $testMethods[$_] } else { $_ } } | Select-Object -Unique)
+        }
+    }
 }
 
 function New-KillSets($testIds, $killedMutants) {
@@ -190,11 +201,12 @@ function Get-LostKills($baselineMutants, $currentMutants) {
 
 $report = Read-Report $ReportPath
 $mutants = @(Get-Mutants $report)
-$testNames = Get-TestNames $report
+$testMethods = Get-TestMethods $report
 $tested = @($mutants | Where-Object { $_.Status -notin $UntestedStatuses })
 $killed = @($tested | Where-Object { $_.Status -in $KilledStatuses })
+$methodKills = @(ConvertTo-MethodKills $killed $testMethods)
 $isScoped = @($mutants | Where-Object { $_.Reason -match 'mutate filter|since' }).Count -gt 0
-$maxKillers = ($killed | ForEach-Object { $_.KilledBy.Count } | Measure-Object -Maximum).Maximum
+$maxKillers = ($methodKills | ForEach-Object { $_.KilledBy.Count } | Measure-Object -Maximum).Maximum
 
 Write-Output '# Mutation summary'
 Write-Output ("Report: {0}" -f (Resolve-Path $ReportPath))
@@ -217,18 +229,19 @@ if ($killed.Count -gt 0 -and $maxKillers -le 1) {
 $gaps = @($tested | Where-Object { $_.Status -in 'Survived', 'NoCoverage' } | Sort-Object File, Line, Column)
 Write-Section 'Survived and NoCoverage mutants' @(Format-Gaps $gaps)
 
-$killSets = New-KillSets $testNames.Keys $killed
+$methodNames = @($testMethods.Values | Select-Object -Unique)
+$killSets = New-KillSets $methodNames $methodKills
 $mutantKillers = @{}
-foreach ($mutant in $killed) {
+foreach ($mutant in $methodKills) {
     $mutantKillers[$mutant.Id] = $mutant.KilledBy
 }
 
-$zeroKill = @($killSets.Keys | Where-Object { $killSets[$_].Count -eq 0 -and $testNames.ContainsKey($_) } | ForEach-Object { "- $($testNames[$_])" } | Sort-Object)
-Write-Section 'Tests that killed no mutants' $zeroKill
+$zeroKill = @($methodNames | Where-Object { $killSets[$_].Count -eq 0 } | ForEach-Object { "- $_" } | Sort-Object)
+Write-Section 'Test methods that killed no mutants' $zeroKill
 
 $subsumed = @(Get-SubsumedTests $killSets $mutantKillers | Sort-Object Kills | ForEach-Object {
-        $covering = ($_.Supersets | Select-Object -First 3 | ForEach-Object { Format-ShortTestName $testNames[$_] }) -join ', '
-        "- {0} ({1} kills) covered by: {2}" -f $testNames[$_.TestId], $_.Kills, $covering
+        $covering = ($_.Supersets | Select-Object -First 3 | ForEach-Object { Format-ShortTestName $_ }) -join ', '
+        "- {0} ({1} kills) covered by: {2}" -f $_.TestId, $_.Kills, $covering
     })
 Write-Section 'Tests whose kills are all covered by another test' $subsumed
 
