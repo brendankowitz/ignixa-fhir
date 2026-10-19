@@ -45,10 +45,10 @@ public sealed class PatientTools(FolderSession session)
     {
         if (ToolArguments.Unknown(SummaryArgumentNames, context?.Params?.Arguments?.Keys) is { } unknown)
         {
-            return ToolResults.Lean(EnvelopeAssembler.Failure<object>(session, new Contracts.IssueItem("error", "invalid-parameter", unknown, Location: null), cancellationToken));
+            return ToolResults.Lean(EnvelopeAssembler.KeepCallAsOf(EnvelopeAssembler.Failure<object>(session, new Contracts.IssueItem("error", "invalid-parameter", unknown, Location: null), cancellationToken), asOf));
         }
 
-        return ToolResults.Lean(PatientMap.Summarize(session, patient, asOf, cancellationToken));
+        return ToolResults.Lean(EnvelopeAssembler.KeepCallAsOf(PatientMap.Summarize(session, patient, asOf, cancellationToken), asOf));
     }
 
     [McpServerTool(Name = "patient_cohort", ReadOnly = true, Idempotent = true)]
@@ -74,7 +74,7 @@ public sealed class PatientTools(FolderSession session)
     {
         if (ToolArguments.Unknown(CohortArgumentNames, context?.Params?.Arguments?.Keys) is { } unknown)
         {
-            return ToolResults.From(EnvelopeAssembler.Failure<object>(session, new Contracts.IssueItem("error", "invalid-parameter", unknown, Location: null), cancellationToken));
+            return ToolResults.From(EnvelopeAssembler.KeepCallAsOf(EnvelopeAssembler.Failure<object>(session, new Contracts.IssueItem("error", "invalid-parameter", unknown, Location: null), cancellationToken), asOf));
         }
 
         var arguments = new CohortArguments(asOf, living, ageMin, ageMax, gender, conditions, medications, immunizations, observations, detail);

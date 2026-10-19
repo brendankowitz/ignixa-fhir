@@ -63,10 +63,10 @@ public sealed class ResourceTools(FolderSession session, McpToolset toolset = Mc
         var request = new SearchRequest(resourceType, query, count, offset, summary, elements, lenient, compartment, maxBytes, columns is null ? null : SearchColumn.From(columns), fhirpath, perPatient, asOf);
         if (toolset == McpToolset.Query && OutsideQueryToolset(request) is { } outside)
         {
-            return ToolResults.Lean(EnvelopeAssembler.Failure<SearchFacts>(session, new IssueItem("error", "invalid-parameter", outside, Location: null), cancellationToken));
+            return ToolResults.Lean(EnvelopeAssembler.KeepCallAsOf(EnvelopeAssembler.Failure<SearchFacts>(session, new IssueItem("error", "invalid-parameter", outside, Location: null), cancellationToken), asOf));
         }
 
-        ToolEnvelope<SearchFacts?> envelope = ToolArguments.CheckSearch(session, SearchArguments, context?.Params?.Arguments?.Keys, lenient, () => ResourceSearcher.Search(session, request, cancellationToken), cancellationToken);
+        ToolEnvelope<SearchFacts?> envelope = EnvelopeAssembler.KeepCallAsOf(ToolArguments.CheckSearch(session, SearchArguments, context?.Params?.Arguments?.Keys, lenient, () => ResourceSearcher.Search(session, request, cancellationToken), cancellationToken), asOf);
         return ToolResults.Lean(toolset == McpToolset.Query ? envelope with { Next = [.. envelope.Next.Where(call => !call.Args.ContainsKey("fhirpath"))] } : envelope);
     }
 
@@ -100,13 +100,15 @@ public sealed class ResourceTools(FolderSession session, McpToolset toolset = Mc
         string? asOf = null,
         RequestContext<CallToolRequestParams>? context = null,
         CancellationToken cancellationToken = default) =>
-        ToolResults.From(ToolArguments.CheckSearch(
-            session,
-            PlanArguments,
-            context?.Params?.Arguments?.Keys,
-            lenient,
-            () => SearchPlanner.Plan(session, new SearchRequest(resourceType, query, count, offset, summary, elements, lenient, compartment, AsOf: asOf), execute, cancellationToken),
-            cancellationToken));
+        ToolResults.From(EnvelopeAssembler.KeepCallAsOf(
+            ToolArguments.CheckSearch(
+                session,
+                PlanArguments,
+                context?.Params?.Arguments?.Keys,
+                lenient,
+                () => SearchPlanner.Plan(session, new SearchRequest(resourceType, query, count, offset, summary, elements, lenient, compartment, AsOf: asOf), execute, cancellationToken),
+                cancellationToken),
+            asOf));
 
     [McpServerTool(Name = "read_resources", ReadOnly = true, Idempotent = true)]
     [QueryToolset(HiddenArguments = ["maxBytes"])]

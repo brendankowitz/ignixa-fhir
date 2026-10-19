@@ -99,6 +99,12 @@ public sealed partial class AsOfClock
         return Read(text.Trim(), AsOfSources.SessionOption) is null ? Message("--as-of", text) : null;
     }
 
+    /// <summary>
+    /// A call's own <c>asOf</c> argument when it is well formed, else null: what a refused call states, so its envelope keeps the
+    /// instant the caller asked for even when another argument failed it.
+    /// </summary>
+    public static AsOf? ArgumentIfValid(string? argument) => argument is not null && Problem(argument) is null ? Argument(argument) : null;
+
     /// <summary>A call's own <c>asOf</c> argument, source <see cref="AsOfSources.Argument"/>; null when it gives none.</summary>
     /// <exception cref="ToolRequestException"><see cref="InvalidCode"/>: the argument is not a FHIR instant or date.</exception>
     public static AsOf? Argument(string? argument) => argument is null ? null : Parse(argument, "asOf", AsOfSources.Argument);

@@ -123,6 +123,18 @@ public static class EnvelopeAssembler
             : Create<TFacts?>(session, null, session.Catalog.BuiltAt, [], [], [], [issue], cancellationToken);
     }
 
+    /// <summary>
+    /// <paramref name="envelope"/> stating the call's own <paramref name="asOf"/> argument when it failed and that argument is well
+    /// formed (<see cref="Clock.AsOfClock.ArgumentIfValid"/>); unchanged otherwise.
+    /// </summary>
+    public static ToolEnvelope<TFacts?> KeepCallAsOf<TFacts>(ToolEnvelope<TFacts?> envelope, string? asOf)
+        where TFacts : class
+    {
+        ArgumentNullException.ThrowIfNull(envelope);
+
+        return envelope.Facts is null && Clock.AsOfClock.ArgumentIfValid(asOf) is { } given ? envelope with { AsOf = given } : envelope;
+    }
+
     /// <summary>The issue form of a catalog or index diagnostic.</summary>
     public static IssueItem ToIssue(CatalogDiagnostic diagnostic)
     {

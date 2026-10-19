@@ -63,7 +63,7 @@ public static class ResourceSearcher
 
         if (EnvelopeAssembler.FolderProblem(session) is { } folderProblem)
         {
-            return EnvelopeAssembler.Failure<SearchFacts>(session, folderProblem, cancellationToken);
+            return EnvelopeAssembler.KeepCallAsOf(EnvelopeAssembler.Failure<SearchFacts>(session, folderProblem, cancellationToken), request.AsOf);
         }
 
         try
@@ -90,7 +90,7 @@ public static class ResourceSearcher
         }
         catch (ToolRequestException ex)
         {
-            return EnvelopeAssembler.Failure<SearchFacts>(session, ex.Issue, cancellationToken);
+            return EnvelopeAssembler.KeepCallAsOf(EnvelopeAssembler.Failure<SearchFacts>(session, ex.Issue, cancellationToken), request.AsOf);
         }
     }
 

@@ -69,7 +69,9 @@ internal sealed record CohortRequest(
     {
         ArgumentNullException.ThrowIfNull(arguments);
 
-        DateTimeOffset asOf = stated?.Moment.ToUniversalTime() ?? now;
+        // To the second, as facts.asOf and the envelope state it, so the instant counted at is the one both show.
+        DateTimeOffset given = (stated?.Moment ?? now).ToUniversalTime();
+        DateTimeOffset asOf = new(given.Ticks - (given.Ticks % TimeSpan.TicksPerSecond), TimeSpan.Zero);
         if (arguments.AgeMin is < 0 || arguments.AgeMax is < 0 || arguments.AgeMax < arguments.AgeMin)
         {
             throw CriterionObject.Invalid($"ageMin ({arguments.AgeMin?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none"}) and ageMax ({arguments.AgeMax?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none"}) are whole years, at least 0, with ageMin <= ageMax.");

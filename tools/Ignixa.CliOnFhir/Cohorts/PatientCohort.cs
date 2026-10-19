@@ -39,7 +39,7 @@ internal static class PatientCohort
 
         if (EnvelopeAssembler.FolderProblem(session) is { } folderProblem)
         {
-            return EnvelopeAssembler.Failure<CohortFacts>(session, folderProblem, cancellationToken);
+            return EnvelopeAssembler.KeepCallAsOf(EnvelopeAssembler.Failure<CohortFacts>(session, folderProblem, cancellationToken), arguments.AsOf);
         }
 
         try
@@ -73,13 +73,14 @@ internal static class PatientCohort
             }
 
             // Assembled once: the assembler hands over the session's one-time cache notices, so each candidate size is a copy of it.
-            AsOf used = stated ?? new AsOf(request.AsOf, AsOfSources.Clock);
+            // The instant counted at (to the second), in the offset it was given in.
+            AsOf used = stated is null ? new AsOf(request.AsOf, AsOfSources.Clock) : stated with { Moment = request.AsOf.ToOffset(stated.Moment.Offset) };
             ToolEnvelope<CohortFacts?> shell = EnvelopeAssembler.Create<CohortFacts?>(session, null, outcome.BuiltAt, [], omitted, [], issues, used, cancellationToken);
             return new Fit(shell, request, outcome, isFull).Within(Math.Min(EnvelopeJson.DefaultBudget, session.MaxResponseBytes));
         }
         catch (ToolRequestException ex)
         {
-            return EnvelopeAssembler.Failure<CohortFacts>(session, ex.Issue, cancellationToken);
+            return EnvelopeAssembler.KeepCallAsOf(EnvelopeAssembler.Failure<CohortFacts>(session, ex.Issue, cancellationToken), arguments.AsOf);
         }
     }
 

@@ -36,7 +36,7 @@ public static class SearchPlanner
 
         if (EnvelopeAssembler.FolderProblem(session) is { } folderProblem)
         {
-            return EnvelopeAssembler.Failure<PlanFacts>(session, folderProblem, cancellationToken);
+            return EnvelopeAssembler.KeepCallAsOf(EnvelopeAssembler.Failure<PlanFacts>(session, folderProblem, cancellationToken), request.AsOf);
         }
 
         try
@@ -51,7 +51,7 @@ public static class SearchPlanner
         }
         catch (ToolRequestException ex)
         {
-            return EnvelopeAssembler.Failure<PlanFacts>(session, ex.Issue, cancellationToken);
+            return EnvelopeAssembler.KeepCallAsOf(EnvelopeAssembler.Failure<PlanFacts>(session, ex.Issue, cancellationToken), request.AsOf);
         }
     }
 

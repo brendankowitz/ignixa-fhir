@@ -59,10 +59,15 @@ public static class ViewRunner
             return EnvelopeAssembler.Failure<ViewFacts>(session, folderProblem, cancellationToken) with { AsOf = asOf.WithoutReading() };
         }
 
-        // The envelope states the clock the view read (the run measured its size with room for the widest asOf).
+        // The envelope states the asOf the view read as %asOf, as facts.asOf does: the session's, or the variable or the view's own
+        // constant in its place (null when that is not an instant). The run measured its size with room for the widest asOf.
         ToolEnvelope<ViewFacts?> envelope = await AnswerAsync(session, request, asOf, logger, timeoutSignal, cancellationToken);
-        return envelope with { AsOf = asOf.ForEnvelope() };
+        return envelope with { AsOf = envelope.Facts?.AsOf is { Source: AsOfSources.Variable or AsOfSources.ViewConstant } read ? Effective(read) : asOf.ForEnvelope() };
     }
+
+    // The %asOf a variable or a view constant gave, as the envelope states it.
+    private static AsOf? Effective(AsOfFacts read) =>
+        read.Instant is { } instant && FhirInstant.TryParse(instant, out DateTimeOffset moment) ? new AsOf(moment, read.Source) : null;
 
     private static async Task<ToolEnvelope<ViewFacts?>> AnswerAsync(FolderSession session, ViewRequest request, AsOfClock asOf, ILogger logger, CancellationToken timeoutSignal, CancellationToken cancellationToken)
     {
