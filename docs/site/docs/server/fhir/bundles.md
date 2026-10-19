@@ -248,8 +248,8 @@ Transaction entries are reordered by HTTP verb for consistent outcomes:
 ### Failure Response
 
 If any entry fails, the whole transaction is rolled back. The response is a single `OperationOutcome`
-with the failing entry's status (for example `412` for a stale `ifMatch`) that includes that entry's own
-issues.
+with the failing entry's status (for example `412` for a stale `ifMatch`). Its first issue is a summary
+naming the failing entry, followed by that entry's own issues, so read the later issues for the cause.
 
 ## PATCH Entries
 
@@ -282,7 +282,8 @@ A successful PATCH entry responds with `200`, a versioned `location`
 
 JSON Patch is not supported. Any `Binary` PATCH entry (the shape used to carry JSON Patch or XML Patch)
 is rejected with `400` and an `OperationOutcome` that asks for FHIRPath Patch. Direct JSON Patch
-requests, and bodies that are not a JSON resource (malformed JSON, XML, a bare scalar), get the same response.
+requests, and bodies that are empty or not a JSON resource (malformed JSON, XML, a bare scalar), get a `400`
+`OperationOutcome` as well.
 
 ## Conditional Operations
 

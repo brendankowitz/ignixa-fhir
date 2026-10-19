@@ -36,12 +36,22 @@ public static class FhirPatchOperationResolver
             return operation;
         }
 
+        if (operation.Name != null && operation.Type != FhirPatchOperationType.Add)
+        {
+            throw new FhirPatchException($"'name' is only valid on an add operation, not {operation.Type}");
+        }
+
+        if (string.IsNullOrEmpty(operation.Path))
+        {
+            throw new FhirPatchException("An operation with a name or nested value parts requires a path");
+        }
+
         if (operation.Name != null)
         {
             return ResolveNamedAdd(resource, operation, schema);
         }
 
-        var targetType = ResolveTargetType(resource, schema, operation.Path!);
+        var targetType = ResolveTargetType(resource, schema, operation.Path);
         return operation with
         {
             Value = BuildObject(schema, targetType, operation.ValueParts!),
@@ -87,7 +97,13 @@ public static class FhirPatchOperationResolver
     private static string ResolveTargetType(ResourceJsonNode resource, ISchema schema, string path)
     {
         var matches = Evaluate(resource, schema, path);
-        return matches.Count > 0 ? matches[0].InstanceType : ResolveAbsentTargetType(resource, schema, path);
+        if (matches.Count > 1)
+        {
+            throw new FhirPatchException(
+                $"Path '{path}' must resolve to a single element to build a value from nested parts, but matched {matches.Count}");
+        }
+
+        return matches.Count == 1 ? matches[0].InstanceType : ResolveAbsentTargetType(resource, schema, path);
     }
 
     /// <summary>

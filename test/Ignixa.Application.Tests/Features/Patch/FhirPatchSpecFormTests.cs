@@ -87,6 +87,31 @@ public sealed class FhirPatchSpecFormTests : IDisposable
     }
 
     [Fact]
+    public async Task GivenPathMatchingSeveralElements_WhenPathOnlyAddingNestedParts_ThenPatchIsRejected()
+    {
+        // Arrange
+        var patient = Parse("""{"resourceType":"Patient","id":"p","name":[{"family":"A"},{"family":"B"}]}""");
+        var patch = Parameters(PathOnly("add", "Patient.name", """{"name":"value","part":[{"name":"family","valueString":"C"}]}"""));
+
+        // Act & Assert
+        var exception = await Should.ThrowAsync<FhirPatchException>(() => ApplyAsync(patient, patch, FhirVersion.R4));
+        exception.Message.ShouldContain("must resolve to a single element");
+    }
+
+    [Fact]
+    public void GivenNamedOperationThatIsNotAdd_WhenResolving_ThenPatchIsRejected()
+    {
+        // Arrange
+        var patient = Parse("""{"resourceType":"Patient","id":"p"}""");
+        var operation = new FhirPatchOperation { Type = FhirPatchOperationType.Replace, Path = "Patient", Name = "birthDate" };
+
+        // Act & Assert
+        var exception = Should.Throw<FhirPatchException>(() =>
+            FhirPatchOperationResolver.Resolve(patient, operation, _versionContext.GetBaseSchemaProvider(FhirVersion.R4)));
+        exception.Message.ShouldContain("only valid on an add operation");
+    }
+
+    [Fact]
     public async Task GivenPresentSingleValuedElement_WhenAddingByName_ThenPatchIsRejected()
     {
         // Arrange
