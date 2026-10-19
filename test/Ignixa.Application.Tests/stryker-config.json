@@ -1,0 +1,12 @@
+{
+  "stryker-config": {
+    "project": "Ignixa.Application.csproj",
+    "reporters": ["html", "json", "dots"],
+    "thresholds": {
+      "high": 80,
+      "low": 60,
+      "break": 0
+    },
+    "mutation-level": "Standard"
+  }
+}

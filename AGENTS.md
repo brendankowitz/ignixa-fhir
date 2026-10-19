@@ -112,6 +112,7 @@ Write focused, self-documenting methods. Avoid deep nesting, high cyclomatic com
 - Run `git submodule update --init --recursive` before suites that use vendored fixtures; `Ignixa.SqlOnFhir.Tests` requires `sql-on-fhir-tests`.
 - `SystemValueElementDeclarationTests.Decisions` is a reflection census: every new production `IElement` producer needs a recorded classification and rationale.
 - Keep `MustCompile` tripwires for corpus rows expected to compile, so an un-compilable row cannot pass merely by being skipped.
+- Use the `mutation-coverage` skill (`.github/skills/mutation-coverage/`) to find missing test branches and redundant tests with Stryker.NET; keep runs scoped with `--since:main` or `-m`.
 
 ## Documentation and Decisions
 
