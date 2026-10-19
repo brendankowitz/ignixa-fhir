@@ -33,7 +33,7 @@ public sealed class ResourceTools(FolderSession session, McpToolset toolset = Mc
     private static readonly IReadOnlySet<string> PlanArguments = ToolArguments.Names(typeof(ResourceTools).GetMethod(nameof(PlanFhirSearch))!);
 
     [McpServerTool(Name = "search_fhir_resources", ReadOnly = true, Idempotent = true)]
-    [QueryToolset(Description = QuerySearchDescription, HiddenArguments = ["fhirpath", "maxBytes"], HiddenUnderAll = ["asOf"])]
+    [QueryToolset(Description = QuerySearchDescription, HiddenArguments = ["fhirpath", "maxBytes"])]
     [Description("""
         FHIR search over one resource type. Every search parameter, _sort and _count included, goes inside 'query': 'code=http://loinc.org|4548-4&date=ge2020&_sort=-date'.
         - compartment=Patient/<id>: one patient, no lookup first.
@@ -84,7 +84,6 @@ public sealed class ResourceTools(FolderSession session, McpToolset toolset = Mc
     }
 
     [McpServerTool(Name = "plan_fhir_search", ReadOnly = true, Idempotent = true)]
-    [UnlistedArguments("asOf")]
     [Description("""
         Explains a search without running it: how each parameter resolves, how many resources populate it, top codes. Takes search_fhir_resources' arguments; execute=true runs it too. help topic=plan.
         """)]

@@ -20,10 +20,4 @@ public sealed class QueryToolsetAttribute : Attribute
     /// that changes behaviour checks the toolset itself and fails naming <c>--toolset all</c>.
     /// </summary>
     public string[] HiddenArguments { get; set; } = [];
-
-    /// <summary>
-    /// Arguments listed under <see cref="McpToolset.Query"/> but left out of the input schema under <see cref="McpToolset.All"/>,
-    /// whose menu is at its token budget; the tool binds them under both, and its help topic names them.
-    /// </summary>
-    public string[] HiddenUnderAll { get; set; } = [];
 }

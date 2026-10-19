@@ -12,15 +12,15 @@ using Shouldly;
 namespace Ignixa.CliOnFhir.Tests;
 
 /// <summary>
-/// search_fhir_resources' per-call <c>asOf</c> (Task 12b): listed under the query toolset, which has room in its budget; under all,
-/// whose menu is at its budget, accepted though not listed. The help topics say so. New behaviour: before it there was no asOf.
+/// search_fhir_resources' per-call <c>asOf</c> (Task 12b): listed under both toolsets (fix round 1: the all budget was raised to
+/// 3,400 so it no longer hides it). New behaviour: before it there was no asOf; at 86a9d902 all left it out of the schema.
 /// </summary>
 public class SearchAsOfArgumentTests
 {
     [Theory]
     [InlineData(McpToolset.Query, true)]
-    [InlineData(McpToolset.All, false)]
-    public async Task GivenAToolset_WhenTheSearchIsCalledWithAsOf_ThenItIsAcceptedAndListedUnderQueryOnly(McpToolset toolset, bool listed)
+    [InlineData(McpToolset.All, true)]
+    public async Task GivenAToolset_WhenTheSearchIsCalledWithAsOf_ThenItIsAcceptedAndListed(McpToolset toolset, bool listed)
     {
         using TestFolder folder = SearchFixture.Clinic();
         await using InProcessMcp mcp = await InProcessMcp.StartAsync(toolset, [typeof(ResourceTools)], SearchFixture.Open(folder));

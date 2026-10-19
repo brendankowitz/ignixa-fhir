@@ -153,7 +153,8 @@ types), so the hint is built from the schema rather than from message text.
 ### 5. A smaller menu and help
 
 The `query` menu, with the instructions, is held to a test budget of 2,000 tokens (V13: 2,985 for everything; V14 measures
-1,760). `all` gains `patient_summary` and is held to 3,300 (V14: 3,188). Both are measured with LF line breaks, since a
+1,760). `all` gains `patient_summary` and is held to 3,400 (V14: 3,188; 3,300 until Task 12b, raised so that `draft_resource`
+and the `asOf` argument of `search_fhir_resources` and `plan_fhir_search` are listed rather than hidden under `all`). Both are measured with LF line breaks, since a
 CRLF checkout adds a character per description line. `help` lists only the topics of the toolset in use.
 
 ## Consequences

@@ -77,7 +77,7 @@ public static class McpServerSetup
                     continue;
                 }
 
-                McpServerToolCreateOptions options = toolset == McpToolset.Query ? QueryOptions(query!) : AllOptions(query, method.GetCustomAttribute<UnlistedArgumentsAttribute>());
+                McpServerToolCreateOptions options = toolset == McpToolset.Query ? QueryOptions(query!) : new();
                 yield return McpServerTool.Create(method, context => createTarget(type, context), options);
             }
         }
@@ -101,12 +101,6 @@ public static class McpServerSetup
 
         options.ServerInfo = new() { Name = "cli-on-fhir", Version = typeof(McpServerSetup).Assembly.GetName().Version?.ToString() ?? "0.0.0" };
         options.ServerInstructions = Instructions(toolset);
-    }
-
-    private static McpServerToolCreateOptions AllOptions(QueryToolsetAttribute? query, UnlistedArgumentsAttribute? unlisted)
-    {
-        HashSet<string> hidden = new([.. query?.HiddenUnderAll ?? [], .. unlisted?.Names ?? []], StringComparer.Ordinal);
-        return hidden.Count == 0 ? new() : new McpServerToolCreateOptions { SchemaCreateOptions = new AIJsonSchemaCreateOptions { IncludeParameter = parameter => !hidden.Contains(parameter.Name!) } };
     }
 
     private static McpServerToolCreateOptions QueryOptions(QueryToolsetAttribute query)

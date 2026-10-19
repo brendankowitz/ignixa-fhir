@@ -22,9 +22,10 @@ public class McpMenuSizeTests(ITestOutputHelper output)
 {
     // V13 cut the menu and instructions from 16,384 characters (4,096 tokens) to about 11,900 (2,984) for twelve tools. V14
     // (ADR 2610) serves the query toolset by default, held well under that; all keeps every tool and adds patient_summary.
+    // Task 12b fix round 1 raised all to 3,400 for draft_resource and the listed asOf of search and plan (ADR 2610 section 5).
     private const int QueryTokenBudget = 2000;
 
-    private const int AllTokenBudget = 3300;
+    private const int AllTokenBudget = 3400;
 
     [Theory]
     [InlineData(McpToolset.Query, QueryTokenBudget)]

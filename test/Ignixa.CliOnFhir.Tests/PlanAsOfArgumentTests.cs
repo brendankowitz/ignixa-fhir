@@ -16,8 +16,8 @@ using Shouldly;
 namespace Ignixa.CliOnFhir.Tests;
 
 /// <summary>
-/// Task 12b fix round 1, I4: <c>plan_fhir_search</c> takes search_fhir_resources' <c>asOf</c> (accepted though not listed, as the
-/// all menu is at its budget), so the plan resolves relative dates as the search does, and refuses an argument it does not define.
+/// Task 12b fix round 1, I4: <c>plan_fhir_search</c> takes and lists search_fhir_resources' <c>asOf</c>, so the plan resolves
+/// relative dates as the search does, and refuses an argument it does not define.
 /// Regression: at 86a9d902 the SDK dropped <c>asOf</c> (and any unknown argument) without a trace, so the plan resolved against
 /// the session's asOf while the search it plans used the call's.
 /// </summary>
@@ -45,15 +45,15 @@ public class PlanAsOfArgumentTests
     }
 
     [Fact]
-    public async Task GivenTheAllToolset_WhenThePlanToolIsListed_ThenAsOfIsNotInItsSchema()
+    public async Task GivenTheAllToolset_WhenThePlanToolIsListed_ThenAsOfIsInItsSchema()
     {
         using TestFolder folder = SearchFixture.Clinic();
         await using InProcessMcp mcp = await Start(folder);
 
         McpClientTool plan = (await mcp.Client.ListToolsAsync(cancellationToken: mcp.CancellationToken)).Single(tool => tool.Name == "plan_fhir_search");
 
-        plan.ProtocolTool.InputSchema.GetProperty("properties").TryGetProperty("asOf", out _).ShouldBeFalse();
-        new HelpTools(McpToolset.All).Help("plan").Content.OfType<TextContentBlock>().Single().Text.ShouldContain("asOf (accepted though not listed)");
+        plan.ProtocolTool.InputSchema.GetProperty("properties").TryGetProperty("asOf", out _).ShouldBeTrue();
+        new HelpTools(McpToolset.All).Help("plan").Content.OfType<TextContentBlock>().Single().Text.ShouldContain("- asOf: the instant relative dates count from");
     }
 
     [Fact]
