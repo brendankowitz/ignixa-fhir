@@ -115,7 +115,7 @@ public class RelativeDateScopeTests
         ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder, "2026-10-15T23:30:00-05:00"), new SearchRequest("Observation", "date=today&code=8867-4"));
 
         Ids(envelope).ShouldBe(["t2", "t3"]);
-        envelope.Facts.ShouldNotBeNull().Query.ShouldBe("date=ge2026-10-15T05:00:00Z&date=lt2026-10-16T05:00:00Z&code=8867-4");
+        envelope.Facts.ShouldNotBeNull().Query.ShouldBe("date=sa2026-10-15T04:59:59Z&date=eb2026-10-16T05:00:00Z&code=8867-4");
         envelope.Issues.Single(issue => issue.Code == RelativeDates.Code).Diagnostics.ShouldContain("in its offset -05:00, written as that day's bounds in UTC");
     }
 
@@ -126,7 +126,7 @@ public class RelativeDateScopeTests
     [InlineData("date=letoday", "date=lt2026-10-16T05:00:00Z")]
     [InlineData("date=ebtoday", "date=eb2026-10-15T05:00:00Z")]
     [InlineData("date=satoday", "date=sa2026-10-16T04:59:59Z")]
-    [InlineData("date=eqtoday-1d", "date=ge2026-10-14T05:00:00Z&date=lt2026-10-15T05:00:00Z")]
+    [InlineData("date=eqtoday-1d", "date=sa2026-10-14T04:59:59Z&date=eb2026-10-15T05:00:00Z")]
     [InlineData("date=getoday-1d,lt2000", "date=ge2026-10-14T05:00:00Z,lt2000")]
     public void GivenAnAsOfWithAnOffset_WhenTodayIsResolved_ThenItIsThatLocalDaysBoundsInUtc(string query, string expected)
     {
@@ -146,7 +146,7 @@ public class RelativeDateScopeTests
         IssueItem issue = ResourceSearcher.Search(Open(folder, "2026-10-15T23:30:00-05:00"), new SearchRequest("Observation", query)).Issues.ShouldHaveSingleItem();
 
         issue.Code.ShouldBe("invalid-parameter");
-        issue.Diagnostics.ShouldContain("write date=ge2026-10-15T05:00:00Z&date=lt2026-10-16T05:00:00Z");
+        issue.Diagnostics.ShouldContain("write date=sa2026-10-15T04:59:59Z&date=eb2026-10-16T05:00:00Z (within the day)");
     }
 
     [Fact]

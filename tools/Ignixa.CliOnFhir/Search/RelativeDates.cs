@@ -19,8 +19,10 @@ namespace Ignixa.CliOnFhir.Search;
 /// (<c>y</c>), after any FHIR prefix: <c>date=genow-24h</c>, <c>date=getoday-2d</c>, <c>birthdate=lenow-40y</c>. <c>now</c> is the
 /// asOf instant, written in UTC; <c>today</c> is the asOf calendar day in the asOf's own offset (UTC unless <c>--as-of</c> gave
 /// another). In UTC it is written as a date; in another offset as that day's bounds, instants in UTC (<c>getoday</c> is <c>ge</c>
-/// its first instant, <c>letoday</c> <c>lt</c> the next day's, <c>today</c> alone both), since a FHIR date is read as a UTC day;
-/// <c>ne</c>, <c>ap</c>, and <c>today</c> without a prefix in an OR list or a composite, cannot be stated so and are refused.
+/// its first instant, <c>letoday</c> <c>lt</c> the next day's; <c>today</c> or <c>eqtoday</c> alone, a value within the day:
+/// <c>sa</c> the second before it and <c>eb</c> the next day's start), since a FHIR date is read as a UTC day; that bare form
+/// under <c>_has</c> or a chain, <c>ne</c>, <c>ap</c>, and <c>today</c> without a prefix in an OR list or a composite, cannot be
+/// stated so and are refused.
 /// Months and years are calendar arithmetic: a day the month lacks becomes its last (2025-03-31 less a month is 2025-02-28), as
 /// FHIRPath adds calendar durations. Only a value of a known date parameter is read: of the type, at the end of a chain, at the
 /// end of a <c>_has</c> chain (<c>_has:Observation:patient:date</c>), and the date components of a composite
@@ -70,8 +72,8 @@ internal static partial class RelativeDates
 
             anchor ??= asOf();
             AsOf at = anchor;
-            string rewritten = values.Length == 1 && shape.Components is null && TodayRange(name, values[0], at) is { } range
-                ? $"ge{range.Start}&{name}=lt{range.End}"
+            string rewritten = values.Length == 1 && shape.Components is null && TodayRange(name, values[0], at) is { } day
+                ? Within(name, values[0], day, at)
                 : string.Join(',', values.Select(item => shape.Rewrite(item, piece => ResolveValue(name, piece, at, listed: values.Length > 1 || shape.Components is not null))));
             resolved.Add(new ResolvedParameter(name, value, rewritten));
             segments.Add($"{name}={rewritten}");
@@ -153,12 +155,12 @@ internal static partial class RelativeDates
                 name,
                 value,
                 $"in asOf's offset {asOf.Moment.ToString("zzz", CultureInfo.InvariantCulture)} that day is ge{start} to lt{end} in UTC, which {(listed ? "one value of a list or a composite" : "this prefix")} cannot state: "
-                + $"write {name}=ge{start}&{name}=lt{end}, use ge, gt, le or lt, or give an asOf in UTC"),
+                + $"write {name}=sa{SecondBefore(day, asOf.Moment.Offset)}&{name}=eb{end} (within the day) or {name}=ge{start}&{name}=lt{end} (overlapping it), use ge, gt, le or lt, or give an asOf in UTC"),
         };
     }
 
-    // A today alone in its parameter, without a prefix or with eq, in an offset other than UTC: that day's two bounds; null otherwise.
-    private static (string Start, string End)? TodayRange(string name, string value, AsOf asOf)
+    // A today alone in its parameter, without a prefix or with eq, in an offset other than UTC: the day it names; null otherwise.
+    private static DateOnly? TodayRange(string name, string value, AsOf asOf)
     {
         if (asOf.Moment.Offset == TimeSpan.Zero || !IsRelative(value))
         {
@@ -166,8 +168,30 @@ internal static partial class RelativeDates
         }
 
         (string prefix, bool now, int amount, string unit) = Read(name, value);
-        return now || prefix is not ("" or "eq") ? null : Bounds(Back(DateOnly.FromDateTime(asOf.Moment.DateTime), amount, unit, name, value), asOf.Moment.Offset);
+        return now || prefix is not ("" or "eq") ? null : Back(DateOnly.FromDateTime(asOf.Moment.DateTime), amount, unit, name, value);
     }
+
+    // A bare or eq today in an offset, as what a FHIR date means: a value within the day, from its first instant to the next day's
+    // (sa the second before the day, eb the next day's start), two clauses on the parameter. Under _has or a chain the two clauses
+    // would hold independently, each perhaps of another resource, so it is refused there.
+    private static string Within(string name, string value, DateOnly day, AsOf asOf)
+    {
+        (string start, string end) = Bounds(day, asOf.Moment.Offset);
+        if (name.StartsWith("_has:", StringComparison.Ordinal) || name.Contains('.', StringComparison.Ordinal))
+        {
+            throw Invalid(
+                name,
+                value,
+                $"in asOf's offset {asOf.Moment.ToString("zzz", CultureInfo.InvariantCulture)} that day is {start} to {end} in UTC, which under _has or a chain would be two independent clauses, each perhaps met by another resource: "
+                + "give an asOf in UTC, or explicit ge and lt bounds");
+        }
+
+        return $"sa{SecondBefore(day, asOf.Moment.Offset)}&{name}=eb{end}";
+    }
+
+    // The second before day's first instant in offset, as a UTC instant: a value that starts after it starts within or after the day.
+    private static string SecondBefore(DateOnly day, TimeSpan offset) =>
+        FhirInstant.Format(new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue), offset).AddSeconds(-1).ToUniversalTime());
 
     // The first instant of day in offset, and of the next day, as UTC instants.
     private static (string Start, string End) Bounds(DateOnly day, TimeSpan offset)
