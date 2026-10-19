@@ -29,13 +29,16 @@ internal sealed partial class DraftArguments
     private readonly JsonObject _json;
     private readonly string _path;
     private readonly List<string> _asked = [];
+    private readonly IReadOnlyList<string> _also;
 
     /// <param name="json">The object.</param>
     /// <param name="path">Its path in the input, for messages: <c>input</c>, <c>input.medication</c>, ...</param>
-    public DraftArguments(JsonObject json, string path)
+    /// <param name="also">Members the caller took out before the draft read it, named with the draft's own when one is refused.</param>
+    public DraftArguments(JsonObject json, string path, IReadOnlyList<string>? also = null)
     {
         _json = json;
         _path = path;
+        _also = also ?? [];
     }
 
     /// <summary>The object's path in the input.</summary>
@@ -131,11 +134,14 @@ internal sealed partial class DraftArguments
 
         string shown = Name().IsMatch(unknown) ? $"'{unknown}'" : $"(digest {FhirIds.Digest(unknown)})";
         string hint = Closest(unknown) is { } closest ? $" Did you mean '{closest}'?" : string.Empty;
-        throw Invalid($"{_path} has a member {shown} that a draft does not take.{hint} {_path} takes: {string.Join(", ", _asked)}.");
+        throw Invalid($"{_path} has a member {shown} that a draft does not take.{hint} {_path} takes: {string.Join(", ", Takes)}.");
     }
 
     /// <summary>The error for input that is not what the schema asks for.</summary>
     public static ToolRequestException Invalid(string diagnostics) => ToolRequestException.Error(InvalidCode, diagnostics);
+
+    // The members this object takes: those the draft asked for, then the caller's.
+    private IEnumerable<string> Takes => _asked.Concat(_also.Where(name => !_asked.Contains(name, StringComparer.Ordinal)));
 
     /// <summary>The path of member <paramref name="name"/> of this object.</summary>
     public string Of(string name) => $"{_path}.{name}";
@@ -164,7 +170,7 @@ internal sealed partial class DraftArguments
     }
 
     // The member that may be given that the unknown one most likely meant: the same ignoring case, or at most two edits away.
-    private string? Closest(string unknown) => _asked
+    private string? Closest(string unknown) => Takes
         .Select(name => (Name: name, Distance: string.Equals(name, unknown, StringComparison.OrdinalIgnoreCase) ? 0 : Distance(name.ToUpperInvariant(), unknown.ToUpperInvariant())))
         .Where(candidate => candidate.Distance <= 2)
         .OrderBy(candidate => candidate.Distance)

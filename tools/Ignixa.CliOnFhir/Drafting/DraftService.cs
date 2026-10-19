@@ -115,14 +115,14 @@ public static class DraftService
         AsOfResolution asOf = clock.ForCall(request.AsOf);
         List<IssueItem> issues = [.. asOf.Issues];
         JsonObject input = DraftInput.Read(request.Input);
-        DraftContent content = DraftBuilder.Build(request.ResourceType, input, request.Profile, asOf.Value);
+        DraftContent content = DraftBuilder.Build(request.ResourceType, input, request.Profile, asOf.Value, request.CallMembers);
         string id = (string)content.Resource["id"]!;
         OutputTarget? target = request.Out is { } directory ? DraftOutput.Target(session.RootPath, directory, request.ResourceType, id, request.Overwrite) : null;
 
         // The terminology store first (the folder's, then the configured or core packages), then each requested package.
         TerminologyState terminology = await session.Terminology.GetAsync(cancellationToken);
         ProfileSet profiles = await DraftValidation.ProfilesAsync(session, request.Packages ?? [], cancellationToken);
-        LoadedProfile? profile = request.Profile is { } canonical ? DraftValidation.Profile(profiles, canonical, request.ResourceType) : null;
+        LoadedProfile? profile = request.Profile is { } canonical ? DraftValidation.Profile(profiles, canonical, request.ResourceType, request.CallMembers is null ? "--package" : "input.packages") : null;
         terminology = session.Terminology.Current ?? terminology;
 
         cancellationToken.ThrowIfCancellationRequested();

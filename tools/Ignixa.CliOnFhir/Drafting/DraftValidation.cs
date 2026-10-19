@@ -49,7 +49,11 @@ internal static class DraftValidation
     /// requires it (copied from <c>ResourceValidator.RequestedProfile</c>).
     /// </summary>
     /// <exception cref="ToolRequestException"><c>profile-not-loaded</c>, <c>profile-unusable</c> or <c>invalid-parameter</c>.</exception>
-    public static LoadedProfile Profile(ProfileSet profiles, string canonical, string resourceType)
+    /// <param name="profiles">The loaded profiles.</param>
+    /// <param name="canonical">The profile asked for.</param>
+    /// <param name="resourceType">The draft's type.</param>
+    /// <param name="packageArgument">How the caller names a package to load: <c>--package</c> on the CLI, <c>input.packages</c> over MCP.</param>
+    public static LoadedProfile Profile(ProfileSet profiles, string canonical, string resourceType, string packageArgument = "--package")
     {
         (string url, string? version) = TerminologyStore.SplitCanonical(canonical);
         string named = TerminologyNames.Canonical(url, version);
@@ -57,7 +61,7 @@ internal static class DraftValidation
         {
             throw ToolRequestException.Error(
                 ValidationRules.ProfileNotLoaded,
-                $"Profile {named} is not loaded ({profiles.Profiles.Count} StructureDefinitions are loaded from the folder{(profiles.Packages.Count == 0 ? string.Empty : $" and {string.Join(", ", profiles.Packages)}")}). Pass the package that defines it with --package.");
+                $"Profile {named} is not loaded ({profiles.Profiles.Count} StructureDefinitions are loaded from the folder{(profiles.Packages.Count == 0 ? string.Empty : $" and {string.Join(", ", profiles.Packages)}")}). Pass the package that defines it (id@version) with {packageArgument}.");
         }
 
         if (!profile.Usable)

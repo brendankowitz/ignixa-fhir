@@ -175,7 +175,7 @@ internal static class HelpTopics
             - MedicationRequest: medication (coding; required), status (default draft), intent (default order), authoredOn (default asOf), dosageText, dose {value, unit?, unitSystem?, code?}, route (coding), frequency {count, period, periodUnit}.
             - ServiceRequest: code (coding; required), status, intent, priority, occurrence, authoredOn (default asOf), reasonCode (codings), reasonReference (Type/id list).
             - Observation: code (coding; required), status (default preliminary), category (coding), value (one of quantity {value, unit?, system?, code?}, codeable, string), effective and issued (default asOf).
-            - input may also carry profile (a loaded StructureDefinition url to claim and validate against) and asOf (the instant that dates it, else the session's; the envelope's asOf); neither is part of the draft.
+            - input may also carry profile (a StructureDefinition url to claim and validate against, from the folder or packages), packages (FHIR packages as id@version to load it from, as the CLI's --package) and asOf (the instant that dates it, else the session's; the envelope's asOf); neither is part of the draft. Sent beside input, each is moved into it (argument-adjusted warning).
             - facts.verdict: invalid (a check failed), unknown (one could not be evaluated: never valid for want of terminology), else valid. facts.checks: validation, terminology per coding (code in its system, display; a wrong display on the medication or code fails the draft), reference (patient, encounter, reasons in the folder and of that patient). Text the caller gave appears only in facts.resource.
             """,
         ["drug_classes"] = """

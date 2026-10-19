@@ -4,6 +4,8 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Reflection;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
@@ -78,7 +80,9 @@ public static class McpServerSetup
                 }
 
                 McpServerToolCreateOptions options = toolset == McpToolset.Query ? QueryOptions(query!) : new();
-                yield return McpServerTool.Create(method, context => createTarget(type, context), options);
+                McpServerTool tool = McpServerTool.Create(method, context => createTarget(type, context), options);
+                tool.ProtocolTool.InputSchema = ObjectArguments(method, tool.ProtocolTool.InputSchema);
+                yield return tool;
             }
         }
     }
@@ -111,5 +115,22 @@ public static class McpServerSetup
             Description = query.Description,
             SchemaCreateOptions = hidden.Count == 0 ? null : new AIJsonSchemaCreateOptions { IncludeParameter = parameter => !hidden.Contains(parameter.Name!) },
         };
+    }
+
+    // Each argument marked ObjectArgument described as an object, not as anything (the schema of a JsonElement).
+    private static JsonElement ObjectArguments(MethodInfo method, JsonElement schema)
+    {
+        string[] names = [.. method.GetParameters().Where(parameter => parameter.IsDefined(typeof(ObjectArgumentAttribute), inherit: false)).Select(parameter => parameter.Name!)];
+        if (names.Length == 0 || JsonNode.Parse(schema.GetRawText()) is not JsonObject root || root["properties"] is not JsonObject properties)
+        {
+            return schema;
+        }
+
+        foreach (string name in names.Where(properties.ContainsKey))
+        {
+            properties[name] = new JsonObject { ["type"] = "object" };
+        }
+
+        return JsonSerializer.SerializeToElement(root);
     }
 }

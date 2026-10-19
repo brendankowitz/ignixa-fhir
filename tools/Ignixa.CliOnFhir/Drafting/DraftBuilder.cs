@@ -27,11 +27,12 @@ internal static class DraftBuilder
 
     /// <summary>The draft of <paramref name="resourceType"/> that <paramref name="input"/> describes.</summary>
     /// <exception cref="ToolRequestException"><see cref="DraftArguments.InvalidCode"/>: the input is not what the type's schema asks for.</exception>
-    public static DraftContent Build(string resourceType, JsonObject input, string? profile, AsOf asOf)
+    /// <param name="callMembers">Members of the caller's input that are the call's (see <see cref="DraftRequest.CallMembers"/>).</param>
+    public static DraftContent Build(string resourceType, JsonObject input, string? profile, AsOf asOf, IReadOnlyList<string>? callMembers = null)
     {
         ArgumentNullException.ThrowIfNull(input);
 
-        var arguments = new DraftArguments(input, "input");
+        var arguments = new DraftArguments(input, "input", callMembers);
         DraftContent content = resourceType switch
         {
             MedicationRequestDraft.ResourceType => MedicationRequestDraft.Build(arguments, asOf),
