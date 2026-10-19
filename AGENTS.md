@@ -112,7 +112,25 @@ Write focused, self-documenting methods. Avoid deep nesting, high cyclomatic com
 - Run `git submodule update --init --recursive` before suites that use vendored fixtures; `Ignixa.SqlOnFhir.Tests` requires `sql-on-fhir-tests`.
 - `SystemValueElementDeclarationTests.Decisions` is a reflection census: every new production `IElement` producer needs a recorded classification and rationale.
 - Keep `MustCompile` tripwires for corpus rows expected to compile, so an un-compilable row cannot pass merely by being skipped.
-- Use the `mutation-coverage` skill (`.github/skills/mutation-coverage/`) to find missing test branches and redundant tests with Stryker.NET; keep runs scoped with `--since:main` or `-m`.
+
+## Mutation Testing
+
+Use the `mutation-coverage` skill (`.github/skills/mutation-coverage/`). Run Stryker from the test project directory with `dotnet stryker -p <Target> -r json -r html -r dots --disable-bail`, scoped with `--since:main` or `-m` unless doing a whole-project pass.
+
+| Test project | `-p` target | Notes |
+|---|---|---|
+| `test/Ignixa.<Name>.Tests` | `Ignixa.<Name>.csproj` | Default pairing for unit test projects. |
+| `test/Ignixa.FhirPath.Phase3.{Stu3,R4B,R5}.Tests` | `Ignixa.FhirPath.csproj` | Version-specific; run per version. |
+| `test/Ignixa.Application.Experimental.Tests` | `Ignixa.Application.csproj` | |
+| `test/Ignixa.Extensions.Tests` | `Ignixa.Extensions.FirelySdk6.csproj` | |
+| `test/Ignixa.Models.Tests` | `Ignixa.Models.R4.csproj` or `Ignixa.Models.R5.csproj` | One run per model project. |
+| `test/Ignixa.FhirPath.Tests` | `Ignixa.FhirPath.csproj` | Full run is about 40 minutes; scope it. |
+| `test/Ignixa.Api.E2ETests`, `test/Ignixa.DataLayer.SqlServer.IntegrationTests` | excluded | Need SQL Server or a running server. |
+| `test/Ignixa.RepoGuards.Tests`, `test/Ignixa.Tests.Compatibility.CLI.Tests` | excluded | Repository and compatibility guards, not unit tests. |
+
+- Setup: `dotnet tool restore`; `git submodule update --init --recursive` before `Ignixa.SqlOnFhir.Tests`.
+- Test conventions: see Testing above.
+- Never remove: regression tests; STU3/R4/R4B/R5 version-specific variants; `MustCompile` tripwires; `SystemValueElementDeclarationTests.Decisions` and other reflection census tests; tenant `0` isolation and tenancy routing tests; PATCH protection of `id`, `meta.versionId`, and `meta.lastUpdated`; anything in `Ignixa.RepoGuards.Tests`.
 
 ## Documentation and Decisions
 
@@ -151,6 +169,8 @@ The only repository-local agents are:
 
 - `fhir-agent`: FHIR specification research across supported versions.
 - `fhir-coordinator`: Coordinates FHIR research with marketplace ADR and implementation agents.
+
+The only repository-local skill is `mutation-coverage` (`.github/skills/mutation-coverage/`). It is repository-agnostic and incubating here before moving to the marketplace; Ignixa-specific settings live in the Mutation Testing section above.
 
 ## Git and Pull Requests
 
