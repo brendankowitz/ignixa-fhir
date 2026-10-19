@@ -21,15 +21,17 @@ namespace Ignixa.CliOnFhir.Tests;
 /// <summary>
 /// A census of the MCP surface under <c>--toolset all</c>: every text argument of every tool, and of every operation of the
 /// operation tools, given 20,000 characters (alone, as a value list for a search, and inside the JSON objects that hold text), must
-/// answer within the 16 KB response cap. The calls are listed from the menu, so a new tool or argument is covered without editing
-/// this test. Regressions (Task 12b fix round 1): at 86a9d902 a long query through columns, a long OR list of relative dates and
-/// a long folder_code_systems text each answered past the cap.
+/// answer within the 16 KB response cap by its own fit, not by the ceiling's last line of defence. The text mixes in <c>é</c> and
+/// <c>&lt;</c>, which the envelope writes as six bytes each. The calls are listed from the menu, so a new tool or argument is covered
+/// without editing this test. Regressions (Task 12b fix round 1): at 86a9d902 a long query through columns, a long OR list of
+/// relative dates and a long folder_code_systems text each answered past the cap. Fix round 2: at dc1b5418 find's elements
+/// (beside a query that matches), a long column name, a long reference and a cohort valueSet each did too.
 /// </summary>
 public class FreeTextCeilingCensusTests(ITestOutputHelper output)
 {
     private const int Cap = 16 * 1024;
 
-    private static readonly string Long = string.Concat(Enumerable.Repeat("abcdefghij", 2000));
+    private static readonly string Long = string.Concat(Enumerable.Repeat("abcdé<fghi", 2000));
 
     // A value for each argument a call needs besides the one under test.
     private static readonly Dictionary<string, object> Defaults = new(StringComparer.Ordinal)
@@ -48,15 +50,22 @@ public class FreeTextCeilingCensusTests(ITestOutputHelper output)
         ["classId"] = "C07",
         ["source"] = "ATC",
         ["nodeKey"] = "problems",
-        ["query"] = "heart",
+        ["query"] = "8867-4",
         ["package"] = "hl7.fhir.r4.core@4.0.1",
     };
 
     // Long values that are not plain strings: a search's query as an OR list and as many parameters, JSON arguments with text inside.
     private static IEnumerable<(string Argument, object Value)> Shaped(string tool) => tool switch
     {
+        "read_resources" =>
+        [
+            ("references", new[] { "Patient/" + Long }),
+            ("references", Enumerable.Range(1, 50).Select(index => $"Observation/{index}{Long[..300]}").ToArray()),
+        ],
         "search_fhir_resources" or "plan_fhir_search" =>
         [
+            ("query", "code=" + Long[..1000]),
+            ("elements", string.Join(',', Enumerable.Range(1, 2000).Select(index => $"e{index}é<"))),
             ("query", "date=" + string.Join(',', Enumerable.Repeat("now", 3000))),
             ("query", string.Join('&', Enumerable.Range(1, 400).Select(index => $"date=ge2025-12-{1 + (index % 28):00}T00:00:00.1234567Z"))),
             ("query", "code=" + string.Join(',', Enumerable.Repeat("http://loinc.org|8867-4", 800))),
@@ -66,8 +75,18 @@ public class FreeTextCeilingCensusTests(ITestOutputHelper output)
 
     private static IEnumerable<(string Argument, object Value)> ShapedJson(string tool) => tool switch
     {
-        "search_fhir_resources" => [("columns", new Dictionary<string, string> { ["v"] = "value.ofType(Quantity).value", ["long"] = "'" + Long[..4000] + "'" })],
-        "patient_cohort" => [("conditions", JsonSerializer.SerializeToElement(new[] { new { codes = new[] { "http://snomed.info/sct|" + Long } } }))],
+        "search_fhir_resources" =>
+        [
+            ("columns", new Dictionary<string, string> { ["v"] = "value.ofType(Quantity).value", ["long"] = "'" + Long[..4000] + "'" }),
+            ("columns", new Dictionary<string, string> { [Long] = "id" }),
+            ("columns", Enumerable.Range(1, 20).ToDictionary(index => $"c{index}" + Long[..60], _ => "'" + Long[..90] + "'")),
+        ],
+        "patient_cohort" =>
+        [
+            ("conditions", JsonSerializer.SerializeToElement(new[] { new { codes = new[] { "http://snomed.info/sct|" + Long } } })),
+            ("conditions", JsonSerializer.SerializeToElement(new[] { new { valueSet = Long } })),
+            ("conditions", JsonSerializer.SerializeToElement(new[] { new { valueSet = "http://example.org/" + Long[..1000] } })),
+        ],
         "draft_resource" => [("input", JsonSerializer.SerializeToElement(new { patient = "p1", code = new { system = "http://loinc.org", code = "8867-4" }, note = Long }))],
         _ => [],
     };
@@ -88,8 +107,9 @@ public class FreeTextCeilingCensusTests(ITestOutputHelper output)
             {
                 calls++;
                 CallToolResult result = await mcp.Client.CallToolAsync(tool.Name, arguments, cancellationToken: mcp.CancellationToken);
-                int bytes = Encoding.UTF8.GetByteCount(result.Content.OfType<TextContentBlock>().Single().Text);
-                if (bytes > Cap)
+                string text = result.Content.OfType<TextContentBlock>().Single().Text;
+                int bytes = Encoding.UTF8.GetByteCount(text);
+                if (bytes > Cap || text.Contains(ResponseCeiling.Code, StringComparison.Ordinal))
                 {
                     over.Add($"{tool.Name}({string.Join(", ", arguments.Select(argument => $"{argument.Key}={Shown(argument.Value)}"))}): {bytes} bytes {Largest(result)}");
                 }

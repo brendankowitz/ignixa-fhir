@@ -30,6 +30,9 @@ internal static class ColumnSearch
 
     public const int MaxColumns = 20;
 
+    /// <summary>The longest column name: it heads the table and keys emptyCells, so a longer one would only grow every response.</summary>
+    public const int MaxNameLength = 64;
+
     /// <summary>
     /// The path of a column holding each row's record kind (<see cref="FolderKinds"/>'s short name) instead of a FHIRPath value:
     /// the profile, or the class or category, that tells the type's kinds apart.
@@ -59,13 +62,18 @@ internal static class ColumnSearch
                 throw ToolRequestException.Error("invalid-parameter", "A column in 'columns' has a blank name.");
             }
 
+            if (column.Name.Length > MaxNameLength)
+            {
+                throw ToolRequestException.Error("invalid-parameter", $"The column name '{QueryEcho.Value(column.Name)}' is longer than {MaxNameLength} characters; name it shortly, for example 'date' or 'value'.");
+            }
+
             if (!names.Add(column.Name))
             {
                 throw ToolRequestException.Error(
                     "invalid-parameter",
                     column.Name == KeyColumn
                         ? $"'{KeyColumn}' is the name of the key column every row starts with (the row's resource); name the column something else."
-                        : $"'columns' names '{column.Name}' twice.");
+                        : $"'columns' names '{QueryEcho.Value(column.Name)}' twice.");
             }
 
             compiled.Add(IsKind(column.Path)
@@ -206,7 +214,14 @@ internal static class ColumnSearch
                     return Build(kept, low, skipped);
                 }
 
-                // Nothing fits before the first readable row, so that row is too large on its own; pass over it and fit again.
+                // Nothing fits before the first readable row. When next took its room, next is left out (a page of no row would
+                // only repeat itself); otherwise the row is too large on its own, so it is passed over and the page fit again.
+                if (!_noNext)
+                {
+                    _noNext = true;
+                    continue;
+                }
+
                 Row large = kept[first]!;
                 skipped.Add(new OmittedItem(
                     $"the row of {ResourceReader.Describe(large.Entry)} is {EnvelopeJson.SizeOf(large.Cells)} bytes and exceeds the size budget; select smaller values (a coding's code rather than the CodeableConcept) or read it with read_resources",
@@ -263,7 +278,8 @@ internal static class ColumnSearch
                 EmptyCells = emptyCells.Count == 0 ? null : emptyCells,
             };
 
-            List<NextCall> next = resume < total && !_noNext ? SearchNarrowing.After(request, total, resume, cut, largerBudget) : [];
+            // A call in next always moves past this page: one that would resume where this one started is never offered.
+            List<NextCall> next = resume < total && !_noNext && resume > request.Offset ? SearchNarrowing.After(request, total, resume, cut, largerBudget) : [];
             return shell with { Facts = facts, Evidence = evidence, Omitted = allOmitted, Issues = allIssues, Next = next };
         }
 

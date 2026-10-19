@@ -108,6 +108,7 @@ internal static class HelpTopics
             - unknown-search-parameter, search-not-supported, invalid-search-request, digest-not-supported: the query was not run.
             - parameter-ignored: that parameter did NOT apply (only _format, _pretty, _summary other than count and similar, or any name with lenient).
             - invalid-parameter on a column or fhirpath naming an element its type does not declare: it would never yield a value, so the call was not run; the message has the names the type does declare (did you mean, or a choice element's types and its ofType() spelling). fhirpath-never-yields: a warning that part of the path is always empty here.
+            - response-over-ceiling: the answer would have been larger than the response ceiling and was withheld; narrow the call (shorter arguments, elements, a smaller count, summary=count).
             - argument-adjusted: arguments that conflict in a clear way were fixed and the call answered: elements beside columns ignored, a column 'ref' renamed, _sort beside perPatient=latest or earliest dropped, fhirpath beside columns ignored, paging beside fhirpath ignored.
             - results-mix-kinds (information): the matches are of more than one record kind (help topic=search); its filters keep one.
             - column-empty: a column's path matched nothing in any row. resolve-target-absent: resolve() found no target.

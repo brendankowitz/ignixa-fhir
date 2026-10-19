@@ -6,6 +6,7 @@
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Ignixa.CliOnFhir.Session;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
@@ -65,9 +66,14 @@ public static class McpServerSetup
     /// <see cref="McpToolset.Query"/> those marked <see cref="QueryToolsetAttribute"/>, with its description and without its
     /// hidden arguments. <paramref name="createTarget"/> constructs a tool type's instance for a call.
     /// </summary>
-    public static IEnumerable<McpServerTool> Tools(McpToolset toolset, Func<Type, RequestContext<CallToolRequestParams>, object> createTarget)
+    /// <param name="toolset">The toolset to offer.</param>
+    /// <param name="createTarget">Constructs a tool type's instance for a call.</param>
+    /// <param name="sessionOf">The session of a call, whose response ceiling every answer is held to (<see cref="CeilingTool"/>); by default the one the server's services hold.</param>
+    public static IEnumerable<McpServerTool> Tools(McpToolset toolset, Func<Type, RequestContext<CallToolRequestParams>, object> createTarget, Func<RequestContext<CallToolRequestParams>, FolderSession?>? sessionOf = null)
     {
         ArgumentNullException.ThrowIfNull(createTarget);
+
+        sessionOf ??= request => request.Services?.GetService<FolderSession>();
 
         foreach (Type type in ToolTypes)
         {
@@ -82,7 +88,7 @@ public static class McpServerSetup
                 McpServerToolCreateOptions options = toolset == McpToolset.Query ? QueryOptions(query!) : new();
                 McpServerTool tool = McpServerTool.Create(method, context => createTarget(type, context), options);
                 tool.ProtocolTool.InputSchema = ObjectArguments(method, tool.ProtocolTool.InputSchema);
-                yield return tool;
+                yield return new CeilingTool(tool, sessionOf);
             }
         }
     }

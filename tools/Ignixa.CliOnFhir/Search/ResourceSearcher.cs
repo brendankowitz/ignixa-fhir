@@ -288,9 +288,19 @@ public static class ResourceSearcher
             batch = ResourceBatch.Collect(session.RootPath, pageEntries, parsed.Elements, ReservedBytes(request, query, matches.Count, included, issues, omitted, cutNext), budget, pageCosts, cancellationToken);
         }
 
+        if (batch.Consumed == 0 && page.Count > 0)
+        {
+            // The next calls took the room of every resource, and a page of none would only repeat itself: they are left out for
+            // a page that moves on (the omitted item names the offset).
+            batch = ResourceBatch.Collect(session.RootPath, pageEntries, parsed.Elements, ReservedBytes(request, query, matches.Count, included, issues, omitted, []), budget, pageCosts, cancellationToken);
+            nextTooLong = true;
+        }
+
         int resume = request.Offset + batch.Consumed;
         bool cutBySize = batch.Consumed < page.Count;
-        List<NextCall> next = resume < matches.Count && !nextTooLong ? SearchNarrowing.After(request, matches.Count, resume, cutBySize, largerBudget) : [];
+        // A call in next always moves past this page: one that would resume where this one started is never offered.
+        bool progress = resume > request.Offset;
+        List<NextCall> next = resume < matches.Count && !nextTooLong && progress ? SearchNarrowing.After(request, matches.Count, resume, cutBySize, largerBudget) : [];
         issues.AddRange(batch.Issues);
         omitted.AddRange(batch.Skipped);
         List<EvidenceItem> evidence = [.. batch.Evidence];
@@ -316,7 +326,8 @@ public static class ResourceSearcher
 
         if (resume < matches.Count)
         {
-            string resumeWith = nextTooLong ? $"offset={resume}; no next call, as the request is too long to repeat in one" : $"offset={resume}";
+            string resumeWith = !progress ? $"offset={resume}; not one fits the size budget beside this request: shorten the query, set elements, use columns or summary=count, or raise maxBytes"
+                : nextTooLong ? $"offset={resume}; no next call, as the request is too long to repeat in one" : $"offset={resume}";
             omitted.Add(new OmittedItem($"{matches.Count - resume} more matches ({resumeWith})", cutBySize ? "size-budget" : "limit"));
         }
 

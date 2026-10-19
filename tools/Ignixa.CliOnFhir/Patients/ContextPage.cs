@@ -84,15 +84,16 @@ internal static class ContextPage
         }
 
         int consumed = page.Count;
+        bool nextDropped = false;
         Contents contents = new([.. page.Select(entry => entry.Item)], null, null);
         if (withResources)
         {
             // The calls in next depend on whether the budget cuts the page, so Read first expects that it does not.
             int pageEnd = offset + page.Count;
-            Func<bool, List<NextCall>> reserveNext = cut => cut || pageEnd < entries.Count
+            Func<bool, List<NextCall>> reserveNext = cut => !QueryEcho.IsCut(elements) && (cut || pageEnd < entries.Count)
                 ? After(nextPage, offset, pageEnd, entries.Count - offset, elements, maxBytes, cut, budget, session.MaxResponseBytes)
                 : [];
-            (contents, consumed) = Read(context, page, projection, facts, issues, absent, omitted, reserveNext, budget, cancellationToken);
+            (contents, consumed, nextDropped) = Read(context, page, projection, facts, issues, absent, omitted, reserveNext, budget, cancellationToken);
         }
 
         List<NextCall> next = [];
@@ -100,8 +101,14 @@ internal static class ContextPage
         if (resume < entries.Count)
         {
             bool cutBySize = consumed < page.Count;
-            omitted.Add(new OmittedItem($"{entries.Count - resume} more items (offset={resume})", cutBySize ? "size-budget" : "limit"));
-            next = withResources ? After(nextPage, offset, resume, entries.Count - resume, elements, maxBytes, cutBySize, budget, session.MaxResponseBytes) : [nextPage(resume)];
+            // The calls repeat elements whole, so one too long to repeat leaves next out (the omitted item names the offset), and a
+            // call in next always moves past this page.
+            string? why = resume == offset ? "not one fits the size budget beside this request: set elements, or raise maxBytes"
+                : QueryEcho.IsCut(elements) ? "no next call, as elements is too long to repeat in one"
+                : nextDropped ? "no next call, as it would not fit beside the page"
+                : null;
+            omitted.Add(new OmittedItem($"{entries.Count - resume} more items (offset={resume}{(why is null ? string.Empty : "; " + why)})", cutBySize ? "size-budget" : "limit"));
+            next = why is not null ? [] : withResources ? After(nextPage, offset, resume, entries.Count - resume, elements, maxBytes, cutBySize, budget, session.MaxResponseBytes) : [nextPage(resume)];
         }
 
         List<EvidenceItem> evidence = ContextRoot.Evidence(page.Take(consumed).SelectMany(entry => entry.Sources));
@@ -110,7 +117,7 @@ internal static class ContextPage
         return EnvelopeAssembler.Create<TFacts?>(session, facts(contents), builtAt, evidence, omitted, absent, issues, cancellationToken) with { Next = next };
     }
 
-    private static (Contents Contents, int Consumed) Read<TFacts>(
+    private static (Contents Contents, int Consumed, bool NextDropped) Read<TFacts>(
         PatientContext context,
         List<ContextEntry> page,
         ElementsProjection? projection,
@@ -125,7 +132,7 @@ internal static class ContextPage
         // The listed resolutions can only shrink once the resources are read, so each resource is charged for its candidates.
         List<IndexedResource> indexed = [.. page.Select(entry => context.Compartment.Indexed(entry.Resource))];
         Dictionary<string, Dictionary<string, string>> candidates = ResolvedReferences.Candidates(indexed, ResolvedReferences.Limit);
-        int Reserved(bool cutBySize) => EnvelopeJson.SizeOf(new ToolEnvelope<TFacts>(
+        int Reserved(bool cutBySize, bool withNext = true) => EnvelopeJson.SizeOf(new ToolEnvelope<TFacts>(
             facts(new Contents([.. page.Select(entry => entry.Item)], [], ResolvedReferences: null)),
             ContextRoot.Evidence(page.SelectMany(entry => entry.Sources)),
             [.. omitted, Placeholder, Placeholder],
@@ -133,7 +140,7 @@ internal static class ContextPage
             issues,
             new FreshnessInfo(DateTimeOffset.MaxValue, StaleFiles: int.MaxValue))
         {
-            Next = reserveNext(cutBySize),
+            Next = withNext ? reserveNext(cutBySize) : [],
             AsOf = AsOf.SizingReserve,
         });
 
@@ -147,6 +154,13 @@ internal static class ContextPage
             batch = ResourceBatch.Collect(context.Session.RootPath, entries, projection, Reserved(cutBySize: true), budget, costs, cancellationToken);
         }
 
+        // The next calls took the room of every resource, and a page of none would only repeat itself: they are left out.
+        bool nextDropped = batch.Consumed == 0 && entries.Count > 0;
+        if (nextDropped)
+        {
+            batch = ResourceBatch.Collect(context.Session.RootPath, entries, projection, Reserved(cutBySize: true, withNext: false), budget, costs, cancellationToken);
+        }
+
         issues.AddRange(batch.Issues);
         omitted.AddRange(batch.Skipped);
         List<ContextEntry> returned = [.. page.Take(batch.Consumed)];
@@ -156,7 +170,7 @@ internal static class ContextPage
             omitted.Add(new OmittedItem($"{notListed} more resolved Bundle references in the returned resources (resolvedReferences lists at most {ResolvedReferences.Limit})", "limit"));
         }
 
-        return (new Contents([.. returned.Select(entry => entry.Item)], batch.Resources, ResolvedReferences.ToFacts(shown)), batch.Consumed);
+        return (new Contents([.. returned.Select(entry => entry.Item)], batch.Resources, ResolvedReferences.ToFacts(shown)), batch.Consumed, nextDropped);
     }
 
     /// <summary>

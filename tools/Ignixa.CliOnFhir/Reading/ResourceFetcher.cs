@@ -73,7 +73,7 @@ public static class ResourceFetcher
             else
             {
                 int ofType = session.Catalog.Entries.Count(candidate => candidate.ResourceType == type);
-                absent.Add(new AbsentItem($"{type}/{id}", $"catalog of {session.RootPath}: {ofType} {type} resources in {session.Catalog.FilesScanned} files", builtAt));
+                absent.Add(new AbsentItem(FhirIds.IsDigest(id) ? $"{type}/{id}" : FhirIds.Reference(type, id), $"catalog of {session.RootPath}: {ofType} {type} resources in {session.Catalog.FilesScanned} files", builtAt));
             }
         }
 

@@ -72,14 +72,18 @@ public sealed class ElementsProjection
             return [];
         }
 
-        return
-        [
-            .. Names
-                .Where(name => !shape.Selects(name))
-                .Order(StringComparer.Ordinal)
-                .Select(name => new IssueItem("warning", "element-ignored", $"'{QueryEcho.Value(name)}' is not a top-level element of {resourceType}, so it selected nothing.", Location: null)),
-        ];
+        List<string> ignored = [.. Names.Where(name => !shape.Selects(name)).Order(StringComparer.Ordinal)];
+        List<IssueItem> issues = [.. ignored.Take(MaxIgnoredListed).Select(name => new IssueItem("warning", "element-ignored", $"'{QueryEcho.Value(name)}' is not a top-level element of {resourceType}, so it selected nothing.", Location: null))];
+        if (ignored.Count > MaxIgnoredListed)
+        {
+            issues.Add(new IssueItem("warning", "element-ignored", $"{ignored.Count - MaxIgnoredListed} more names in 'elements' are not top-level elements of {resourceType}, so they selected nothing.", Location: null));
+        }
+
+        return issues;
     }
+
+    /// <summary>The most names <see cref="Validate"/> reports one by one; the rest are counted in one more warning.</summary>
+    public const int MaxIgnoredListed = 10;
 
     /// <summary>Returns a trimmed copy of <paramref name="resource"/>; the original is untouched.</summary>
     public JsonObject Apply(JsonObject resource)

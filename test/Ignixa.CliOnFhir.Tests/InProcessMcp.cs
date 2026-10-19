@@ -6,6 +6,7 @@
 using System.IO.Pipelines;
 using System.Reflection;
 using Ignixa.CliOnFhir.Mcp;
+using Ignixa.CliOnFhir.Session;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -47,7 +48,7 @@ internal sealed class InProcessMcp : IAsyncDisposable
         var serverToClient = new Pipe();
         var options = new McpServerOptions
         {
-            ToolCollection = [.. McpServerSetup.Tools(toolset, (type, _) => Construct(type, toolset, constructorArguments)).Where(tool => types.Contains(DeclaringType(tool)))],
+            ToolCollection = [.. McpServerSetup.Tools(toolset, (type, _) => Construct(type, toolset, constructorArguments), _ => constructorArguments.OfType<FolderSession>().FirstOrDefault()).Where(tool => types.Contains(DeclaringType(tool)))],
         };
         List<McpServerResource> resources = [.. types.Where(McpServerSetup.ResourceTypes.Contains).SelectMany(type => Resources(type, toolset, constructorArguments))];
         if (resources.Count > 0)
@@ -56,6 +57,15 @@ internal sealed class InProcessMcp : IAsyncDisposable
         }
 
         McpServerSetup.Configure(options, toolset);
+        return await StartAsync(options, clientToServer, serverToClient);
+    }
+
+    /// <summary>Serves exactly <paramref name="tools"/>, as built (for a test of a tool wrapper).</summary>
+    public static Task<InProcessMcp> StartAsync(IReadOnlyList<McpServerTool> tools) =>
+        StartAsync(new McpServerOptions { ToolCollection = [.. tools] }, new Pipe(), new Pipe());
+
+    private static async Task<InProcessMcp> StartAsync(McpServerOptions options, Pipe clientToServer, Pipe serverToClient)
+    {
         var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(60));
 
         var serverTransport = new StreamServerTransport(clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream());

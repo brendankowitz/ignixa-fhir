@@ -68,7 +68,7 @@ internal sealed class CohortCodes(FolderSession session, List<IssueItem> issues,
         TermExpandInFolder.Expansion expansion = await TermExpandInFolder.ReadAsync(session, state.Store, valueSet, resolution, filter: null, cancellationToken)
             ?? throw ToolRequestException.Error(
                 resolution.LoadedVersions.Count > 0 ? TermExpand.VersionNotLoaded : TermExpand.ValueSetNotLoaded,
-                $"{where}.valueSet {valueSet} is not loaded and no terminology server is configured: a SNOMED CT hierarchy (isa/<sctid>) needs the server started with --tx-server (for example https://tx.fhir.org/r4); otherwise list the codes.");
+                $"{where}.valueSet {QueryEcho.Value(valueSet)} is not loaded and no terminology server is configured: a SNOMED CT hierarchy (isa/<sctid>) needs the server started with --tx-server (for example https://tx.fhir.org/r4); otherwise list the codes.");
 
         issues.AddRange(expansion.Issues.Where(issue => !issues.Contains(issue)));
         omitted.AddRange(expansion.Omitted.Select(item => item with { What = $"{where}.valueSet: {item.What}" }));

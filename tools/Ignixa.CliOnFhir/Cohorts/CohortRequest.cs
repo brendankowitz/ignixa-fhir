@@ -47,6 +47,9 @@ internal sealed record CohortRequest(
     private static readonly string[] Picks = ["latest", "earliest", "any"];
     private static readonly string[] Comparators = ["gt", "ge", "lt", "le", "eq"];
     private static readonly string[] Missing = [Exclude, Include];
+    /// <summary>The longest valueSet a condition criterion takes: a canonical url with its version, or isa/&lt;sctid&gt;.</summary>
+    public const int MaxValueSetLength = 1024;
+
     private static readonly string[] ConditionProperties = ["codes", "valueSet", "status", "verification"];
     private static readonly string[] MedicationProperties = ["codes", "classId", "source", "status"];
     private static readonly string[] ImmunizationProperties = ["codes", "window", "ever"];
@@ -101,6 +104,10 @@ internal sealed record CohortRequest(
     {
         IReadOnlyList<CohortCode> codes = Codes(criterion, required: false);
         string? valueSet = criterion.String("valueSet")?.Trim();
+        if (valueSet is { Length: > MaxValueSetLength })
+        {
+            throw CriterionObject.Invalid($"{criterion.Where}.valueSet '{QueryEcho.Value(valueSet)}' is longer than {MaxValueSetLength} characters; give a ValueSet url (url|version) or isa/<sctid>.");
+        }
         if (codes.Count == 0 && string.IsNullOrEmpty(valueSet))
         {
             throw CriterionObject.Invalid($"{criterion.Where} needs 'codes' (['http://snomed.info/sct|44054006']) or 'valueSet' (a ValueSet url, or isa/<sctid> for a SNOMED CT concept and its descendants).");

@@ -65,14 +65,14 @@ internal static class SearchNarrowing
 
     /// <summary>
     /// Whether a call can repeat <paramref name="request"/>: none of its texts (query, compartment, elements, fhirpath, the columns'
-    /// names and paths together) is longer than <see cref="QueryEcho.MaxLength"/>, the longest the response repeats. A request that
+    /// names and paths together) is longer than <see cref="QueryEcho.MaxLength"/> bytes as written, the longest the response repeats. A request that
     /// is not gets no <c>next</c>; the response's omitted item names the offset to resume at instead.
     /// </summary>
     public static bool Repeatable(SearchRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        int columns = request.Columns?.Sum(column => column.Name.Length + column.Path.Length) ?? 0;
+        int columns = request.Columns?.Sum(column => QueryEcho.SerializedLength(column.Name) + QueryEcho.SerializedLength(column.Path)) ?? 0;
         return !QueryEcho.IsCut(request.Query) && !QueryEcho.IsCut(request.Compartment) && !QueryEcho.IsCut(request.Elements)
             && !QueryEcho.IsCut(request.FhirPath) && columns <= QueryEcho.MaxLength;
     }

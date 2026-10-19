@@ -19,6 +19,16 @@ internal static class EnvelopeOutput
     {
         ArgumentNullException.ThrowIfNull(envelope);
 
+        // The last line of defence of the hard cap: an answer every fit missed is withheld, as over MCP (ResponseCeiling).
+        int bytes = EnvelopeJson.SizeOf(envelope);
+        if (bytes > EnvelopeJson.MaxBytes)
+        {
+            Console.Error.WriteLine($"{ResponseCeiling.Code}: the answer was {bytes} bytes, over the {EnvelopeJson.MaxBytes}-byte response ceiling, and was withheld.");
+            var withheld = new ToolEnvelope<object?>(null, [], [], [], [ResponseCeiling.Issue("the command", bytes, EnvelopeJson.MaxBytes)], envelope.Freshness) { AsOf = envelope.AsOf };
+            Console.Out.WriteLine(JsonSerializer.Serialize(withheld, pretty ? EnvelopeJson.Pretty : EnvelopeJson.Compact));
+            return 1;
+        }
+
         Console.Out.WriteLine(JsonSerializer.Serialize(envelope, pretty ? EnvelopeJson.Pretty : EnvelopeJson.Compact));
         return envelope.Facts is null ? 1 : 0;
     }
