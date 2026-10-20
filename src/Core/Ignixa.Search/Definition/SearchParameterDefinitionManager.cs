@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
-using System.Collections.ObjectModel;
+using System.Collections.Frozen;
 using System.Globalization;
 using EnsureThat;
 using Microsoft.Extensions.Logging;
@@ -25,6 +25,8 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
 {
     private readonly IFhirSchemaProvider _modelInfoProvider;
     private readonly ConcurrentDictionary<string, string> _resourceTypeSearchParameterHashMap;
+    private readonly object _syncRoot = new();
+    private volatile RegistrySnapshot _snapshot = null!;
 
     public SearchParameterDefinitionManager(
         IFhirSchemaProvider modelInfoProvider,
@@ -36,7 +38,7 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
         _modelInfoProvider = modelInfoProvider;
         _resourceTypeSearchParameterHashMap = new ConcurrentDictionary<string, string>();
         TypeLookup = new ConcurrentDictionary<string, ConcurrentDictionary<string, SearchParameterInfo>>();
-        UrlLookup = new ConcurrentDictionary<Uri, SearchParameterInfo>();
+        UrlLookup = new ConcurrentDictionary<Uri, SearchParameterInfo>(SearchParameterUriComparer.Instance);
 
         // Load pre-generated search parameters for instant initialization (<5ms vs 50-200ms)
         SearchParameterInfo[] baseParameters = modelInfoProvider.Version switch
@@ -81,7 +83,9 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
         // We must resolve these references by looking up the component parameters in UrlLookup
         ResolveCompositeComponents(baseParameters, logger);
 
+        ReferenceIdentifierSearchParameterRegistrar.Register(UrlLookup, TypeLookup);
         CalculateSearchParameterHash();
+        PublishSnapshot();
     }
 
     /// <summary>
@@ -191,20 +195,24 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
     // TypeLookup key is: Resource type, the inner dictionary key is the Search Parameter code.
     internal ConcurrentDictionary<string, ConcurrentDictionary<string, SearchParameterInfo>> TypeLookup { get; }
 
-    public IEnumerable<SearchParameterInfo> AllSearchParameters => UrlLookup.Values;
+    public IEnumerable<SearchParameterInfo> AllSearchParameters
+        => _snapshot.AllSearchParameters;
 
     /// <summary>
     /// Gets all concrete resource type names that have search parameters defined.
     /// This includes all resource types expanded from abstract base types (Resource, DomainResource).
     /// </summary>
-    public IEnumerable<string> ResourceTypeNames => TypeLookup.Keys;
+    public IEnumerable<string> ResourceTypeNames
+        => _snapshot.ResourceTypeNames;
 
-    public IReadOnlyDictionary<string, string> SearchParameterHashMap => new ReadOnlyDictionary<string, string>(_resourceTypeSearchParameterHashMap.ToDictionary(kvp => kvp.Key, kvp => kvp.Value));
+    public IReadOnlyDictionary<string, string> SearchParameterHashMap => _snapshot.SearchParameterHashes;
 
     public IEnumerable<SearchParameterInfo> GetSearchParameters(string resourceType)
     {
-        if (TypeLookup.TryGetValue(resourceType, out ConcurrentDictionary<string, SearchParameterInfo> value))
-            return value.Values;
+        if (_snapshot.ByResourceType.TryGetValue(resourceType, out ResourceTypeSnapshot value))
+        {
+            return value.Parameters;
+        }
 
         throw new SearchResourceNotSupportedException(resourceType);
     }
@@ -213,9 +221,9 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
     {
         searchParameters = null;
 
-        if (TypeLookup.TryGetValue(resourceType, out ConcurrentDictionary<string, SearchParameterInfo> value))
+        if (_snapshot.ByResourceType.TryGetValue(resourceType, out ResourceTypeSnapshot value))
         {
-            searchParameters = value.Values;
+            searchParameters = value.Parameters;
             return true;
         }
 
@@ -224,9 +232,11 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
 
     public SearchParameterInfo GetSearchParameter(string resourceType, string code)
     {
-        if (TypeLookup.TryGetValue(resourceType, out ConcurrentDictionary<string, SearchParameterInfo> lookup) &&
-            lookup.TryGetValue(code, out SearchParameterInfo searchParameter))
+        if (_snapshot.ByResourceType.TryGetValue(resourceType, out ResourceTypeSnapshot lookup) &&
+            lookup.ByCode.TryGetValue(code, out SearchParameterInfo searchParameter))
+        {
             return searchParameter;
+        }
 
         throw new SearchParameterNotSupportedException(resourceType, code);
     }
@@ -235,27 +245,30 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
     {
         searchParameter = null;
 
-        return TypeLookup.TryGetValue(resourceType, out ConcurrentDictionary<string, SearchParameterInfo> searchParameters) &&
-               searchParameters.TryGetValue(code, out searchParameter);
+        return _snapshot.ByResourceType.TryGetValue(resourceType, out ResourceTypeSnapshot searchParameters) &&
+               searchParameters.ByCode.TryGetValue(code, out searchParameter);
     }
 
     public SearchParameterInfo GetSearchParameter(Uri definitionUri)
     {
-        if (UrlLookup.TryGetValue(definitionUri, out SearchParameterInfo value)) return value;
+        if (_snapshot.ByUrl.TryGetValue(definitionUri, out SearchParameterInfo value))
+        {
+            return value;
+        }
 
         throw new SearchParameterNotSupportedException(definitionUri);
     }
 
     public bool TryGetSearchParameter(Uri definitionUri, out SearchParameterInfo value)
     {
-        return UrlLookup.TryGetValue(definitionUri, out value);
+        return _snapshot.ByUrl.TryGetValue(definitionUri, out value);
     }
 
     public string GetSearchParameterHashForResourceType(string resourceType)
     {
         EnsureArg.IsNotNullOrWhiteSpace(resourceType, nameof(resourceType));
 
-        if (_resourceTypeSearchParameterHashMap.TryGetValue(resourceType, out string hash)) return hash;
+        if (_snapshot.SearchParameterHashes.TryGetValue(resourceType, out string hash)) return hash;
 
         return null;
     }
@@ -264,38 +277,64 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
     {
         EnsureArg.IsNotNull(updatedSearchParamHashMap, nameof(updatedSearchParamHashMap));
 
-        foreach (KeyValuePair<string, string> kvp in updatedSearchParamHashMap)
-            _resourceTypeSearchParameterHashMap.AddOrUpdate(
-                kvp.Key,
-                kvp.Value,
-                (resourceType, existingValue) => kvp.Value);
+        lock (_syncRoot)
+        {
+            foreach (KeyValuePair<string, string> kvp in updatedSearchParamHashMap)
+                _resourceTypeSearchParameterHashMap.AddOrUpdate(
+                    kvp.Key,
+                    kvp.Value,
+                    (resourceType, existingValue) => kvp.Value);
+
+            PublishSnapshot();
+        }
     }
 
     public void AddNewSearchParameters(IReadOnlyCollection<IElement> searchParameters, bool calculateHash = true)
     {
-        SearchParameterDefinitionBuilder.Build(
-            searchParameters,
-            UrlLookup,
-            TypeLookup,
-            _modelInfoProvider);
+        lock (_syncRoot)
+        {
+            SearchParameterDefinitionBuilder.Build(
+                searchParameters,
+                UrlLookup,
+                TypeLookup,
+                _modelInfoProvider);
 
-        if (calculateHash) CalculateSearchParameterHash();
+            ReferenceIdentifierSearchParameterRegistrar.Register(UrlLookup, TypeLookup);
+            if (calculateHash) CalculateSearchParameterHash();
+            PublishSnapshot();
+        }
     }
 
     public void DeleteSearchParameter(string url, bool calculateHash = true)
     {
-        SearchParameterInfo searchParameterInfo = null;
-
-        if (!UrlLookup.TryRemove(new Uri(url), out searchParameterInfo))
+        lock (_syncRoot)
         {
-            throw new BadSearchRequestException(string.Format(CultureInfo.CurrentCulture, Resources.CustomSearchParameterNotfound, url));
+            var uri = new Uri(url);
+
+            // Checked before any mutation: a derived parameter (e.g. "{url}#identifier") is not
+            // independently owned, so removing then immediately re-deriving it from its still-present
+            // source reference parameter would be a success-shaped no-op.
+            if (!UrlLookup.TryGetValue(uri, out SearchParameterInfo searchParameterInfo))
+            {
+                throw new BadSearchRequestException(string.Format(CultureInfo.CurrentCulture, Resources.CustomSearchParameterNotfound, url));
+            }
+
+            if (searchParameterInfo.IsDerived)
+            {
+                throw new BadSearchRequestException(string.Format(CultureInfo.CurrentCulture, Resources.DerivedSearchParameterCannotBeDeleted, url));
+            }
+
+            UrlLookup.TryRemove(uri, out _);
+
+            // for search parameters with a base resource type we need to delete the search parameter
+            // from all derived types as well, so we iterate across all resources
+            foreach (string resourceType in TypeLookup.Keys) TypeLookup[resourceType].TryRemove(searchParameterInfo.Code, out SearchParameterInfo removedParam);
+
+            ReferenceIdentifierSearchParameterRegistrar.Unregister(searchParameterInfo, UrlLookup, TypeLookup);
+
+            if (calculateHash) CalculateSearchParameterHash();
+            PublishSnapshot();
         }
-
-        // for search parameters with a base resource type we need to delete the search parameter
-        // from all derived types as well, so we iterate across all resources
-        foreach (string resourceType in TypeLookup.Keys) TypeLookup[resourceType].TryRemove(searchParameterInfo.Code, out SearchParameterInfo removedParam);
-
-        if (calculateHash) CalculateSearchParameterHash();
     }
 
     private void CalculateSearchParameterHash()
@@ -309,6 +348,51 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
                 (resourceType, existingValue) => searchParamHash);
         }
     }
+
+    private void PublishSnapshot()
+    {
+        var byResourceType = TypeLookup.ToFrozenDictionary(
+            pair => pair.Key,
+            pair =>
+            {
+                FrozenDictionary<string, SearchParameterInfo> byCode = pair.Value.ToFrozenDictionary(
+                    entry => entry.Key,
+                    entry => entry.Value,
+                    StringComparer.Ordinal);
+                IEnumerable<SearchParameterInfo> parameters = byCode.Values;
+                return new ResourceTypeSnapshot(byCode, parameters);
+            },
+            StringComparer.Ordinal);
+
+        FrozenDictionary<Uri, SearchParameterInfo> byUrl = UrlLookup.ToFrozenDictionary(
+            pair => pair.Key,
+            pair => pair.Value,
+            SearchParameterUriComparer.Instance);
+        IEnumerable<SearchParameterInfo> allSearchParameters = byUrl.Values;
+        IEnumerable<string> resourceTypeNames = byResourceType.Keys;
+        FrozenDictionary<string, string> searchParameterHashes = _resourceTypeSearchParameterHashMap.ToFrozenDictionary(
+            pair => pair.Key,
+            pair => pair.Value,
+            StringComparer.Ordinal);
+
+        _snapshot = new RegistrySnapshot(
+            byResourceType,
+            byUrl,
+            searchParameterHashes,
+            allSearchParameters,
+            resourceTypeNames);
+    }
+
+    private sealed record ResourceTypeSnapshot(
+        FrozenDictionary<string, SearchParameterInfo> ByCode,
+        IEnumerable<SearchParameterInfo> Parameters);
+
+    private sealed record RegistrySnapshot(
+        FrozenDictionary<string, ResourceTypeSnapshot> ByResourceType,
+        FrozenDictionary<Uri, SearchParameterInfo> ByUrl,
+        FrozenDictionary<string, string> SearchParameterHashes,
+        IEnumerable<SearchParameterInfo> AllSearchParameters,
+        IEnumerable<string> ResourceTypeNames);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Resolved {ResolvedCount} composite search parameter components, {UnresolvedCount} unresolved")]
     private static partial void LogCompositeComponentsResolved(ILogger logger, int resolvedCount, int unresolvedCount);

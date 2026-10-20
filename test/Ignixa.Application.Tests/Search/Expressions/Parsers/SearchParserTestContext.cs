@@ -20,6 +20,7 @@ namespace Ignixa.Application.Tests.Search.Expressions.Parsers;
 internal sealed class SearchParserTestContext
 {
     private readonly Dictionary<string, List<SearchParameterInfo>> _searchParametersByResourceType = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, SearchParameterInfo> _searchParametersByUrl = new(StringComparer.Ordinal);
 
     public SearchParserTestContext()
     {
@@ -30,6 +31,17 @@ internal sealed class SearchParserTestContext
 
         DefinitionManager.GetSearchParameters(Arg.Any<string>()).Returns(callInfo => GetSearchParameters(callInfo.ArgAt<string>(0)));
         DefinitionManager.GetSearchParameter(Arg.Any<string>(), Arg.Any<string>()).Returns(callInfo => GetSearchParameter(callInfo.ArgAt<string>(0), callInfo.ArgAt<string>(1))!);
+        DefinitionManager.TryGetSearchParameter(Arg.Any<Uri>(), out Arg.Any<SearchParameterInfo>()).Returns(callInfo =>
+        {
+            if (_searchParametersByUrl.TryGetValue(callInfo.ArgAt<Uri>(0).OriginalString, out SearchParameterInfo? parameter))
+            {
+                callInfo[1] = parameter;
+                return true;
+            }
+
+            callInfo[1] = null!;
+            return false;
+        });
         DefinitionManager.AllSearchParameters.Returns(_ => _searchParametersByResourceType.Values.SelectMany(parameters => parameters).ToArray());
         DefinitionManager.SearchParameterHashMap.Returns(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
     }
@@ -77,6 +89,13 @@ internal sealed class SearchParserTestContext
         }
     }
 
+    public SearchParameterInfo AddIdentifierDerivative(SearchParameterInfo searchParameter)
+    {
+        SearchParameterInfo derived = ReferenceIdentifierSearchParameterFactory.Create(searchParameter);
+        _searchParametersByUrl.Add(derived.Url!.OriginalString, derived);
+        return derived;
+    }
+
     private IEnumerable<SearchParameterInfo> GetSearchParameters(string resourceType)
     {
         return _searchParametersByResourceType.TryGetValue(resourceType, out var searchParameters)
@@ -103,5 +122,7 @@ internal sealed class SearchParserTestContext
         {
             searchParameters.Add(parameter);
         }
+
+        _searchParametersByUrl.TryAdd(parameter.Url!.OriginalString, parameter);
     }
 }

@@ -48,7 +48,7 @@ internal static class ResourceBackedKnownDivergences
     /// sides, where agreement establishes nothing.
     /// </para>
     /// <para>
-    /// The single entry is the <c>NotSupportedException</c> Ignixa raises for <c>hasExtension()</c>,
+    /// Both entries are the <c>NotSupportedException</c> Ignixa raises for <c>hasExtension()</c>,
     /// which <see cref="KnownDivergences"/> already pins on the Select side - Firely refuses the same
     /// parameter at compile time, so the expression is outside the compared set and neither engine
     /// indexes it.
@@ -58,6 +58,13 @@ internal static class ResourceBackedKnownDivergences
         new Dictionary<string, int>(StringComparer.Ordinal)
         {
             ["FailedToExtractValues :: http://hl7.org/fhir/SearchParameter/questionnaireresponse-extensions-QuestionnaireResponse-item-subject :: QuestionnaireResponse :: NotSupportedException"] = 1,
+
+            // Same hasExtension() defect, reached a second time: every Reference-typed parameter gets a derived
+            // ':identifier' token parameter whose expression wraps the source's, so production evaluates - and
+            // fails on - this expression twice per R4 QuestionnaireResponse. Kept as its own row rather than
+            // excluding derived parameters from the sweep, because the second failed evaluation is real
+            // production work. Both rows disappear together when hasExtension() is implemented.
+            ["FailedToExtractValues :: http://hl7.org/fhir/SearchParameter/questionnaireresponse-extensions-QuestionnaireResponse-item-subject#identifier :: QuestionnaireResponse :: NotSupportedException"] = 1,
         };
 
     /// <summary>
