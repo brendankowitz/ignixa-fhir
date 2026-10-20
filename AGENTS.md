@@ -115,7 +115,7 @@ Write focused, self-documenting methods. Avoid deep nesting, high cyclomatic com
 
 ## Mutation Testing
 
-Use the `mutation-coverage` skill (`.github/skills/mutation-coverage/`). Run Stryker from the test project directory with `dotnet stryker -p <Target> -r json -r html -r dots --disable-bail`, scoped with `--since:main` or `-m` unless doing a whole-project pass.
+Use the `mutation-coverage-next` skill from the `experimental` plugin (see Marketplace Agents and Skills). If it is not installed, ask the user to install `experimental@agent-marketplace` rather than reproducing its workflow by hand. Run Stryker from the test project directory with `dotnet stryker -p <Target> -r json -r html -r dots --disable-bail`, scoped with `--since:main` or `-m` unless doing a whole-project pass.
 
 | Test project | `-p` target | Notes |
 |---|---|---|
@@ -128,7 +128,7 @@ Use the `mutation-coverage` skill (`.github/skills/mutation-coverage/`). Run Str
 | `test/Ignixa.Api.E2ETests`, `test/Ignixa.DataLayer.SqlServer.IntegrationTests` | excluded | Need SQL Server or a running server. |
 | `test/Ignixa.RepoGuards.Tests`, `test/Ignixa.Tests.Compatibility.CLI.Tests` | excluded | Repository and compatibility guards, not unit tests. |
 
-- Setup: `dotnet tool restore`; `git submodule update --init --recursive` before `Ignixa.SqlOnFhir.Tests`.
+- Setup: `dotnet tool restore` (the Stryker version is pinned in `.config/dotnet-tools.json`); `git submodule update --init --recursive` before `Ignixa.SqlOnFhir.Tests`.
 - Test conventions: see Testing above.
 - Never remove: regression tests; STU3/R4/R4B/R5 version-specific variants; `MustCompile` tripwires; `SystemValueElementDeclarationTests.Decisions` and other reflection census tests; tenant `0` isolation and tenancy routing tests; PATCH protection of `id`, `meta.versionId`, and `meta.lastUpdated`; anything in `Ignixa.RepoGuards.Tests`.
 
@@ -151,6 +151,7 @@ copilot plugin install decide@agent-marketplace
 copilot plugin install build@agent-marketplace
 copilot plugin install review@agent-marketplace
 copilot plugin install document@agent-marketplace
+copilot plugin install experimental@agent-marketplace
 copilot plugin install pr-review-toolkit@agent-marketplace
 
 # Claude Code
@@ -160,6 +161,7 @@ claude plugin install decide@agent-marketplace
 claude plugin install build@agent-marketplace
 claude plugin install review@agent-marketplace
 claude plugin install document@agent-marketplace
+claude plugin install experimental@agent-marketplace
 claude plugin install pr-review-toolkit@claude-plugins-official
 ```
 
@@ -169,8 +171,6 @@ The only repository-local agents are:
 
 - `fhir-agent`: FHIR specification research across supported versions.
 - `fhir-coordinator`: Coordinates FHIR research with marketplace ADR and implementation agents.
-
-The only repository-local skill is `mutation-coverage` (`.github/skills/mutation-coverage/`). It is repository-agnostic and incubating here before moving to the marketplace; Ignixa-specific settings live in the Mutation Testing section above.
 
 ## Git and Pull Requests
 

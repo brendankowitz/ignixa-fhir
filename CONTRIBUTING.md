@@ -36,7 +36,7 @@ cd test/Ignixa.FhirPath.Tests
 dotnet stryker -p Ignixa.FhirPath.csproj --since:main
 ```
 
-Coding agents should use the `mutation-coverage` skill in `.github/skills/mutation-coverage/`, which scopes runs, summarizes the report, and verifies that test changes lose no killed mutants.
+Coding agents should use the `mutation-coverage-next` skill from the `experimental@agent-marketplace` plugin (ask the maintainer to install it if missing), which scopes runs, summarizes the report, and verifies that test changes lose no killed mutants.
 
 ## Pull Request Process
 
