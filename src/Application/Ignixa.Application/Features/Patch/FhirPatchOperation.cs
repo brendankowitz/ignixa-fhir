@@ -1,4 +1,5 @@
-using System.Text.Json;
+using System.Collections.Generic;
+using System.Text.Json.Nodes;
 
 namespace Ignixa.Application.Features.Patch;
 
@@ -13,15 +14,51 @@ public record FhirPatchOperation
     public required FhirPatchOperationType Type { get; init; }
 
     /// <summary>
-    /// FHIRPath expression to target element (required for Add, Insert, Delete, Replace)
+    /// FHIRPath expression to target element (required for Add, Insert, Delete, Replace).
+    /// For an add with a 'name' part, this is the parent element.
     /// </summary>
     public string? Path { get; init; }
 
     /// <summary>
-    /// Value to set (required for Add, Insert, Replace; omit for Delete, Move)
-    /// Can be a primitive (string, int, bool) or a JsonElement for complex types
+    /// Name of the element to add beneath <see cref="Path"/> (the FHIRPath Patch 'name' part).
+    /// Null for Ignixa's path-only add shorthand, where <see cref="Path"/> already names the target element.
+    /// </summary>
+    public string? Name { get; init; }
+
+    /// <summary>
+    /// Value to add, insert or replace: a <see cref="JsonNode"/> parsed from the value[x] part, or a
+    /// primitive for internally constructed operations. Null when the value was supplied as
+    /// <see cref="ValueParts"/>, until <see cref="FhirPatchOperationResolver"/> builds it.
     /// </summary>
     public object? Value { get; init; }
+
+    /// <summary>
+    /// The value[x] type suffix the value was supplied as (e.g. "DateTime" for valueDateTime),
+    /// which names the concrete property when the target is a choice element.
+    /// </summary>
+    public string? ValueType { get; init; }
+
+    /// <summary>
+    /// Nested parts that describe an anonymous-type value (e.g. a BackboneElement such as List.entry)
+    /// instead of a value[x]. Resolved against the schema into <see cref="Value"/> before execution.
+    /// </summary>
+    public IReadOnlyList<FhirPatchValuePart>? ValueParts { get; init; }
+
+    /// <summary>
+    /// The parent object a 'name'-form add writes into, located by <see cref="FhirPatchOperationResolver"/>.
+    /// Null for every other operation.
+    /// </summary>
+    internal JsonObject? TargetParent { get; init; }
+
+    /// <summary>
+    /// The JSON property a 'name'-form add writes (the concrete choice property for choice elements).
+    /// </summary>
+    internal string? TargetProperty { get; init; }
+
+    /// <summary>
+    /// Whether the 'name'-form add target repeats, as declared by the schema. Null otherwise.
+    /// </summary>
+    internal bool? TargetIsCollection { get; init; }
 
     /// <summary>
     /// Index for Insert operation (0-based position)
@@ -45,7 +82,8 @@ public record FhirPatchOperation
 public enum FhirPatchOperationType
 {
     /// <summary>
-    /// Add a new element to a collection (0..* cardinality)
+    /// Add a named child beneath the path: appends to a repeating element, or sets an absent
+    /// non-repeating element. The path-only shorthand appends to the element the path names.
     /// </summary>
     Add,
 

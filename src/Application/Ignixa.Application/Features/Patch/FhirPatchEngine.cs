@@ -6,13 +6,13 @@ using System.Threading.Tasks;
 using Ignixa.Application.Features.Patch.Executors;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
+using ISchema = Ignixa.Abstractions.ISchema;
 
 namespace Ignixa.Application.Features.Patch;
 
 /// <summary>
 /// Applies FHIR Patch operations to a FHIR resource using strategy pattern.
 /// Uses in-place mutation of the internal JsonObject for efficiency.
-/// Refactored in Phase 2 to delegate to operation-specific executors.
 /// </summary>
 public class FhirPatchEngine
 {
@@ -30,10 +30,13 @@ public class FhirPatchEngine
     /// <summary>
     /// Apply patch operations to a resource using in-place mutation.
     /// Delegates to operation-specific executors via strategy pattern.
+    /// Spec-form operations ('name' part, anonymous-type values) are resolved against <paramref name="schema"/>
+    /// immediately before each one runs, so they see the result of the preceding operations.
     /// </summary>
     public async Task<ResourceJsonNode> ApplyPatchAsync(
         ResourceJsonNode resource,
         FhirPatchOperation[] operations,
+        ISchema schema,
         CancellationToken cancellationToken)
     {
         _logger.LogDebug("Applying {OperationCount} patch operations to {ResourceType}/{ResourceId}",
@@ -47,8 +50,13 @@ public class FhirPatchEngine
                 throw new FhirPatchException($"Unknown operation type: {operation.Type}");
             }
 
+            var resolved = FhirPatchOperationResolver.Resolve(resource, operation, schema);
+
             // Executor mutates resource in-place and returns the same instance
-            resource = await executor.ExecuteAsync(resource, operation, cancellationToken);
+            resource = await executor.ExecuteAsync(resource, resolved, cancellationToken);
+
+            // Cached element views must not hide this operation's writes from the next one.
+            resource.InvalidateCaches();
         }
 
         _logger.LogDebug("Successfully applied {OperationCount} patch operations",

@@ -187,6 +187,49 @@ public class BundleProcessorTests
         harness.ExecutedEntries.ShouldBe(0);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("not json")]
+    [InlineData("""{"resourceType":"Patient","id":"p"}""")]
+    [InlineData("""{"resourceType":"OperationOutcome","issue":[1,"x"]}""")]
+    [InlineData("""{"resourceType":"OperationOutcome","issue":[],"issue":[]}""")]
+    public void GivenUndecodableFailureBody_WhenReadingEntryIssues_ThenNoIssuesAreReturnedAndNothingThrows(string? body)
+    {
+        // Arrange
+        var harness = new ProcessorHarness();
+        var response = new BundleEntryResponse { StatusCode = 412, Status = "412 Precondition Failed", ResourceJson = body };
+
+        // Act
+        var issues = harness.Processor.ReadEntryIssues(CreateEntry(0, "PATCH"), response);
+
+        // Assert
+        issues.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenOperationOutcomeBody_WhenReadingEntryIssues_ThenEntryIssuesAreReturnedInOrder()
+    {
+        // Arrange
+        var harness = new ProcessorHarness();
+        var response = new BundleEntryResponse
+        {
+            StatusCode = 412,
+            Status = "412 Precondition Failed",
+            ResourceJson = """
+                {"resourceType":"OperationOutcome","issue":[
+                  {"severity":"error","code":"conflict","diagnostics":"first"},
+                  {"severity":"error","code":"conflict","diagnostics":"second"}]}
+                """,
+        };
+
+        // Act
+        var issues = harness.Processor.ReadEntryIssues(CreateEntry(0, "PATCH"), response).ToList();
+
+        // Assert
+        issues.Select(i => i.Diagnostics).ShouldBe(["first", "second"]);
+    }
+
     private static BundleEntryContext CreateEntry(int index, string method = "GET") =>
         new()
         {
