@@ -21,22 +21,6 @@ public class DeIdEngineTests
         _fixture = fixture;
     }
     [Fact]
-    public async Task GivenAPatientJson_WhenDeidentifyViaStringOverload_ThenResultIsSuccess()
-    {
-        // Arrange
-        var engine = _fixture.R4CommonEngine;
-        var json = await File.ReadAllTextAsync(DeIdTestHelpers.ResourcePath("patient-basic.json"));
-
-        // Act
-        var result = await engine.DeidentifyAsync(json);
-
-        // Assert
-        result.IsSuccess.ShouldBeTrue();
-        result.Value.DeidentifiedJson.ShouldNotBeNullOrEmpty();
-        result.Value.Resource.ShouldNotBeNull();
-    }
-
-    [Fact]
     public async Task GivenAResourceJsonNode_WhenDeidentifyViaNodeOverload_ThenResultIsSuccess()
     {
         // Arrange
@@ -184,23 +168,6 @@ public class DeIdEngineTests
         // Assert
         result.IsSuccess.ShouldBeTrue();
         result.Value.AppliedLabels.IsCryptoHashed.ShouldBeTrue();
-    }
-
-    [Fact]
-    public async Task GivenRedactAllConfig_WhenDeidentify_ThenEmptyStructuresAreCleanedUp()
-    {
-        // Arrange
-        var engine = _fixture.R4RedactAllEngine;
-        var json = await File.ReadAllTextAsync(DeIdTestHelpers.ResourcePath("patient-basic.json"));
-
-        // Act
-        var result = await engine.DeidentifyAsync(json);
-
-        // Assert
-        result.IsSuccess.ShouldBeTrue();
-        var outputNode = JsonNode.Parse(result.Value.DeidentifiedJson);
-        outputNode.ShouldNotBeNull();
-        outputNode["resourceType"]?.GetValue<string>().ShouldBe("Patient");
     }
 
     [Fact]

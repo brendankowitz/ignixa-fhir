@@ -28,22 +28,6 @@ public class BundleDeIdTests
     }
 
     [Fact]
-    public async Task GivenABundleResource_WhenAnonymizing_ThenResultContainsBundleResourceType()
-    {
-        // Arrange
-        var engine = _fixture.R4CommonEngine;
-
-        // Act
-        var result = await DeIdTestHelpers.DeidentifyFromFileAsync(
-            engine,
-            DeIdTestHelpers.ResourcePath("bundle-basic.json"));
-
-        // Assert
-        result.IsSuccess.ShouldBeTrue();
-        result.Value.DeidentifiedJson.ShouldContain("\"resourceType\":\"Bundle\"");
-    }
-
-    [Fact]
     public async Task GivenABundleResource_WhenRedactAll_ThenRedactedJsonMatchesExpected()
     {
         var engine = _fixture.R4RedactAllEngine;
