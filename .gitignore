@@ -368,3 +368,6 @@ claude-kimi.ps1
 
 # Scratch samples/exploration, not part of the shipped solution
 /samples/
+
+# Stryker mutation testing output
+StrykerOutput/
