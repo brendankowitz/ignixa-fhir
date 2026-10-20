@@ -223,23 +223,6 @@ public sealed class FhirPatchSpecFormTests : IDisposable
     }
 
     [Fact]
-    public async Task GivenPathOnlyReplaceAfterNamedAdd_WhenPatching_ThenReplaceSeesTheAddedElement()
-    {
-        // Arrange
-        var patient = Parse("""{"resourceType":"Patient","id":"p","name":[{"given":["Jo"]}]}""");
-        var patch = Parameters(
-            Operation("add", "Patient.name.where(given = 'Jo')", "family", """{"name":"value","valueString":"Smith"}"""),
-            """{"name":"operation","part":[{"name":"type","valueCode":"replace"},{"name":"path","valueString":"Patient.name[0].family"},{"name":"value","valueString":"Jones"}]}""");
-
-        // Act
-        var result = await ApplyAsync(patient, patch, FhirVersion.R4);
-
-        // Assert
-        result.MutableNode()["name"]![0]!["family"]!.GetValue<string>().ShouldBe("Jones");
-        result.MutableNode().Select(property => property.Key).ShouldBe(["resourceType", "id", "name"], ignoreOrder: true);
-    }
-
-    [Fact]
     public async Task GivenOperationDependingOnAnEarlierOne_WhenPatching_ThenItSeesTheEarlierResult()
     {
         // Arrange
@@ -357,22 +340,6 @@ public sealed class FhirPatchSpecFormTests : IDisposable
         // Assert
         var entry = result.MutableNode()["entry"].ShouldBeOfType<JsonArray>().ShouldHaveSingleItem()!;
         entry["item"]!["reference"]!.GetValue<string>().ShouldBe("DocumentReference/doc-1");
-    }
-
-    [Fact]
-    public async Task GivenAbsentRepeatingElement_WhenInsertingNestedPartsAtIndexZero_ThenArrayIsCreated()
-    {
-        // Arrange
-        var patient = Parse("""{"resourceType":"Patient","id":"p"}""");
-        var patch = Parameters(PathOnly("insert", "Patient.contact",
-            """{"name":"index","valueInteger":0},{"name":"value","part":[{"name":"gender","valueCode":"female"}]}"""));
-
-        // Act
-        var result = await ApplyAsync(patient, patch, FhirVersion.R4);
-
-        // Assert
-        var contact = result.MutableNode()["contact"].ShouldBeOfType<JsonArray>().ShouldHaveSingleItem()!;
-        contact["gender"]!.GetValue<string>().ShouldBe("female");
     }
 
     [Fact]

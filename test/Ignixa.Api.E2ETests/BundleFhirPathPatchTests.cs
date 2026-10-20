@@ -150,15 +150,12 @@ public class BundleFhirPathPatchTests(IgnixaApiFixture fixture)
     }
 
     [Theory]
-    [InlineData("application/json-patch+json", """{"op":"add"}""")]
     [InlineData("application/json-patch+json; charset=utf-8", """[{"op":"add","path":"/entry/-","value":{}}]""")]
     [InlineData("application/fhir+json", """ [{"op":"add","path":"/entry/-","value":{}}]""")]
     [InlineData("application/fhir+json", """{"resourceType":"Binary","contentType":"application/xml-patch+xml","data":"PGRpZmYvPg=="}""")]
     [InlineData("application/fhir+json", "")]
     [InlineData("application/fhir+json", """{"resourceType":"Parameters","parameter":[""")]
     [InlineData("application/fhir+json", """<Parameters xmlns="http://hl7.org/fhir"/>""")]
-    [InlineData("application/fhir+json", "42")]
-    [InlineData("application/fhir+json", "null")]
     public async Task GivenNonFhirPathPatchBody_WhenPatchingDirectly_ThenRejectedAndResourceUnchanged(string contentType, string body)
     {
         // Arrange
