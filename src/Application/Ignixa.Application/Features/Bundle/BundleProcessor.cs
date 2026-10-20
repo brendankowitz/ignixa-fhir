@@ -292,7 +292,7 @@ public class BundleProcessor
     /// Copies the issues of a failed entry's OperationOutcome so the transaction failure explains the cause.
     /// The failure itself must survive an undecodable body, so decoding problems are logged rather than thrown.
     /// </summary>
-    private IEnumerable<FhirOperationOutcomeIssue> ReadEntryIssues(BundleEntryContext entry, BundleEntryResponse response)
+    internal IEnumerable<FhirOperationOutcomeIssue> ReadEntryIssues(BundleEntryContext entry, BundleEntryResponse response)
     {
         if (string.IsNullOrWhiteSpace(response.ResourceJson))
         {

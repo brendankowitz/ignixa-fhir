@@ -225,6 +225,91 @@ public class BundleFhirPathPatchTests(IgnixaApiFixture fixture)
         ListReferences(version).ShouldBe(["Patient/direct"]);
     }
 
+    [Fact]
+    public async Task GivenTenantQualifiedRoute_WhenPatchingDirectly_ThenLocationKeepsTenantPrefix()
+    {
+        // Arrange
+        var ids = new TestIds();
+        using (var created = await fixture.Client.PutAsync($"/tenant/1/List/{ids.List}", FhirContent(List(ids.List))))
+        {
+            created.StatusCode.ShouldBe(HttpStatusCode.Created, await created.Content.ReadAsStringAsync());
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Patch, $"/tenant/1/List/{ids.List}")
+        {
+            Content = FhirContent(AppendToList("Patient/direct"))
+        };
+
+        // Act
+        using var response = await fixture.Client.SendAsync(request);
+
+        // Assert
+        await ReadJsonAsync(response, HttpStatusCode.OK);
+        response.Headers.Location!.AbsolutePath.ShouldBe($"/tenant/1/List/{ids.List}/_history/2");
+    }
+
+    [Fact]
+    public async Task GivenMissingTarget_WhenTransactionPatchesIt_ThenReturnsNotFoundAndCommitsNothing()
+    {
+        // Arrange
+        var ids = new TestIds();
+
+        // Act
+        using var response = await SendBundleAsync("transaction",
+            PutEntry(Patient(ids.Patient)),
+            PatchEntry($"List/{ids.List}", null, AppendToList($"Patient/{ids.Patient}")));
+
+        // Assert
+        await ReadJsonAsync(response, HttpStatusCode.NotFound);
+        (await fixture.Client.GetAsync($"/Patient/{ids.Patient}")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task GivenPatchThatCannotApply_WhenTransactionSubmitted_ThenReturnsBadRequestWithCauseAndCommitsNothing()
+    {
+        // Arrange
+        var ids = new TestIds();
+        await CreateListAsync(ids.List);
+        var addExistingStatus = Operation("add", "List", "status", new JsonObject { ["name"] = "value", ["valueCode"] = "retired" });
+
+        // Act
+        using var response = await SendBundleAsync("transaction",
+            PutEntry(Patient(ids.Patient)),
+            PatchEntry($"List/{ids.List}", null, addExistingStatus));
+
+        // Assert
+        var outcome = await ReadJsonAsync(response, HttpStatusCode.BadRequest);
+        Diagnostics(outcome).ShouldContain(d => d.Contains("does not repeat and already has a value", StringComparison.Ordinal));
+        (await fixture.Client.GetAsync($"/Patient/{ids.Patient}")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await ReadAsync($"List/{ids.List}"))["meta"]!["versionId"]!.GetValue<string>().ShouldBe("1");
+    }
+
+    [Theory]
+    [InlineData("replace", "List.id", null, "other-id")]
+    [InlineData("replace", "List.meta.versionId", null, "99")]
+    [InlineData("replace", "List.meta.lastUpdated", null, "2000-01-01T00:00:00Z")]
+    [InlineData("add", "List", "id", "other-id")]
+    public async Task GivenPatchTargetingProtectedElement_WhenPatchingDirectly_ThenRejectedAndResourceUnchanged(
+        string type, string path, string? name, string value)
+    {
+        // Arrange
+        var ids = new TestIds();
+        await CreateListAsync(ids.List);
+        using var request = new HttpRequestMessage(HttpMethod.Patch, $"/List/{ids.List}")
+        {
+            Content = FhirContent(Operation(type, path, name, new JsonObject { ["name"] = "value", ["valueString"] = value }))
+        };
+
+        // Act
+        using var response = await fixture.Client.SendAsync(request);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await response.Content.ReadAsStringAsync());
+        var list = await ReadAsync($"List/{ids.List}");
+        list["id"]!.GetValue<string>().ShouldBe(ids.List);
+        list["meta"]!["versionId"]!.GetValue<string>().ShouldBe("1");
+    }
+
     private async Task<string> CreateListAsync(string id)
     {
         using var response = await fixture.Client.PutAsync($"/List/{id}", FhirContent(List(id)));
@@ -268,11 +353,38 @@ public class BundleFhirPathPatchTests(IgnixaApiFixture fixture)
         ["request"] = new JsonObject { ["method"] = "PUT", ["url"] = $"{resource["resourceType"]}/{resource["id"]}" },
     };
 
-    private static JsonObject PatchEntry(string url, string ifMatch, JsonObject resource) => new()
+    private static JsonObject PatchEntry(string url, string? ifMatch, JsonObject resource)
     {
-        ["resource"] = resource,
-        ["request"] = new JsonObject { ["method"] = "PATCH", ["url"] = url, ["ifMatch"] = ifMatch },
-    };
+        var request = new JsonObject { ["method"] = "PATCH", ["url"] = url };
+        if (ifMatch != null)
+        {
+            request["ifMatch"] = ifMatch;
+        }
+
+        return new JsonObject { ["resource"] = resource, ["request"] = request };
+    }
+
+    private static JsonObject Operation(string type, string path, string? name = null, JsonNode? valuePart = null)
+    {
+        var parts = new JsonArray(
+            new JsonObject { ["name"] = "type", ["valueCode"] = type },
+            new JsonObject { ["name"] = "path", ["valueString"] = path });
+        if (name != null)
+        {
+            parts.Add(new JsonObject { ["name"] = "name", ["valueString"] = name });
+        }
+
+        if (valuePart != null)
+        {
+            parts.Add(valuePart);
+        }
+
+        return new JsonObject
+        {
+            ["resourceType"] = "Parameters",
+            ["parameter"] = new JsonArray(new JsonObject { ["name"] = "operation", ["part"] = parts }),
+        };
+    }
 
     /// <summary>
     /// FHIRPath Patch appending one List.entry per reference; List.entry is a BackboneElement, so each
