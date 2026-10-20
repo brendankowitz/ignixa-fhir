@@ -138,8 +138,6 @@ public static class FhirPatchOperationResolver
 
     private static List<IElement> Evaluate(ResourceJsonNode resource, ISchema schema, string path)
     {
-        // Earlier operations in the same patch may have changed the resource.
-        resource.InvalidateCaches();
         try
         {
             return resource.ToElement(schema).Select(path).ToList();
