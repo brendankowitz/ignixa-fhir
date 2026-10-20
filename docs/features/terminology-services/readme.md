@@ -21,7 +21,8 @@ FHIR Terminology operations ($expand, $validate-code, $lookup, $translate, $subs
 | [terminology-operations](investigations/terminology-operations.md) | Viable | 3-phase implementation: MVP (2-3 weeks), Production (4-6 weeks), Advanced (optional) |
 | [new-design](investigations/new-design.md) | Proposed | FHIR terminology import strategy with background processing and hybrid storage |
 | [sql-design](investigations/sql-design.md) | Proposed | SQL-optimized ValueSet expansion with property/ancestry indexes for LOINC/SNOMED performance |
+| [composable-operations](investigations/composable-operations.md) | Proposed | Candidate internal sub-operation compositions, operation-semantic risks, and gaps in current operation coverage |
 
 ## Decision
 
-*No ADR yet - investigations in progress*
+The proposed direction for composing terminology operations is recorded in [ADR-2610](../../adr/adr-2610-composable-terminology-operations.md). The broader terminology-service architecture remains under investigation.
