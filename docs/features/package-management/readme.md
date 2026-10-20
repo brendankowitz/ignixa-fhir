@@ -1,6 +1,6 @@
 # Feature: Package Management
 
-**Status**: Proposed
+**Status**: Decided (lifecycle ADR Proposed; not implemented)
 **Created**: 2025-10-08
 
 ## Problem Statement
@@ -31,7 +31,17 @@ FHIR servers need to support loading Implementation Guides (IGs), profiles, exte
 | [version-conversion](investigations/version-conversion.md) | Viable | FHIR version conversion and multi-version support |
 | [packaging-strategy](investigations/packaging-strategy.md) | Viable | Overall packaging strategy and approach |
 | [valueset-migration](investigations/valueset-migration.md) | Viable | ValueSet provider migration plan |
+| [reliable-package-lifecycle](investigations/reliable-package-lifecycle.md) | Merged into proposed ADR | Evidence-backed comparison with dotnet-fhir-packages: durable completion, dependency planning, verified acquisition integration, and visible outcomes |
+
+The earlier investigations describe historical designs, not a census of the current
+implementation. In particular, transitive dependency loading and verified acquisition
+now exist. The lifecycle investigation records the 2026-10-20 baseline and distinguishes
+remaining gaps from capabilities already implemented.
 
 ## Decision
 
-*No ADR yet - investigations in progress*
+[ADR-2610: Reliable Package Lifecycle](adr-2610-reliable-package-lifecycle.md) proposes
+evolving the existing package infrastructure with explicit planning, installation
+completion, and activation boundaries. The ADR is **Proposed**, not accepted or
+implemented. It addresses lifecycle reliability; the other investigations' broader
+hosting, terminology, conversion, and schema-extensibility proposals remain separate.
