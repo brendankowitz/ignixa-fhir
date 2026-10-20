@@ -13,6 +13,7 @@ public class PerturbSettingTests
     public static IEnumerable<object[]> GetPerturbFhirRuleConfigs()
     {
         yield return [new Dictionary<string, object> { { "path", "Condition.onset" }, { "method", "perturb" }, { "span", 1 } }, 1d, 2, PerturbRangeType.Fixed];
+        yield return [new Dictionary<string, object> { { "path", "Condition.onset" }, { "span", 0 }, { "roundTo", 0 } }, 0d, 0, PerturbRangeType.Fixed];
         yield return [new Dictionary<string, object> { { "path", "Condition.onset" }, { "method", "perturb" }, { "span", "1" }, { "roundTo", 28 } }, 1d, 28, PerturbRangeType.Fixed];
         yield return [new Dictionary<string, object> { { "path", "Condition.onset" }, { "method", "perturb" }, { "span", 0.1 }, { "rangeType", "Proportional" } }, 0.1d, 2, PerturbRangeType.Proportional];
         yield return [new Dictionary<string, object> { { "path", "Condition.onset" }, { "method", "perturb" }, { "span", 0.1 }, { "roundTo", 10 }, { "rangeType", "Proportional" } }, 0.1d, 10, PerturbRangeType.Proportional];
@@ -38,6 +39,7 @@ public class PerturbSettingTests
         PerturbRangeType expectedRangeType)
     {
         // Act
+        PerturbSetting.ValidateRuleSettings(config);
         var perturbSetting = PerturbSetting.CreateFromRuleSettings(config);
 
         // Assert
