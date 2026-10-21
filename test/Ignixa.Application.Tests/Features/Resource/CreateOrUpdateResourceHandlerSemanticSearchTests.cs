@@ -218,6 +218,7 @@ public class CreateOrUpdateResourceHandlerSemanticSearchTests
                 contextAccessor,
                 versionContext,
                 schemaResolverFactory,
+                new ResourceElementOrdering(new SerializationOptions()),
                 NullLogger<CreateOrUpdateResourceHandler>.Instance,
                 semanticIndexer);
         }

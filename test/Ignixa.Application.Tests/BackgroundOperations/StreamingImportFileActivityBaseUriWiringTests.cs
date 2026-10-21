@@ -134,6 +134,7 @@ public class StreamingImportFileActivityBaseUriWiringTests
             blobs,
             new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Import:ConsumerCount"] = "1" }).Build(),
             accessor,
+            new ResourceElementOrdering(new SerializationOptions()),
             NullLogger<StreamingImportFileActivity>.Instance);
 
         var input = new StreamingImportFileInput

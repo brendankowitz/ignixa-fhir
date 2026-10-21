@@ -10,6 +10,7 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Ignixa.Abstractions;
 using Ignixa.Models;
+using Ignixa.Serialization.Extensions;
 
 // For ToElement extension method
 
@@ -171,6 +172,21 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
         _cachedElement = ToSourceNavigator().ToElement(schema);
         _cachedProvider = schema;
         return _cachedElement;
+    }
+
+    /// <summary>
+    /// Reorders this resource's properties in place into StructureDefinition element order.
+    /// Properties the schema does not describe move after known elements.
+    /// </summary>
+    /// <param name="schema">Schema for the resource's FHIR version.</param>
+    public void OrderElements(ISchema schema)
+    {
+        ArgumentNullException.ThrowIfNull(schema);
+
+        if (JsonObjectElementOrderer.Order(MutableNode, schema))
+        {
+            InvalidateCaches();
+        }
     }
 
     /// <summary>

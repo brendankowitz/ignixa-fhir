@@ -49,6 +49,7 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
     private readonly IBlobStorageClient _blobStorageClient;
     private readonly IConfiguration _configuration;
     private readonly IFhirRequestContextAccessor _fhirContextAccessor;
+    private readonly ResourceElementOrdering _elementOrdering;
     private readonly ILogger<StreamingImportFileActivity> _logger;
 
     public StreamingImportFileActivity(
@@ -58,6 +59,7 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
         IBlobStorageClient blobStorageClient,
         IConfiguration configuration,
         IFhirRequestContextAccessor fhirContextAccessor,
+        ResourceElementOrdering elementOrdering,
         ILogger<StreamingImportFileActivity> logger)
     {
         _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
@@ -66,6 +68,7 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
         _blobStorageClient = blobStorageClient ?? throw new ArgumentNullException(nameof(blobStorageClient));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _fhirContextAccessor = fhirContextAccessor ?? throw new ArgumentNullException(nameof(fhirContextAccessor));
+        _elementOrdering = elementOrdering ?? throw new ArgumentNullException(nameof(elementOrdering));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -207,6 +210,14 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                             if (validOperations.Count > 0)
                             {
                                 pipelineCancellation.Token.ThrowIfCancellationRequested();
+
+                                // Outside PrepareResource's parse-error catch: an ordering failure is a server
+                                // defect and must fail the import rather than be reported as bad input.
+                                foreach (var operation in validOperations)
+                                {
+                                    OrderForStorage(operation.resourceType, operation.resourceId, operation.resource, schemaProvider);
+                                }
+
                                 _logger.LogDebug(
                                     "Consumer {ConsumerId} executing batch of {Count} resources",
                                     consumerId, validOperations.Count);
@@ -345,6 +356,26 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                 "Producer finished: {LineNumber} lines read from {FileUrl}",
                 lineNumber,
                 fileUrl);
+        }
+    }
+
+    /// <summary>
+    /// Orders a prepared resource, naming it in any failure so the offending resource can be found.
+    /// </summary>
+    private void OrderForStorage(
+        string resourceType,
+        string resourceId,
+        ResourceJsonNode resource,
+        IFhirSchemaProvider schemaProvider)
+    {
+        try
+        {
+            _elementOrdering.OrderForStorage(resource, schemaProvider);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Element ordering failed for {resourceType}/{resourceId}.", ex);
         }
     }
 

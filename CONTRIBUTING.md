@@ -26,6 +26,18 @@ dotnet build All.sln
 dotnet test All.sln --filter "FullyQualifiedName!~E2ETests"
 ```
 
+### Mutation Testing
+
+[Stryker.NET](https://stryker-mutator.io/docs/stryker-net/introduction/) is pinned as a local tool. Run it from a test project directory, naming the production project to mutate:
+
+```bash
+dotnet tool restore
+cd test/Ignixa.FhirPath.Tests
+dotnet stryker -p Ignixa.FhirPath.csproj --since:main
+```
+
+Coding agents should use the `mutation-coverage-next` skill from the `experimental@agent-marketplace` plugin (ask the maintainer to install it if missing), which scopes runs, summarizes the report, and verifies that test changes lose no killed mutants.
+
 ## Pull Request Process
 
 1.  Ensure all tests pass.
