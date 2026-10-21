@@ -74,7 +74,7 @@ public interface ITerminologySource
 {
     string Name { get; }  // diagnostics only: "sql", "package", later "remote:<host>"
 
-    ValueTask<SourceCoverage> GetCoverageAsync(CanonicalRef canonical, CancellationToken cancellationToken);
+    ValueTask<SourceCoverage> GetCoverageAsync(CanonicalKind kind, CanonicalRef canonical, CancellationToken cancellationToken);
 
     Task<ConceptLookup> LookupAsync(CodeRef code, LookupOptions options, CancellationToken cancellationToken);
     Task<Membership> ContainsAsync(CodeRef code, CancellationToken cancellationToken);                       // code exists in CodeSystem
@@ -87,7 +87,7 @@ public interface ITerminologySource
 }
 ```
 
-`SourceCoverage` is `Authoritative`, `Partial`, or `None`. `Authoritative` means the source holds a complete CodeSystem version (for SQL, `TerminologyImportStatus.Completed`). `Partial` means it knows some concepts but cannot enumerate the system, such as package knowledge of a SNOMED subset. `None` means it does not know the canonical.
+`SourceCoverage` is `Authoritative`, `Partial`, or `None`; `CanonicalKind` is `CodeSystem`, `ValueSet`, or `ConceptMap`. This is the target shape. Each method is added in the phase that first uses it: Phase 1 adds coverage, lookup, contains, and subsumes; Phase 2 adds `MatchesIncludeAsync` and `ResolveValueSetAsync`; Phase 4 adds `SelectAsync` and `TryComposeWholeAsync`; and Phase 5 adds `FindConceptMapsAsync`. `Authoritative` means the source holds a complete CodeSystem version (for SQL, `TerminologyImportStatus.Completed`). `Partial` means it knows some concepts but cannot enumerate the system, such as package knowledge of a SNOMED subset. `None` means it does not know the canonical.
 
 `ValueSetDefinition` is either `Composed(compose)` or `Enumerated(codes)`. SQL returns `Composed`, while the package source returns `Enumerated` because its provider holds only pre-expanded lists (§7).
 
@@ -104,7 +104,9 @@ public sealed record UnknownReason(UnknownKind Kind, string Subject, string Deta
 public enum UnknownKind { SystemNotAvailable, SystemVersionNotAvailable, ValueSetNotFound, UnsupportedFilter, NonEnumerableSystem, BudgetExceeded, SourceFailed }
 ```
 
-The breaking changes to `ITerminologyService` are:
+The breaking changes to `ITerminologyService` land **one operation at a time**, each in the phase that implements that operation's composition (§9). This keeps every phase reviewable. The cost is that `Ignixa.Validation` takes several breaking changes rather than one, so release notes collect them. Until its phase lands, each not-yet-migrated operation (ValueSet validate-code, expand, translate) keeps its current signature and Hybrid-style whole-call routing through a transitional `ILegacyValueSetOperations` interface on each source. That interface is removed in Phase 5.
+
+The target shape is:
 
 | Today | New |
 |---|---|
@@ -121,7 +123,14 @@ Severity mapping (`Determination` → `IssueSeverity`) is owned by the validator
 
 ### 4.1 Routing
 
-`SourceRouter` is an internal helper of the composer. It chooses sources for each canonical by trying them in registration order: SQL, then package, then later remote. The first `Authoritative` source wins. If none is authoritative, the router uses `Partial` sources and adds `NonEnumerableSystem` to `Unknowns` because a negative answer cannot be authoritative. If no source has coverage, the answer is `Unknown(SystemNotAvailable)`. Coverage lookups are memoized for the lifetime of one request, not across requests, because imports change coverage.
+`SourceRouter` is an internal helper of the composer. Sources are consulted in registration order: SQL, then package, then later remote.
+
+- `GetCoverageAsync(kind, canonical)` returns `Authoritative` when the source holds the complete CodeSystem, ValueSet, or ConceptMap. For SQL, that means import status is `Completed`; for the package source, it means `IsKnownValueSet` returns true for a ValueSet. Otherwise, it returns `Partial` if the source might answer for individual codes, or `None`.
+- If any source is `Authoritative`, that source alone answers, and its `False` is final.
+- Otherwise, each `Partial` source is asked in order. The first non-`Unknown` answer wins. A partial source reports `False` only when it truly knows the answer; for example, the package provider's `ContainsCode` returns `false` for a non-NonEnumerable system. It reports `Unknown` otherwise.
+- If every source returns `Unknown` or `None`, the result is `Unknown`, and the combined reasons are returned. If there are no reasons, the reason is `SystemNotAvailable`.
+
+Coverage lookups are memoized only within one request, because imports change coverage.
 
 ### 4.2 Operation decompositions
 
@@ -185,7 +194,8 @@ STU3 is not supported by these endpoints. The STU3 `$compose` naming difference 
 
 Consequences:
 
-- CodeSystem coverage: `ContainsCode` returns `true` or `false` → `Authoritative` for that system. It returns `null` → `None`. Systems in `NonEnumerableSystems` (SNOMED, LOINC, UCUM, …) are always at most `Partial`, so a package miss for them is `Unknown(NonEnumerableSystem)`. This preserves today's validator behaviour.
+- CodeSystem coverage is always `Partial`, because the provider can answer only per code. For each code, `ContainsCode` → `true` gives `True`; `false` gives `False`, except for `NonEnumerableSystems` such as SNOMED, LOINC, and UCUM, which give `Unknown(NonEnumerableSystem)`; and `null` gives `Unknown(SystemNotAvailable)`. This preserves today's validator behaviour.
+- ValueSet coverage: `IsKnownValueSet(url)` → `Authoritative`; otherwise → `None`.
 - `ResolveValueSetAsync` returns an **enumerated** `ValueSetDefinition`, which is a code list rather than a compose. The composer evaluates membership directly, and `$expand` can page over it.
 - `SelectAsync` over a package CodeSystem supports only explicit `concept` lists. Every filter (`is-a`, `=`, `regex`, …) returns `UnknownReason(UnsupportedFilter)`.
 - `SubsumesAsync` returns `Undetermined(UnsupportedFilter)` instead of today's unconditional `not-subsumed`. Adding hierarchy to `ICodeSystemProvider` is a separate, additive change and is out of scope here.
@@ -208,7 +218,7 @@ Each phase builds, passes tests, and can merge on its own.
 | Phase | Scope | Key tests |
 |---|---|---|
 | **0. Groundwork** | Delete stale `Application.Operations` terminology handlers. Add value types (`CodeRef`, `CanonicalRef`, `Determination`, `UnknownReason`). Add `ITerminologySource` and `SourceRouter`. | Invariant tests on value types; router coverage precedence |
-| **1. Contract break + composer skeleton** | New `ITerminologyService` shape. Add `ComposingTerminologyService` with lookup, CodeSystem validate-code, and subsumes. Adapt `SqlTerminologySource` and `PackageTerminologySource`. Delete `HybridTerminologyService`. Port `BindingCheck`, `ConceptMapResolverService`, and the existing handlers. | All existing validation and binding tests unchanged (guards); unknown-vs-false subsumption regression; mixed-source lookup |
+| **1. Contract break (lookup, subsumes, CodeSystem validate) + composer** | Change those three `ITerminologyService` signatures. Add `ComposingTerminologyService`, with `ILegacyValueSetOperations` pass-through for ValueSet validate, expand, and translate. Add `SqlTerminologySource` and `PackageTerminologySource`. Delete `HybridTerminologyService`. Port handlers, `BindingCheck`, and `InMemoryTerminologyService`. Update `docs/site` SDK example. | All existing validation and binding tests unchanged (guards); unknown-vs-false subsumption regression; mixed-source lookup |
 | **2. ValueSet `$validate-code` (targeted)** | Compose evaluation with `MatchesIncludeAsync`, imports, excludes, cycle and budget handling, display check, and Coding/CodeableConcept. | **Mixed-source ValueSet regression** (fails on base); cycle; exclude precedence; unknown system → result=false + message |
 | **3. Public lookup + validate-code endpoints; Parameters reader/writer** | GET/POST type and instance routes; remove JSON DTOs; OperationOutcome mapping. | Endpoint tests per route, tenant and agnostic; malformed Parameters → 400 |
 | **4. `$expand` R4 correctness** | Pushdown-or-compose; `NotExpandable` → 422; remove `Incomplete`; POST with inline `valueSet`; `valueSetVersion`. | Regression: unresolved system returns error instead of partial expansion; nested imports; paging/total |
@@ -232,7 +242,7 @@ Phases 2–6 depend on 1 and are otherwise independent. Phase 7 depends on 3–5
 
 | Risk | Mitigation |
 |---|---|
-| Breaking `Ignixa.Validation` affects SDK consumers | Single-phase contract change (Phase 1) with release notes; `ValidateBindingAsync` behaviour pinned by existing guards |
+| Breaking `Ignixa.Validation` affects SDK consumers | Contract changes are staged per phase (1: lookup/subsumes/CodeSystem validate; 2: ValueSet validate; 4: expand; 5: translate), each with release notes and an update to the `docs/site` custom-service example. `ValidateBindingAsync` behaviour is pinned by existing guards. |
 | Validator behaviour drifts when Unknown replaces success-shaped Warnings | Phase 1 maps Unknown to the exact current Warning text; snapshot guards on `BindingCheck` |
 | In-composer expansion of large non-pushdown ValueSets | Budget cap, then `BudgetExceeded` → 422 `too-costly`; pushdown whenever one source owns everything |
 | `MatchesIncludeAsync` SQL performance on SNOMED-scale `is-a` | Uses existing ancestry walk over `ParentConceptId`; measure on the imported SNOMED fixture before merging Phase 2 |
