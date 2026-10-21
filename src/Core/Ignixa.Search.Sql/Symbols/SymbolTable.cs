@@ -16,6 +16,7 @@ internal sealed class SymbolTable
     private readonly IReadOnlyDictionary<string, int?> _systemIds;
     private readonly IReadOnlyDictionary<string, int?> _quantityCodeIds;
     private readonly IReadOnlyDictionary<(string SourceResourceType, string ReferencePath), SearchParameterInfo> _notReferencedPaths;
+    private readonly IReadOnlyDictionary<string, short?> _embeddingModelIds;
 
     public SymbolTable(
         IReadOnlyDictionary<string, short> searchParamIds,
@@ -23,7 +24,8 @@ internal sealed class SymbolTable
         IReadOnlyDictionary<string, IReadOnlyList<(SearchParameterInfo Parameter, IReadOnlyList<string> ResourceTypes)>>? compartmentMembership = null,
         IReadOnlyDictionary<string, int?>? systemIds = null,
         IReadOnlyDictionary<string, int?>? quantityCodeIds = null,
-        IReadOnlyDictionary<(string SourceResourceType, string ReferencePath), SearchParameterInfo>? notReferencedPaths = null)
+        IReadOnlyDictionary<(string SourceResourceType, string ReferencePath), SearchParameterInfo>? notReferencedPaths = null,
+        IReadOnlyDictionary<string, short?>? embeddingModelIds = null)
     {
         _searchParamIds = searchParamIds;
         _resourceTypeIds = resourceTypeIds;
@@ -31,6 +33,7 @@ internal sealed class SymbolTable
         _systemIds = systemIds ?? new Dictionary<string, int?>();
         _quantityCodeIds = quantityCodeIds ?? new Dictionary<string, int?>();
         _notReferencedPaths = notReferencedPaths ?? new Dictionary<(string, string), SearchParameterInfo>();
+        _embeddingModelIds = embeddingModelIds ?? new Dictionary<string, short?>();
     }
 
     /// <summary>
@@ -110,4 +113,13 @@ internal sealed class SymbolTable
         => _quantityCodeIds.TryGetValue(code, out var id)
             ? id
             : throw new KeyNotFoundException($"SymbolTable has no QuantityCodeId for '{code}' -- Resolve should have collected every quantity code Lower will need.");
+
+    /// <summary>
+    /// Looks up an embedding model's surrogate id. A present key returns the stored nullable value
+    /// (<see langword="null"/> = collected but no <c>dbo.EmbeddingModel</c> row); throws when never collected.
+    /// </summary>
+    public short? EmbeddingModelId(string modelKey)
+        => _embeddingModelIds.TryGetValue(modelKey, out var id)
+            ? id
+            : throw new KeyNotFoundException($"SymbolTable has no EmbeddingModelId for '{modelKey}' -- Resolve should have collected every prepared semantic query's model key.");
 }

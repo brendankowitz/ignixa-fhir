@@ -55,6 +55,7 @@ const sidebars = {
         'server/features/ttl',
         'server/features/mcp-server',
         'server/features/subscriptions',
+        'server/features/semantic-search',
       ],
     },
     {

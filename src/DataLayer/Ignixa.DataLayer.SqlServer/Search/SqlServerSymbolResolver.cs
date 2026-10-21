@@ -35,4 +35,12 @@ public sealed class SqlServerSymbolResolver(SqlServerSearchIndexReferenceDataCac
 
     public Task<int?> GetQuantityCodeIdAsync(string code, CancellationToken cancellationToken)
         => _cache.TryGetQuantityCodeIdAsync(code, cancellationToken);
+
+    /// <summary>
+    /// Routes through <see cref="SqlServerSearchIndexReferenceDataCache.TryGetEmbeddingModelIdAsync"/>, the
+    /// read-only lookup -- never <c>SqlServerEmbeddingModelRegistry</c>, whose get-or-create would insert a
+    /// <c>dbo.EmbeddingModel</c> row for every model key a search names.
+    /// </summary>
+    public Task<short?> GetEmbeddingModelIdAsync(string modelKey, CancellationToken cancellationToken)
+        => _cache.TryGetEmbeddingModelIdAsync(modelKey, cancellationToken);
 }

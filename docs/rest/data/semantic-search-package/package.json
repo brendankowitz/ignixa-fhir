@@ -1,0 +1,8 @@
+{
+  "name": "ignixa.sample.semantic-search",
+  "version": "1.0.0",
+  "description": "Sample package that defines one semantic (vector) SearchParameter on Observation. Used by docs/rest/semantic-search.http.",
+  "type": "fhir.ig",
+  "fhirVersions": ["4.0.1"],
+  "license": "MIT"
+}

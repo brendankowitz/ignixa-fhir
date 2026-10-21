@@ -48,6 +48,8 @@ internal static class CompilationContextMapping
             "Builder output describing what it could not honour; it shapes the OperationOutcome, not the SQL.",
         [nameof(SearchOptions.UnsupportedModifierParams)] =
             "Builder output, like UnsupportedParams: the subset R4 says SHALL be rejected rather than ignored. It decides an HTTP status at the API boundary, never a CTE.",
+        [nameof(SearchOptions.UnsupportedModifierReasons)] =
+            "Builder output, like UnsupportedModifierParams: the diagnostic text for some of those rejections. It shapes the OperationOutcome, never a CTE.",
         [nameof(SearchOptions.BundleIssues)] =
             "Builder output, like UnsupportedParams.",
         [nameof(SearchOptions.ResourceType)] =

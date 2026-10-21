@@ -81,6 +81,8 @@ internal static class Program
 
         var connectionString = await TenantConnectionStringResolver.ResolveForSchemaDeploymentAsync(tenantConfigurationStore, tenantId, cancellationToken);
 
+        await SchemaDeployer.EnsureVectorTypeSupportedAsync(connectionString, cancellationToken);
+
         using var dacpacStream = typeof(SchemaDeployer).Assembly.GetManifestResourceStream("Ignixa.DataLayer.SqlServer.Schema.dacpac")
             ?? throw new InvalidOperationException("Embedded schema dacpac not found.");
         using var package = DacPackage.Load(dacpacStream);

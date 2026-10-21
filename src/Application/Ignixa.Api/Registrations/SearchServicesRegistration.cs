@@ -37,6 +37,12 @@ public static class SearchServicesRegistration
         services.Configure<SearchParameterResolutionOptions>(
             configuration.GetSection("SearchParameters:ConflictResolution"));
 
+        // VectorSearch:Enabled is a separate top-level section (not nested under the conflict-resolution
+        // options it otherwise binds) -- PostConfigure runs after the section bind above and applies to
+        // the same options instance IOptions<SearchParameterResolutionOptions> resolves.
+        services.PostConfigure<SearchParameterResolutionOptions>(options =>
+            options.VectorSearchEnabled = configuration.GetValue("VectorSearch:Enabled", false));
+
         return services;
     }
 
@@ -60,6 +66,7 @@ public static class SearchServicesRegistration
             var config = c.Resolve<IConfiguration>();
             var options = new SearchParameterResolutionOptions();
             config.GetSection("SearchParameters:ConflictResolution").Bind(options);
+            options.VectorSearchEnabled = config.GetValue("VectorSearch:Enabled", false);
 
             return new FhirVersionContext(
                 c.Resolve<ILoggerFactory>(),

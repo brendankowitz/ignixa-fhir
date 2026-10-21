@@ -69,6 +69,15 @@ public class StringSearchParameterRowGenerator : ISearchParameterRowGenerator
                 if (searchIndex.Value is not StringSearchValue stringValue)
                     continue;
 
+                // Semantic (special-typed, vector-search-config-carrying) parameters extract their text
+                // as a StringSearchValue so SemanticIndexer can chunk and embed it (see
+                // SemanticIndexer.BuildPlans), but the raw text itself belongs only in
+                // dbo.VectorSearchParam, not duplicated into dbo.StringSearchParam -- it is not
+                // string-searchable text, and indexing it here would also bypass the SearchParamId lookup
+                // SqlServerVectorIndexWriter performs for the same entry.
+                if (searchIndex.SearchParameter.IsSemantic)
+                    continue;
+
                 if (!SearchParameterIdLookupHelper.TryGetSearchParamId(searchIndex.SearchParameter, searchParameterIdMap, out var searchParamId))
                 {
                     logger.LogWarning(
