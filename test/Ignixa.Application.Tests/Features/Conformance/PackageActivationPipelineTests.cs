@@ -1,4 +1,3 @@
-using System.Reflection;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
 using Ignixa.Conformance.Events;
@@ -19,14 +18,11 @@ public sealed class PackageActivationPipelineTests
     public async Task GivenEventStoreConcurrencyExceptionWithSensitiveMessage_WhenActivating_ThenConflictIssueDoesNotExposeExceptionDetails()
     {
         // Arrange
-        const string sentinel = "token=do-not-return";
         var packageRepository = Substitute.For<IPackageResourceRepository>();
         packageRepository.GetResourcesForActivationAsync("example.ig", "1.0.0", Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(Array.Empty<PackageResource>()));
 
         var concurrencyException = new SourceEventConcurrencyException(1, 2);
-        typeof(Exception).GetField("_message", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(concurrencyException, sentinel);
 
         var eventStore = Substitute.For<ISourceEventStore>();
         eventStore.AppendAsync(
@@ -52,6 +48,5 @@ public sealed class PackageActivationPipelineTests
         var issue = result.Issues.ShouldHaveSingleItem();
         issue.Code.ShouldBe("CONFORMANCE_CONFLICT");
         issue.Message.ShouldBe("A concurrent conformance update prevented activation.");
-        issue.Message.ShouldNotContain(sentinel);
     }
 }

@@ -109,6 +109,20 @@ public sealed class ImplementationGuideProviderClosureOutcomeTests
     }
 
     [Fact]
+    public async Task GivenTransitiveDependencyLoadTimeout_WhenLoadingWithDependencies_ThenMemberIsLoadFailedAndBlocking()
+    {
+        RegisterPackage("root", "1.0.0", new Dictionary<string, string> { ["timed-out"] = "2.0.0" });
+        _loader.DownloadPackageAsync("timed-out", "2.0.0", Arg.Any<CancellationToken>())
+            .Returns<Task<Stream>>(_ => throw new TaskCanceledException("package download timed out"));
+
+        var result = await _provider.LoadPackageWithDependenciesAsync("1", "root", "1.0.0", CancellationToken.None);
+
+        var timedOut = result.ClosureMembers.Single(member => member.PackageId == "timed-out");
+        timedOut.Status.ShouldBe(PackageClosureMemberStatus.LoadFailed);
+        timedOut.IsBlocking.ShouldBeTrue();
+    }
+
+    [Fact]
     public async Task GivenConflictingExactVersions_WhenLoadingWithDependencies_ThenConflictIsBlocking()
     {
         RegisterPackage("root", "1.0.0", new Dictionary<string, string> { ["A"] = "1.0.0", ["B"] = "1.0.0" });
@@ -140,16 +154,35 @@ public sealed class ImplementationGuideProviderClosureOutcomeTests
     }
 
     [Fact]
-    public async Task GivenAlreadyInstalledManifestRefetchCancelled_WhenLoadingWithDependencies_ThenCancellationPropagates()
+    public async Task GivenAlreadyInstalledManifestRefetchTimeout_WhenLoadingWithDependencies_ThenManifestUnavailableIsBlocking()
     {
         RegisterPackage("root", "1.0.0", new Dictionary<string, string> { ["dep"] = "1.0.0" });
         _repository.PackageVersionExistsAsync("dep", "1.0.0", Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(true);
         _loader.DownloadPackageAsync("dep", "1.0.0", Arg.Any<CancellationToken>())
-            .Returns<Task<Stream>>(_ => throw new OperationCanceledException());
+            .Returns<Task<Stream>>(_ => throw new TaskCanceledException("manifest re-fetch timed out"));
+
+        var result = await _provider.LoadPackageWithDependenciesAsync("1", "root", "1.0.0", CancellationToken.None);
+
+        var manifestUnavailable = result.ClosureMembers.Single(member =>
+            member.PackageId == "dep" && member.Status == PackageClosureMemberStatus.ManifestUnavailable);
+        manifestUnavailable.Status.ShouldBe(PackageClosureMemberStatus.ManifestUnavailable);
+        manifestUnavailable.IsBlocking.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task GivenCallerCancellationDuringManifestRefetch_WhenLoadingWithDependencies_ThenCancellationPropagates()
+    {
+        RegisterPackage("root", "1.0.0", new Dictionary<string, string> { ["dep"] = "1.0.0" });
+        _repository.PackageVersionExistsAsync("dep", "1.0.0", Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(true);
+        using CancellationTokenSource cancellation = new();
+        cancellation.Cancel();
+        _loader.DownloadPackageAsync("dep", "1.0.0", Arg.Any<CancellationToken>())
+            .Returns<Task<Stream>>(_ => throw new OperationCanceledException(cancellation.Token));
 
         await Should.ThrowAsync<OperationCanceledException>(
-            () => _provider.LoadPackageWithDependenciesAsync("1", "root", "1.0.0", CancellationToken.None));
+            () => _provider.LoadPackageWithDependenciesAsync("1", "root", "1.0.0", cancellation.Token));
     }
 
     private void RegisterPackage(string id, string version, IReadOnlyDictionary<string, string>? dependencies = null)

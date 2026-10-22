@@ -51,18 +51,14 @@ public record LoadPackageResult
     public Dictionary<string, int> ResourcesByType { get; init; } = new();
 
     /// <summary>
-    /// Packages loaded as part of this operation. Non-null when the request used
-    /// <see cref="LoadPackageCommand.IncludeDependencies"/>; each entry is the
-    /// canonical <c>id@version</c> followed by either no suffix (newly imported)
-    /// or <c>(already loaded)</c> / <c>(skipped: ...)</c> for entries that
-    /// short-circuited the import.
+    /// Human-readable package summary strings derived from the dependency closure.
+    /// Non-null when the request used <see cref="LoadPackageCommand.IncludeDependencies"/>.
     /// </summary>
     public IReadOnlyList<string>? LoadedPackages { get; init; }
 
     /// <summary>
-    /// Packages skipped due to load errors during dependency closure walk.
-    /// Each entry is "<c>id@version (reason)</c>". Null for single-package loads.
-    /// Non-null non-empty list indicates a partial load.
+    /// Human-readable skipped-package summary strings derived from the dependency closure.
+    /// Null for single-package loads; a non-empty list indicates a partial load.
     /// </summary>
     public IReadOnlyList<string>? SkippedPackages { get; init; }
 
@@ -77,7 +73,9 @@ public record LoadPackageResult
     public ActivationResult? Activation { get; init; }
 
     /// <summary>
-    /// True only when no closure member is blocking and root activation succeeded.
+    /// True only when dependency-closure import has no blocking member and the requested root
+    /// package activated successfully. Dependencies imported through
+    /// <see cref="LoadPackageCommand.IncludeDependencies"/> are not activated by this operation.
     /// Installed content is retained when this is false.
     /// </summary>
     public bool IsComplete => ClosureMembers.All(member => !member.IsBlocking) && Activation is { Success: true };

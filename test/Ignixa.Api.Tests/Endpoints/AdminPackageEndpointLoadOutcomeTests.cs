@@ -41,8 +41,14 @@ public sealed class AdminPackageEndpointLoadOutcomeTests : IAsyncLifetime
         _app.MapAdminPackageEndpoints();
     }
 
-    [Fact]
-    public async Task GivenIncompleteClosureWithSensitiveReasons_WhenLoadingPackage_ThenResponseReportsSafeStructuredOutcome()
+    [Theory]
+    [InlineData(PackageClosureMemberStatus.LoadFailed, "package could not be loaded", "broken@2.0.0 (skipped: package could not be loaded)")]
+    [InlineData(PackageClosureMemberStatus.ManifestUnavailable, "manifest unavailable", "broken@2.0.0 dependencies (skipped: manifest unavailable)")]
+    [InlineData(PackageClosureMemberStatus.VersionConflict, "version conflict", "broken@2.0.0 (skipped: version conflict)")]
+    public async Task GivenIncompleteClosureWithSensitiveReason_WhenLoadingPackage_ThenResponseReportsSafeStructuredOutcome(
+        PackageClosureMemberStatus status,
+        string expectedReason,
+        string expectedSkippedPackage)
     {
         _mediator.SendAsync(Arg.Any<LoadPackageCommand>(), Arg.Any<CancellationToken>()).Returns(new LoadPackageResult
         {
@@ -53,7 +59,7 @@ public sealed class AdminPackageEndpointLoadOutcomeTests : IAsyncLifetime
             ClosureMembers =
             [
                 new("example.ig", "1.2.3", PackageClosureMemberStatus.Imported),
-                new("broken", "2.0.0", PackageClosureMemberStatus.LoadFailed, "token=do-not-return"),
+                new("broken", "2.0.0", status, "token=do-not-return"),
             ],
             Activation = ActivationResult.Failed([new ValidationIssue("conflict", "SearchParameter clash")]),
         });
@@ -62,9 +68,9 @@ public sealed class AdminPackageEndpointLoadOutcomeTests : IAsyncLifetime
 
         context.Response.StatusCode.ShouldBe(StatusCodes.Status200OK);
         body["isComplete"]!.GetValue<bool>().ShouldBeFalse();
-        body["skippedPackages"]![0]!.GetValue<string>().ShouldBe("broken@2.0.0 (skipped: package could not be loaded)");
-        body["closureMembers"]![1]!["status"]!.GetValue<string>().ShouldBe("LoadFailed");
-        body["closureMembers"]![1]!["reason"]!.GetValue<string>().ShouldBe("package could not be loaded");
+        body["skippedPackages"]![0]!.GetValue<string>().ShouldBe(expectedSkippedPackage);
+        body["closureMembers"]![1]!["status"]!.GetValue<string>().ShouldBe(status.ToString());
+        body["closureMembers"]![1]!["reason"]!.GetValue<string>().ShouldBe(expectedReason);
         body["closureMembers"]![1]!["isBlocking"]!.GetValue<bool>().ShouldBeTrue();
         body["activation"]!["succeeded"]!.GetValue<bool>().ShouldBeFalse();
         body["activation"]!["issues"]![0]!["code"]!.GetValue<string>().ShouldBe("conflict");

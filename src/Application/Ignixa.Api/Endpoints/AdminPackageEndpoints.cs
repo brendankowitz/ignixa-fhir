@@ -142,7 +142,9 @@ public static class AdminPackageEndpoints
                     or PackageClosureMemberStatus.VersionConflict
                     or PackageClosureMemberStatus.LoadFailed
                     or PackageClosureMemberStatus.ManifestUnavailable)
-                .Select(member => $"{member.PackageId}@{member.Version} (skipped: {member.Reason})"),
+                .Select(member => member.Status == PackageClosureMemberStatus.ManifestUnavailable
+                    ? $"{member.PackageId}@{member.Version} dependencies (skipped: {member.Reason})"
+                    : $"{member.PackageId}@{member.Version} (skipped: {member.Reason})"),
         ];
 
         return skippedPackages.Length > 0 ? skippedPackages : null;
@@ -324,17 +326,18 @@ public static class AdminPackageEndpoints
         public Dictionary<string, int> ResourcesByType { get; init; } = new();
 
         /// <summary>
-        /// True only when the dependency closure has no blocking member and root activation succeeded.
+        /// True only when dependency-closure import has no blocking member and root activation succeeded.
+        /// Dependencies imported as part of the closure are not activated by this operation.
         /// </summary>
         public bool IsComplete { get; init; }
 
         /// <summary>
-        /// Legacy closure description strings; prefer <see cref="ClosureMembers"/>.
+        /// Human-readable closure summary strings derived from <see cref="ClosureMembers"/>.
         /// </summary>
         public IReadOnlyList<string>? LoadedPackages { get; init; }
 
         /// <summary>
-        /// Safe skipped-package descriptions derived from <see cref="ClosureMembers"/>.
+        /// Human-readable skipped-package summary strings derived from <see cref="ClosureMembers"/>.
         /// </summary>
         public IReadOnlyList<string>? SkippedPackages { get; init; }
 

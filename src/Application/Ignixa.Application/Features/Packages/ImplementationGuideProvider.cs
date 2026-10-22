@@ -203,7 +203,7 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
             {
                 (perPackageResult, manifest) = await LoadPackageInternalAsync(tenantId, id, ver, cancellationToken);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 throw;
             }
@@ -231,7 +231,7 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
                     var refetched = await _packageExtractor.ExtractAsync(stream, cancellationToken);
                     manifest = refetched.Manifest;
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+                catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                 {
                     _logger.LogWarning(
                         ex,
