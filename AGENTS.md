@@ -113,6 +113,59 @@ Write focused, self-documenting methods. Avoid deep nesting, high cyclomatic com
 - `SystemValueElementDeclarationTests.Decisions` is a reflection census: every new production `IElement` producer needs a recorded classification and rationale.
 - Keep `MustCompile` tripwires for corpus rows expected to compile, so an un-compilable row cannot pass merely by being skipped.
 
+## Mutation Testing
+
+Use the mutation-coverage skill (published as `mutation-coverage-next` while experimental) if it
+is installed; otherwise follow this section by hand. Run `dotnet tool restore` once, then run
+Stryker from the test project directory with
+`dotnet stryker -p <Target> -r json -r html -r dots --disable-bail`.
+
+| Test project | `-p` target | Notes |
+|---|---|---|
+| `test/Ignixa.Abstractions.Tests` | `Ignixa.Abstractions.csproj` | |
+| `test/Ignixa.Analyzers.Tests` | `Ignixa.Analyzers.csproj` | |
+| `test/Ignixa.Api.Tests` | `Ignixa.Api.csproj` | |
+| `test/Ignixa.Application.Tests` | `Ignixa.Application.csproj` | large; always scope with `--since`/`-m` |
+| `test/Ignixa.Application.Experimental.Tests` | `Ignixa.Application.csproj` | |
+| `test/Ignixa.ConformanceMatrix.Cli.Tests` | `Ignixa.ConformanceMatrix.Cli.csproj` | |
+| `test/Ignixa.DataLayer.FileSystem.Tests` | `Ignixa.DataLayer.FileSystem.csproj` | |
+| `test/Ignixa.DataLayer.SqlServer.Tests` | `Ignixa.DataLayer.SqlServer.csproj` | |
+| `test/Ignixa.DeId.Tests` | `Ignixa.DeId.csproj` | |
+| `test/Ignixa.Extensions.Tests` | `Ignixa.Extensions.FirelySdk6.csproj` | |
+| `test/Ignixa.FhirFakes.Tests` | `Ignixa.FhirFakes.csproj` | |
+| `test/Ignixa.FhirFakes.Cli.Tests` | `Ignixa.FhirFakes.Cli.csproj` | |
+| `test/Ignixa.FhirMappingLanguage.Tests` | `Ignixa.FhirMappingLanguage.csproj` | |
+| `test/Ignixa.FhirPath.Tests` | `Ignixa.FhirPath.csproj` | |
+| `test/Ignixa.FhirPath.Phase3.{Stu3,R4B,R5}.Tests` | `Ignixa.FhirPath.csproj` | version conformance corpora; slow |
+| `test/Ignixa.Models.Tests` | `Ignixa.Models.R4.csproj` or `Ignixa.Models.R5.csproj` | references both; run once per target |
+| `test/Ignixa.Models.R4.Tests` | `Ignixa.Models.R4.csproj` | |
+| `test/Ignixa.NarrativeGenerator.Tests` | `Ignixa.NarrativeGenerator.csproj` | |
+| `test/Ignixa.PackageManagement.Tests` | `Ignixa.PackageManagement.csproj` | |
+| `test/Ignixa.SchemaUpgrade.Cli.Tests` | `Ignixa.SchemaUpgrade.Cli.csproj` | |
+| `test/Ignixa.Search.Tests` | `Ignixa.Search.csproj` | |
+| `test/Ignixa.Search.Sql.Tests` | `Ignixa.Search.Sql.csproj` | |
+| `test/Ignixa.Search.Sql.Generators.Tests` | `Ignixa.Search.Sql.Generators.csproj` | |
+| `test/Ignixa.Serialization.Tests` | `Ignixa.Serialization.csproj` | |
+| `test/Ignixa.SqlOnFhir.Tests` | `Ignixa.SqlOnFhir.csproj` | needs `sql-on-fhir-tests` submodule |
+| `test/Ignixa.SqlOnFhir.Cli.Tests` | `Ignixa.SqlOnFhir.Cli.csproj` | |
+| `test/Ignixa.TestScript.Tests` | `Ignixa.TestScript.csproj` | |
+| `test/Ignixa.Validation.Tests` | `Ignixa.Validation.csproj` | |
+| `test/Ignixa.Validation.Cli.Tests` | `Ignixa.Validation.Cli.csproj` | |
+| `test/Ignixa.Api.E2ETests` | excluded | needs a running server |
+| `test/Ignixa.DataLayer.SqlServer.IntegrationTests` | excluded | needs SQL Server |
+| `test/Ignixa.RepoGuards.Tests` | excluded | repository/architecture guards, not unit tests |
+| `test/Ignixa.Tests.Compatibility.CLI.Tests` | excluded | contract fixtures only |
+
+- Setup: `git submodule update --init --recursive` before suites using vendored fixtures.
+- Test conventions: xUnit, Shouldly, NSubstitute; Arrange/Act/Assert; `GivenContext_WhenAction_ThenResult`.
+- Never remove:
+  - `SystemValueElementDeclarationTests.Decisions`: reflection census of `IElement` producers.
+  - `MustCompile` corpus tripwires: stop un-compilable rows passing by being skipped.
+  - All `Ignixa.RepoGuards.Tests`: architecture and layering guards.
+  - Regression tests (names or comments citing an issue or a base-commit failure).
+  - Version-specific STU3/R4/R4B/R5 variants and Phase3 conformance rows.
+  - Multi-tenancy and security boundary tests (tenant partition 0, routing, sanitized error output).
+
 ## Documentation and Decisions
 
 - Read related ADRs before changing architecture or established behavior.
