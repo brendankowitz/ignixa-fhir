@@ -56,6 +56,29 @@ public class TerminologyValueTypeTests
         new CodeRef("http://s", "a", " ").Version.ShouldBeNull();
     }
 
+    [Theory]
+    [InlineData("http://example.org/vs", null, "http://example.org/vs")]
+    [InlineData("http://example.org/vs", "1.0", "http://example.org/vs|1.0")]
+    public void GivenCanonicalReference_WhenFormatted_ThenUrlAndOptionalVersionArePreserved(
+        string url,
+        string? version,
+        string expected)
+    {
+        new CanonicalRef(url, version).ToString().ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("http://example.org/cs", "car", null, "http://example.org/cs#car")]
+    [InlineData("http://example.org/cs", "car", "2026", "http://example.org/cs|2026#car")]
+    public void GivenCodeReference_WhenFormatted_ThenCanonicalSystemAndCodeArePreserved(
+        string system,
+        string code,
+        string? version,
+        string expected)
+    {
+        new CodeRef(system, code, version).ToString().ShouldBe(expected);
+    }
+
     [Fact]
     public void GivenUndeterminedMembership_WhenInspected_ThenResultIsUnknownAndReasonIsKept()
     {

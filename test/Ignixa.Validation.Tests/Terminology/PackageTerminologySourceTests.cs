@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
+using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Abstractions.Terminology;
 using Ignixa.Validation.Services.Terminology;
 using NSubstitute;
@@ -15,7 +16,7 @@ namespace Ignixa.Validation.Tests.Terminology;
 public class PackageTerminologySourceTests
 {
     private const string Local = "http://example.org/cs";
-    private const string Snomed = "http://snomed.info/sct";
+    private const string ValueSet = "http://example.org/vs";
 
     private static PackageTerminologySource Create(ICodeSystemProvider? codeSystems = null, IValueSetProvider? valueSets = null) =>
         new(valueSets ?? Substitute.For<IValueSetProvider>(), codeSystems);
@@ -44,13 +45,22 @@ public class PackageTerminologySourceTests
         lookup.Result.ShouldBe(Determination.False);
     }
 
-    [Fact]
-    public async Task GivenNonEnumerableSystemMiss_WhenLookedUp_ThenUnknownNonEnumerable()
+    [Theory]
+    [InlineData("http://snomed.info/sct")]
+    [InlineData("http://loinc.org")]
+    [InlineData("http://unitsofmeasure.org")]
+    [InlineData("http://www.nlm.nih.gov/research/umls/rxnorm")]
+    [InlineData("http://hl7.org/fhir/sid/icd-10")]
+    [InlineData("http://hl7.org/fhir/sid/icd-10-cm")]
+    [InlineData("http://hl7.org/fhir/sid/icd-9-cm")]
+    [InlineData("http://hl7.org/fhir/sid/cvx")]
+    [InlineData("http://www.ama-assn.org/go/cpt")]
+    public async Task GivenNonEnumerableSystemMiss_WhenLookedUp_ThenUnknownNonEnumerable(string system)
     {
         var codeSystems = Substitute.For<ICodeSystemProvider>();
-        codeSystems.ContainsCode(Snomed, "123").Returns(false);
+        codeSystems.ContainsCode(system, "123").Returns(false);
 
-        var lookup = await Create(codeSystems).LookupAsync(new CodeRef(Snomed, "123"), CancellationToken.None);
+        var lookup = await Create(codeSystems).LookupAsync(new CodeRef(system, "123"), CancellationToken.None);
 
         lookup.Result.ShouldBe(Determination.Unknown);
         lookup.Unknown!.Kind.ShouldBe(UnknownKind.NonEnumerableSystem);
@@ -91,5 +101,108 @@ public class PackageTerminologySourceTests
         var coverage = await Create(valueSets: valueSets).GetCoverageAsync(kind, new CanonicalRef("http://example.org/x"), CancellationToken.None);
 
         coverage.ShouldBe(expected);
+    }
+
+    [Fact]
+    public async Task GivenVersionedValueSetUrl_WhenValidatingAnIncludedCode_ThenUsesTheUnversionedExpansion()
+    {
+        var valueSets = Substitute.For<IValueSetProvider>();
+        valueSets.GetCodes(ValueSet).Returns([new FhirCode(Local, "car", "Car")]);
+
+        var result = await Create(valueSets: valueSets).ValidateCodeAsync(
+            Local, "car", null, $"{ValueSet}|1.0", CancellationToken.None);
+
+        result.IsValid.ShouldBeTrue();
+        result.Severity.ShouldBe(IssueSeverity.Information);
+    }
+
+    [Theory]
+    [InlineData("http://snomed.info/sct", true, IssueSeverity.Warning)]
+    [InlineData("http://loinc.org", true, IssueSeverity.Warning)]
+    [InlineData("http://unitsofmeasure.org", true, IssueSeverity.Warning)]
+    [InlineData("http://www.nlm.nih.gov/research/umls/rxnorm", true, IssueSeverity.Warning)]
+    [InlineData("http://hl7.org/fhir/sid/icd-10", true, IssueSeverity.Warning)]
+    [InlineData("http://hl7.org/fhir/sid/icd-10-cm", true, IssueSeverity.Warning)]
+    [InlineData("http://hl7.org/fhir/sid/icd-9-cm", true, IssueSeverity.Warning)]
+    [InlineData("http://hl7.org/fhir/sid/cvx", true, IssueSeverity.Warning)]
+    [InlineData("http://www.ama-assn.org/go/cpt", true, IssueSeverity.Warning)]
+    [InlineData(Local, false, IssueSeverity.Error)]
+    public async Task GivenMissingCodeInSystem_WhenValidatingValueSet_ThenOnlyEnumerableSystemsAreInvalid(
+        string system,
+        bool expectedValidity,
+        IssueSeverity expectedSeverity)
+    {
+        var valueSets = Substitute.For<IValueSetProvider>();
+        valueSets.GetCodes(ValueSet).Returns([new FhirCode(Local, "car", "Car")]);
+
+        var result = await Create(valueSets: valueSets).ValidateCodeAsync(
+            system, "missing", null, ValueSet, CancellationToken.None);
+
+        result.IsValid.ShouldBe(expectedValidity);
+        result.Severity.ShouldBe(expectedSeverity);
+    }
+
+    [Fact]
+    public async Task GivenMissingCodeInEnumeratedNonEnumerableSystem_WhenValidatingValueSet_ThenResultIsUnverifiable()
+    {
+        var valueSets = Substitute.For<IValueSetProvider>();
+        valueSets.GetCodes(ValueSet).Returns([new FhirCode("http://snomed.info/sct", "included", "Included")]);
+
+        var result = await Create(valueSets: valueSets).ValidateCodeAsync(
+            "http://snomed.info/sct", "missing", null, ValueSet, CancellationToken.None);
+
+        result.IsValid.ShouldBeTrue();
+        result.Severity.ShouldBe(IssueSeverity.Warning);
+    }
+
+    [Theory]
+    [InlineData(BindingStrength.Required, "car", true, IssueSeverity.Information)]
+    [InlineData(BindingStrength.Required, "missing", false, IssueSeverity.Error)]
+    [InlineData(BindingStrength.Extensible, "car", true, IssueSeverity.Information)]
+    [InlineData(BindingStrength.Extensible, "missing", true, IssueSeverity.Warning)]
+    [InlineData(BindingStrength.Preferred, "car", true, IssueSeverity.Information)]
+    [InlineData(BindingStrength.Preferred, "missing", true, IssueSeverity.Error)]
+    [InlineData(BindingStrength.Example, "car", true, IssueSeverity.Information)]
+    [InlineData(BindingStrength.Example, "missing", true, IssueSeverity.Error)]
+    public async Task GivenBindingStrengthAndCodeMembership_WhenValidatingBinding_ThenMapsValidityAndSeverity(
+        BindingStrength strength,
+        string code,
+        bool expectedValidity,
+        IssueSeverity expectedSeverity)
+    {
+        var valueSets = Substitute.For<IValueSetProvider>();
+        valueSets.GetCodes(ValueSet).Returns([new FhirCode(Local, "car", "Car")]);
+
+        var result = await Create(valueSets: valueSets).ValidateBindingAsync(
+            ValueSet, strength, Local, code, null, null, CancellationToken.None);
+
+        result.IsValid.ShouldBe(expectedValidity);
+        result.Severity.ShouldBe(expectedSeverity);
+    }
+
+    [Fact]
+    public async Task GivenPrimaryDoesNotKnowValueSet_WhenAdditionalKnowsIt_ThenCoverageUsesAdditionalProvider()
+    {
+        var primary = Substitute.For<IValueSetProvider>();
+        primary.IsKnownValueSet(ValueSet).Returns(false);
+        var additional = Substitute.For<IValueSetProvider>();
+        additional.IsKnownValueSet(ValueSet).Returns(true);
+        var source = new PackageTerminologySource(primary, [additional]);
+
+        var coverage = await source.GetCoverageAsync(
+            CanonicalKind.ValueSet, new CanonicalRef(ValueSet), CancellationToken.None);
+
+        coverage.ShouldBe(SourceCoverage.Authoritative);
+    }
+
+    [Fact]
+    public async Task GivenAnyTranslateRequest_WhenTranslating_ThenNoMatchesAreReturned()
+    {
+        var result = await Create().TranslateCodeAsync(
+            new TranslateParameters(null, null, "car", Local, null, null, null, null),
+            CancellationToken.None);
+
+        result.Result.ShouldBeFalse();
+        result.Matches.ShouldBeEmpty();
     }
 }

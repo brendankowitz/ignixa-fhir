@@ -60,6 +60,18 @@ public class SourceRouterTests
     }
 
     [Fact]
+    public async Task GivenAuthoritativeUnknownAnswer_WhenAsked_ThenItsReasonIsReturned()
+    {
+        var router = new SourceRouter([
+            Source("package", SourceCoverage.Authoritative, MembershipResult.Undetermined(ReasonA))]);
+
+        var routed = await AskAsync(router, []);
+
+        routed.Answer.Unknown.ShouldBe(ReasonA);
+        routed.Unknowns.ShouldBe([ReasonA]);
+    }
+
+    [Fact]
     public async Task GivenPartialUnknownThenPartialFalse_WhenAsked_ThenFirstDeterminedAnswerWins()
     {
         var asked = new List<string>();
@@ -99,6 +111,24 @@ public class SourceRouterTests
         routed.Answer.Unknown!.Kind.ShouldBe(UnknownKind.SystemNotAvailable);
         routed.Answer.Unknown.Subject.ShouldBe("http://example.org/cs");
         asked.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenNoCoveringSource_WhenValueSetAsked_ThenValueSetNotFoundForVersionedCanonical()
+    {
+        var router = new SourceRouter([Source("package", SourceCoverage.None, MembershipResult.Member)]);
+        var canonical = new CanonicalRef("http://example.org/vs", "1.0");
+
+        var routed = await router.AskAsync(
+            CanonicalKind.ValueSet,
+            canonical,
+            (_, _) => Task.FromResult(MembershipResult.Member),
+            MembershipResult.Undetermined,
+            CancellationToken.None);
+
+        routed.Answer.Unknown!.Kind.ShouldBe(UnknownKind.ValueSetNotFound);
+        routed.Answer.Unknown.Subject.ShouldBe("http://example.org/vs|1.0");
+        routed.Unknowns.ShouldHaveSingleItem().ShouldBe(routed.Answer.Unknown);
     }
 
     [Fact]
@@ -143,6 +173,12 @@ public class SourceRouterTests
         var sql = Source("sql", SourceCoverage.None, MembershipResult.Member);
 
         new SourceRouter([sql, Source("package", SourceCoverage.None, MembershipResult.Member)]).FirstLegacy.ShouldBeSameAs(sql);
+    }
+
+    [Fact]
+    public void GivenNoLegacyCapableSource_WhenAskingForFirstLegacy_ThenThrows()
+    {
+        Should.Throw<InvalidOperationException>(() => new SourceRouter([Substitute.For<ITerminologySource>()]).FirstLegacy);
     }
 
     [Fact]

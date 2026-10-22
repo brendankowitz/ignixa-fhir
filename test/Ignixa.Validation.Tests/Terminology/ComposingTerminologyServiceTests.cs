@@ -116,23 +116,38 @@ public class ComposingTerminologyServiceTests
         result.Issues.ShouldHaveSingleItem().Kind.ShouldBe(TerminologyIssueKind.CodeInvalid);
     }
 
-    [Fact]
-    public async Task GivenWrongDisplay_WhenValidatingInCodeSystem_ThenTrueWithDisplayWarning()
+    [Theory]
+    [InlineData("Car", "Car", false)]
+    [InlineData("Car", "Automobile", true)]
+    [InlineData("Car", null, false)]
+    [InlineData(null, "Car", false)]
+    public async Task GivenRequestedAndConceptDisplays_WhenValidatingInCodeSystem_ThenWarnsOnlyForDifferentNonEmptyDisplays(
+        string? conceptDisplay,
+        string? requestedDisplay,
+        bool expectsWarning)
     {
-        // Rejecting a valid code because only its display differs would violate CodeSystem validation semantics.
+        // A warning must only be returned when both displays exist and differ.
         Covers(_sql, CanonicalKind.CodeSystem, SourceCoverage.Authoritative);
         _sql.LookupAsync(Arg.Any<CodeRef>(), Arg.Any<CancellationToken>())
-            .Returns(ConceptLookup.Found(new ConceptDetails(null, null, "Car", null, null, null)));
+            .Returns(ConceptLookup.Found(new ConceptDetails(null, null, conceptDisplay, null, null, null)));
 
         var result = await Create().ValidateCodeInCodeSystemAsync(
-            new ValidateCodeRequest(new CodeRef(System, "car"), "Automobile"),
+            new ValidateCodeRequest(new CodeRef(System, "car"), requestedDisplay),
             CancellationToken.None);
 
         result.Result.ShouldBe(Determination.True);
-        result.Display.ShouldBe("Car");
-        var issue = result.Issues.ShouldHaveSingleItem();
-        issue.Kind.ShouldBe(TerminologyIssueKind.DisplayMismatch);
-        issue.Severity.ShouldBe(IssueSeverity.Warning);
+        result.Display.ShouldBe(conceptDisplay);
+
+        if (expectsWarning)
+        {
+            var issue = result.Issues.ShouldHaveSingleItem();
+            issue.Kind.ShouldBe(TerminologyIssueKind.DisplayMismatch);
+            issue.Severity.ShouldBe(IssueSeverity.Warning);
+        }
+        else
+        {
+            result.Issues.ShouldBeEmpty();
+        }
     }
 
     [Fact]
