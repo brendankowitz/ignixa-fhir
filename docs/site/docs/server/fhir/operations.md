@@ -565,6 +565,12 @@ Content-Type: application/fhir+json
 }
 ```
 
+If either code or the code system is not known to the server, the operation returns
+an HTTP 400 FHIR `OperationOutcome` naming the reason; it never answers
+`not-subsumed` for unknown content. When the server cannot perform subsumption
+because the terminology content has an unsupported filter or is non-enumerable, it
+returns HTTP 422 with an `OperationOutcome` whose issue type is `not-supported`.
+
 ### $transform (StructureMap)
 
 [FHIR Spec](https://hl7.org/fhir/structuremap-operation-transform.html)

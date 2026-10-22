@@ -49,7 +49,7 @@ flowchart TB
     B[BindingCheck]
   end
   subgraph DL["Ignixa.DataLayer.SqlServer"]
-    Q[SqlTerminologySource]
+    Q[SqlServerTerminologyService]
     X[SqlServerValueSetComposer]
   end
   E --> H --> T
@@ -76,9 +76,8 @@ public interface ITerminologySource
 
     ValueTask<SourceCoverage> GetCoverageAsync(CanonicalKind kind, CanonicalRef canonical, CancellationToken cancellationToken);
 
-    Task<ConceptLookup> LookupAsync(CodeRef code, LookupOptions options, CancellationToken cancellationToken);
-    Task<Membership> ContainsAsync(CodeRef code, CancellationToken cancellationToken);                       // code exists in CodeSystem
-    Task<Subsumption> SubsumesAsync(CodeRef a, CodeRef b, CancellationToken cancellationToken);
+    Task<ConceptLookup> LookupAsync(CodeRef code, CancellationToken cancellationToken);
+    Task<SubsumesOutcome> SubsumesAsync(CodeRef a, CodeRef b, CancellationToken cancellationToken);
     Task<ConceptSet> SelectAsync(ComposeInclude include, SelectOptions options, CancellationToken cancellationToken);   // filters/concepts within one system
     Task<Membership> MatchesIncludeAsync(CodeRef code, ComposeInclude include, CancellationToken cancellationToken);  // targeted test, no enumeration
     Task<ValueSetDefinition?> ResolveValueSetAsync(CanonicalRef canonical, CancellationToken cancellationToken);
@@ -87,7 +86,7 @@ public interface ITerminologySource
 }
 ```
 
-`SourceCoverage` is `Authoritative`, `Partial`, or `None`; `CanonicalKind` is `CodeSystem`, `ValueSet`, or `ConceptMap`. This is the target shape. Each method is added in the phase that first uses it: Phase 1 adds coverage, lookup, contains, and subsumes; Phase 2 adds `MatchesIncludeAsync` and `ResolveValueSetAsync`; Phase 4 adds `SelectAsync` and `TryComposeWholeAsync`; and Phase 5 adds `FindConceptMapsAsync`. `Authoritative` means the source holds a complete CodeSystem version (for SQL, `TerminologyImportStatus.Completed`). `Partial` means it knows some concepts but cannot enumerate the system, such as package knowledge of a SNOMED subset. `None` means it does not know the canonical.
+`SourceCoverage` is `Authoritative`, `Partial`, or `None`; `CanonicalKind` is `CodeSystem`, `ValueSet`, or `ConceptMap`. This is the target shape. Each method is added in the phase that first uses it: Phase 1 adds coverage, lookup, and subsumes; `ContainsAsync` is dropped because three-state `LookupAsync` answers containment; Phase 2 adds `MatchesIncludeAsync` and `ResolveValueSetAsync`; Phase 4 adds `SelectAsync` and `TryComposeWholeAsync`; and Phase 5 adds `FindConceptMapsAsync`. Phase 1's `LookupAsync` deliberately has no `LookupOptions`; options arrive with Phase 3's `property` and `displayLanguage` parameters. `Authoritative` means the source holds a complete CodeSystem version (for SQL, `TerminologyImportStatus.Completed`). `Partial` means it knows some concepts but cannot enumerate the system, such as package knowledge of a SNOMED subset. `None` means it does not know the canonical.
 
 `ValueSetDefinition` is either `Composed(compose)` or `Enumerated(codes)`. SQL returns `Composed`, while the package source returns `Enumerated` because its provider holds only pre-expanded lists (§7).
 
@@ -101,7 +100,7 @@ Each answer that can be unknown uses a three-state outcome with a reason:
 public enum Determination { True, False, Unknown }
 
 public sealed record UnknownReason(UnknownKind Kind, string Subject, string Detail);
-public enum UnknownKind { SystemNotAvailable, SystemVersionNotAvailable, ValueSetNotFound, UnsupportedFilter, NonEnumerableSystem, BudgetExceeded, SourceFailed }
+public enum UnknownKind { SystemNotAvailable, SystemVersionNotAvailable, CodeNotInSystem, ValueSetNotFound, UnsupportedFilter, NonEnumerableSystem, BudgetExceeded, SourceFailed }
 ```
 
 The breaking changes to `ITerminologyService` land **one operation at a time**, each in the phase that implements that operation's composition (§9). This keeps every phase reviewable. The cost is that `Ignixa.Validation` takes several breaking changes rather than one, so release notes collect them. Until its phase lands, each not-yet-migrated operation (ValueSet validate-code, expand, translate) keeps its current signature and Hybrid-style whole-call routing through a transitional `ILegacyValueSetOperations` interface on each source. That interface is removed in Phase 5.
@@ -111,7 +110,7 @@ The target shape is:
 | Today | New |
 |---|---|
 | `ValidateCodeAsync(system, code, display, valueSetUrl)` → `TerminologyValidationResult(IsValid, Severity, Message)` | `ValidateCodeInValueSetAsync(ValidateCodeRequest)` and `ValidateCodeInCodeSystemAsync(ValidateCodeRequest)` → `ValidateCodeResult(Determination Result, string? Display, IReadOnlyList<TerminologyIssue> Issues, IReadOnlyList<UnknownReason> Unknowns)` |
-| `LookupCodeAsync(...)` → `LookupResult(bool Found, …)` | `LookupAsync(LookupRequest)` → `LookupResult(Determination Found, …, UnknownReason? Unknown)` |
+| `LookupCodeAsync(...)` → `LookupResult(bool Found, …)` | `LookupAsync(LookupRequest)` → `ConceptLookup` (`Found(ConceptDetails)` / `NotFound` / `Undetermined(UnknownReason)`) |
 | `ExpandValueSetAsync` → `ExpandResult?` with `Incomplete` | `ExpandAsync(ExpandRequest)` → `ExpandOutcome`, which is either `Expanded(ExpandResult)` or `NotExpandable(IReadOnlyList<UnknownReason>)`. `Incomplete` is removed. |
 | `SubsumesAsync` → `SubsumesResult(string Outcome)` | `SubsumesOutcome`, which is either `Related(SubsumptionRelation)` or `Undetermined(UnknownReason)`. `SubsumptionRelation` is an enum: `Equivalent`, `Subsumes`, `SubsumedBy`, `NotSubsumed`. |
 | `TranslateCodeAsync` → `TranslateResult(bool Result, …)` | `TranslateAsync(TranslateRequest)` → `TranslateResult(IReadOnlyList<TranslateMatch> Matches, IReadOnlyList<UnknownReason> Unknowns)`. FHIR `result` is derived from the matches, not stored separately. |
@@ -137,7 +136,7 @@ Coverage lookups are memoized only within one request, because imports change co
 | Operation | Decomposition |
 |---|---|
 | CodeSystem `$lookup` | route(system) → `LookupAsync`. Unknown system: `Unknown`, and the API returns 404 with OperationOutcome `not-found`. |
-| CodeSystem `$validate-code` | route(system) → `ContainsAsync`. If true and `display` is supplied, call `LookupAsync` to compare display and designations, then add a display issue (warning by default; error when `lenient-display-validation=false`, R5 only, later phase). |
+| CodeSystem `$validate-code` | route(system) → `LookupAsync`. If found and `display` is supplied, compare it from that same lookup and add a display issue (warning by default; error when `lenient-display-validation=false`, R5 only, later phase). |
 | ValueSet `$validate-code` | Resolve the ValueSet. For `Enumerated`, test membership directly. For `Composed`, evaluate `compose` **targeted**. For each include whose system matches the code, call `MatchesIncludeAsync` on the routed source. Recursively evaluate `valueSet` imports. Apply excludes the same way. Optionally run the display check as above. **Do not expand the whole ValueSet.** If any relevant include is Unknown and no include is True, the result is `Unknown` with all reasons. If an include is True, matching excludes are evaluated: True → `False`; Unknown → `Unknown`; False → `True`. |
 | `Coding`/`CodeableConcept` inputs | Validate each coding. A CodeableConcept is True if any coding is True; otherwise Unknown if any is Unknown; otherwise False. Issues are reported per coding. |
 | ValueSet `$expand` | Resolve ValueSet. If one source is authoritative for every include and import, call `TryComposeWholeAsync`; SQL uses `SqlServerValueSetComposer`. Otherwise, call `SelectAsync` per include on the routed source, recurse through imports, then union, intersect, and exclude in the composer. **R4 rule:** any `UnknownReason` produces `NotExpandable`, and the API returns 422 with OperationOutcome `not-supported`/`not-found`. The response never has partial contents. |
@@ -176,7 +175,7 @@ All routes have tenant-agnostic and `/tenant/{tenantId}` forms, as today.
 - POST bodies are FHIR `Parameters` resources. The current ad-hoc JSON DTOs (`TranslateRequestDto`, `SubsumesRequestDto`) are **removed**. This is acceptable because the feature is experimental, and it is called out in release notes.
 - A single `TerminologyParametersReader` handles GET query parameters and POST `Parameters` uniformly, producing the version-neutral request records. R5 aliases (`sourceCode`, `targetCode`, …) are added there in Phase 7.
 - Response shaping produces `Parameters` with R4 output names (`result`, `message`, `display`; `match.equivalence` in R4 and `match.relationship` in R5 later).
-- Error status mapping: 400 for malformed or missing parameters; 404 for an unknown CodeSystem/ValueSet/ConceptMap on lookup or instance routes; 422 for `NotExpandable` or an undetermined subsumption caused by unsupported content. In `$validate-code`, an Unknown result returns **200** with `result=false` and a message plus `issues`. This matches R4 `$validate-code`, which reports inability through `result=false` and a message rather than an HTTP error.
+- Error status mapping: 400 for malformed or missing parameters; 404 for an unknown CodeSystem/ValueSet/ConceptMap on lookup or instance routes; and 422 for `NotExpandable`. An undetermined `$subsumes` caused by `UnsupportedFilter` or `NonEnumerableSystem` throws `TerminologyOperationNotSupportedException` and returns 422 with an OperationOutcome `not-supported`; every other undetermined `$subsumes` result returns 400 through `BadRequestException`. It never returns `not-subsumed` for unknown content. In `$validate-code`, an Unknown result returns **200** with `result=false` and a message plus `issues`. This matches R4 `$validate-code`, which reports inability through `result=false` and a message rather than an HTTP error.
 - Tenant ID is currently unused because terminology content is shared across tenants. Requests still carry tenant ID so routing can use it if tenant-scoped content arrives. Partition 0 is never exposed.
 
 ## 6. Version-Neutral Model and R5
@@ -195,6 +194,7 @@ STU3 is not supported by these endpoints. The STU3 `$compose` naming difference 
 Consequences:
 
 - CodeSystem coverage is always `Partial`, because the provider can answer only per code. For each code, `ContainsCode` → `true` gives `True`; `false` gives `False`, except for `NonEnumerableSystems` such as SNOMED, LOINC, and UCUM, which give `Unknown(NonEnumerableSystem)`; and `null` gives `Unknown(SystemNotAvailable)`. This preserves today's validator behaviour.
+- The pre-Phase-1 `InMemoryTerminologyService.LookupCodeAsync` compatibility path treats a whitespace-only system or code as not found rather than forwarding it to a provider.
 - ValueSet coverage: `IsKnownValueSet(url)` → `Authoritative`; otherwise → `None`.
 - `ResolveValueSetAsync` returns an **enumerated** `ValueSetDefinition`, which is a code list rather than a compose. The composer evaluates membership directly, and `$expand` can page over it.
 - `SelectAsync` over a package CodeSystem supports only explicit `concept` lists. Every filter (`is-a`, `=`, `regex`, …) returns `UnknownReason(UnsupportedFilter)`.
@@ -203,9 +203,10 @@ Consequences:
 
 ## 8. SQL Source
 
-`SqlTerminologySource` adapts `SqlServerTerminologyService`, which is renamed or absorbed. `SqlServerValueSetComposer` is retained as the pushdown engine.
+`SqlServerTerminologyService` keeps its class name and implements `ITerminologySource`; there is no separate `SqlTerminologySource` adapter. `SqlServerValueSetComposer` is retained as the pushdown engine.
 
-- Coverage comes from `ITerminologyImportStatusProvider`.
+- Coverage is version-aware. For a canonical with an explicit version, SQL checks the matching `TermCodeSystem`, `TermValueSet` (with `IsExpanded = 1`), or `TermConceptMap` row according to `CanonicalKind`; an unloaded version has `SystemVersionNotAvailable`. Without an explicit version, coverage comes from usable active imported content.
+- `SubsumesAsync` returns `Undetermined(SystemNotAvailable, codeB.System)` across different systems and `Undetermined(SystemVersionNotAvailable)` across different versions. The legacy SQL `ITerminologyService` adapters retain their two-state behavior.
 - `TryComposeWholeAsync` calls `SqlServerValueSetComposer`. Its existing `_externalSystems`, `_missingValueSets`, `_unknownSystemVersions`, and `_unsupportedFilters` tracking becomes `UnknownReason`s, so pushdown keeps the same strict semantics.
 - `MatchesIncludeAsync` is a new targeted SQL query that tests one code against one include’s filters without materialising the include. This is the main performance change for `$validate-code`.
 - `FindConceptMapsAsync` and mapping evaluation fix the ignored `source`, `target`, and `version` parameters.
@@ -218,7 +219,7 @@ Each phase builds, passes tests, and can merge on its own.
 | Phase | Scope | Key tests |
 |---|---|---|
 | **0. Groundwork** | Delete stale `Application.Operations` terminology handlers. Add value types (`CodeRef`, `CanonicalRef`, `Determination`, `UnknownReason`). Add `ITerminologySource` and `SourceRouter`. | Invariant tests on value types; router coverage precedence |
-| **1. Contract break (lookup, subsumes, CodeSystem validate) + composer** | Change those three `ITerminologyService` signatures. Add `ComposingTerminologyService`, with `ILegacyValueSetOperations` pass-through for ValueSet validate, expand, and translate. Add `SqlTerminologySource` and `PackageTerminologySource`. Delete `HybridTerminologyService`. Port handlers, `BindingCheck`, and `InMemoryTerminologyService`. Update `docs/site` SDK example. | All existing validation and binding tests unchanged (guards); unknown-vs-false subsumption regression; mixed-source lookup |
+| **1. Contract break (lookup, subsumes, CodeSystem validate) + composer** | Change those three `ITerminologyService` signatures. Add `ComposingTerminologyService`, with `ILegacyValueSetOperations` pass-through for ValueSet validate, expand, and translate. Make `SqlServerTerminologyService` and `PackageTerminologySource` terminology sources. Delete `HybridTerminologyService`. Port handlers, `BindingCheck`, and `InMemoryTerminologyService`. Update `docs/site` SDK example. | All existing validation and binding tests unchanged (guards); unknown-vs-false subsumption regression; mixed-source lookup |
 | **2. ValueSet `$validate-code` (targeted)** | Compose evaluation with `MatchesIncludeAsync`, imports, excludes, cycle and budget handling, display check, and Coding/CodeableConcept. | **Mixed-source ValueSet regression** (fails on base); cycle; exclude precedence; unknown system → result=false + message |
 | **3. Public lookup + validate-code endpoints; Parameters reader/writer** | GET/POST type and instance routes; remove JSON DTOs; OperationOutcome mapping. | Endpoint tests per route, tenant and agnostic; malformed Parameters → 400 |
 | **4. `$expand` R4 correctness** | Pushdown-or-compose; `NotExpandable` → 422; remove `Incomplete`; POST with inline `valueSet`; `valueSetVersion`. | Regression: unresolved system returns error instead of partial expansion; nested imports; paging/total |

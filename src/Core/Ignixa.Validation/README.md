@@ -54,6 +54,9 @@ var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
 var result = schema!.Validate(element, settings);
 ```
 
+`InMemoryTerminologyService` is a composing service over a single
+`PackageTerminologySource`; its constructors remain unchanged.
+
 `ProfileAwareValidationSchemaResolver` also implements `IValidationSchemaResolver`,
 so it's a drop-in for any DI registration that previously bound the cached resolver.
 The production `ValidationServicesRegistration` wires it automatically; consumers

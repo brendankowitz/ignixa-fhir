@@ -1012,7 +1012,7 @@ Behaviour (spec §7):
   - `null`, or no provider → `Undetermined(SystemNotAvailable)`
 
   Version is ignored, exactly as today.
-- **`SubsumesAsync`.** Always `Undetermined(SystemNotAvailable, system, "Package terminology content carries no concept hierarchy")`. This replaces the false `not-subsumed`.
+- **`SubsumesAsync`.** Always `Undetermined(UnsupportedFilter, system, "Package terminology content carries no concept hierarchy")`. This replaces the false `not-subsumed`.
 - **Legacy members.** The bodies of today's `InMemoryTerminologyService.ValidateCodeAsync`, `ValidateBindingAsync`, `ExpandValueSetAsync`, and `TranslateCodeAsync` move **verbatim**, together with the private `DetermineSeverity`, `Verified`, `_valueSets` cache, and the `NonEnumerableSystems` set.
 
 - [ ] **Step 1: Write the failing tests**
@@ -1202,7 +1202,7 @@ public sealed class PackageTerminologySource : ITerminologySource, ILegacyValueS
         ArgumentNullException.ThrowIfNull(codeA);
         ArgumentNullException.ThrowIfNull(codeB);
         SubsumesOutcome outcome = new SubsumesOutcome.Undetermined(new UnknownReason(
-            UnknownKind.SystemNotAvailable, codeA.System, "Package terminology content carries no concept hierarchy"));
+            UnknownKind.UnsupportedFilter, codeA.System, "Package terminology content carries no concept hierarchy"));
         return Task.FromResult(outcome);
     }
 

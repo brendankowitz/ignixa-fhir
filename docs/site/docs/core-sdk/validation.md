@@ -388,50 +388,63 @@ var settings = new ValidationSettings
 
 ### Implementing Custom Terminology Service
 
+Custom terminology content participates through `ITerminologySource`, then is composed
+with the package source. ValueSet validation, binding validation, `$expand`, and
+`$translate` still use `ILegacyValueSetOperations` until later releases, so a source
+that does not implement that interface does not participate in those operations. At
+least one source—normally `PackageTerminologySource`—must implement it.
+
 ```csharp
-public class CustomTerminologyService : ITerminologyService
+using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Abstractions.Terminology;
+using Ignixa.Validation.Services.Terminology;
+
+public sealed class MyLocalCodesSource : ITerminologySource
 {
-    public async Task<TerminologyValidationResult> ValidateCodeAsync(
-        string? system,
-        string? code,
-        string? display,
-        string? valueSetUrl,
-        CancellationToken cancellationToken)
+    private const string System = "http://example.org/codes";
+    private static readonly Dictionary<string, string> Codes = new()
     {
-        // Implement code validation logic
-        // e.g., check against external terminology server
-        var isValid = await CheckCodeAgainstServer(system, code, valueSetUrl);
+        ["a"] = "Alpha",
+        ["b"] = "Beta",
+    };
 
-        return new TerminologyValidationResult(
-            IsValid: isValid,
-            Severity: isValid ? IssueSeverity.Information : IssueSeverity.Error,
-            Message: isValid ? null : $"Code {system}#{code} not found in {valueSetUrl}");
-    }
+    public string Name => "my-local-codes";
 
-    public async Task<BindingValidationResult> ValidateBindingAsync(
-        string valueSetUrl,
-        BindingStrength strength,
-        string? system,
-        string? code,
-        string? display,
-        string? version,
-        CancellationToken cancellationToken)
-    {
-        // Validate based on binding strength
-        // Required → Error, Extensible → Warning, Preferred → Info
-        var validationResult = await ValidateCodeAsync(system, code, display, valueSetUrl, cancellationToken);
+    public ValueTask<SourceCoverage> GetCoverageAsync(
+        CanonicalKind kind,
+        CanonicalRef canonical,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(kind == CanonicalKind.CodeSystem && canonical.Url == System
+            ? SourceCoverage.Authoritative
+            : SourceCoverage.None);
 
-        return new BindingValidationResult(
-            IsValid: validationResult.IsValid,
-            Strength: strength,
-            Severity: DetermineSeverity(validationResult.IsValid, strength),
-            Message: validationResult.Message,
-            SuggestedDisplay: null);
-    }
+    public Task<ConceptLookup> LookupAsync(CodeRef code, CancellationToken cancellationToken) =>
+        Task.FromResult(Codes.TryGetValue(code.Code, out var display)
+            ? ConceptLookup.Found(new ConceptDetails(null, null, display, null, null, null))
+            : ConceptLookup.NotFound);
 
-    // Implement other ITerminologyService methods (LookupCodeAsync, ExpandValueSetAsync, etc.)...
+    public Task<SubsumesOutcome> SubsumesAsync(
+        CodeRef codeA,
+        CodeRef codeB,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<SubsumesOutcome>(codeA.Code == codeB.Code
+            ? new SubsumesOutcome.Related(SubsumptionRelation.Equivalent)
+            : new SubsumesOutcome.Related(SubsumptionRelation.NotSubsumed));
 }
+
+// Compose application-specific content with package content. The first source listed
+// is consulted first.
+ITerminologyService terminology = new ComposingTerminologyService(
+[
+    new MyLocalCodesSource(),
+    new PackageTerminologySource(valueSetProvider),
+]);
 ```
+
+**Breaking changes:** `LookupCodeAsync` is now `LookupAsync(LookupRequest)`,
+returning `ConceptLookup`; `SubsumesAsync(SubsumesParameters)` is now
+`SubsumesAsync(SubsumesRequest)`, returning `SubsumesOutcome`; and
+`HybridTerminologyService` is replaced by `ComposingTerminologyService`.
 
 ## Batch Validation
 
