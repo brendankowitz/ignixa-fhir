@@ -236,7 +236,11 @@ public class SummaryExperimentalOptions
 
 ### 3. Terminology Operations ($expand, $translate, $subsumes)
 
-**Current Location**:
+**Current location**: the handlers now live in
+`src/Application/Ignixa.Application/Features/Experimental/Terminology/` (`Expand/`, `Translate/`,
+`Subsumes/`), and the endpoints in `src/Application/Ignixa.Api/Endpoints/Experimental/TerminologyEndpoints.cs`.
+
+**Location when this proposal was written (historical; these paths no longer exist)**:
 | Feature | Location |
 |---------|----------|
 | `ExpandValueSetQuery.cs` | `Ignixa.Application.Operations/Features/Terminology/Expand/` |

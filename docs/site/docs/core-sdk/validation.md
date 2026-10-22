@@ -388,50 +388,104 @@ var settings = new ValidationSettings
 
 ### Implementing Custom Terminology Service
 
+Custom terminology content participates through `ITerminologySource`, then is composed
+with the package source. ValueSet validation, binding validation, `$expand`, and
+`$translate` still use `ILegacyValueSetOperations` until later releases, so a source
+that does not implement that interface does not participate in those operations. At
+least one source—normally `PackageTerminologySource`—must implement it.
+
 ```csharp
-public class CustomTerminologyService : ITerminologyService
+using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Abstractions.Terminology;
+using Ignixa.Validation.Services.Terminology;
+
+public sealed class MyLocalCodesSource : ITerminologySource
 {
-    public async Task<TerminologyValidationResult> ValidateCodeAsync(
-        string? system,
-        string? code,
-        string? display,
-        string? valueSetUrl,
-        CancellationToken cancellationToken)
+    private const string System = "http://example.org/codes";
+    private static readonly Dictionary<string, string> Codes = new()
     {
-        // Implement code validation logic
-        // e.g., check against external terminology server
-        var isValid = await CheckCodeAgainstServer(system, code, valueSetUrl);
+        ["a"] = "Alpha",
+        ["b"] = "Beta",
+    };
 
-        return new TerminologyValidationResult(
-            IsValid: isValid,
-            Severity: isValid ? IssueSeverity.Information : IssueSeverity.Error,
-            Message: isValid ? null : $"Code {system}#{code} not found in {valueSetUrl}");
+    public string Name => "my-local-codes";
+
+    // This content is unversioned, so it can only vouch for the unversioned canonical.
+    // Claiming an explicit version it cannot prove would let it answer for content it does not hold.
+    public ValueTask<SourceCoverage> GetCoverageAsync(
+        CanonicalKind kind,
+        CanonicalRef canonical,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(kind == CanonicalKind.CodeSystem && canonical.Url == System && canonical.Version is null
+            ? SourceCoverage.Authoritative
+            : SourceCoverage.None);
+
+    public Task<ConceptLookup> LookupAsync(CodeRef code, CancellationToken cancellationToken)
+    {
+        if (CannotAnswer(code) is { } unknown)
+        {
+            return Task.FromResult(ConceptLookup.Undetermined(unknown));
+        }
+
+        // Absent from a system this source fully owns: a definitive "not found".
+        return Task.FromResult(Codes.TryGetValue(code.Code, out var display)
+            ? ConceptLookup.Found(new ConceptDetails(null, null, display, null, null, null))
+            : ConceptLookup.NotFound);
     }
 
-    public async Task<BindingValidationResult> ValidateBindingAsync(
-        string valueSetUrl,
-        BindingStrength strength,
-        string? system,
-        string? code,
-        string? display,
-        string? version,
+    public Task<SubsumesOutcome> SubsumesAsync(
+        CodeRef codeA,
+        CodeRef codeB,
         CancellationToken cancellationToken)
     {
-        // Validate based on binding strength
-        // Required → Error, Extensible → Warning, Preferred → Info
-        var validationResult = await ValidateCodeAsync(system, code, display, valueSetUrl, cancellationToken);
+        // Every unknown stays unknown: never turn "cannot tell" into NotSubsumed.
+        var unknown = CannotAnswer(codeA) ?? CannotAnswer(codeB) ?? Absent(codeA) ?? Absent(codeB);
+        if (unknown is not null)
+        {
+            return Task.FromResult<SubsumesOutcome>(new SubsumesOutcome.Undetermined(unknown));
+        }
 
-        return new BindingValidationResult(
-            IsValid: validationResult.IsValid,
-            Strength: strength,
-            Severity: DetermineSeverity(validationResult.IsValid, strength),
-            Message: validationResult.Message,
-            SuggestedDisplay: null);
+        // Both codes exist. Equal codes are equivalent; this flat code list has no hierarchy,
+        // so it cannot prove any other relationship.
+        return Task.FromResult<SubsumesOutcome>(codeA.Code == codeB.Code
+            ? new SubsumesOutcome.Related(SubsumptionRelation.Equivalent)
+            : new SubsumesOutcome.Undetermined(new UnknownReason(
+                UnknownKind.UnsupportedFilter, codeA.CodeSystem.ToString(), "Code system has no hierarchy")));
     }
 
-    // Implement other ITerminologyService methods (LookupCodeAsync, ExpandValueSetAsync, etc.)...
+    private static UnknownReason? CannotAnswer(CodeRef code) =>
+        code.System != System
+            ? new UnknownReason(UnknownKind.SystemNotAvailable, code.System, "Not served by this source")
+            : code.Version is not null
+                ? new UnknownReason(
+                    UnknownKind.SystemVersionNotAvailable,
+                    code.CodeSystem.ToString(),
+                    "This source is unversioned and cannot answer for an explicit version")
+                : null;
+
+    private static UnknownReason? Absent(CodeRef code) =>
+        Codes.ContainsKey(code.Code)
+            ? null
+            : new UnknownReason(UnknownKind.CodeNotInSystem, code.ToString(), $"Code '{code.Code}' is not defined");
 }
+
+// Compose application-specific content with package content. The first source listed
+// is consulted first.
+ITerminologyService terminology = new ComposingTerminologyService(
+[
+    new MyLocalCodesSource(),
+    new PackageTerminologySource(valueSetProvider),
+]);
 ```
+
+**Breaking changes:** `LookupCodeAsync` is now `LookupAsync(LookupRequest)`,
+returning `ConceptLookup`; `SubsumesAsync(SubsumesParameters)` is now
+`SubsumesAsync(SubsumesRequest)`, returning `SubsumesOutcome`; and
+`HybridTerminologyService` is replaced by `ComposingTerminologyService`.
+
+When no source can answer, the composer keeps every source's reason:
+`ConceptLookup.Unknowns` and `SubsumesOutcome.Undetermined.Reasons` carry the full list,
+and the singular `Unknown` / `Reason` properties return its first entry.
 
 ## Batch Validation
 

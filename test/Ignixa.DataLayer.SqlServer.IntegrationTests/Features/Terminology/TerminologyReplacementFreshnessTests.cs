@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using Ignixa.DataLayer.SqlServer.Features.Terminology;
 using Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
 using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Abstractions.Terminology;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -20,11 +21,13 @@ public sealed class TerminologyReplacementFreshnessTests(TerminologyReplacementF
     public async Task GivenCachedMissingSystem_WhenImported_ThenTheNextRequestFindsItsCode()
     {
         var canonical = NewCanonical();
-        (await Service().LookupCodeAsync(canonical, "car", null, CancellationToken.None)).Found.ShouldBeFalse();
+        (await Service().LookupAsync(new CodeRef(canonical, "car"), CancellationToken.None))
+            .Result.ShouldBe(Determination.Unknown);
 
         await ImportCodeSystemAsync(canonical, TerminologyContractResources.CodeSystem(canonical, "1"));
 
-        (await Service().LookupCodeAsync(canonical, "car", null, CancellationToken.None)).Found.ShouldBeTrue();
+        (await Service().LookupAsync(new CodeRef(canonical, "car"), CancellationToken.None))
+            .Result.ShouldBe(Determination.True);
     }
 
     [Fact]
@@ -33,18 +36,18 @@ public sealed class TerminologyReplacementFreshnessTests(TerminologyReplacementF
         var canonical = NewCanonical();
         await ImportCodeSystemAsync(canonical, TerminologyContractResources.CodeSystem(canonical, "1"));
         var original = Service();
-        (await original.LookupCodeAsync(canonical, "car", "1", CancellationToken.None)).Display.ShouldBe("Car");
-        (await original.LookupCodeAsync(canonical, "truck", "1", CancellationToken.None)).Found.ShouldBeTrue();
-        (await original.LookupCodeAsync(canonical, "new", "1", CancellationToken.None)).Found.ShouldBeFalse();
+        (await original.LookupAsync(new CodeRef(canonical, "car", "1"), CancellationToken.None)).Concept!.Display.ShouldBe("Car");
+        (await original.LookupAsync(new CodeRef(canonical, "truck", "1"), CancellationToken.None)).Result.ShouldBe(Determination.True);
+        (await original.LookupAsync(new CodeRef(canonical, "new", "1"), CancellationToken.None)).Result.ShouldBe(Determination.False);
         var replacement = JsonNode.Parse(TerminologyContractResources.CodeSystem(canonical, "1", "New car"))!;
         replacement["concept"]![0]!["concept"]![1]!["code"] = "new";
 
         await ImportCodeSystemAsync(canonical, replacement.ToJsonString());
 
         var next = Service();
-        (await next.LookupCodeAsync(canonical, "car", "1", CancellationToken.None)).Display.ShouldBe("New car");
-        (await next.LookupCodeAsync(canonical, "truck", "1", CancellationToken.None)).Found.ShouldBeFalse();
-        (await next.LookupCodeAsync(canonical, "new", "1", CancellationToken.None)).Found.ShouldBeTrue();
+        (await next.LookupAsync(new CodeRef(canonical, "car", "1"), CancellationToken.None)).Concept!.Display.ShouldBe("New car");
+        (await next.LookupAsync(new CodeRef(canonical, "truck", "1"), CancellationToken.None)).Result.ShouldBe(Determination.False);
+        (await next.LookupAsync(new CodeRef(canonical, "new", "1"), CancellationToken.None)).Result.ShouldBe(Determination.True);
     }
 
     [Fact]
@@ -106,12 +109,13 @@ public sealed class TerminologyReplacementFreshnessTests(TerminologyReplacementF
         var canonical = NewCanonical();
         await ImportCodeSystemAsync(canonical, TerminologyContractResources.CodeSystem(canonical, "1"));
         var gated = new GatedConceptRead(Database.SqlExecutionService);
-        var oldRead = Service(gated).LookupCodeAsync(canonical, "car", "1", CancellationToken.None);
+        var oldRead = Service(gated).LookupAsync(new CodeRef(canonical, "car", "1"), CancellationToken.None);
         try
         {
             await gated.Captured.Task.WaitAsync(TimeSpan.FromSeconds(20));
             await ImportCodeSystemAsync(canonical, TerminologyContractResources.CodeSystem(canonical, "1", "New car"));
-            (await Service().LookupCodeAsync(canonical, "car", "1", CancellationToken.None)).Display.ShouldBe("New car");
+            (await Service().LookupAsync(new CodeRef(canonical, "car", "1"), CancellationToken.None))
+                .Concept!.Display.ShouldBe("New car");
         }
         finally
         {
@@ -119,8 +123,9 @@ public sealed class TerminologyReplacementFreshnessTests(TerminologyReplacementF
             await oldRead;
         }
 
-        (await oldRead).Display.ShouldBe("Car");
-        (await Service().LookupCodeAsync(canonical, "car", "1", CancellationToken.None)).Display.ShouldBe("New car");
+        (await oldRead).Concept!.Display.ShouldBe("Car");
+        (await Service().LookupAsync(new CodeRef(canonical, "car", "1"), CancellationToken.None))
+            .Concept!.Display.ShouldBe("New car");
     }
 
     private SqlServerTerminologyService Service(ISqlExecutionService? sql = null)

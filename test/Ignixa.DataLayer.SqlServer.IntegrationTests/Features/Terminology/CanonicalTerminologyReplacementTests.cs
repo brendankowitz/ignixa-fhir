@@ -5,6 +5,7 @@ using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Domain.Terminology;
 using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Abstractions.Terminology;
 using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
 using Xunit;
@@ -278,13 +279,16 @@ public class CanonicalTerminologyReplacementTests(TerminologyReplacementFixture 
         var service = Database.CreateTerminologyService();
         if (resourceType == "CodeSystem")
         {
-            var lookup = await service.LookupCodeAsync(canonical, "car", version, CancellationToken.None);
-            lookup.Found.ShouldBeTrue();
-            lookup.Display.ShouldBe(display);
+            var lookup = await service.LookupAsync(new CodeRef(canonical, "car", version), CancellationToken.None);
+            lookup.Result.ShouldBe(Determination.True);
+            lookup.Concept!.Display.ShouldBe(display);
             var subsumes = await service.SubsumesAsync(
-                new SubsumesParameters("vehicle", "car", canonical, version), CancellationToken.None);
-            subsumes.Outcome.ShouldBe("subsumes");
-            (await service.LookupCodeAsync(canonical, "CAR", version, CancellationToken.None)).Found.ShouldBeFalse();
+                new CodeRef(canonical, "vehicle", version),
+                new CodeRef(canonical, "car", version),
+                CancellationToken.None);
+            subsumes.KnownRelation.ShouldBe(SubsumptionRelation.Subsumes);
+            (await service.LookupAsync(new CodeRef(canonical, "CAR", version), CancellationToken.None))
+                .Result.ShouldBe(Determination.False);
         }
         else if (resourceType == "ValueSet")
         {

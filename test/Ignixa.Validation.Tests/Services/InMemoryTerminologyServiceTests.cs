@@ -7,6 +7,7 @@ using Ignixa.Abstractions;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation;
 using Ignixa.Validation.Services;
+using NSubstitute;
 using Xunit;
 
 namespace Ignixa.Validation.Tests.Services;

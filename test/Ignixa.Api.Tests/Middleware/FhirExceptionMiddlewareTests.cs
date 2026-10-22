@@ -5,6 +5,7 @@
 
 using System.Text.Json;
 using Ignixa.Api.Middleware;
+using Ignixa.Domain.Exceptions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
@@ -47,6 +48,22 @@ public class FhirExceptionMiddlewareTests
         IssueCode(body).ShouldBe("invalid");
     }
 
+    [Fact]
+    public async Task GivenUnsupportedContent_WhenHandled_ThenRespondsUnprocessableEntityWithNotSupportedOutcome()
+    {
+        const string message = "Cannot determine subsumption: Package terminology content carries no concept hierarchy";
+        var (context, body) = CreateContext();
+        var middleware = new FhirExceptionMiddleware(
+            _ => throw new TerminologyOperationNotSupportedException(message),
+            NullLogger<FhirExceptionMiddleware>.Instance);
+
+        await middleware.InvokeAsync(context);
+
+        context.Response.StatusCode.ShouldBe(StatusCodes.Status422UnprocessableEntity);
+        IssueCode(body).ShouldBe("not-supported");
+        Diagnostics(body).ShouldBe(message);
+    }
+
     private static (DefaultHttpContext Context, MemoryStream Body) CreateContext()
     {
         var body = new MemoryStream();
@@ -59,5 +76,11 @@ public class FhirExceptionMiddlewareTests
     {
         using JsonDocument document = JsonDocument.Parse(body.ToArray());
         return document.RootElement.GetProperty("issue")[0].GetProperty("code").GetString();
+    }
+
+    private static string? Diagnostics(MemoryStream body)
+    {
+        using JsonDocument document = JsonDocument.Parse(body.ToArray());
+        return document.RootElement.GetProperty("issue")[0].GetProperty("diagnostics").GetString();
     }
 }

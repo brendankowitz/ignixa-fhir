@@ -4,6 +4,7 @@ using Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
 using Ignixa.Domain.Models;
 using Ignixa.Domain.Terminology;
 using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Abstractions.Terminology;
 using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
 using Xunit;
@@ -79,7 +80,8 @@ public sealed class TerminologyCanonicalIdentityTests(TerminologyReplacementFixt
         var service = Database.CreateTerminologyService();
         if (resourceType == "CodeSystem")
         {
-            (await service.LookupCodeAsync(canonical, "car", "RELEASEA", CancellationToken.None)).Found.ShouldBeFalse();
+            (await service.LookupAsync(new CodeRef(canonical, "car", "RELEASEA"), CancellationToken.None))
+                .Result.ShouldBe(Determination.Unknown);
         }
         else if (resourceType == "ConceptMap")
         {
@@ -133,7 +135,8 @@ public sealed class TerminologyCanonicalIdentityTests(TerminologyReplacementFixt
         var service = Database.CreateTerminologyService();
         if (resourceType == "CodeSystem")
         {
-            (await service.LookupCodeAsync(canonical, "car", version, CancellationToken.None)).Display.ShouldBe(marker);
+            (await service.LookupAsync(new CodeRef(canonical, "car", version), CancellationToken.None))
+                .Concept!.Display.ShouldBe(marker);
         }
         else if (resourceType == "ConceptMap")
         {

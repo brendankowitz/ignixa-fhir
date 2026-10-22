@@ -12,6 +12,7 @@ using Ignixa.PackageManagement.Validation;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Abstractions.Terminology;
 using Ignixa.Validation.Schema;
 using Ignixa.Validation.Tests.TestHelpers.Packages;
 using Shouldly;
@@ -87,9 +88,11 @@ public sealed class ValidatorConformanceRunner(ITestOutputHelper output)
             .GetDisplay("http://hl7.org/fhir/administrative-gender", "male")
             .ShouldBe("Male");
         var lookup = await PackageSetup.TerminologyService
-            .LookupCodeAsync("http://hl7.org/fhir/administrative-gender", "male", version: null, CancellationToken.None);
-        lookup.Found.ShouldBeTrue();
-        lookup.Display.ShouldBe("Male");
+            .LookupAsync(
+                new LookupRequest(new CodeRef("http://hl7.org/fhir/administrative-gender", "male")),
+                CancellationToken.None);
+        lookup.Result.ShouldBe(Determination.True);
+        lookup.Concept!.Display.ShouldBe("Male");
     }
 
     [Fact]

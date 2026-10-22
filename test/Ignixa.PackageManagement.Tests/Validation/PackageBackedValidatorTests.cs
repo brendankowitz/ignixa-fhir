@@ -7,6 +7,7 @@ using Ignixa.Abstractions;
 using Ignixa.PackageManagement.Models;
 using Ignixa.PackageManagement.Validation;
 using Ignixa.Validation;
+using Ignixa.Validation.Abstractions.Terminology;
 using NSubstitute;
 using Shouldly;
 using Xunit;
@@ -56,9 +57,11 @@ public sealed class PackageBackedValidatorTests
 
         setup.CodeSystemProvider.GetDisplay(ColorSystem, "red").ShouldBe("Red");
 
-        var lookup = await setup.TerminologyService.LookupCodeAsync(ColorSystem, "red", version: null, CancellationToken.None);
-        lookup.Found.ShouldBeTrue();
-        lookup.Display.ShouldBe("Red");
+        var lookup = await setup.TerminologyService.LookupAsync(
+            new LookupRequest(new CodeRef(ColorSystem, "red")),
+            CancellationToken.None);
+        lookup.Result.ShouldBe(Determination.True);
+        lookup.Concept!.Display.ShouldBe("Red");
     }
 
     [Fact]

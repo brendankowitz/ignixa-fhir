@@ -2,6 +2,7 @@ using Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
 using Ignixa.Domain.Models;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Abstractions.Terminology;
 using Shouldly;
 using Xunit;
 
@@ -185,19 +186,20 @@ public class TerminologyCaseSensitivityTests : IAsyncLifetime
 
         var service = _fixture.CreateTerminologyService();
 
-        (await service.LookupCodeAsync(SensitiveSystemUrl, "Gy", null, CancellationToken.None))
-            .Found.ShouldBeTrue();
-        (await service.LookupCodeAsync(SensitiveSystemUrl, "gy", null, CancellationToken.None))
-            .Found.ShouldBeFalse();
+        (await service.LookupAsync(new CodeRef(SensitiveSystemUrl, "Gy"), CancellationToken.None))
+            .Result.ShouldBe(Determination.True);
+        (await service.LookupAsync(new CodeRef(SensitiveSystemUrl, "gy"), CancellationToken.None))
+            .Result.ShouldBe(Determination.False);
 
-        var insensitive = await service.LookupCodeAsync(
-            InsensitiveSystemUrl, "gy", null, CancellationToken.None);
+        var insensitive = await service.LookupAsync(
+            new CodeRef(InsensitiveSystemUrl, "gy"),
+            CancellationToken.None);
 
-        insensitive.Found.ShouldBeTrue();
+        insensitive.Result.ShouldBe(Determination.True);
 
         // Resolved to the stored concept rather than merely reporting "found", which a fallback that matched
         // the wrong row would not do.
-        insensitive.Display.ShouldBe("gray");
+        insensitive.Concept!.Display.ShouldBe("gray");
     }
 
     [Fact]
@@ -215,24 +217,32 @@ public class TerminologyCaseSensitivityTests : IAsyncLifetime
         var service = _fixture.CreateTerminologyService();
 
         var parentToChild = await service.SubsumesAsync(
-            new SubsumesParameters("UNIT", "GY", InsensitiveSystemUrl, null), CancellationToken.None);
+            new CodeRef(InsensitiveSystemUrl, "UNIT"),
+            new CodeRef(InsensitiveSystemUrl, "GY"),
+            CancellationToken.None);
         var childToParent = await service.SubsumesAsync(
-            new SubsumesParameters("GY", "UNIT", InsensitiveSystemUrl, null), CancellationToken.None);
+            new CodeRef(InsensitiveSystemUrl, "GY"),
+            new CodeRef(InsensitiveSystemUrl, "UNIT"),
+            CancellationToken.None);
         var siblings = await service.SubsumesAsync(
-            new SubsumesParameters("GY", "MG", InsensitiveSystemUrl, null), CancellationToken.None);
+            new CodeRef(InsensitiveSystemUrl, "GY"),
+            new CodeRef(InsensitiveSystemUrl, "MG"),
+            CancellationToken.None);
 
-        parentToChild.Outcome.ShouldBe("subsumes");
-        childToParent.Outcome.ShouldBe("subsumed-by");
-        siblings.Outcome.ShouldBe("not-subsumed");
+        parentToChild.KnownRelation.ShouldBe(SubsumptionRelation.Subsumes);
+        childToParent.KnownRelation.ShouldBe(SubsumptionRelation.SubsumedBy);
+        siblings.KnownRelation.ShouldBe(SubsumptionRelation.NotSubsumed);
 
         // Two spellings of one code in a case-insensitive CodeSystem are the same concept, so they are
         // equivalent rather than unrelated.
-        (await service.SubsumesAsync(new SubsumesParameters("GY", "gy", InsensitiveSystemUrl, null), CancellationToken.None))
-            .Outcome.ShouldBe("equivalent");
+        (await service.SubsumesAsync(
+            new CodeRef(InsensitiveSystemUrl, "GY"),
+            new CodeRef(InsensitiveSystemUrl, "gy"),
+            CancellationToken.None)).KnownRelation.ShouldBe(SubsumptionRelation.Equivalent);
     }
 
     [Fact]
-    public async Task GivenACaseSensitiveCodeSystem_WhenSubsumesIsAskedInTheWrongCase_ThenItIsNotSubsumed()
+    public async Task GivenACaseSensitiveCodeSystem_WhenSubsumesIsAskedInTheWrongCase_ThenItIsUndetermined()
     {
         await ImportCodeSystemAsync(SensitiveSystemUrl, caseSensitive: true);
 
@@ -240,10 +250,14 @@ public class TerminologyCaseSensitivityTests : IAsyncLifetime
 
         // The control for the test above: the same shape of question against a CodeSystem that has not
         // declared its codes case-insensitive must not resolve, or the fallback is a blanket relaxation.
-        (await service.SubsumesAsync(new SubsumesParameters("unit", "Gy", SensitiveSystemUrl, null), CancellationToken.None))
-            .Outcome.ShouldBe("subsumes");
-        (await service.SubsumesAsync(new SubsumesParameters("UNIT", "GY", SensitiveSystemUrl, null), CancellationToken.None))
-            .Outcome.ShouldBe("not-subsumed");
+        (await service.SubsumesAsync(
+            new CodeRef(SensitiveSystemUrl, "unit"),
+            new CodeRef(SensitiveSystemUrl, "Gy"),
+            CancellationToken.None)).KnownRelation.ShouldBe(SubsumptionRelation.Subsumes);
+        (await service.SubsumesAsync(
+            new CodeRef(SensitiveSystemUrl, "UNIT"),
+            new CodeRef(SensitiveSystemUrl, "GY"),
+            CancellationToken.None)).Unknown.ShouldNotBeNull();
     }
 
     [Fact]
@@ -324,8 +338,8 @@ public class TerminologyCaseSensitivityTests : IAsyncLifetime
         var service = _fixture.CreateTerminologyService();
 
         // Both resolve, and neither borrows the other's concepts.
-        (await service.LookupCodeAsync(lower, "Gy", null, CancellationToken.None)).Found.ShouldBeTrue();
-        (await service.LookupCodeAsync(upper, "Gy", null, CancellationToken.None)).Found.ShouldBeTrue();
+        (await service.LookupAsync(new CodeRef(lower, "Gy"), CancellationToken.None)).Result.ShouldBe(Determination.True);
+        (await service.LookupAsync(new CodeRef(upper, "Gy"), CancellationToken.None)).Result.ShouldBe(Determination.True);
     }
 
     [Fact]
