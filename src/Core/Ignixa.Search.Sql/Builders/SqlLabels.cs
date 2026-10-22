@@ -41,6 +41,12 @@ public static class SqlLabels
     /// </summary>
     public const string IncludePage = "includePage";
 
+    /// <summary>
+    /// The range label for the outer SELECT of an includes count: one <c>COUNT_BIG(*)</c> over the
+    /// deduplicated union of every include stage body.
+    /// </summary>
+    public const string IncludeCount = "includeCount";
+
     /// <summary>The identifier for the include stage at <paramref name="index"/>.</summary>
     public static string IncludeLabel(int index) => $"inc{index}";
 

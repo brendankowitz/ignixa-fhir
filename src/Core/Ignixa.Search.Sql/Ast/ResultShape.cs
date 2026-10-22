@@ -24,9 +24,11 @@ public abstract record ResultShape
 
     /// <summary>
     /// The match page, plus the rows of every include stage the plan defines. The ordinary search shape, and
-    /// the only one that pages — which is why <see cref="Paging"/> hangs off it rather than sitting beside the
-    /// shape. A count reads the whole match set, and an includes page carries its own resume boundary in
-    /// <see cref="IncludesPage.Resume"/>, so neither has a second paging coordinate to be inconsistent with.
+    /// the only one that pages its own result — which is why <see cref="Paging"/> hangs off it rather than
+    /// sitting beside the shape. A count reads the whole match set, and an includes page carries its own resume
+    /// boundary in <see cref="IncludesPage.Resume"/> (plus, optionally, the match page it replays in
+    /// <see cref="IncludesPage.MatchReplay"/>), so neither has a second result-paging coordinate to be
+    /// inconsistent with.
     /// </summary>
     /// <param name="Paging">
     /// How the match page is bounded and positioned. Null means no row cap, no offset and no keyset boundary.
@@ -85,7 +87,28 @@ public abstract record ResultShape
     /// boundary of the previous page, null on the first.
     /// </summary>
     /// <param name="Resume">The last include row of the previous page, or null to start at the first.</param>
-    public sealed record IncludesPage(IncludeBoundary? Resume = null) : ResultShape
+    /// <param name="MatchReplay">
+    /// Re-selects the exact match page the includes belong to, in the requested sort order, so the stages seed
+    /// from the same matches the original search returned. Null seeds from the whole match set (optionally
+    /// bounded by <c>SearchPlanOptions.SurrogateRange</c>). It bounds the seed only: include rows still page by
+    /// <paramref name="Resume"/> over <c>(T1, Sid1)</c>.
+    /// </param>
+    public sealed record IncludesPage(IncludeBoundary? Resume = null, MatchPageReplay? MatchReplay = null) : ResultShape
+    {
+        private protected override void ThisUnionIsClosed()
+        {
+        }
+    }
+
+    /// <summary>
+    /// A single <c>COUNT_BIG(*)</c> over the distinct included resources, keyed by <c>(T1, Sid1)</c>, that
+    /// the whole search reaches: the <c>$includes</c> operation under <c>_summary=count</c>. Every include
+    /// stage is counted, <c>:iterate</c> and wildcard stages included, through the same access-controlled
+    /// stage bodies an <see cref="IncludesPage"/> reads; a resource that is itself a match is never counted.
+    /// Seeded from the unpaged match set: sort, sort phase, surrogate-id window, include limits and resume
+    /// boundary do not bound it, so the plan carries none of them.
+    /// </summary>
+    public sealed record IncludesCount : ResultShape
     {
         private protected override void ThisUnionIsClosed()
         {

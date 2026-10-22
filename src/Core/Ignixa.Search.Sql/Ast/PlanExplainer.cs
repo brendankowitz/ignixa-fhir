@@ -157,6 +157,11 @@ public static class PlanExplainer
             rows.Add(new PlanExplainRow("countOnly", "countOnly", PlanRowKind.CountOnly, "true", []));
         }
 
+        if (plan.IncludesCountOnly)
+        {
+            rows.Add(new PlanExplainRow("includesCount", "includesCount", PlanRowKind.IncludesCount, "true", []));
+        }
+
         // Both directions matter: Next() catches an explain that renders a parameter out of order, this
         // catches one that renders too few.
         cursor.RequireFullyConsumed();

@@ -16,10 +16,10 @@ namespace Ignixa.Search.Sql.Builders;
 internal static class SqlBuilder
 {
     /// <summary>
-    /// Renders a plan to SQL and its bound parameters by selecting one of three terminal shapes and
+    /// Renders a plan to SQL and its bound parameters by selecting one of the terminal shapes and
     /// delegating to its emitter: a COUNT_BIG SELECT when CountOnly, a plain (T1, Sid1) select (with
     /// optional sort/paging) when there are no includes, or a match-page CTE plus per-stage include CTEs
-    /// unioned into a (T1, Sid1, IsMatch, IsPartial) result.
+    /// unioned into a (T1, Sid1, IsMatch, IsPartial) result — or, for an includes count, counted.
     /// </summary>
     public static EmittedSql Run(QueryPlan plan, EmitOptions? options = null)
     {

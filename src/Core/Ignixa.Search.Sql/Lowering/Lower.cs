@@ -34,17 +34,28 @@ internal static class Lower
         var sortPhase = options.SortPhase;
         var shape = options.Shape;
         var includesOnly = shape is ResultShape.IncludesPage;
+        var includesCount = shape is ResultShape.IncludesCount;
 
-        // Paging hangs off Matches, so a count or an includes page cannot carry one at all — the combinations
-        // those shapes reject are unrepresentable here rather than guarded. Paging is itself one closed choice,
-        // so the T-SQL restriction that TOP cannot combine with OFFSET/FETCH (error 10741) needs no guard
-        // either: only one of these locals can be non-null.
+        // Paging hangs off Matches, so a count cannot carry one at all — the combinations it rejects are
+        // unrepresentable here rather than guarded. Paging is itself one closed choice, so the T-SQL restriction
+        // that TOP cannot combine with OFFSET/FETCH (error 10741) needs no guard either: only one of these locals
+        // can be non-null. An includes page's only match-set bound is the page it replays, which is keyset by
+        // construction and carries no probe row.
         var paging = (shape as ResultShape.Matches)?.Paging;
         var keyset = paging as SearchPaging.Keyset;
-        var top = keyset?.Top;
-        var page = keyset?.Boundary;
+        var replay = (shape as ResultShape.IncludesPage)?.MatchReplay;
+        var top = keyset?.Top ?? replay?.PageSize;
+        var page = keyset?.Boundary ?? replay?.Boundary;
 
         var offsetPage = paging is SearchPaging.Offset offset ? RequireOffsetSpec(offset) : null;
+
+        if (replay is { PageSize: < 0 })
+        {
+            throw new NotSupportedException(
+                $"{nameof(MatchPageReplay)}.{nameof(MatchPageReplay.PageSize)} must not be negative; got " +
+                $"{replay.PageSize}. It is emitted as the replayed match page's TOP, where a negative row count " +
+                "is a SQL Server runtime error.");
+        }
 
         RejectUnsupportedOptions(top, keyset?.TopIncludesProbeRow ?? false, includeLimit, sortPhase, shape, sort);
 
@@ -67,19 +78,19 @@ internal static class Lower
 
         var includeStages = BuildAuthorizedIncludeStages(context, symbols, lowerContext, accessConstraintApplier, allowedResourceTypeFilter);
 
-        if (includesOnly && includeStages is not { Count: > 0 })
+        if ((includesOnly || includesCount) && includeStages is not { Count: > 0 })
         {
             throw new NotSupportedException(
-                "IncludesPage was requested with no _include or _revinclude stages, which can only ever " +
-                "return an empty result. This is a caller error rather than a query that legitimately " +
-                "matches nothing, so it is reported rather than silently emitted.");
+                $"{(includesOnly ? "IncludesPage" : "IncludesCount")} was requested with no _include or " +
+                "_revinclude stages, which can only ever return an empty result. This is a caller error rather " +
+                "than a query that legitimately matches nothing, so it is reported rather than silently emitted.");
         }
 
         // A _sort is still allowed here: its ordering role drops (include rows page by (T1, Sid1), not the sort
         // key), but SortPhase (MissingPrimary/Valued) is a *filter* that partitions the match set seeding the
-        // include stages, so it rides into the match-page CTE independently of ORDER BY. A keyset boundary, a
-        // Top cap and an offset page are the genuinely unsound combinations, and hanging SearchPaging off
-        // ResultShape.Matches makes all three unrepresentable rather than rejected.
+        // include stages, so it rides into the match-page CTE independently of ORDER BY. An offset page and a
+        // probe row are unrepresentable for an includes page; a Top cap and keyset boundary reach it only as the
+        // match page it replays (IncludesPage.MatchReplay), where the sort orders the seed as well.
 
         // BuildSortSpec validates the sort -- key count, key types, and MissingPrimary against a resource-column
         // primary key -- so it runs for every shape. A count reads it only when it asked to be restricted to the
@@ -88,14 +99,18 @@ internal static class Lower
 
         RejectUnsoundKeysetPage(page, sortSpec, sortPhase);
 
+        // An includes count is of the whole search: the sort, its phase and the surrogate-id window a caller
+        // carries over from the includes page it is counting are deliberately ignored, after the sort has been
+        // validated above, so the match seed is the unpaged match set. PlanShapeValidator rejects a hand-built
+        // plan that carries either.
         var matchSpec = new MatchPageSpec(
             match,
             Top: top,
             OuterPredicate: outerPredicate,
-            Sort: sortSpec,
+            Sort: includesCount ? null : sortSpec,
             Page: page,
             Shape: shape,
-            SurrogateRange: context.SurrogateRange,
+            SurrogateRange: includesCount ? null : context.SurrogateRange,
             SearchParameterHash: context.Options.SearchParameterHash is { } hash ? new SqlParameterRef(hash) : null,
             OffsetPage: offsetPage,
             TopIncludesProbeRow: keyset?.TopIncludesProbeRow ?? false);
@@ -398,9 +413,10 @@ internal static class Lower
         }
 
         // A boundary decoded under one phase carries values for that phase's active keys, so carrying it across
-        // a Valued/MissingPrimary transition seeks on the wrong key set. Only Matches can carry a boundary at
-        // all, so no shape exemption is needed here. Rule shared with SqlBuilder via KeysetPageInvariants,
-        // where the plan's flat fields keep the combination representable.
+        // a Valued/MissingPrimary transition seeks on the wrong key set. Only Matches and an includes page's
+        // MatchReplay can carry a boundary, and both seek the same way, so no shape exemption is needed here.
+        // Rule shared with SqlBuilder via KeysetPageInvariants, where the plan's flat fields keep the
+        // combination representable.
         if (KeysetPageInvariants.BoundaryCountDisagreesWithPhase(page, sortSpec))
         {
             throw new NotSupportedException(
