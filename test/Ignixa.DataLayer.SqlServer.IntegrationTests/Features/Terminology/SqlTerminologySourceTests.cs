@@ -1,5 +1,7 @@
 using System.Text.Json.Nodes;
 using Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
+using Ignixa.Validation;
+using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Abstractions.Terminology;
 using Shouldly;
 using Xunit;
@@ -12,6 +14,8 @@ public class SqlTerminologySourceTests : IAsyncLifetime
     private const string OtherSystemUrl = "http://example.org/fhir/CodeSystem/other-vehicles";
     private const string ValueSetUrl = "http://example.org/fhir/ValueSet/source-vehicles";
     private const string ConceptMapUrl = "http://example.org/fhir/ConceptMap/source-vehicles";
+    private const string ChainSystemUrl = "http://example.org/fhir/CodeSystem/source-chain";
+    private const string SharedCanonical = "http://example.org/fhir/shared-canonical";
 
     private TerminologyTestFixture _fixture = null!;
 
@@ -254,5 +258,149 @@ public class SqlTerminologySourceTests : IAsyncLifetime
             .SubsumesAsync(new CodeRef(SystemUrl, a), new CodeRef(SystemUrl, b), CancellationToken.None);
 
         outcome.KnownRelation.ShouldBe(expected);
+    }
+
+    [Fact]
+    public async Task GivenHierarchyDeeperThanTheWalkBudget_WhenSubsumesAsked_ThenUndeterminedBudgetExceeded()
+    {
+        // Regression: the 50-level walk cap answered "not-subsumed" for an ancestor it had simply not reached.
+        await ImportChainAsync(60);
+        var service = _fixture.CreateTerminologyService();
+
+        var withinBudget = await service.SubsumesAsync(
+            new CodeRef(ChainSystemUrl, "c0"), new CodeRef(ChainSystemUrl, "c50"), CancellationToken.None);
+        var beyondBudget = await service.SubsumesAsync(
+            new CodeRef(ChainSystemUrl, "c0"), new CodeRef(ChainSystemUrl, "c51"), CancellationToken.None);
+        var reversed = await service.SubsumesAsync(
+            new CodeRef(ChainSystemUrl, "c51"), new CodeRef(ChainSystemUrl, "c0"), CancellationToken.None);
+
+        withinBudget.KnownRelation.ShouldBe(SubsumptionRelation.Subsumes);
+        beyondBudget.KnownRelation.ShouldBeNull();
+        beyondBudget.Unknown!.Kind.ShouldBe(UnknownKind.BudgetExceeded);
+        reversed.KnownRelation.ShouldBeNull();
+        reversed.Unknown!.Kind.ShouldBe(UnknownKind.BudgetExceeded);
+    }
+
+    [Fact]
+    public async Task GivenHierarchyCycle_WhenSubsumesAsked_ThenUndeterminedWithCycleReason()
+    {
+        // Regression: a parent cycle ended the walk as though it had reached the root, answering "not-subsumed".
+        await ImportChainAsync(3);
+        await _fixture.ExecuteNonQueryAsync($"""
+            UPDATE child SET ParentConceptId = parent.TermConceptId
+            FROM dbo.TermConcept child
+            JOIN dbo.TermConcept parent ON parent.TermCodeSystemId = child.TermCodeSystemId
+            JOIN dbo.TermCodeSystem cs ON cs.TermCodeSystemId = child.TermCodeSystemId
+            JOIN dbo.PackageResource p ON p.PackageResourceId = cs.PackageResourceId
+            WHERE p.Canonical = '{ChainSystemUrl}'
+              AND ((child.Code = 'c1' AND parent.Code = 'c2') OR (child.Code = 'c2' AND parent.Code = 'c1'))
+            """);
+
+        var outcome = await _fixture.CreateTerminologyService().SubsumesAsync(
+            new CodeRef(ChainSystemUrl, "c0"), new CodeRef(ChainSystemUrl, "c2"), CancellationToken.None);
+
+        outcome.KnownRelation.ShouldBeNull();
+        outcome.Unknown!.Kind.ShouldBe(UnknownKind.SourceFailed);
+        outcome.Unknown.Detail.ShouldContain("cycle");
+    }
+
+    [Theory]
+    [InlineData(CanonicalKind.CodeSystem, SourceCoverage.None)]
+    [InlineData(CanonicalKind.ConceptMap, SourceCoverage.None)]
+    [InlineData(CanonicalKind.ValueSet, SourceCoverage.Authoritative)]
+    public async Task GivenCanonicalImportedOnlyAsValueSet_WhenUnversionedCoverageAsked_ThenOnlyValueSetIsCovered(
+        CanonicalKind kind, SourceCoverage expected)
+    {
+        // Regression: unversioned coverage asked whether the canonical had any usable content of any kind,
+        // so an imported ValueSet made SQL authoritative for a CodeSystem it does not hold.
+        var packageResource = await _fixture.SeedPackageResourceAsync(
+            "ValueSet", SharedCanonical, TerminologyTestFixture.ExpandedValueSetJson(SharedCanonical, SystemUrl, "car"));
+        await _fixture.CreateSqlServerImporter().ImportValueSetAsync(
+            _fixture.SystemPartitionId, packageResource, CancellationToken.None);
+
+        var coverage = await _fixture.CreateTerminologyService()
+            .GetCoverageAsync(kind, new CanonicalRef(SharedCanonical), CancellationToken.None);
+
+        coverage.ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("Failed", false)]
+    [InlineData("Failed", true)]
+    [InlineData("PartiallyCompleted", false)]
+    [InlineData("PartiallyCompleted", true)]
+    [InlineData("Skipped", false)]
+    [InlineData("Skipped", true)]
+    public async Task GivenImportedContentWhoseStatusIsNotCompleted_WhenCoverageAsked_ThenNotAuthoritative(
+        string status, bool versioned)
+    {
+        // SQL coverage is authoritative only for a Completed import. Content rows alone are not enough:
+        // a Failed, partial or skipped import must leave routing to the other sources.
+        await ImportAsync("1.0.0");
+        await _fixture.ExecuteNonQueryAsync(
+            $"UPDATE dbo.PackageResource SET TerminologyImportStatus = '{status}' WHERE Canonical = '{SystemUrl}'");
+        var canonical = versioned ? new CanonicalRef(SystemUrl, "1.0.0") : new CanonicalRef(SystemUrl);
+
+        var coverage = await _fixture.CreateTerminologyService()
+            .GetCoverageAsync(CanonicalKind.CodeSystem, canonical, CancellationToken.None);
+
+        coverage.ShouldNotBe(SourceCoverage.Authoritative);
+    }
+
+    [Fact]
+    public async Task GivenUnexpandedValueSet_WhenUnversionedCoverageAsked_ThenNone()
+    {
+        // A ValueSet without an expansion is not usable content and must not take routing from the package.
+        var packageResource = await _fixture.SeedPackageResourceAsync(
+            "ValueSet", ValueSetUrl, TerminologyTestFixture.ExpandedValueSetJson(ValueSetUrl, SystemUrl, "car"));
+        await _fixture.CreateSqlServerImporter().ImportValueSetAsync(
+            _fixture.SystemPartitionId, packageResource, CancellationToken.None);
+        await _fixture.ExecuteNonQueryAsync(
+            $"UPDATE dbo.TermValueSet SET IsExpanded = 0 WHERE PackageResourceId = {packageResource.PackageResourceId}");
+
+        var coverage = await _fixture.CreateTerminologyService()
+            .GetCoverageAsync(CanonicalKind.ValueSet, new CanonicalRef(ValueSetUrl), CancellationToken.None);
+
+        coverage.ShouldBe(SourceCoverage.None);
+    }
+
+    [Theory]
+    [InlineData(" ")]
+    [InlineData("")]
+    public async Task GivenWhitespaceVersion_WhenValidatingBindingWithDifferentDisplay_ThenNoConceptDisplayIsSuggested(string version)
+    {
+        // Guard: the legacy lookup filtered on the raw version, so a blank version matched no concept and no
+        // display was suggested. CodeRef normalises blank to "no version", which would start suggesting one.
+        await ImportAsync();
+        await ImportValueSetAsync("1.0.0");
+        var service = _fixture.CreateTerminologyService();
+
+        var blank = await service.ValidateBindingAsync(
+            ValueSetUrl, BindingStrength.Required, SystemUrl, "car", "Display car", version, CancellationToken.None);
+        var unversioned = await service.ValidateBindingAsync(
+            ValueSetUrl, BindingStrength.Required, SystemUrl, "car", "Display car", null, CancellationToken.None);
+
+        blank.ShouldBe(new BindingValidationResult(true, BindingStrength.Required, IssueSeverity.Information, "Code is valid", null));
+        unversioned.SuggestedDisplay.ShouldBe("Car");
+    }
+
+    /// <summary>
+    /// Imports concepts c0..c(n-1) and links each ci to parent c(i-1) directly in SQL, so c0 is the root and
+    /// c(n-1) is n-1 levels below it. Built with SQL rather than nested JSON to control the exact depth.
+    /// </summary>
+    private async Task ImportChainAsync(int conceptCount)
+    {
+        var packageResource = await _fixture.SeedPackageResourceAsync(
+            "CodeSystem", ChainSystemUrl, TerminologyTestFixture.FlatCodeSystemJson(ChainSystemUrl, conceptCount));
+        await _fixture.CreateSqlServerImporter().ImportCodeSystemAsync(
+            _fixture.SystemPartitionId, packageResource, CancellationToken.None);
+        await _fixture.ExecuteNonQueryAsync($"""
+            UPDATE child SET ParentConceptId = parent.TermConceptId
+            FROM dbo.TermConcept child
+            JOIN dbo.TermConcept parent ON parent.TermCodeSystemId = child.TermCodeSystemId
+                AND parent.Code = CONCAT('c', CAST(SUBSTRING(child.Code, 2, 10) AS int) - 1)
+            JOIN dbo.TermCodeSystem cs ON cs.TermCodeSystemId = child.TermCodeSystemId
+            WHERE cs.PackageResourceId = {packageResource.PackageResourceId} AND child.Code <> 'c0'
+            """);
     }
 }

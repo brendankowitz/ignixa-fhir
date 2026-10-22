@@ -56,6 +56,41 @@ public class SubsumesHandlerTests
         exception.Message.ShouldBe("Cannot determine subsumption: Package terminology content carries no concept hierarchy");
     }
 
+    [Fact]
+    public async Task GivenOnlyUnsupportedContentReasons_WhenHandled_ThenUnprocessableExceptionNamesEveryReason()
+    {
+        // Every source failed only for content limitations, so this is an unsupported-content response.
+        _terminologyService.SubsumesAsync(Arg.Any<SubsumesRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new SubsumesOutcome.Undetermined([
+                new UnknownReason(UnknownKind.UnsupportedFilter, System, "No hierarchy"),
+                new UnknownReason(UnknownKind.NonEnumerableSystem, System, "Not enumerable")]));
+
+        var exception = await Should.ThrowAsync<TerminologyOperationNotSupportedException>(
+            () => CreateHandler().HandleAsync(new SubsumesQuery(1, "a", "b", System, null), CancellationToken.None));
+
+        exception.StatusCode.ShouldBe(422);
+        exception.Message.ShouldBe("Cannot determine subsumption: No hierarchy; Not enumerable");
+    }
+
+    [Theory]
+    [InlineData(UnknownKind.UnsupportedFilter, UnknownKind.CodeNotInSystem)]
+    [InlineData(UnknownKind.CodeNotInSystem, UnknownKind.NonEnumerableSystem)]
+    [InlineData(UnknownKind.UnsupportedFilter, UnknownKind.SystemVersionNotAvailable)]
+    public async Task GivenMixedReasons_WhenHandled_ThenBadRequestNamesEveryReason(UnknownKind first, UnknownKind second)
+    {
+        // Regression: only the first reason was inspected, so a leading content limitation hid a client-side
+        // problem (an unknown code or version) and the request was reported as unsupported content.
+        _terminologyService.SubsumesAsync(Arg.Any<SubsumesRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new SubsumesOutcome.Undetermined([
+                new UnknownReason(first, System, "First"),
+                new UnknownReason(second, System, "Second")]));
+
+        var exception = await Should.ThrowAsync<BadRequestException>(
+            () => CreateHandler().HandleAsync(new SubsumesQuery(1, "a", "b", System, null), CancellationToken.None));
+
+        exception.Message.ShouldBe("Cannot determine subsumption: First; Second");
+    }
+
     [Theory]
     [InlineData(SubsumptionRelation.Subsumes, "subsumes")]
     [InlineData(SubsumptionRelation.NotSubsumed, "not-subsumed")]

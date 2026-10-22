@@ -21,6 +21,8 @@ public sealed record MembershipResult : ITerminologyAnswer
 
     public UnknownReason? Unknown { get; }
 
+    public IReadOnlyList<UnknownReason> Unknowns => Unknown is null ? UnknownReasons.None : UnknownReasons.Single(Unknown);
+
     public static MembershipResult Undetermined(UnknownReason reason)
     {
         ArgumentNullException.ThrowIfNull(reason);

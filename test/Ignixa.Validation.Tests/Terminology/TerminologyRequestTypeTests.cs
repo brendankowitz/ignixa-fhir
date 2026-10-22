@@ -39,4 +39,53 @@ public class TerminologyRequestTypeTests
         ConceptLookup.Undetermined(reason).Result.ShouldBe(Determination.Unknown);
         ConceptLookup.Undetermined(reason).Unknown.ShouldBe(reason);
     }
+
+    [Fact]
+    public void GivenNullConcept_WhenFoundCreated_ThenThrowsForThatArgument()
+    {
+        Should.Throw<ArgumentNullException>(() => ConceptLookup.Found(null!)).ParamName.ShouldBe("concept");
+    }
+
+    [Fact]
+    public void GivenNullReason_WhenUndeterminedLookupCreated_ThenThrowsForThatArgument()
+    {
+        Should.Throw<ArgumentNullException>(() => ConceptLookup.Undetermined((UnknownReason)null!)).ParamName.ShouldBe("reason");
+    }
+
+    [Fact]
+    public void GivenSeveralReasons_WhenUndeterminedLookupCreated_ThenAllReasonsAreKeptInOrder()
+    {
+        // Keeping only one reason hides why the other sources could not answer.
+        var first = new UnknownReason(UnknownKind.NonEnumerableSystem, "http://a", "subset");
+        var second = new UnknownReason(UnknownKind.SystemVersionNotAvailable, "http://a|2", "not loaded");
+
+        var lookup = ConceptLookup.Undetermined([first, second]);
+
+        lookup.Result.ShouldBe(Determination.Unknown);
+        lookup.Unknowns.ShouldBe([first, second]);
+        lookup.Unknown.ShouldBe(first);
+        lookup.ShouldBe(ConceptLookup.Undetermined([first, second]));
+        lookup.ShouldNotBe(ConceptLookup.Undetermined(first));
+    }
+
+    [Fact]
+    public void GivenDeterminedLookups_WhenInspected_ThenNoReasonsAreCarried()
+    {
+        ConceptLookup.NotFound.Unknowns.ShouldBeEmpty();
+        ConceptLookup.Found(new ConceptDetails(null, null, "Car", null, null, null)).Unknowns.ShouldBeEmpty();
+        ConceptLookup.Undetermined(new UnknownReason(UnknownKind.SystemNotAvailable, "http://a", "x"))
+            .Unknowns.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public void GivenNoReasons_WhenUndeterminedLookupCreated_ThenThrows()
+    {
+        // An unknown answer without a reason cannot be explained to the caller.
+        Should.Throw<ArgumentNullException>(() => ConceptLookup.Undetermined((IReadOnlyList<UnknownReason>)null!))
+            .ParamName.ShouldBe("reasons");
+        Should.Throw<ArgumentException>(() => ConceptLookup.Undetermined(Array.Empty<UnknownReason>()))
+            .ParamName.ShouldBe("reasons");
+        Should.Throw<ArgumentException>(() => ConceptLookup.Undetermined([null!]))
+            .ParamName.ShouldBe("reasons");
+    }
 }

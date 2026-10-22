@@ -77,6 +77,13 @@ public sealed class SqlServerTerminologyService(
     /// </summary>
     private const string CaseInsensitiveCollation = "Latin1_General_100_CI_AS";
 
+    /// <summary>
+    /// Parent links followed by one subsumption walk, one query per level. Deliberately not a recursive CTE:
+    /// the bound keeps a pathological hierarchy from becoming an unbounded query. A walk that hits it answers
+    /// <see cref="UnknownKind.BudgetExceeded"/>, never "not subsumed".
+    /// </summary>
+    private const int MaxHierarchyDepth = 50;
+
     // Every SQL string here is assembled from catalog identifiers and fixed literals; all caller data flows
     // through parameters. Stating the CA2100 justification once rather than at each call site.
     private static SqlCommand Command(string sql)
@@ -92,15 +99,12 @@ public sealed class SqlServerTerminologyService(
         CanonicalKind kind, CanonicalRef canonical, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(canonical);
-        if (canonical.Version is not null)
-        {
-            return await HasCompletedVersionAsync(kind, canonical.Url, canonical.Version, cancellationToken)
-                ? SourceCoverage.Authoritative
-                : SourceCoverage.None;
-        }
 
-        var status = await GetImportStatusAsync(canonical.Url, cancellationToken);
-        return status == TerminologyImportStatus.Completed ? SourceCoverage.Authoritative : SourceCoverage.None;
+        // Coverage is per kind: a ValueSet sharing this canonical says nothing about a CodeSystem of the same
+        // URL. GetImportStatusAsync answers "is anything installed here", which is the import-status question.
+        return await HasUsableContentAsync(kind, canonical.Url, canonical.Version, completedOnly: true, cancellationToken)
+            ? SourceCoverage.Authoritative
+            : SourceCoverage.None;
     }
 
     public async Task<ConceptLookup> LookupAsync(CodeRef code, CancellationToken cancellationToken)
@@ -114,8 +118,8 @@ public sealed class SqlServerTerminologyService(
         }
 
         if (code.Version is not null
-            && !await HasCompletedVersionAsync(
-                CanonicalKind.CodeSystem, code.System, code.Version, cancellationToken))
+            && !await HasUsableContentAsync(
+                CanonicalKind.CodeSystem, code.System, code.Version, completedOnly: false, cancellationToken))
         {
             return ConceptLookup.Undetermined(VersionNotLoaded(code.CodeSystem));
         }
@@ -300,7 +304,12 @@ public sealed class SqlServerTerminologyService(
 
         string? suggestedDisplay = null;
 
+        // A non-null blank version filtered the legacy concept read on the blank string, which matched no
+        // concept, so no display was suggested. CodeRef would normalise it to "unversioned" instead.
+        var blankVersion = version is not null && string.IsNullOrWhiteSpace(version);
+
         if (codeValidation.IsValid
+            && !blankVersion
             && !string.IsNullOrEmpty(display)
             && !string.IsNullOrEmpty(system)
             && !string.IsNullOrEmpty(code))
@@ -480,8 +489,8 @@ public sealed class SqlServerTerminologyService(
         }
 
         if (codeA.Version is not null
-            && !await HasCompletedVersionAsync(
-                CanonicalKind.CodeSystem, codeA.System, codeA.Version, cancellationToken))
+            && !await HasUsableContentAsync(
+                CanonicalKind.CodeSystem, codeA.System, codeA.Version, completedOnly: false, cancellationToken))
         {
             return new SubsumesOutcome.Undetermined(VersionNotLoaded(codeA.CodeSystem));
         }
@@ -507,14 +516,46 @@ public sealed class SqlServerTerminologyService(
             return new SubsumesOutcome.Related(SubsumptionRelation.Equivalent);
         }
 
-        if (await IsDescendantOfAsync(conceptB.Value, conceptA.Value, cancellationToken))
+        var bUnderA = await WalkAncestryAsync(conceptB.Value, conceptA.Value, cancellationToken);
+        if (bUnderA == Ancestry.Descendant)
         {
             return new SubsumesOutcome.Related(SubsumptionRelation.Subsumes);
         }
 
-        return await IsDescendantOfAsync(conceptA.Value, conceptB.Value, cancellationToken)
-            ? new SubsumesOutcome.Related(SubsumptionRelation.SubsumedBy)
-            : new SubsumesOutcome.Related(SubsumptionRelation.NotSubsumed);
+        var aUnderB = await WalkAncestryAsync(conceptA.Value, conceptB.Value, cancellationToken);
+        if (aUnderB == Ancestry.Descendant)
+        {
+            return new SubsumesOutcome.Related(SubsumptionRelation.SubsumedBy);
+        }
+
+        // "Not subsumed" is only provable when both walks reached a root. A walk cut short by the depth
+        // budget or a parent cycle proves nothing, so it stays Undetermined rather than becoming false.
+        var unknowns = new List<UnknownReason>(2);
+        AddWalkUnknown(unknowns, bUnderA, codeB, codeA);
+        AddWalkUnknown(unknowns, aUnderB, codeA, codeB);
+
+        return unknowns.Count == 0
+            ? new SubsumesOutcome.Related(SubsumptionRelation.NotSubsumed)
+            : new SubsumesOutcome.Undetermined(unknowns);
+    }
+
+    private static void AddWalkUnknown(List<UnknownReason> unknowns, Ancestry walk, CodeRef descendant, CodeRef ancestor)
+    {
+        switch (walk)
+        {
+            case Ancestry.DepthExceeded:
+                unknowns.Add(new UnknownReason(
+                    UnknownKind.BudgetExceeded,
+                    descendant.ToString(),
+                    $"Hierarchy walk from '{descendant.Code}' toward '{ancestor.Code}' exceeded {MaxHierarchyDepth} levels"));
+                break;
+            case Ancestry.Cycle:
+                unknowns.Add(new UnknownReason(
+                    UnknownKind.SourceFailed,
+                    descendant.ToString(),
+                    $"Hierarchy walk from '{descendant.Code}' toward '{ancestor.Code}' found a parent cycle in '{descendant.CodeSystem}'"));
+                break;
+        }
     }
 
     public async Task<TerminologyImportStatus?> GetImportStatusAsync(
@@ -566,8 +607,15 @@ public sealed class SqlServerTerminologyService(
     private static UnknownReason NotInSystem(CodeRef code) =>
         new(UnknownKind.CodeNotInSystem, code.ToString(), $"Code '{code.Code}' is not defined in '{code.CodeSystem}'");
 
-    private async Task<bool> HasCompletedVersionAsync(
-        CanonicalKind kind, string canonical, string version, CancellationToken cancellationToken)
+    /// <summary>
+    /// Whether an active package row for <paramref name="canonical"/> carries usable content of exactly
+    /// <paramref name="kind"/> — for a ValueSet, an expansion — restricted to <paramref name="version"/>
+    /// when one is given. With <paramref name="completedOnly"/> the row's import must also be
+    /// <c>Completed</c>: coverage is authoritative only then, whereas reads keep serving the content a
+    /// rolled-back replacement left behind under a <c>Failed</c> row.
+    /// </summary>
+    private async Task<bool> HasUsableContentAsync(
+        CanonicalKind kind, string canonical, string? version, bool completedOnly, CancellationToken cancellationToken)
     {
         var resource = kind switch
         {
@@ -576,19 +624,26 @@ public sealed class SqlServerTerminologyService(
             CanonicalKind.ConceptMap => ConceptMaps,
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
         };
+        var completedPredicate = completedOnly ? " AND p.TerminologyImportStatus = 'Completed'" : string.Empty;
         var usableContentPredicate = kind == CanonicalKind.ValueSet
             ? $" AND r.{resource.Column("IsExpanded").Name} = 1"
             : string.Empty;
+        var versionPredicate = version is null
+            ? string.Empty
+            : $" AND r.{resource.Column("Version").Name} = @version";
 
         using var command = Command(
             $"SELECT CASE WHEN EXISTS (" +
             $"SELECT 1 FROM dbo.PackageResource p " +
             $"JOIN {Qualified(resource)} r ON r.{resource.Column("PackageResourceId").Name} = p.PackageResourceId " +
-            $"WHERE p.Canonical = @canonical AND p.IsActive = 1 " +
-            $"AND r.{resource.Column("Version").Name} = @version{usableContentPredicate}" +
+            $"WHERE p.Canonical = @canonical AND p.IsActive = 1" +
+            $"{completedPredicate}{versionPredicate}{usableContentPredicate}" +
             $") THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END");
         command.Parameters.AddWithValue("@canonical", canonical);
-        command.Parameters.AddWithValue("@version", version);
+        if (version is not null)
+        {
+            command.Parameters.AddWithValue("@version", version);
+        }
 
         var rows = await sqlExecutionService.ExecuteReaderAsync(
             systemPartitionId, command, reader => reader.GetBoolean(0), cancellationToken);
@@ -597,16 +652,17 @@ public sealed class SqlServerTerminologyService(
     }
 
     /// <summary>
-    /// Walks parent links upward one query per level, capped at 50, with a visited set guarding cycles.
-    /// Deliberately not a recursive CTE: the cap is observable behaviour — a hierarchy deeper than 50 levels
-    /// reports no relationship — and a CTE would silently answer differently past that depth.
+    /// Walks parent links upward one query per level, capped at <see cref="MaxHierarchyDepth"/>, with a
+    /// visited set guarding cycles. Only reaching a root proves <see cref="Ancestry.NotDescendant"/>; a walk
+    /// stopped by the cap or by a cycle reports that instead, so the caller can answer Unknown rather than
+    /// "not subsumed" for an ancestor it simply did not reach.
     /// </summary>
-    private async Task<bool> IsDescendantOfAsync(long descendantId, long ancestorId, CancellationToken cancellationToken)
+    private async Task<Ancestry> WalkAncestryAsync(long descendantId, long ancestorId, CancellationToken cancellationToken)
     {
         var currentId = descendantId;
         var visited = new HashSet<long> { currentId };
 
-        for (var depth = 0; depth < 50; depth++)
+        for (var depth = 0; depth < MaxHierarchyDepth; depth++)
         {
             using var command = Command(
                 $"SELECT {Concepts.Column("ParentConceptId").Name} FROM {Qualified(Concepts)} " +
@@ -623,23 +679,31 @@ public sealed class SqlServerTerminologyService(
 
             if (parentId is null)
             {
-                return false;
+                return Ancestry.NotDescendant;
             }
 
             if (parentId == ancestorId)
             {
-                return true;
+                return Ancestry.Descendant;
             }
 
             if (!visited.Add(parentId.Value))
             {
-                return false;
+                return Ancestry.Cycle;
             }
 
             currentId = parentId.Value;
         }
 
-        return false;
+        return Ancestry.DepthExceeded;
+    }
+
+    private enum Ancestry
+    {
+        Descendant,
+        NotDescendant,
+        DepthExceeded,
+        Cycle,
     }
 
     /// <summary>

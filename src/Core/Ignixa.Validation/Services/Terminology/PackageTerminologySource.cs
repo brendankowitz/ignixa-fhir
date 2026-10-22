@@ -14,6 +14,8 @@ namespace Ignixa.Validation.Services.Terminology;
 /// <summary>
 /// Terminology answered from loaded package content: base-spec and IG ValueSets plus optional CodeSystem
 /// content. Never authoritative for a CodeSystem, because package content may be a subset of the real system.
+/// Package CodeSystem content is unversioned, so a lookup or subsumption that names an explicit CodeSystem
+/// version is always undetermined (<see cref="UnknownKind.SystemVersionNotAvailable"/>).
 /// </summary>
 public sealed class PackageTerminologySource : ITerminologySource, ILegacyValueSetOperations
 {
@@ -46,7 +48,7 @@ public sealed class PackageTerminologySource : ITerminologySource, ILegacyValueS
     }
 
     public PackageTerminologySource(IValueSetProvider primary, IEnumerable<IValueSetProvider> additional, ICodeSystemProvider? codeSystemProvider = null)
-        : this(new LayeredValueSetProvider(primary, additional), codeSystemProvider)
+        : this(Layer(primary, additional), codeSystemProvider)
     {
     }
 
@@ -67,6 +69,11 @@ public sealed class PackageTerminologySource : ITerminologySource, ILegacyValueS
     public Task<ConceptLookup> LookupAsync(CodeRef code, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(code);
+        if (code.Version is not null)
+        {
+            return Task.FromResult(ConceptLookup.Undetermined(VersionNotProvable(code.CodeSystem)));
+        }
+
         var lookup = _codeSystemProvider?.ContainsCode(code.System, code.Code) switch
         {
             true => ConceptLookup.Found(new ConceptDetails(null, null, _codeSystemProvider!.GetDisplay(code.System, code.Code), null, null, null)),
@@ -83,10 +90,39 @@ public sealed class PackageTerminologySource : ITerminologySource, ILegacyValueS
     {
         ArgumentNullException.ThrowIfNull(codeA);
         ArgumentNullException.ThrowIfNull(codeB);
-        SubsumesOutcome outcome = new SubsumesOutcome.Undetermined(new UnknownReason(
-            UnknownKind.UnsupportedFilter, codeA.System, "Package terminology content carries no concept hierarchy"));
-        return Task.FromResult(outcome);
+        UnknownReason reason;
+        if (codeA.Version is not null)
+        {
+            reason = VersionNotProvable(codeA.CodeSystem);
+        }
+        else if (codeB.Version is not null)
+        {
+            reason = VersionNotProvable(codeB.CodeSystem);
+        }
+        else
+        {
+            reason = new UnknownReason(UnknownKind.UnsupportedFilter, codeA.System, "Package terminology content carries no concept hierarchy");
+        }
+
+        return Task.FromResult<SubsumesOutcome>(new SubsumesOutcome.Undetermined(reason));
     }
+
+    private static LayeredValueSetProvider Layer(IValueSetProvider primary, IEnumerable<IValueSetProvider> additional)
+    {
+        ArgumentNullException.ThrowIfNull(primary);
+        ArgumentNullException.ThrowIfNull(additional);
+        return new LayeredValueSetProvider(primary, additional);
+    }
+
+    /// <summary>
+    /// Package content carries no CodeSystem version, so it cannot prove that any explicitly requested version
+    /// is the one it holds; answering from it would turn an unloaded version into a definitive answer.
+    /// </summary>
+    private static UnknownReason VersionNotProvable(CanonicalRef codeSystem) =>
+        new(
+            UnknownKind.SystemVersionNotAvailable,
+            codeSystem.ToString(),
+            $"Package content is unversioned and cannot answer for CodeSystem version '{codeSystem.Version}'");
 
     /// <summary>
     /// Validates a code against a locally-expanded ValueSet, distinguishing three outcomes:

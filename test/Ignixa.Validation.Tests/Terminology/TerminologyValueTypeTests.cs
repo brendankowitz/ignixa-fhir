@@ -95,11 +95,101 @@ public class TerminologyValueTypeTests
     [Fact]
     public void GivenNullReason_WhenUndeterminedConstructed_ThenThrows()
     {
-        Should.Throw<ArgumentNullException>(() => new SubsumesOutcome.Undetermined(null!));
+        Should.Throw<ArgumentNullException>(() => new SubsumesOutcome.Undetermined((UnknownReason)null!)).ParamName.ShouldBe("reason");
+        Should.Throw<ArgumentNullException>(() => new SubsumesOutcome.Undetermined((IReadOnlyList<UnknownReason>)null!))
+            .ParamName.ShouldBe("reasons");
+        Should.Throw<ArgumentException>(() => new SubsumesOutcome.Undetermined(Array.Empty<UnknownReason>()))
+            .ParamName.ShouldBe("reasons");
+        Should.Throw<ArgumentException>(() => new SubsumesOutcome.Undetermined([null!]))
+            .ParamName.ShouldBe("reasons");
+    }
+
+    [Fact]
+    public void GivenSeveralReasons_WhenUndeterminedConstructed_ThenAllReasonsAreKeptInOrder()
+    {
+        // Keeping only one reason hides why the other sources could not answer.
+        var first = new UnknownReason(UnknownKind.UnsupportedFilter, "http://s", "no hierarchy");
+        var second = new UnknownReason(UnknownKind.CodeNotInSystem, "http://s#x", "no such code");
+
+        var outcome = new SubsumesOutcome.Undetermined([first, second]);
+
+        outcome.Reasons.ShouldBe([first, second]);
+        outcome.Reason.ShouldBe(first);
+        outcome.Unknown.ShouldBe(first);
+        outcome.ShouldBe(new SubsumesOutcome.Undetermined([first, second]));
+        outcome.ShouldNotBe(new SubsumesOutcome.Undetermined(first));
+        new SubsumesOutcome.Undetermined(first).Reasons.ShouldBe([first]);
+    }
+
+    [Fact]
+    public void GivenReasonCollections_WhenCastToMutableTypes_ThenTheyCannotBeMutated()
+    {
+        // A caller that casts the exposed list must not be able to rewrite the reasons behind equality.
+        var first = new UnknownReason(UnknownKind.UnsupportedFilter, "http://s", "no hierarchy");
+        var second = new UnknownReason(UnknownKind.CodeNotInSystem, "http://s#x", "no such code");
+        var other = new UnknownReason(UnknownKind.SourceFailed, "http://s#y", "boom");
+        List<UnknownReason> source = [first, second];
+
+        var exposed = new IReadOnlyList<UnknownReason>[]
+        {
+            ConceptLookup.Undetermined(first).Unknowns,
+            ConceptLookup.Undetermined(source).Unknowns,
+            ConceptLookup.Found(new ConceptDetails("a", null, "A", null, null, null)).Unknowns,
+            ConceptLookup.NotFound.Unknowns,
+            new SubsumesOutcome.Undetermined(first).Reasons,
+            new SubsumesOutcome.Undetermined(source).Reasons,
+            new SubsumesOutcome.Related(SubsumptionRelation.Subsumes).Unknowns,
+            MembershipResult.Member.Unknowns,
+            MembershipResult.NotMember.Unknowns,
+            MembershipResult.Undetermined(first).Unknowns,
+        };
+
+        foreach (var reasons in exposed)
+        {
+            reasons.ShouldNotBeOfType<UnknownReason[]>();
+            reasons.ShouldNotBeOfType<List<UnknownReason>>();
+            var list = reasons.ShouldBeAssignableTo<IList<UnknownReason>>();
+            list.IsReadOnly.ShouldBeTrue();
+            if (list.Count > 0)
+            {
+                Should.Throw<NotSupportedException>(() => list[0] = other);
+            }
+
+            Should.Throw<NotSupportedException>(() => list.Add(other));
+        }
+
+        var lookup = ConceptLookup.Undetermined(source);
+        var outcome = new SubsumesOutcome.Undetermined(source);
+        source[0] = other;
+        source.Add(other);
+
+        lookup.Unknowns.ShouldBe([first, second]);
+        outcome.Reasons.ShouldBe([first, second]);
+    }
+
+    [Fact]
+    public void GivenSeveralReasons_WhenHashed_ThenEveryOrderedReasonContributesConsistentlyWithEquality()
+    {
+        var first = new UnknownReason(UnknownKind.UnsupportedFilter, "http://s", "no hierarchy");
+        var second = new UnknownReason(UnknownKind.CodeNotInSystem, "http://s#x", "no such code");
+        var third = new UnknownReason(UnknownKind.SourceFailed, "http://s#y", "boom");
+
+        ConceptLookup.Undetermined([first, second]).GetHashCode()
+            .ShouldBe(ConceptLookup.Undetermined([first, new UnknownReason(second.Kind, second.Subject, second.Detail)]).GetHashCode());
+        new SubsumesOutcome.Undetermined([first, second]).GetHashCode()
+            .ShouldBe(new SubsumesOutcome.Undetermined([first, new UnknownReason(second.Kind, second.Subject, second.Detail)]).GetHashCode());
+
+        ConceptLookup.Undetermined([first, second]).GetHashCode()
+            .ShouldNotBe(ConceptLookup.Undetermined([first, third]).GetHashCode());
+        ConceptLookup.Undetermined([first, second]).GetHashCode()
+            .ShouldNotBe(ConceptLookup.Undetermined([second, first]).GetHashCode());
+        new SubsumesOutcome.Undetermined([first, second]).GetHashCode()
+            .ShouldNotBe(new SubsumesOutcome.Undetermined([first, third]).GetHashCode());
+        new SubsumesOutcome.Undetermined([first, second]).GetHashCode()
+            .ShouldNotBe(new SubsumesOutcome.Undetermined([second, first]).GetHashCode());
     }
 
     [Theory]
-    [InlineData(SubsumptionRelation.Equivalent, "equivalent")]
     [InlineData(SubsumptionRelation.Subsumes, "subsumes")]
     [InlineData(SubsumptionRelation.SubsumedBy, "subsumed-by")]
     [InlineData(SubsumptionRelation.NotSubsumed, "not-subsumed")]

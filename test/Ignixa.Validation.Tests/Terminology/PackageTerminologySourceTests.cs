@@ -89,6 +89,69 @@ public class PackageTerminologySourceTests
     }
 
     [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task GivenExplicitVersion_WhenLookedUp_ThenUnknownSystemVersionNotAvailable(bool packageHasCode)
+    {
+        // Regression: package content is unversioned, so an explicit version answered Found/NotFound from
+        // whatever version the package happened to carry instead of admitting it cannot prove that version.
+        var codeSystems = Substitute.For<ICodeSystemProvider>();
+        codeSystems.ContainsCode(Local, "car").Returns(packageHasCode);
+        codeSystems.GetDisplay(Local, "car").Returns("Car");
+
+        var lookup = await Create(codeSystems).LookupAsync(new CodeRef(Local, "car", "2.0"), CancellationToken.None);
+
+        lookup.Result.ShouldBe(Determination.Unknown);
+        lookup.Concept.ShouldBeNull();
+        lookup.Unknown!.Kind.ShouldBe(UnknownKind.SystemVersionNotAvailable);
+        lookup.Unknown.Subject.ShouldBe($"{Local}|2.0");
+    }
+
+    [Fact]
+    public async Task GivenExplicitVersion_WhenSubsumesAsked_ThenUnknownSystemVersionNotAvailable()
+    {
+        // Regression: the version was ignored, hiding that the package cannot prove the requested version.
+        var outcome = await Create().SubsumesAsync(
+            new CodeRef(Local, "a", "2.0"), new CodeRef(Local, "b", "2.0"), CancellationToken.None);
+
+        outcome.KnownRelation.ShouldBeNull();
+        outcome.Unknown!.Kind.ShouldBe(UnknownKind.SystemVersionNotAvailable);
+        outcome.Unknown.Subject.ShouldBe($"{Local}|2.0");
+    }
+
+    [Fact]
+    public void GivenNullValueSetProvider_WhenConstructed_ThenThrowsForThatArgument()
+    {
+        Should.Throw<ArgumentNullException>(() => new PackageTerminologySource(null!))
+            .ParamName.ShouldBe("valueSetProvider");
+    }
+
+    [Fact]
+    public void GivenNullPrimaryProvider_WhenLayeredSourceConstructed_ThenThrowsForThatArgument()
+    {
+        // Regression: a null primary was accepted and failed later, on the first ValueSet fallback.
+        Should.Throw<ArgumentNullException>(
+                () => new PackageTerminologySource(null!, [Substitute.For<IValueSetProvider>()]))
+            .ParamName.ShouldBe("primary");
+    }
+
+    [Fact]
+    public void GivenNullAdditionalProviders_WhenLayeredSourceConstructed_ThenThrowsForThatArgument()
+    {
+        // Regression: a null list surfaced as an exception about LINQ's 'source' parameter.
+        Should.Throw<ArgumentNullException>(
+                () => new PackageTerminologySource(Substitute.For<IValueSetProvider>(), (IEnumerable<IValueSetProvider>)null!))
+            .ParamName.ShouldBe("additional");
+    }
+
+    [Fact]
+    public async Task GivenNullCode_WhenLookedUp_ThenThrowsForThatArgument()
+    {
+        (await Should.ThrowAsync<ArgumentNullException>(() => Create().LookupAsync(null!, CancellationToken.None)))
+            .ParamName.ShouldBe("code");
+    }
+
+    [Theory]
     [InlineData(CanonicalKind.CodeSystem, false, SourceCoverage.Partial)]
     [InlineData(CanonicalKind.ValueSet, true, SourceCoverage.Authoritative)]
     [InlineData(CanonicalKind.ValueSet, false, SourceCoverage.None)]

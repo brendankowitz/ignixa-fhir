@@ -15,6 +15,8 @@ public abstract record SubsumesOutcome : ITerminologyAnswer
 
     public UnknownReason? Unknown => this is Undetermined undetermined ? undetermined.Reason : null;
 
+    public IReadOnlyList<UnknownReason> Unknowns => this is Undetermined undetermined ? undetermined.Reasons : UnknownReasons.None;
+
     public sealed record Related(SubsumptionRelation Relation) : SubsumesOutcome
     {
         public SubsumptionRelation Relation { get; } = EnsureRelation(Relation);
@@ -25,14 +27,26 @@ public abstract record SubsumesOutcome : ITerminologyAnswer
                 : throw new ArgumentOutOfRangeException(nameof(relation), relation, null);
     }
 
-    public sealed record Undetermined(UnknownReason Reason) : SubsumesOutcome
+    public sealed record Undetermined : SubsumesOutcome
     {
-        public UnknownReason Reason { get; } = EnsureReason(Reason);
-
-        private static UnknownReason EnsureReason(UnknownReason reason)
+        public Undetermined(UnknownReason reason)
         {
-            ArgumentNullException.ThrowIfNull(reason);
-            return reason;
+            Reasons = UnknownReasons.Single(reason);
         }
+
+        public Undetermined(IReadOnlyList<UnknownReason> reasons)
+        {
+            Reasons = UnknownReasons.Copy(reasons);
+        }
+
+        /// <summary>Every reason subsumption could not be determined, in source order; never empty.</summary>
+        public IReadOnlyList<UnknownReason> Reasons { get; }
+
+        /// <summary>The first of <see cref="Reasons"/>.</summary>
+        public UnknownReason Reason => Reasons[0];
+
+        public bool Equals(Undetermined? other) => other is not null && Reasons.SequenceEqual(other.Reasons);
+
+        public override int GetHashCode() => UnknownReasons.Hash(Reasons);
     }
 }

@@ -86,6 +86,7 @@ public static class TerminologyEndpoints
             .Accepts<SubsumesRequestDto>(KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status422UnprocessableEntity, KnownContentTypes.ApplicationFhirJson)
             .WithSummary("$subsumes - Test subsumption relationship between codes (tenant-explicit)")
             .WithDescription("Tests if codeA subsumes codeB, is subsumed by codeB, is equivalent, or has no relationship.");
 
@@ -296,6 +297,7 @@ public static class TerminologyEndpoints
             .Accepts<SubsumesRequestDto>(KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status422UnprocessableEntity, KnownContentTypes.ApplicationFhirJson)
             .WithSummary("$subsumes - Test subsumption relationship between codes")
             .WithDescription("Tests if codeA subsumes codeB, is subsumed by codeB, is equivalent, or has no relationship.");
     }

@@ -29,7 +29,7 @@ This feature creates a dedicated `Ignixa.Application.Experimental` library to ho
 |---------|-----------------|--------|
 | MCP Server | `Ignixa.Application/Features/Mcp/` | Migrated |
 | $transform | `Ignixa.Application.Operations/Features/Transform/` | Migrated |
-| Terminology | `Ignixa.Application.Operations/Features/Terminology/` | Migrated |
+| Terminology | `src/Application/Ignixa.Application/Features/Experimental/Terminology/` | Migrated |
 
 ### Default Behavior
 

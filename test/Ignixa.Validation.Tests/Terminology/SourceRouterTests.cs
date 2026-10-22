@@ -45,6 +45,12 @@ public class SourceRouterTests
             CancellationToken.None);
 
     [Fact]
+    public void GivenNullSources_WhenConstructed_ThenThrowsForThatArgument()
+    {
+        Should.Throw<ArgumentNullException>(() => new SourceRouter(null!)).ParamName.ShouldBe("sources");
+    }
+
+    [Fact]
     public async Task GivenAuthoritativeSourceAfterPartial_WhenAsked_ThenOnlyAuthoritativeAnswers()
     {
         var asked = new List<string>();

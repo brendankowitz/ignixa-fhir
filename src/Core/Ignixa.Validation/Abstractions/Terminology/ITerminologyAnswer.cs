@@ -5,8 +5,13 @@
 
 namespace Ignixa.Validation.Abstractions.Terminology;
 
-/// <summary>An answer that may be undetermined. <see cref="Unknown"/> is null exactly when the answer is determined.</summary>
+/// <summary>
+/// An answer that may be undetermined. <see cref="Unknown"/> is null exactly when the answer is determined;
+/// <see cref="Unknowns"/> then is empty, and otherwise lists every reason with <see cref="Unknown"/> first.
+/// </summary>
 public interface ITerminologyAnswer
 {
     UnknownReason? Unknown { get; }
+
+    IReadOnlyList<UnknownReason> Unknowns { get; }
 }

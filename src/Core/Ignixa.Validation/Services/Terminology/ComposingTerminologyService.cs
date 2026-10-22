@@ -33,7 +33,10 @@ public sealed class ComposingTerminologyService : ITerminologyService
     public async Task<ConceptLookup> LookupAsync(LookupRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return (await RoutedLookupAsync(request.Code, cancellationToken)).Answer;
+        var routed = await RoutedLookupAsync(request.Code, cancellationToken);
+        return routed.Answer.Result == Determination.Unknown
+            ? ConceptLookup.Undetermined(routed.Unknowns)
+            : routed.Answer;
     }
 
     public async Task<ValidateCodeResult> ValidateCodeInCodeSystemAsync(
@@ -66,7 +69,9 @@ public sealed class ComposingTerminologyService : ITerminologyService
             (source, ct) => source.SubsumesAsync(request.CodeA, request.CodeB, ct),
             reason => new SubsumesOutcome.Undetermined(reason),
             cancellationToken);
-        return routed.Answer;
+        return routed.Answer is SubsumesOutcome.Undetermined
+            ? new SubsumesOutcome.Undetermined(routed.Unknowns)
+            : routed.Answer;
     }
 
     public async Task<TerminologyValidationResult> ValidateCodeAsync(

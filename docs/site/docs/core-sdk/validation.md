@@ -410,26 +410,63 @@ public sealed class MyLocalCodesSource : ITerminologySource
 
     public string Name => "my-local-codes";
 
+    // This content is unversioned, so it can only vouch for the unversioned canonical.
+    // Claiming an explicit version it cannot prove would let it answer for content it does not hold.
     public ValueTask<SourceCoverage> GetCoverageAsync(
         CanonicalKind kind,
         CanonicalRef canonical,
         CancellationToken cancellationToken) =>
-        ValueTask.FromResult(kind == CanonicalKind.CodeSystem && canonical.Url == System
+        ValueTask.FromResult(kind == CanonicalKind.CodeSystem && canonical.Url == System && canonical.Version is null
             ? SourceCoverage.Authoritative
             : SourceCoverage.None);
 
-    public Task<ConceptLookup> LookupAsync(CodeRef code, CancellationToken cancellationToken) =>
-        Task.FromResult(Codes.TryGetValue(code.Code, out var display)
+    public Task<ConceptLookup> LookupAsync(CodeRef code, CancellationToken cancellationToken)
+    {
+        if (CannotAnswer(code) is { } unknown)
+        {
+            return Task.FromResult(ConceptLookup.Undetermined(unknown));
+        }
+
+        // Absent from a system this source fully owns: a definitive "not found".
+        return Task.FromResult(Codes.TryGetValue(code.Code, out var display)
             ? ConceptLookup.Found(new ConceptDetails(null, null, display, null, null, null))
             : ConceptLookup.NotFound);
+    }
 
     public Task<SubsumesOutcome> SubsumesAsync(
         CodeRef codeA,
         CodeRef codeB,
-        CancellationToken cancellationToken) =>
-        Task.FromResult<SubsumesOutcome>(codeA.Code == codeB.Code
+        CancellationToken cancellationToken)
+    {
+        // Every unknown stays unknown: never turn "cannot tell" into NotSubsumed.
+        var unknown = CannotAnswer(codeA) ?? CannotAnswer(codeB) ?? Absent(codeA) ?? Absent(codeB);
+        if (unknown is not null)
+        {
+            return Task.FromResult<SubsumesOutcome>(new SubsumesOutcome.Undetermined(unknown));
+        }
+
+        // Both codes exist. Equal codes are equivalent; this flat code list has no hierarchy,
+        // so it cannot prove any other relationship.
+        return Task.FromResult<SubsumesOutcome>(codeA.Code == codeB.Code
             ? new SubsumesOutcome.Related(SubsumptionRelation.Equivalent)
-            : new SubsumesOutcome.Related(SubsumptionRelation.NotSubsumed));
+            : new SubsumesOutcome.Undetermined(new UnknownReason(
+                UnknownKind.UnsupportedFilter, codeA.CodeSystem.ToString(), "Code system has no hierarchy")));
+    }
+
+    private static UnknownReason? CannotAnswer(CodeRef code) =>
+        code.System != System
+            ? new UnknownReason(UnknownKind.SystemNotAvailable, code.System, "Not served by this source")
+            : code.Version is not null
+                ? new UnknownReason(
+                    UnknownKind.SystemVersionNotAvailable,
+                    code.CodeSystem.ToString(),
+                    "This source is unversioned and cannot answer for an explicit version")
+                : null;
+
+    private static UnknownReason? Absent(CodeRef code) =>
+        Codes.ContainsKey(code.Code)
+            ? null
+            : new UnknownReason(UnknownKind.CodeNotInSystem, code.ToString(), $"Code '{code.Code}' is not defined");
 }
 
 // Compose application-specific content with package content. The first source listed
@@ -445,6 +482,10 @@ ITerminologyService terminology = new ComposingTerminologyService(
 returning `ConceptLookup`; `SubsumesAsync(SubsumesParameters)` is now
 `SubsumesAsync(SubsumesRequest)`, returning `SubsumesOutcome`; and
 `HybridTerminologyService` is replaced by `ComposingTerminologyService`.
+
+When no source can answer, the composer keeps every source's reason:
+`ConceptLookup.Unknowns` and `SubsumesOutcome.Undetermined.Reasons` carry the full list,
+and the singular `Unknown` / `Reason` properties return its first entry.
 
 ## Batch Validation
 

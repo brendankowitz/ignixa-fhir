@@ -11,6 +11,7 @@ using Medino;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -111,6 +112,18 @@ public sealed class TerminologyEndpointErrorSerializationTests : IAsyncLifetime
         }
     }
 
+    [Theory]
+    [InlineData("SubsumesCodes")]
+    [InlineData("SubsumesTenant")]
+    public void GivenSubsumesRoute_WhenMetadataInspected_ThenUnprocessableEntityIsAdvertisedAsFhirJson(string endpointName)
+    {
+        // The handler maps an unsupported subsumption (no hierarchy, non-enumerable system) to 422.
+        var responses = FindEndpoint(endpointName).Metadata.GetOrderedMetadata<IProducesResponseTypeMetadata>();
+
+        responses.ShouldContain(r => r.StatusCode == StatusCodes.Status422UnprocessableEntity
+            && r.ContentTypes.Contains(KnownContentTypes.ApplicationFhirJson));
+    }
+
     private static void AssertOutcome(HttpContext context, JsonNode body, int status, string code, string diagnostics)
     {
         context.Response.StatusCode.ShouldBe(status);
@@ -124,11 +137,14 @@ public sealed class TerminologyEndpointErrorSerializationTests : IAsyncLifetime
         issues[0]!["diagnostics"]!.GetValue<string>().ShouldContain(diagnostics);
     }
 
+    private Endpoint FindEndpoint(string endpointName) =>
+        ((IEndpointRouteBuilder)_app).DataSources.SelectMany(source => source.Endpoints)
+            .Single(candidate => candidate.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == endpointName);
+
     private async Task<(HttpContext Context, JsonNode Body, string Raw)> SendAsync(
         string endpointName, string query, string? requestBody = null)
     {
-        var endpoint = ((IEndpointRouteBuilder)_app).DataSources.SelectMany(source => source.Endpoints)
-            .Single(candidate => candidate.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == endpointName);
+        var endpoint = FindEndpoint(endpointName);
         await using var scope = _app.Services.CreateAsyncScope();
         var context = new DefaultHttpContext { RequestServices = scope.ServiceProvider };
         context.Request.RouteValues["tenantId"] = "1";

@@ -45,13 +45,16 @@ public class SubsumesHandler : IRequestHandler<SubsumesQuery, SubsumesQueryResul
         var outcome = await _terminologyService.SubsumesAsync(subsumes, cancellationToken);
         if (outcome is SubsumesOutcome.Undetermined undetermined)
         {
-            if (undetermined.Reason.Kind is UnknownKind.UnsupportedFilter or UnknownKind.NonEnumerableSystem)
+            var message = $"Cannot determine subsumption: {string.Join("; ", undetermined.Reasons.Select(reason => reason.Detail))}";
+
+            // Unsupported content is a 422 only when it is the whole story; any other reason (an unknown code,
+            // system, or version) is something the client can correct, so a mix is reported as a 400.
+            if (undetermined.Reasons.All(reason => reason.Kind is UnknownKind.UnsupportedFilter or UnknownKind.NonEnumerableSystem))
             {
-                throw new TerminologyOperationNotSupportedException(
-                    $"Cannot determine subsumption: {undetermined.Reason.Detail}");
+                throw new TerminologyOperationNotSupportedException(message);
             }
 
-            throw new BadRequestException($"Cannot determine subsumption: {undetermined.Reason.Detail}");
+            throw new BadRequestException(message);
         }
 
         var parametersResponse = new JsonObject

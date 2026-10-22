@@ -37,7 +37,7 @@ internal sealed class SourceRouter
             if (coverage == SourceCoverage.Authoritative)
             {
                 var answer = await ask(source, cancellationToken);
-                return new RoutedAnswer<T>(answer, answer.Unknown is null ? [] : [answer.Unknown]);
+                return new RoutedAnswer<T>(answer, answer.Unknowns);
             }
 
             if (coverage == SourceCoverage.Partial)
@@ -87,7 +87,7 @@ internal sealed class SourceRouter
             }
 
             first ??= answer;
-            unknowns.Add(answer.Unknown);
+            unknowns.AddRange(answer.Unknowns);
         }
 
         return new RoutedAnswer<T>(first!, unknowns);
