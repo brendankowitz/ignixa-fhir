@@ -69,6 +69,12 @@ public class TerminologyValueTypeTests
         MembershipResult.NotMember.Result.ShouldBe(Determination.False);
     }
 
+    [Fact]
+    public void GivenNullReason_WhenUndeterminedConstructed_ThenThrows()
+    {
+        Should.Throw<ArgumentNullException>(() => new SubsumesOutcome.Undetermined(null!));
+    }
+
     [Theory]
     [InlineData(SubsumptionRelation.Equivalent, "equivalent")]
     [InlineData(SubsumptionRelation.Subsumes, "subsumes")]
@@ -91,6 +97,14 @@ public class TerminologyValueTypeTests
         related.Unknown.ShouldBeNull();
         undetermined.KnownRelation.ShouldBeNull();
         undetermined.Unknown.ShouldBe(reason);
+    }
+
+    [Fact]
+    public void GivenUndefinedRelation_WhenRelatedConstructed_ThenThrows()
+    {
+        var invalidRelation = (SubsumptionRelation)int.MaxValue;
+
+        Should.Throw<ArgumentOutOfRangeException>(() => new SubsumesOutcome.Related(invalidRelation));
     }
 
     [Theory]
