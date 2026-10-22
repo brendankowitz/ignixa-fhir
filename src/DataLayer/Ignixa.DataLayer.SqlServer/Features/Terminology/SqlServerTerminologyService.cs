@@ -51,6 +51,7 @@ public sealed class SqlServerTerminologyService(
     private static readonly TableDescriptor Concepts = SqlCatalog.Default.Table("TermConcept");
     private static readonly TableDescriptor ValueSets = SqlCatalog.Default.Table("TermValueSet");
     private static readonly TableDescriptor Expansions = SqlCatalog.Default.Table("TermValueSetExpansion");
+    private static readonly TableDescriptor ConceptMaps = SqlCatalog.Default.Table("TermConceptMap");
     private static readonly TableDescriptor MapElements = SqlCatalog.Default.Table("TermConceptMapElement");
 
     /// <summary>
@@ -93,7 +94,7 @@ public sealed class SqlServerTerminologyService(
         ArgumentNullException.ThrowIfNull(canonical);
         if (canonical.Version is not null)
         {
-            return await HasCompletedCodeSystemVersionAsync(canonical.Url, canonical.Version, cancellationToken)
+            return await HasCompletedVersionAsync(kind, canonical.Url, canonical.Version, cancellationToken)
                 ? SourceCoverage.Authoritative
                 : SourceCoverage.None;
         }
@@ -113,7 +114,8 @@ public sealed class SqlServerTerminologyService(
         }
 
         if (code.Version is not null
-            && !await HasCompletedCodeSystemVersionAsync(code.System, code.Version, cancellationToken))
+            && !await HasCompletedVersionAsync(
+                CanonicalKind.CodeSystem, code.System, code.Version, cancellationToken))
         {
             return ConceptLookup.Undetermined(VersionNotLoaded(code.CodeSystem));
         }
@@ -516,7 +518,8 @@ public sealed class SqlServerTerminologyService(
         }
 
         if (codeA.Version is not null
-            && !await HasCompletedCodeSystemVersionAsync(codeA.System, codeA.Version, cancellationToken))
+            && !await HasCompletedVersionAsync(
+                CanonicalKind.CodeSystem, codeA.System, codeA.Version, cancellationToken))
         {
             return new SubsumesOutcome.Undetermined(VersionNotLoaded(codeA.CodeSystem));
         }
@@ -640,20 +643,27 @@ public sealed class SqlServerTerminologyService(
     private static UnknownReason NotInSystem(CodeRef code) =>
         new(UnknownKind.CodeNotInSystem, code.ToString(), $"Code '{code.Code}' is not defined in '{code.CodeSystem}'");
 
-    private async Task<bool> HasCompletedCodeSystemVersionAsync(
-        string canonical, string version, CancellationToken cancellationToken)
+    private async Task<bool> HasCompletedVersionAsync(
+        CanonicalKind kind, string canonical, string version, CancellationToken cancellationToken)
     {
-        using var command = Command("""
-            SELECT CASE WHEN EXISTS (
-                SELECT 1
-                FROM dbo.PackageResource p
-                JOIN dbo.TermCodeSystem cs ON cs.PackageResourceId = p.PackageResourceId
-                WHERE p.Canonical = @canonical
-                  AND p.IsActive = 1
-                  AND p.TerminologyImportStatus = 'Completed'
-                  AND cs.Version = @version
-            ) THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END
-            """);
+        var resource = kind switch
+        {
+            CanonicalKind.CodeSystem => CodeSystems,
+            CanonicalKind.ValueSet => ValueSets,
+            CanonicalKind.ConceptMap => ConceptMaps,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+        };
+        var usableContentPredicate = kind == CanonicalKind.ValueSet
+            ? $" AND r.{resource.Column("IsExpanded").Name} = 1"
+            : string.Empty;
+
+        using var command = Command(
+            $"SELECT CASE WHEN EXISTS (" +
+            $"SELECT 1 FROM dbo.PackageResource p " +
+            $"JOIN {Qualified(resource)} r ON r.{resource.Column("PackageResourceId").Name} = p.PackageResourceId " +
+            $"WHERE p.Canonical = @canonical AND p.IsActive = 1 " +
+            $"AND r.{resource.Column("Version").Name} = @version{usableContentPredicate}" +
+            $") THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END");
         command.Parameters.AddWithValue("@canonical", canonical);
         command.Parameters.AddWithValue("@version", version);
 

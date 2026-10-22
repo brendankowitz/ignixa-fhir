@@ -10,6 +10,8 @@ public class SqlTerminologySourceTests : IAsyncLifetime
 {
     private const string SystemUrl = "http://example.org/fhir/CodeSystem/source-vehicles";
     private const string OtherSystemUrl = "http://example.org/fhir/CodeSystem/other-vehicles";
+    private const string ValueSetUrl = "http://example.org/fhir/ValueSet/source-vehicles";
+    private const string ConceptMapUrl = "http://example.org/fhir/ConceptMap/source-vehicles";
 
     private TerminologyTestFixture _fixture = null!;
 
@@ -19,13 +21,35 @@ public class SqlTerminologySourceTests : IAsyncLifetime
 
     private async Task ImportAsync(string version = "1.0.0")
     {
-        var resource = JsonNode.Parse(TerminologyTestFixture.HierarchicalCodeSystemJson(SystemUrl))!;
-        resource["version"] = version;
-
         var packageResource = await _fixture.SeedPackageResourceAsync(
-            "CodeSystem", SystemUrl, resource.ToJsonString());
+            "CodeSystem", SystemUrl, WithVersion(TerminologyTestFixture.HierarchicalCodeSystemJson(SystemUrl), version));
         await _fixture.CreateSqlServerImporter().ImportCodeSystemAsync(
             _fixture.SystemPartitionId, packageResource, CancellationToken.None);
+    }
+
+    private async Task ImportValueSetAsync(string version)
+    {
+        var packageResource = await _fixture.SeedPackageResourceAsync(
+            "ValueSet", ValueSetUrl,
+            WithVersion(TerminologyTestFixture.ExpandedValueSetJson(ValueSetUrl, SystemUrl, "car"), version));
+        await _fixture.CreateSqlServerImporter().ImportValueSetAsync(
+            _fixture.SystemPartitionId, packageResource, CancellationToken.None);
+    }
+
+    private async Task ImportConceptMapAsync(string version)
+    {
+        var packageResource = await _fixture.SeedPackageResourceAsync(
+            "ConceptMap", ConceptMapUrl,
+            WithVersion(TerminologyTestFixture.ConceptMapJson(ConceptMapUrl, SystemUrl, OtherSystemUrl), version));
+        await _fixture.CreateSqlServerImporter().ImportConceptMapAsync(
+            _fixture.SystemPartitionId, packageResource, CancellationToken.None);
+    }
+
+    private static string WithVersion(string json, string version)
+    {
+        var resource = JsonNode.Parse(json)!;
+        resource["version"] = version;
+        return resource.ToJsonString();
     }
 
     [Fact]
@@ -57,6 +81,39 @@ public class SqlTerminologySourceTests : IAsyncLifetime
             .GetCoverageAsync(CanonicalKind.CodeSystem, new CanonicalRef(SystemUrl, "2.0.0"), CancellationToken.None);
 
         coverage.ShouldBe(SourceCoverage.None);
+    }
+
+    [Fact]
+    public async Task GivenImportedCodeSystemVersion_WhenMatchingVersionCoverageAsked_ThenAuthoritative()
+    {
+        await ImportAsync("1.0.0");
+
+        var coverage = await _fixture.CreateTerminologyService()
+            .GetCoverageAsync(CanonicalKind.CodeSystem, new CanonicalRef(SystemUrl, "1.0.0"), CancellationToken.None);
+
+        coverage.ShouldBe(SourceCoverage.Authoritative);
+    }
+
+    [Fact]
+    public async Task GivenImportedValueSetVersion_WhenMatchingVersionCoverageAsked_ThenAuthoritative()
+    {
+        await ImportValueSetAsync("1.0.0");
+
+        var coverage = await _fixture.CreateTerminologyService()
+            .GetCoverageAsync(CanonicalKind.ValueSet, new CanonicalRef(ValueSetUrl, "1.0.0"), CancellationToken.None);
+
+        coverage.ShouldBe(SourceCoverage.Authoritative);
+    }
+
+    [Fact]
+    public async Task GivenImportedConceptMapVersion_WhenMatchingVersionCoverageAsked_ThenAuthoritative()
+    {
+        await ImportConceptMapAsync("1.0.0");
+
+        var coverage = await _fixture.CreateTerminologyService()
+            .GetCoverageAsync(CanonicalKind.ConceptMap, new CanonicalRef(ConceptMapUrl, "1.0.0"), CancellationToken.None);
+
+        coverage.ShouldBe(SourceCoverage.Authoritative);
     }
 
     [Fact]
@@ -92,6 +149,28 @@ public class SqlTerminologySourceTests : IAsyncLifetime
 
         lookup.Result.ShouldBe(Determination.Unknown);
         lookup.Unknown!.Kind.ShouldBe(UnknownKind.SystemVersionNotAvailable);
+    }
+
+    [Fact]
+    public async Task GivenImportedCodeSystemVersion_WhenKnownCodeLookedUp_ThenFound()
+    {
+        await ImportAsync("1.0.0");
+
+        var lookup = await _fixture.CreateTerminologyService().LookupAsync(
+            new CodeRef(SystemUrl, "car", "1.0.0"), CancellationToken.None);
+
+        lookup.Result.ShouldBe(Determination.True);
+    }
+
+    [Fact]
+    public async Task GivenImportedCodeSystemVersion_WhenUnknownCodeLookedUp_ThenNotFound()
+    {
+        await ImportAsync("1.0.0");
+
+        var lookup = await _fixture.CreateTerminologyService().LookupAsync(
+            new CodeRef(SystemUrl, "boat", "1.0.0"), CancellationToken.None);
+
+        lookup.Result.ShouldBe(Determination.False);
     }
 
     [Fact]
@@ -131,6 +210,19 @@ public class SqlTerminologySourceTests : IAsyncLifetime
 
         outcome.KnownRelation.ShouldBeNull();
         outcome.Unknown!.Kind.ShouldBe(UnknownKind.SystemVersionNotAvailable);
+    }
+
+    [Fact]
+    public async Task GivenImportedCodeSystemVersion_WhenKnownCodesSubsumesAsked_ThenSubsumes()
+    {
+        await ImportAsync("1.0.0");
+
+        var outcome = await _fixture.CreateTerminologyService().SubsumesAsync(
+            new CodeRef(SystemUrl, "vehicle", "1.0.0"),
+            new CodeRef(SystemUrl, "car", "1.0.0"),
+            CancellationToken.None);
+
+        outcome.KnownRelation.ShouldBe(SubsumptionRelation.Subsumes);
     }
 
     [Fact]
