@@ -324,27 +324,125 @@ public class SqlTerminologySourceTests : IAsyncLifetime
         coverage.ShouldBe(expected);
     }
 
+    private Task SetImportStatusAsync(string canonical, string? status) =>
+        _fixture.ExecuteNonQueryAsync(
+            $"UPDATE dbo.PackageResource SET TerminologyImportStatus = {(status is null ? "NULL" : $"'{status}'")} " +
+            $"WHERE Canonical = '{canonical}'");
+
     [Theory]
+    [InlineData("Completed", false)]
     [InlineData("Failed", false)]
     [InlineData("Failed", true)]
     [InlineData("PartiallyCompleted", false)]
     [InlineData("PartiallyCompleted", true)]
     [InlineData("Skipped", false)]
     [InlineData("Skipped", true)]
-    public async Task GivenImportedContentWhoseStatusIsNotCompleted_WhenCoverageAsked_ThenNotAuthoritative(
-        string status, bool versioned)
+    [InlineData("InProgress", false)]
+    [InlineData(null, false)]
+    [InlineData(null, true)]
+    public async Task GivenActiveCodeSystemWithUsableContent_WhenCoverageAsked_ThenAuthoritativeRegardlessOfImportStatus(
+        string? status, bool versioned)
     {
-        // SQL coverage is authoritative only for a Completed import. Content rows alone are not enough:
-        // a Failed, partial or skipped import must leave routing to the other sources.
+        // The import status is diagnostic: a rolled-back replacement leaves Failed on a row that still
+        // serves the content it had, and coverage must follow the content (as GetImportStatusAsync does).
         await ImportAsync("1.0.0");
-        await _fixture.ExecuteNonQueryAsync(
-            $"UPDATE dbo.PackageResource SET TerminologyImportStatus = '{status}' WHERE Canonical = '{SystemUrl}'");
+        await SetImportStatusAsync(SystemUrl, status);
         var canonical = versioned ? new CanonicalRef(SystemUrl, "1.0.0") : new CanonicalRef(SystemUrl);
 
         var coverage = await _fixture.CreateTerminologyService()
             .GetCoverageAsync(CanonicalKind.CodeSystem, canonical, CancellationToken.None);
 
-        coverage.ShouldNotBe(SourceCoverage.Authoritative);
+        coverage.ShouldBe(SourceCoverage.Authoritative);
+    }
+
+    [Theory]
+    [InlineData("Failed", false)]
+    [InlineData("Failed", true)]
+    [InlineData("PartiallyCompleted", false)]
+    [InlineData("Skipped", false)]
+    [InlineData(null, false)]
+    [InlineData(null, true)]
+    public async Task GivenActiveExpandedValueSet_WhenCoverageAsked_ThenAuthoritativeRegardlessOfImportStatus(
+        string? status, bool versioned)
+    {
+        await ImportValueSetAsync("1.0.0");
+        await SetImportStatusAsync(ValueSetUrl, status);
+        var canonical = versioned ? new CanonicalRef(ValueSetUrl, "1.0.0") : new CanonicalRef(ValueSetUrl);
+
+        var coverage = await _fixture.CreateTerminologyService()
+            .GetCoverageAsync(CanonicalKind.ValueSet, canonical, CancellationToken.None);
+
+        coverage.ShouldBe(SourceCoverage.Authoritative);
+    }
+
+    [Theory]
+    [InlineData("Failed", false)]
+    [InlineData("Failed", true)]
+    [InlineData(null, false)]
+    public async Task GivenActiveConceptMapWithContent_WhenCoverageAsked_ThenAuthoritativeRegardlessOfImportStatus(
+        string? status, bool versioned)
+    {
+        await ImportConceptMapAsync("1.0.0");
+        await SetImportStatusAsync(ConceptMapUrl, status);
+        var canonical = versioned ? new CanonicalRef(ConceptMapUrl, "1.0.0") : new CanonicalRef(ConceptMapUrl);
+
+        var coverage = await _fixture.CreateTerminologyService()
+            .GetCoverageAsync(CanonicalKind.ConceptMap, canonical, CancellationToken.None);
+
+        coverage.ShouldBe(SourceCoverage.Authoritative);
+    }
+
+    [Theory]
+    [InlineData(CanonicalKind.CodeSystem, "Completed")]
+    [InlineData(CanonicalKind.CodeSystem, "InProgress")]
+    [InlineData(CanonicalKind.CodeSystem, "Skipped")]
+    [InlineData(CanonicalKind.CodeSystem, "Failed")]
+    [InlineData(CanonicalKind.CodeSystem, null)]
+    [InlineData(CanonicalKind.ValueSet, "InProgress")]
+    [InlineData(CanonicalKind.ValueSet, "Skipped")]
+    [InlineData(CanonicalKind.ValueSet, "Failed")]
+    [InlineData(CanonicalKind.ValueSet, null)]
+    [InlineData(CanonicalKind.ConceptMap, "InProgress")]
+    [InlineData(CanonicalKind.ConceptMap, "Skipped")]
+    [InlineData(CanonicalKind.ConceptMap, "Failed")]
+    [InlineData(CanonicalKind.ConceptMap, null)]
+    public async Task GivenActiveRowWithoutUsableContent_WhenCoverageAsked_ThenNone(CanonicalKind kind, string? status)
+    {
+        // Without content there is nothing for SQL to be authoritative about, whatever the status says.
+        string canonicalUrl;
+        switch (kind)
+        {
+            case CanonicalKind.CodeSystem:
+                await ImportAsync();
+                canonicalUrl = SystemUrl;
+                await _fixture.ExecuteNonQueryAsync(
+                    "DELETE FROM dbo.TermConcept WHERE TermCodeSystemId IN " +
+                    "(SELECT cs.TermCodeSystemId FROM dbo.TermCodeSystem cs " +
+                    "JOIN dbo.PackageResource p ON p.PackageResourceId = cs.PackageResourceId " +
+                    $"WHERE p.Canonical = '{canonicalUrl}')");
+                break;
+            case CanonicalKind.ValueSet:
+                await ImportValueSetAsync("1.0.0");
+                canonicalUrl = ValueSetUrl;
+                await _fixture.ExecuteNonQueryAsync(
+                    "UPDATE dbo.TermValueSet SET IsExpanded = 0 WHERE PackageResourceId IN " +
+                    $"(SELECT PackageResourceId FROM dbo.PackageResource WHERE Canonical = '{canonicalUrl}')");
+                break;
+            default:
+                await ImportConceptMapAsync("1.0.0");
+                canonicalUrl = ConceptMapUrl;
+                await _fixture.ExecuteNonQueryAsync(
+                    "DELETE FROM dbo.TermConceptMap WHERE PackageResourceId IN " +
+                    $"(SELECT PackageResourceId FROM dbo.PackageResource WHERE Canonical = '{canonicalUrl}')");
+                break;
+        }
+
+        await SetImportStatusAsync(canonicalUrl, status);
+
+        var coverage = await _fixture.CreateTerminologyService()
+            .GetCoverageAsync(kind, new CanonicalRef(canonicalUrl), CancellationToken.None);
+
+        coverage.ShouldBe(SourceCoverage.None);
     }
 
     [Fact]

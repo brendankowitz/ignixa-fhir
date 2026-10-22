@@ -101,8 +101,9 @@ public sealed class SqlServerTerminologyService(
         ArgumentNullException.ThrowIfNull(canonical);
 
         // Coverage is per kind: a ValueSet sharing this canonical says nothing about a CodeSystem of the same
-        // URL. GetImportStatusAsync answers "is anything installed here", which is the import-status question.
-        return await HasUsableContentAsync(kind, canonical.Url, canonical.Version, completedOnly: true, cancellationToken)
+        // URL. It follows usable content of that kind, not the diagnostic import status, so it agrees with
+        // GetImportStatusAsync (which reports effective completion for any installed content).
+        return await HasUsableContentAsync(kind, canonical.Url, canonical.Version, cancellationToken)
             ? SourceCoverage.Authoritative
             : SourceCoverage.None;
     }
@@ -119,7 +120,7 @@ public sealed class SqlServerTerminologyService(
 
         if (code.Version is not null
             && !await HasUsableContentAsync(
-                CanonicalKind.CodeSystem, code.System, code.Version, completedOnly: false, cancellationToken))
+                CanonicalKind.CodeSystem, code.System, code.Version, cancellationToken))
         {
             return ConceptLookup.Undetermined(VersionNotLoaded(code.CodeSystem));
         }
@@ -490,7 +491,7 @@ public sealed class SqlServerTerminologyService(
 
         if (codeA.Version is not null
             && !await HasUsableContentAsync(
-                CanonicalKind.CodeSystem, codeA.System, codeA.Version, completedOnly: false, cancellationToken))
+                CanonicalKind.CodeSystem, codeA.System, codeA.Version, cancellationToken))
         {
             return new SubsumesOutcome.Undetermined(VersionNotLoaded(codeA.CodeSystem));
         }
@@ -610,12 +611,12 @@ public sealed class SqlServerTerminologyService(
     /// <summary>
     /// Whether an active package row for <paramref name="canonical"/> carries usable content of exactly
     /// <paramref name="kind"/> — for a ValueSet, an expansion — restricted to <paramref name="version"/>
-    /// when one is given. With <paramref name="completedOnly"/> the row's import must also be
-    /// <c>Completed</c>: coverage is authoritative only then, whereas reads keep serving the content a
-    /// rolled-back replacement left behind under a <c>Failed</c> row.
+    /// when one is given. The row's <c>TerminologyImportStatus</c> is diagnostic and deliberately ignored:
+    /// content a rolled-back replacement left behind under a <c>Failed</c> (or null) row is still served, so
+    /// coverage, reads and <see cref="GetImportStatusAsync"/> all follow the content itself.
     /// </summary>
     private async Task<bool> HasUsableContentAsync(
-        CanonicalKind kind, string canonical, string? version, bool completedOnly, CancellationToken cancellationToken)
+        CanonicalKind kind, string canonical, string? version, CancellationToken cancellationToken)
     {
         var resource = kind switch
         {
@@ -624,10 +625,15 @@ public sealed class SqlServerTerminologyService(
             CanonicalKind.ConceptMap => ConceptMaps,
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
         };
-        var completedPredicate = completedOnly ? " AND p.TerminologyImportStatus = 'Completed'" : string.Empty;
-        var usableContentPredicate = kind == CanonicalKind.ValueSet
-            ? $" AND r.{resource.Column("IsExpanded").Name} = 1"
-            : string.Empty;
+        var usableContentPredicate = kind switch
+        {
+            CanonicalKind.CodeSystem =>
+                $" AND EXISTS (SELECT 1 FROM {Qualified(Concepts)} c " +
+                $"WHERE c.{Concepts.Column("TermCodeSystemId").Name} = " +
+                $"r.{CodeSystems.Column("TermCodeSystemId").Name})",
+            CanonicalKind.ValueSet => $" AND r.{resource.Column("IsExpanded").Name} = 1",
+            _ => string.Empty,
+        };
         var versionPredicate = version is null
             ? string.Empty
             : $" AND r.{resource.Column("Version").Name} = @version";
@@ -637,7 +643,7 @@ public sealed class SqlServerTerminologyService(
             $"SELECT 1 FROM dbo.PackageResource p " +
             $"JOIN {Qualified(resource)} r ON r.{resource.Column("PackageResourceId").Name} = p.PackageResourceId " +
             $"WHERE p.Canonical = @canonical AND p.IsActive = 1" +
-            $"{completedPredicate}{versionPredicate}{usableContentPredicate}" +
+            $"{versionPredicate}{usableContentPredicate}" +
             $") THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END");
         command.Parameters.AddWithValue("@canonical", canonical);
         if (version is not null)
