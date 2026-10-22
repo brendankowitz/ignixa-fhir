@@ -84,7 +84,7 @@ public sealed class PackageTerminologySource : ITerminologySource, ILegacyValueS
         ArgumentNullException.ThrowIfNull(codeA);
         ArgumentNullException.ThrowIfNull(codeB);
         SubsumesOutcome outcome = new SubsumesOutcome.Undetermined(new UnknownReason(
-            UnknownKind.SystemNotAvailable, codeA.System, "Package terminology content carries no concept hierarchy"));
+            UnknownKind.UnsupportedFilter, codeA.System, "Package terminology content carries no concept hierarchy"));
         return Task.FromResult(outcome);
     }
 

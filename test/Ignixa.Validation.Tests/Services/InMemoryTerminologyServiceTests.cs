@@ -7,6 +7,7 @@ using Ignixa.Abstractions;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation;
 using Ignixa.Validation.Services;
+using NSubstitute;
 using Xunit;
 
 namespace Ignixa.Validation.Tests.Services;
@@ -224,6 +225,30 @@ public class InMemoryTerminologyServiceTests
         // Assert
         Assert.False(result.IsValid);
         Assert.Equal(IssueSeverity.Error, result.Severity);
+    }
+
+    [Fact]
+    public async Task GivenWhitespaceSystem_WhenLookingUpCode_ThenReturnsNotFoundWithoutThrowing()
+    {
+        var service = new InMemoryTerminologyService(
+            new R4CoreSchemaProvider().ValueSetProvider,
+            Substitute.For<ICodeSystemProvider>());
+
+        var result = await service.LookupCodeAsync("   ", "male", null, CancellationToken.None);
+
+        Assert.False(result.Found);
+    }
+
+    [Fact]
+    public async Task GivenWhitespaceCode_WhenLookingUpCode_ThenReturnsNotFoundWithoutThrowing()
+    {
+        var service = new InMemoryTerminologyService(
+            new R4CoreSchemaProvider().ValueSetProvider,
+            Substitute.For<ICodeSystemProvider>());
+
+        var result = await service.LookupCodeAsync("http://hl7.org/fhir/administrative-gender", "   ", null, CancellationToken.None);
+
+        Assert.False(result.Found);
     }
 
     [Fact]

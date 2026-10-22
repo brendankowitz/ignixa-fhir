@@ -75,7 +75,7 @@ public class InMemoryTerminologyService : ITerminologyService
         string? version,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrEmpty(system) || string.IsNullOrEmpty(code))
+        if (string.IsNullOrWhiteSpace(system) || string.IsNullOrWhiteSpace(code))
         {
             return new LookupResult(false, null, null, null, null, null, null);
         }

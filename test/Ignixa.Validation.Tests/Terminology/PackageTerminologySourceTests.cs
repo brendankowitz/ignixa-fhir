@@ -70,11 +70,12 @@ public class PackageTerminologySourceTests
     }
 
     [Fact]
-    public async Task GivenAnyCodes_WhenSubsumesAsked_ThenUndeterminedNeverNotSubsumed()
+    public async Task GivenAnyCodes_WhenSubsumesAsked_ThenUndeterminedWithUnsupportedFilter()
     {
         var outcome = await Create().SubsumesAsync(new CodeRef(Local, "a"), new CodeRef(Local, "b"), CancellationToken.None);
 
         outcome.ShouldBeOfType<SubsumesOutcome.Undetermined>();
+        outcome.Unknown!.Kind.ShouldBe(UnknownKind.UnsupportedFilter);
     }
 
     [Theory]
