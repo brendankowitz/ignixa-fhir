@@ -410,6 +410,13 @@ internal class SqlOnFhirEvaluationVisitor
         return result;
     }
 
+    /// <summary>
+    /// The deepest a <c>repeat</c> may follow its paths. A path that leads back to the item it started from (<c>$this</c>,
+    /// <c>$this.where(true)</c>, <c>%resource</c>) would otherwise recurse until the stack overflows, which ends the process and
+    /// cannot be caught. Real recursive structures (nested Questionnaire items, Bundle entries) are a handful of levels deep.
+    /// </summary>
+    internal const int MaxRepeatDepth = 100;
+
     private List<IElement> RecursivelyCollectItems(
         IElement root,
         ImmutableArray<FhirPath.Expressions.Expression> repeatPaths,
@@ -417,17 +424,21 @@ internal class SqlOnFhirEvaluationVisitor
     {
         var result = new List<IElement>();
 
-        void Traverse(IElement element)
+        void Traverse(IElement element, int depth)
         {
+            if (depth > MaxRepeatDepth)
+                throw new InvalidOperationException(
+                    $"repeat went deeper than {MaxRepeatDepth} levels; a repeat path must lead to child elements");
+
             result.Add(element);
             foreach (var path in repeatPaths)
                 foreach (var child in _fhirPath.Evaluate(element, path, context))
-                    Traverse(child);
+                    Traverse(child, depth + 1);
         }
 
         foreach (var path in repeatPaths)
             foreach (var item in _fhirPath.Evaluate(root, path, context))
-                Traverse(item);
+                Traverse(item, 1);
 
         return result;
     }

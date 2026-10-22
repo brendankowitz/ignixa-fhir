@@ -64,11 +64,7 @@ public class ChoiceElementCheck : IValidationCheck
         {
             var foundTypes = string.Join(", ", choiceChildren.Select(c => c.Name));
             return ValidationResult.Failure(
-                new ValidationIssue(
-                    IssueSeverity.Error,
-                    "choice-multiple",
-                    location,
-                    $"Choice element '{_baseElementName}[x]' can only have one type variant, but found multiple: {foundTypes}"));
+                ValidationIssue.FromTemplate(IssueSeverity.Error, "choice-multiple", location, IssueTemplates.ChoiceMultiple, _baseElementName, foundTypes));
         }
 
         // Exactly one choice variant found - validate it's an allowed type
@@ -83,11 +79,15 @@ public class ChoiceElementCheck : IValidationCheck
             // This is an error - choice elements must have a type suffix
             var allowedTypesStr = string.Join(", ", _allowedTypes);
             return ValidationResult.Failure(
-                new ValidationIssue(
+                ValidationIssue.FromTemplate(
                     IssueSeverity.Error,
                     "choice-missing-type",
                     location,
-                    $"Choice element '{_baseElementName}[x]' must include a type suffix (e.g., '{_baseElementName}{_allowedTypes.FirstOrDefault() ?? "Type"}'). Found '{actualChild.Name}' without type suffix. Allowed types: {allowedTypesStr}"));
+                    IssueTemplates.ChoiceMissingType,
+                    _baseElementName,
+                    _allowedTypes.FirstOrDefault() ?? "Type",
+                    actualChild.Name,
+                    allowedTypesStr));
         }
 
         // Normalize type name (first character may be lowercase in element name but uppercase in Type array)
@@ -103,20 +103,17 @@ public class ChoiceElementCheck : IValidationCheck
         {
             var allowedTypesStr = string.Join(", ", _allowedTypes);
             return ValidationResult.Failure(
-                new ValidationIssue(
-                    IssueSeverity.Error,
-                    "choice-invalid-type",
-                    location,
-                    $"Choice element '{_baseElementName}[x]' has type '{actualTypeName}' which is not in the allowed types: {allowedTypesStr}"));
+                ValidationIssue.FromTemplate(IssueSeverity.Error, "choice-invalid-type", location, IssueTemplates.ChoiceInvalidType, _baseElementName, actualTypeName, allowedTypesStr));
         }
 
         // When the chosen variant is a FHIR primitive (e.g. valueBoolean, valueInteger),
         // validate the value's JSON kind and primitive rules. Choice variants are skipped by
         // TypeCheck (their concrete type is only known at runtime from the suffix), so this is
-        // where a malformed primitive like valueBoolean=0 or valueInteger=3.1 is caught.
+        // where a malformed primitive like valueBoolean=0 or valueInteger=3.1 is caught. The
+        // depth-aware overload applies the same dateTime timezone rule as TypeCheck (bug #210-4).
         var variantFhirType = char.ToLowerInvariant(actualTypeName[0]) + actualTypeName.Substring(1);
         if (FhirPrimitiveValidator.IsPrimitiveType(variantFhirType)
-            && !FhirPrimitiveValidator.TryValidate(actualChild, variantFhirType, out var primitiveReason))
+            && !FhirPrimitiveValidator.TryValidate(actualChild, variantFhirType, settings.Depth, out var primitiveReason))
         {
             // FHIR OperationOutcome expressions reference a choice element via the base name and
             // .ofType(), e.g. "Parameters.parameter[0].value.ofType(boolean)" rather than the
@@ -125,11 +122,7 @@ public class ChoiceElementCheck : IValidationCheck
                 ? $"{_baseElementName}.ofType({variantFhirType})"
                 : $"{element.Location}.{_baseElementName}.ofType({variantFhirType})";
             return ValidationResult.Failure(
-                new ValidationIssue(
-                    IssueSeverity.Error,
-                    "type-1",
-                    variantExpression,
-                    $"Invalid value for '{actualChild.Name}': {primitiveReason}"));
+                ValidationIssue.FromTemplate(IssueSeverity.Error, "type-1", variantExpression, IssueTemplates.ChoicePrimitiveInvalid, actualChild.Name, primitiveReason!));
         }
 
         return ValidationResult.Success();

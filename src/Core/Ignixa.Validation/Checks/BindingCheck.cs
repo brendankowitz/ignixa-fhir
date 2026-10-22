@@ -20,6 +20,14 @@ namespace Ignixa.Validation.Checks;
 /// - Extensible: Code SHOULD be from ValueSet, but others allowed (not validated)
 /// - Preferred: Code recommended but not enforced (not validated)
 /// - Example: Example codes provided for guidance (not validated)
+/// <para>
+/// Constructed with the element's declared type, the check knows a CodeableConcept from a Coding or a code. A
+/// CodeableConcept with no coding under a <c>required</c> binding is then an error at Spec and Full: a required binding
+/// needs a coding from the ValueSet, and text alone is not one (R4 terminologies.html#strength). The rule needs no terminology,
+/// so it holds whether or not the ValueSet is available. Compatibility depth keeps accepting text-only concepts, as the
+/// Microsoft FHIR Server does. A choice element (<c>value[x]</c>) is bound through its coded variant
+/// (<c>valueCode</c>, <c>valueCoding</c>, <c>valueCodeableConcept</c>).
+/// </para>
 /// </remarks>
 public class BindingCheck : IValidationCheck
 {
@@ -27,6 +35,9 @@ public class BindingCheck : IValidationCheck
     private readonly string _valueSetUrl;
     private readonly string _bindingStrength;
     private readonly ITerminologyService _terminologyService;
+    private readonly string? _declaredType;
+
+    private const string DataAbsentReasonUrl = "http://hl7.org/fhir/StructureDefinition/data-absent-reason";
 
     /// <summary>
     /// Initializes a new instance of the <see cref="BindingCheck"/> class.
@@ -48,6 +59,25 @@ public class BindingCheck : IValidationCheck
     }
 
     /// <summary>
+    /// Initializes a new instance of the <see cref="BindingCheck"/> class for an element of a declared type.
+    /// </summary>
+    /// <param name="elementPath">The element path to validate (e.g., "gender", "status", "value[x]").</param>
+    /// <param name="valueSetUrl">The canonical URL of the ValueSet.</param>
+    /// <param name="bindingStrength">The binding strength (Required, Extensible, Preferred, Example).</param>
+    /// <param name="terminologyService">The terminology service for code validation.</param>
+    /// <param name="declaredType">The element's declared type (e.g. <c>CodeableConcept</c>); null when it cannot be told.</param>
+    public BindingCheck(
+        string elementPath,
+        string valueSetUrl,
+        string bindingStrength,
+        ITerminologyService terminologyService,
+        string? declaredType)
+        : this(elementPath, valueSetUrl, bindingStrength, terminologyService)
+    {
+        _declaredType = declaredType;
+    }
+
+    /// <summary>
     /// Validates that coded elements match their ValueSet bindings.
     /// </summary>
     /// <param name="element">The element to validate.</param>
@@ -66,13 +96,13 @@ public class BindingCheck : IValidationCheck
             ? _elementPath
             : $"{element.Location}.{_elementPath}";
 
-        // Navigate to the element
+        // Navigate to the element. A choice element is navigated by its base name, which matches its variants.
         var pathParts = _elementPath.Split('.');
         IElement? currentElement = element;
 
         foreach (var part in pathParts)
         {
-            var children = currentElement.Children(part).ToList();
+            var children = Bound(currentElement.Children(part.EndsWith("[x]", StringComparison.Ordinal) ? part[..^3] : part));
 
             // No children found - element is optional
             if (children.Count == 0)
@@ -86,7 +116,7 @@ public class BindingCheck : IValidationCheck
                 var results = new List<ValidationResult>();
                 foreach (var child in children)
                 {
-                    var result = ValidateCodedElement(child, location, settings).GetAwaiter().GetResult();
+                    var result = ValidateCodedElement(child, DeclaredTypeOf(child), LocationOf(child, location), settings).GetAwaiter().GetResult();
                     results.Add(result);
                 }
                 return ValidationResult.Combine(results);
@@ -97,11 +127,46 @@ public class BindingCheck : IValidationCheck
         }
 
         // Reached the target element, validate it
-        return ValidateCodedElement(currentElement, location, settings).GetAwaiter().GetResult();
+        return ValidateCodedElement(currentElement, DeclaredTypeOf(currentElement), LocationOf(currentElement, location), settings).GetAwaiter().GetResult();
+    }
+
+    /// <summary>Where an issue on <paramref name="target"/> is reported: a choice variant at its own (concrete) location.</summary>
+    private string LocationOf(IElement target, string location) =>
+        _elementPath.EndsWith("[x]", StringComparison.Ordinal) && !string.IsNullOrEmpty(target.Location) ? target.Location : location;
+
+    /// <summary>
+    /// The elements the binding applies to: all of them, except that of a choice element's variants only the coded ones
+    /// (code, Coding, CodeableConcept) carry the binding.
+    /// </summary>
+    private IReadOnlyList<IElement> Bound(IReadOnlyList<IElement> children)
+    {
+        if (!_elementPath.EndsWith("[x]", StringComparison.Ordinal))
+        {
+            return children;
+        }
+
+        return [.. children.Where(child => VariantType(child) is "code" or "Coding" or "CodeableConcept")];
+    }
+
+    /// <summary>The type of <paramref name="element"/>: the declared one, or for a choice element its variant's.</summary>
+    private string? DeclaredTypeOf(IElement element) =>
+        _elementPath.EndsWith("[x]", StringComparison.Ordinal) ? VariantType(element) : _declaredType;
+
+    private string? VariantType(IElement variant)
+    {
+        var baseName = _elementPath.Split('.')[^1][..^3];
+        if (variant.Name.Length <= baseName.Length || !variant.Name.StartsWith(baseName, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var suffix = variant.Name[baseName.Length..];
+        return suffix == "Code" ? "code" : suffix;
     }
 
     private async Task<ValidationResult> ValidateCodedElement(
         IElement element,
+        string? declaredType,
         string location,
         ValidationSettings settings)
     {
@@ -109,6 +174,11 @@ public class BindingCheck : IValidationCheck
         var hasCoding = element.Children("coding").Any();
         var hasSystem = element.Children("system").Any();
         var hasCode = element.Children("code").Any();
+
+        if (declaredType == "CodeableConcept" && !hasCoding)
+        {
+            return ValidateTextOnlyConcept(element, settings);
+        }
 
         if (hasCoding)
         {
@@ -132,6 +202,31 @@ public class BindingCheck : IValidationCheck
 
         // Element structure doesn't match expected patterns
         return ValidationResult.Success();
+    }
+
+    /// <summary>
+    /// A CodeableConcept with no coding: under a required binding, below Compatibility depth, it cannot be from the ValueSet.
+    /// Other strengths ask for nothing a text-only concept lacks.
+    /// </summary>
+    private ValidationResult ValidateTextOnlyConcept(IElement element, ValidationSettings settings)
+    {
+        if (ParseStrength(_bindingStrength) != BindingStrength.Required || settings.Depth == ValidationDepth.Compatibility)
+        {
+            return ValidationResult.Success();
+        }
+
+        // A concept stated absent (the data-absent-reason extension) has no value for the binding to apply to.
+        if (element.Children("extension").Any(extension => extension.Children("url") is [{ Value: DataAbsentReasonUrl }, ..]))
+        {
+            return ValidationResult.Success();
+        }
+
+        return ValidationResult.Failure(ValidationIssue.FromTemplate(
+            IssueSeverity.Error,
+            "code-invalid",
+            element.Location,
+            IssueTemplates.BindingRequiredTextOnly,
+            _valueSetUrl));
     }
 
     private async Task<ValidationResult> ValidateCodeableConcept(
@@ -179,7 +274,7 @@ public class BindingCheck : IValidationCheck
         // All codings failed - return combined errors
         if (issues.Count == 0)
         {
-            issues.Add(new ValidationIssue(IssueSeverity.Error, "code-invalid", "No valid coding found", location));
+            issues.Add(new ValidationIssue(IssueSeverity.Error, "code-invalid", location, "No valid coding found"));
         }
         return new ValidationResult(isValid: false, issues: issues);
     }
@@ -242,20 +337,22 @@ public class BindingCheck : IValidationCheck
                         isValid: true,
                         issues: new[]
                         {
-                            new ValidationIssue(
+                            ValidationIssue.FromTemplate(
                                 IssueSeverity.Warning,
                                 "code-invalid",
                                 location,
+                                IssueTemplates.BindingExampleMiss,
                                 result.Message ?? "Code validation failed"),
                         });
                 }
 
                 // Terminology validation failed
                 return ValidationResult.Failure(
-                    new ValidationIssue(
+                    ValidationIssue.FromTemplate(
                         IssueSeverity.Error,
                         "code-invalid",
                         location,
+                        IssueTemplates.BindingCodeInvalid,
                         result.Message ?? "Code validation failed"));
             }
 
@@ -267,10 +364,11 @@ public class BindingCheck : IValidationCheck
                 {
                     // Treat as error
                     return ValidationResult.Failure(
-                        new ValidationIssue(
+                        ValidationIssue.FromTemplate(
                             IssueSeverity.Error,
                             "terminology-unavailable",
                             location,
+                            IssueTemplates.BindingNotChecked,
                             result.Message ?? "Terminology validation unavailable"));
                 }
 
@@ -279,10 +377,11 @@ public class BindingCheck : IValidationCheck
                     isValid: true,
                     issues: new[]
                     {
-                        new ValidationIssue(
+                        ValidationIssue.FromTemplate(
                             result.Severity, // Use the actual severity from the terminology result
                             "terminology-validation-warning", // Use a generic code as BindingValidationResult doesn't have one
                             location,
+                            IssueTemplates.BindingNotChecked,
                             result.Message ?? "Terminology validation unavailable") // Use original message or fallback
                     });
             }
@@ -301,11 +400,12 @@ public class BindingCheck : IValidationCheck
                 isValid: severity != IssueSeverity.Error,
                 issues: new[]
                 {
-                    new ValidationIssue(
+                    ValidationIssue.FromTemplate(
                         severity,
                         "terminology-error",
                         location,
-                        $"Terminology validation failed: {ex.Message}")
+                        IssueTemplates.BindingTerminologyError,
+                        ex.Message)
                 });
         }
     }

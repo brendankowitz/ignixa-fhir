@@ -147,6 +147,23 @@ public class SearchParameterInfo
 | `uri` | URI values | `url` |
 | `composite` | Multiple values | `component-code-value-quantity` |
 
+### How values are indexed
+
+The converters in `Ignixa.Search.Indexing.Converters` follow the search page's mapping for each data type; the SQL rows, the in-memory index and FileSystem sidecars all store what they produce.
+
+| Element | Indexed as | So |
+|---------|-----------|----|
+| `ContactPoint` | token with `ContactPoint.value` as the code and no system (R4 §3.1.1.4.10, R5 §3.2.1.5.13: the pipe "SHALL NOT be used") | `telecom=555-1234` matches; `telecom=home\|555-1234` and `telecom=phone\|555-1234` do not. Use `phone` / `email` to select by `ContactPoint.system`. |
+| `Quantity` | `system\|code`, plus a second value with the stated `unit` as the code and no system when it differs from the code (R4 §3.1.1.4.11) | `value-quantity=185\|\|lbs` matches code `[lb_av]` with unit `lbs`; `185\|http://unitsofmeasure.org\|lbs` does not. |
+| `Range` | number range (`low.value`..`high.value`) or quantity range with the bound's system, code and unit; an open bound stays open | R4 `probability=lt0.3` matches `probabilityRange` 0.2..0.5. |
+| `canonical` under a reference parameter | nothing in SQL or FileSystem: canonical storage (a `UriSearchParam` value join) is the open #430 work. In memory, `CanonicalReferenceSearchIndexer` (opt-in, experimental) adds it as a canonical uri with url, version and fragment split | in memory, R5 `_profile=url` matches every version, `_profile=url\|1.0` only that version; no `Type/id` tail is parsed, so distinct profiles stay distinct. A chain, `_has` or include through a parameter that selects only canonicals is refused; one that also selects references follows those. |
+| `Reference` / `uri` to `urn:` | untyped reference whose id is the whole urn (contained `#` references stay unindexed) | `subject=urn:uuid:...` matches and `subject:missing=true` does not. |
+| `code` (a resource element such as `Patient.gender`) | token whose system is the one its binding implies (terminologies §4.1): the single code system of the ValueSet it is bound to as required or extensible, or of a required maximum ValueSet (`Resource.language` gives `urn:ietf:bcp:47`). A code whose ValueSet draws on several code systems, includes another ValueSet or is not in the core package (R4 `Task.intent`, R5 `DeviceMetric.color`, STU3 `Binary.contentType`) gets no system. The `*CodeSystemMappings.g.cs` tables come from `codegen/generate.sh` | `gender=http://hl7.org/fhir/administrative-gender\|female` and `gender=female` match; `gender=http://hl7.org/fhir/CodeSystem/administrative-gender\|female` does not. |
+
+`CompactSearchIndexConverter` (FileSystem sidecars) and `CompactSearchValueConverter` (one value) write each value as an object with a kind discriminator `k` and only its non-default fields, and read it back exactly: token text case, identifier type, reference kind, min/max sort flags, canonical version and fragment, empty-versus-absent system and code, and composites component by component. Reading anything else (including a sidecar written by the earlier, lossy format) throws `JsonException`. The FileSystem data layer logs the sidecar's path and fails the read, search, history or write with `SidecarUnreadableException` rather than skipping the resource; the API answers it as a 500 whose message names no file. Sidecars are written through a temporary file renamed into place, which is deleted if the write fails or is cancelled; the original failure is rethrown unchanged, and a temporary file that cannot be deleted is logged with its path. For binary compatibility the pre-lossless `SearchValueConstants` members and the `CompactSearchValueWriter(writer, componentIndex)` constructor remain, marked `[Obsolete]`; the format they described is no longer written or read.
+
+**Reindex after upgrading past the code-system fix.** Earlier builds indexed implicit codes under guessed systems (`http://hl7.org/fhir/CodeSystem/administrative-gender`, or the bound ValueSet's own URL such as `http://terminology.hl7.org/ValueSet/v3-ActEncounterCode`). The SQL token rows and FileSystem sidecars written then keep those systems, so a `system|code` search with the canonical system misses them, and nothing reports it. Existing SQL and FileSystem stores need their resources reindexed (or reloaded) to pick up the corrected systems; no schema migration is involved. The cli-on-fhir index cache is rebuilt automatically, since its format version changed.
+
 ## Compartment Support
 
 ### CompartmentDefinitionManager
@@ -225,6 +242,54 @@ Handwritten syntax scanners parse ordinary parameters, modifiers, typed forward 
 Malformed key or value syntax raises `InvalidSearchOperationException` with a positioned line/column diagnostic. Semantic failures retain the existing `SearchParameterNotSupportedException`, `BadSearchRequestException`, and resource-backed `InvalidSearchOperationException` messages. Atomic date, number, quantity, reference, string, token, and URI conversion continues to use the existing `*SearchValue.Parse` implementations.
 
 The mandatory BenchmarkDotNet result and acceptance decision are recorded in [the handwritten syntax parser comparison](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/features/search/benchmarks/2026-07-11-handwritten-syntax-parser-comparison.md). The comparison uses the unchanged public-facade harness and six inputs against the original handwritten baseline. The replacement was classified as **Mixed**, with a -6.31% geometric-mean time change, and all ratified performance limits passed. It was not classified as **Faster**; no speedup is claimed.
+
+## In-memory search
+
+`Ignixa.Search.InMemory` evaluates parsed searches over index entries held in memory (the FileSystem data layer uses it).
+
+`SearchQueryInterpreter` turns `SearchOptions.Expression` into a predicate over `(ResourceKey, IReadOnlyCollection<SearchIndexEntry>)` rows. Each parameter is compiled into a test of one index entry, so every field of a criterion is matched on the same entry: `code=http://loinc.org|8867-4` needs one coding with both, and a composite needs one value of each component. Date, number and quantity prefixes compare the bound that `DateRangeComparisonSemantics` and `NumericRangeComparisonSemantics` (the tables the SQL backend renders) name; a bound the value lacks never matches. String search folds case and accents, `|code` matches a code without a system, and `_id` / `_type` read the resource key.
+
+`InMemorySearchEngine` adds the features that read other resource types, each opted into with `InMemorySearchFeatures`. A feature that is not enabled throws `SearchOperationNotSupportedException`; the default interpreter enables none.
+
+:::caution Experimental API
+`IInMemorySearchSource`, `InMemorySearchEngine`, `InMemorySearchFeatures`, `InMemoryCompartmentMembership`, `LastUpdatedSearchIndexer`, `CanonicalReferenceSearchIndexer` and the `SearchQueryInterpreter(source, features)` and `SearchQueryInterpreter(source, features, compartments)` constructors are marked `[Experimental("IGNIXAEXP001")]`: Ignixa.Search is a stable package, and these may still change shape. Using them is a compile error until you opt in, for example with `<NoWarn>$(NoWarn);IGNIXAEXP001</NoWarn>` in the consuming project.
+:::
+
+A query shape the interpreter cannot evaluate (a field the parameter's definition can never hold, an unknown operator) is rejected when the predicate is built, before any entry is read. So is a shipped composite whose component expressions select elements that index as another kind than the component declares, since no query could ever match it: R5 `Encounter-location-period`, R5/R6 `Composition-section-code-text` and R6 `TestScript-scope-artifact-*`. They are listed in a static table, which a census test checks against the FHIRPath analyzer for every shipped version, so loading and searching pay nothing for it; composites registered later from packages are not checked. Only the R6 `TestScript-scope-artifact-*` entries reach the interpreter's check; the others are refused earlier (`Composition-section-code-text` by the binder, because its second component is `Special`, a Narrative with no value grammar, which fails as `SearchOperationNotSupportedException` naming the parameter and component; `Encounter-location-period` by the options builder, which records it as unsupported because a component does not resolve), so for them the table is a backstop. `DocumentReference-relationship`, which every version from STU3 to R6 publishes with its two component expressions swapped, is repaired when the definitions load (component 0, `relatesto`, selects `relatesTo.target`; component 1, `relation`, selects `relatesTo.code`). That reorders the composite's values in the in-memory and FileSystem compact indexes; SQL rows are unchanged, because the reference-token table has one column set per kind, and the search parameter hash does not change. A query, though, is positional in every backend: SQL takes each reference-token slot's value from the position that declares its kind, so `relationship=<system>|replaces$DocumentReference/dr0` (the values swapped) matches nothing in SQL, as in memory. An index entry of an unexpected kind, such as a composite component the indexer typed as a Quantity under a token component, simply does not match. Results are combined by `ResourceKey`, so a source may return fresh index collections on every enumeration.
+
+```csharp
+using Ignixa.Search.InMemory;
+
+// The caller implements IInMemorySearchSource: enumerate a type's indexed resources, resolve one by type and id.
+var engine = new InMemorySearchEngine(source, InMemorySearchFeatures.All);
+
+var matches = engine.Search(options);                  // filter (chains, _has) and _sort
+var page = matches.Take(options.MaxItemCount).ToList(); // paging is the caller's
+var included = engine.Include(page, options, 51);      // _include / _revinclude (with :iterate) for that page, at most 51
+```
+
+| Feature | Behavior |
+|---------|----------|
+| `Chains` | Forward chains to any depth; a reference with a base URI, without a type, or to a resource the source does not hold matches nothing |
+| `ReverseChains` | `_has`, including nested and chained forms |
+| `Sort` | Date, number, quantity, string, token, uri and `_id`; lowest value ascending, highest descending; missing values last; ties by `_lastUpdated`, then id |
+| `Include` / `RevInclude` | Resolved for the page passed in, in discovery order, each resource once and never a match; `:iterate` repeats until nothing new is added or the caller's maximum is reached; a reverse include must name its parameter |
+
+Compartment search (`CompartmentSearchExpression`, what `Patient/123/Observation` parses to) filters the searched type's own entries, so it is not a feature flag: it is enabled by passing an `InMemoryCompartmentMembership` to `new InMemorySearchEngine(source, features, compartments)`, and without one it throws `SearchOperationNotSupportedException`. Membership follows the version's CompartmentDefinitions (`CompartmentDefinitionManager`): a resource is in `Patient/123` when one of the parameters the definition lists for its type holds a local reference to `Patient/123` (a reference with a base URI names another server's patient, and canonicals never count), or, for `{def}`, when it is that resource (R4 `Encounter`, R5 `Patient`; the R4 Patient compartment lists only `link` for Patient, so a patient is not in its own R4 compartment). A type the definition lists without parameters is never a member. The STU3 Patient compartment lists chained codes for `AuditEvent` (`agent.patient`, `entity.patient`) and `Provenance` (`target.patient`, `target.subject`) that are not search parameters; membership of those types is refused rather than decided by the remaining codes, from the definitions and before any resource is read, and a census test pins that list for every shipped version. `IsInCompartment(location, index, type, id)` answers for one indexed resource, and `ResourceTypes(type)` lists the types that can be members, so a caller can enumerate a compartment by reading only those types. `Parameters(type, resourceType)` and `IncludesCompartmentResource(type)` expose the rule for one type. SQL compartment search is unchanged, and differs from the in-memory evaluation in ways that are known, not fixed: the SQL membership predicate (`CompartmentLoweringRule`) compares only the referenced type and id, so it does not exclude a reference that carries another server's base URI (traced, not reproduced); and SQL membership resolution (`Symbols/Resolve.cs`) silently skips every listed code that is not a reference search parameter, so it never adds the compartment's own resource for `{def}` and narrows the STU3 `AuditEvent`/`Provenance` Patient compartment to its remaining codes, where the in-memory engine refuses those types.
+
+```csharp
+var compartments = new InMemoryCompartmentMembership(new CompartmentDefinitionManager(FhirVersion.R4), definitions);
+var engine = new InMemorySearchEngine(source, InMemorySearchFeatures.All, compartments);
+
+options.Expression = Expression.And(new CompartmentSearchExpression("Patient", "123"), options.Expression);
+var matches = engine.Search(options);
+```
+
+`ElementSearchIndexer` emits no `_lastUpdated` entry because a database reads it from a column. Wrap an in-memory index's indexer in `LastUpdatedSearchIndexer` to add one from `meta.lastUpdated`; only a FHIR instant (with a time zone) is indexed, and anything else is logged as a warning.
+
+Likewise `ElementSearchIndexer` indexes nothing for a reference parameter whose element is a `canonical` (R5 `_profile`, `instantiates-canonical`, `QuestionnaireResponse-questionnaire`): storing canonicals as `UriSearchParam` values resolved by a value join is the open #430 work, so no backend writes a row for them. Wrap an in-memory index's indexer in `CanonicalReferenceSearchIndexer` to add them as canonical uris (url, version and fragment split, by the canonical-to-uri converter). The interpreter then matches such a parameter's query by its original text: the url must be equal, and a version or fragment the query names must be equal too, so `_profile=url` matches every version and `_profile=url|1.0` only that one. A `:[type]` modifier naming one of the parameter's targets (`_profile:StructureDefinition=url`) is matched the same way, by the url; any other modifier is refused rather than matching nothing.
+
+Which parameters select canonicals is decided from the definitions, never from the data: `KnownCanonicalReferenceParameters` lists, per version, the shipped reference parameters whose expression selects only canonicals (R5 `_profile`, the `instantiates-canonical` family, `QuestionnaireResponse-questionnaire`) or canonicals beside references (`PlanDefinition-definition`, R5 `RequestOrchestration-participant`), and a census test keeps it equal to what the FHIRPath analyzer finds. A chain, `_has`, `_include` or `_revinclude` through a canonical-only parameter throws `SearchOperationNotSupportedException` (canonical resolution is not supported) when the search is compiled, whatever the data. A mixed parameter, and `_include=*` or `_include=Type:*`, follow the references and skip the canonicals, so the answer never depends on which entries a resource has or their order. Parameters registered from packages are not listed, so their canonicals are neither indexed nor refused.
 
 ## Related Documentation
 

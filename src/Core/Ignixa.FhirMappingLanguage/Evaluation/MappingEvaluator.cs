@@ -36,6 +36,9 @@ public class MappingEvaluator
     // Security limit tracking
     private int _recursionDepth;
     private int _elementsCreated;
+
+    // The current call's cancellation and TransformTimeout, checked before each rule.
+    private CancellationToken _cancellationToken;
     private Dictionary<string, IElement> _sharedTargets = new(StringComparer.Ordinal);
     private Dictionary<(object Parent, string Property), IElement> _intermediateTargets = new();
     private HashSet<(object Parent, TargetExpression Target)> _singleTargets = new();
@@ -151,20 +154,81 @@ public class MappingEvaluator
     /// </summary>
     /// <param name="map">The parsed map expression</param>
     /// <param name="context">The evaluation context with sources and targets</param>
-    public void Execute(MapExpression map, MappingContext context)
+    /// <exception cref="MappingExecutionException">
+    /// The transformation failed, or did not finish within <see cref="MappingEvaluatorOptions.TransformTimeout"/> (code <c>TRANSFORM_TIMEOUT</c>).
+    /// </exception>
+    public void Execute(MapExpression map, MappingContext context) => Execute(map, context, CancellationToken.None);
+
+    /// <summary>
+    /// Executes a map expression to transform source resources to target resources, stopping when <paramref name="cancellationToken"/>
+    /// is cancelled or <see cref="MappingEvaluatorOptions.TransformTimeout"/> has passed. Both are checked before each rule (a group
+    /// invocation is a rule's), so a long-running transformation stops at its next rule; in <see cref="ErrorMode.Lenient"/> mode neither
+    /// is collected as an error.
+    /// </summary>
+    /// <param name="map">The parsed map expression</param>
+    /// <param name="context">The evaluation context with sources and targets</param>
+    /// <param name="cancellationToken">Stops the transformation.</param>
+    /// <exception cref="MappingExecutionException">
+    /// The transformation failed, or did not finish within <see cref="MappingEvaluatorOptions.TransformTimeout"/> (code <c>TRANSFORM_TIMEOUT</c>).
+    /// </exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public void Execute(MapExpression map, MappingContext context, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(map);
         if (map.Groups.Count == 0)
         {
             throw new InvalidOperationException("The map has no entry group.");
         }
-        ExecuteGroup(map, map.Groups[0].Name, context);
+        ExecuteGroup(map, map.Groups[0].Name, context, cancellationToken);
     }
 
     /// <summary>
     /// Executes a specific group by name with provided arguments.
     /// </summary>
-    public void ExecuteGroup(MapExpression map, string groupName, MappingContext context)
+    /// <exception cref="MappingExecutionException">
+    /// The transformation failed, or did not finish within <see cref="MappingEvaluatorOptions.TransformTimeout"/> (code <c>TRANSFORM_TIMEOUT</c>).
+    /// </exception>
+    public void ExecuteGroup(MapExpression map, string groupName, MappingContext context) => ExecuteGroup(map, groupName, context, CancellationToken.None);
+
+    /// <summary>
+    /// Executes a specific group by name with provided arguments, stopping as <see cref="Execute(MapExpression, MappingContext, CancellationToken)"/> does.
+    /// </summary>
+    /// <exception cref="MappingExecutionException">
+    /// The transformation failed, or did not finish within <see cref="MappingEvaluatorOptions.TransformTimeout"/> (code <c>TRANSFORM_TIMEOUT</c>).
+    /// </exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public void ExecuteGroup(MapExpression map, string groupName, MappingContext context, CancellationToken cancellationToken) =>
+        WithinTimeout(() => ExecuteGroupCore(map, groupName, context), cancellationToken);
+
+    // TransformTimeout bounds the whole call: a map of a few dozen groups that call each other twice each would otherwise run for
+    // years without ever reaching MaxRecursionDepth or MaxElementsCreated.
+    private void WithinTimeout(Action execute, CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (_options.TransformTimeout.TotalMilliseconds <= int.MaxValue)
+        {
+            timeout.CancelAfter(_options.TransformTimeout);
+        }
+
+        _cancellationToken = timeout.Token;
+        try
+        {
+            execute();
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeout.IsCancellationRequested)
+        {
+            throw new MappingExecutionException(
+                $"The transformation did not finish within the transform timeout ({_options.TransformTimeout}).",
+                location: null,
+                code: "TRANSFORM_TIMEOUT");
+        }
+        finally
+        {
+            _cancellationToken = CancellationToken.None;
+        }
+    }
+
+    private void ExecuteGroupCore(MapExpression map, string groupName, MappingContext context)
     {
         _currentMap = map;
         Reset();
@@ -375,7 +439,7 @@ public class MappingEvaluator
                 VisitRule(group.Rules[i], context, group.Name);
             }
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
         {
             CheckErrorLimit(context);
             context.AddError($"Error executing group: {ex.Message}", location, "GROUP_EXECUTION_ERROR", ex, groupName: group.Name);
@@ -392,6 +456,7 @@ public class MappingEvaluator
 
     private void VisitRule(RuleExpression rule, MappingContext context, string? groupName = null)
     {
+        _cancellationToken.ThrowIfCancellationRequested();
         var ruleName = !string.IsNullOrEmpty(rule.Name) ? rule.Name : "anonymous";
         var location = groupName != null ? $"Group: {groupName}, Rule: {ruleName}" : $"Rule: {ruleName}";
         var previousRuleName = _currentRuleName;
@@ -403,7 +468,7 @@ public class MappingEvaluator
 
             ExecuteRuleSources(rule, context, 0, new Dictionary<string, IEnumerable<IElement>>(), groupName, location);
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
         {
             CheckErrorLimit(context);
             context.AddError(
@@ -503,7 +568,7 @@ public class MappingEvaluator
                     throw new NotSupportedException($"Dependent expression type {dependent.GetType().Name} not supported");
             }
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
         {
             context.AddError(
                 $"Error executing dependent expression: {ex.Message}",
@@ -668,7 +733,7 @@ public class MappingEvaluator
                 }
             }
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
         {
             context.AddError(
                 $"Error invoking group '{invocation.GroupName}': {ex.Message}",
@@ -711,7 +776,7 @@ public class MappingEvaluator
                         var result = EvaluateSourceExpression(fhirPathCondition, source, element, context).ToList();
                         return result.Count == 1 && result[0].Value is true;
                     }
-                    catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
+                    catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
                     {
                         context.AddError($"Error evaluating where condition: {ex.Message}",
                             location, "WHERE_ERROR", ex, ruleName: _currentRuleName,
@@ -803,7 +868,7 @@ public class MappingEvaluator
                         }
                     }
                 }
-                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
+                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
                 {
                     context.AddError(
                         $"Check condition failed: {ex.Message}",
@@ -888,7 +953,7 @@ public class MappingEvaluator
                         }
                     }
                 }
-                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
+                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
                 {
                     context.AddError(
                         $"Error executing log statement: {ex.Message}",
@@ -912,7 +977,7 @@ public class MappingEvaluator
 
             return contextValuesList;
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
         {
             CheckErrorLimit(context);
             context.AddError(
@@ -1035,7 +1100,7 @@ public class MappingEvaluator
                 }
             }
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
         {
             context.AddError(
                 $"Error visiting target: {ex.Message}",
@@ -1413,7 +1478,7 @@ public class MappingEvaluator
                     var argValue = argValues[0];
                     args.Add(transform.FunctionName is "reference" or "pointer" or "cast" ? argValue : argValue.Value ?? argValue);
                 }
-                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
+                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
                 {
                     context.AddError(
                         $"Error evaluating transform argument: {ex.Message}",
@@ -1473,7 +1538,7 @@ public class MappingEvaluator
             }
             return result;
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
         {
             context.AddError(
                 $"Error executing transform '{transform.FunctionName}': {ex.Message}",
@@ -1523,7 +1588,7 @@ public class MappingEvaluator
                 _ => throw new NotSupportedException($"Expression type {expr.GetType().Name} not supported in this context")
             };
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
         {
             context.AddError(
                 $"Error evaluating expression: {ex.Message}",
@@ -1922,7 +1987,7 @@ public class MappingEvaluator
             // Apply mutation
             _mutator!.SetProperty(targetResource, fhirPath, element, mutationMode);
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
         {
             context.AddError(
                 $"Failed to mutate target property: {ex.Message}",
