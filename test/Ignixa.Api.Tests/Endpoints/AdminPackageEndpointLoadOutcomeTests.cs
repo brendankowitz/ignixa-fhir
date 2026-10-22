@@ -78,6 +78,49 @@ public sealed class AdminPackageEndpointLoadOutcomeTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GivenClosureWithNoSkippedMembers_WhenLoadingPackage_ThenSkippedPackagesIsNull()
+    {
+        _mediator.SendAsync(Arg.Any<LoadPackageCommand>(), Arg.Any<CancellationToken>()).Returns(new LoadPackageResult
+        {
+            PackageId = "example.ig",
+            PackageVersion = "1.2.3",
+            LoadedPackages = ["example.ig@1.2.3", "dependency@2.0.0 (already loaded)"],
+            ClosureMembers =
+            [
+                new("example.ig", "1.2.3", PackageClosureMemberStatus.Imported),
+                new("dependency", "2.0.0", PackageClosureMemberStatus.AlreadyInstalled),
+            ],
+            Activation = ActivationResult.Succeeded(),
+        });
+
+        var (_, body) = await SendLoadAsync(CancellationToken.None);
+
+        body["skippedPackages"].ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GivenProvidedInProcessClosureMember_WhenLoadingPackage_ThenResponseReportsProvidedInProcessReason()
+    {
+        _mediator.SendAsync(Arg.Any<LoadPackageCommand>(), Arg.Any<CancellationToken>()).Returns(new LoadPackageResult
+        {
+            PackageId = "example.ig",
+            PackageVersion = "1.2.3",
+            ClosureMembers =
+            [
+                new("example.ig", "1.2.3", PackageClosureMemberStatus.Imported),
+                new("core", "4.0.0", PackageClosureMemberStatus.ProvidedInProcess),
+            ],
+            Activation = ActivationResult.Succeeded(),
+        });
+
+        var (_, body) = await SendLoadAsync(CancellationToken.None);
+
+        body["closureMembers"]![1]!["reason"]!.GetValue<string>().ShouldBe("provided in-process");
+        body["skippedPackages"]![0]!.GetValue<string>()
+            .ShouldBe("core@4.0.0 (skipped: provided in-process)");
+    }
+
+    [Fact]
     public void GivenLoadPackageEndpoint_WhenInspectingSuccessMetadata_ThenItDeclaresLoadPackageResponse()
     {
         IEndpointRouteBuilder endpointRouteBuilder = _app;
