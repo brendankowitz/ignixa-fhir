@@ -23,7 +23,7 @@ public static class AdminPackageEndpoints
             .WithName("LoadPackage")
             .WithDescription("Load a FHIR package from NPM registry into a tenant's database")
             .Accepts<LoadPackageRequest>("application/json")
-            .Produces<LoadPackageResult>(StatusCodes.Status200OK, contentType: "application/json")
+            .Produces<LoadPackageResponse>(StatusCodes.Status200OK, contentType: "application/json")
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status500InternalServerError);
 
@@ -78,6 +78,7 @@ public static class AdminPackageEndpoints
                 "Package {PackageId}@{Version} load finished. {Count} resources imported. Complete: {IsComplete}",
                 result.PackageId, result.PackageVersion, result.ImportedResources, result.IsComplete);
 
+            PackageClosureMemberResponse[] closureMembers = [.. result.ClosureMembers.Select(MapClosureMember)];
             var response = new LoadPackageResponse
             {
                 PackageId = result.PackageId,
@@ -88,8 +89,8 @@ public static class AdminPackageEndpoints
                 ResourcesByType = result.ResourcesByType,
                 IsComplete = result.IsComplete,
                 LoadedPackages = result.LoadedPackages,
-                SkippedPackages = result.SkippedPackages,
-                ClosureMembers = result.ClosureMembers,
+                SkippedPackages = CreateSkippedPackages(closureMembers),
+                ClosureMembers = closureMembers,
                 Activation = result.Activation is { } activation
                     ? new PackageActivationResponse(activation.Success, activation.Issues, activation.PendingReindex)
                     : null,
@@ -119,6 +120,43 @@ public static class AdminPackageEndpoints
                 statusCode: StatusCodes.Status500InternalServerError);
         }
     }
+
+    private static PackageClosureMemberResponse MapClosureMember(PackageClosureMember member)
+    {
+        // HTTP reasons are derived only from status so upstream exception details stay in server logs.
+        return new PackageClosureMemberResponse(
+            member.PackageId,
+            member.Version,
+            member.Status,
+            GetSafeReason(member.Status),
+            member.IsBlocking);
+    }
+
+    private static IReadOnlyList<string>? CreateSkippedPackages(
+        IReadOnlyList<PackageClosureMemberResponse> closureMembers)
+    {
+        string[] skippedPackages =
+        [
+            .. closureMembers
+                .Where(member => member.Status is PackageClosureMemberStatus.ProvidedInProcess
+                    or PackageClosureMemberStatus.VersionConflict
+                    or PackageClosureMemberStatus.LoadFailed
+                    or PackageClosureMemberStatus.ManifestUnavailable)
+                .Select(member => $"{member.PackageId}@{member.Version} (skipped: {member.Reason})"),
+        ];
+
+        return skippedPackages.Length > 0 ? skippedPackages : null;
+    }
+
+    private static string? GetSafeReason(PackageClosureMemberStatus status) => status switch
+    {
+        PackageClosureMemberStatus.Imported or PackageClosureMemberStatus.AlreadyInstalled => null,
+        PackageClosureMemberStatus.ProvidedInProcess => "provided in-process",
+        PackageClosureMemberStatus.VersionConflict => "version conflict",
+        PackageClosureMemberStatus.LoadFailed => "package could not be loaded",
+        PackageClosureMemberStatus.ManifestUnavailable => "manifest unavailable",
+        _ => "package status unavailable",
+    };
 
     /// <summary>
     /// GET /tenant/{tenantId:int}/admin/packages
@@ -296,14 +334,14 @@ public static class AdminPackageEndpoints
         public IReadOnlyList<string>? LoadedPackages { get; init; }
 
         /// <summary>
-        /// Legacy skipped-package description strings; prefer <see cref="ClosureMembers"/>.
+        /// Safe skipped-package descriptions derived from <see cref="ClosureMembers"/>.
         /// </summary>
         public IReadOnlyList<string>? SkippedPackages { get; init; }
 
         /// <summary>
         /// Typed per-package closure outcomes.
         /// </summary>
-        public IReadOnlyList<PackageClosureMember> ClosureMembers { get; init; } = [];
+        public IReadOnlyList<PackageClosureMemberResponse> ClosureMembers { get; init; } = [];
 
         /// <summary>
         /// Root package activation outcome.
@@ -318,6 +356,16 @@ public static class AdminPackageEndpoints
         bool Succeeded,
         IReadOnlyList<ValidationIssue> Issues,
         IReadOnlyList<string> PendingReindex);
+
+    /// <summary>
+    /// HTTP-safe outcome for one package observed during a dependency-closure load.
+    /// </summary>
+    public record PackageClosureMemberResponse(
+        string PackageId,
+        string Version,
+        PackageClosureMemberStatus Status,
+        string? Reason,
+        bool IsBlocking);
 
     /// <summary>
     /// Response from listing packages.

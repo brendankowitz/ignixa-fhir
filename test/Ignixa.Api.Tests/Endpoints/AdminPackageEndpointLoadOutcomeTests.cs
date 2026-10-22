@@ -11,6 +11,8 @@ using Medino;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Http.Metadata;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -36,21 +38,22 @@ public sealed class AdminPackageEndpointLoadOutcomeTests : IAsyncLifetime
         builder.Services.AddSingleton(_mediator);
         builder.Services.AddSingleton(store);
         _app = builder.Build();
+        _app.MapAdminPackageEndpoints();
     }
 
     [Fact]
-    public async Task GivenIncompleteClosureAndRejectedActivation_WhenLoadingPackage_ThenResponseReportsStructuredOutcome()
+    public async Task GivenIncompleteClosureWithSensitiveReasons_WhenLoadingPackage_ThenResponseReportsSafeStructuredOutcome()
     {
         _mediator.SendAsync(Arg.Any<LoadPackageCommand>(), Arg.Any<CancellationToken>()).Returns(new LoadPackageResult
         {
             PackageId = "example.ig",
             PackageVersion = "1.2.3",
             LoadedPackages = ["example.ig@1.2.3"],
-            SkippedPackages = ["broken@2.0.0 (skipped: InvalidOperationException: tarball missing)"],
+            SkippedPackages = ["broken@2.0.0 (skipped: InvalidOperationException: token=do-not-return)"],
             ClosureMembers =
             [
                 new("example.ig", "1.2.3", PackageClosureMemberStatus.Imported),
-                new("broken", "2.0.0", PackageClosureMemberStatus.LoadFailed, "tarball missing"),
+                new("broken", "2.0.0", PackageClosureMemberStatus.LoadFailed, "token=do-not-return"),
             ],
             Activation = ActivationResult.Failed([new ValidationIssue("conflict", "SearchParameter clash")]),
         });
@@ -59,11 +62,29 @@ public sealed class AdminPackageEndpointLoadOutcomeTests : IAsyncLifetime
 
         context.Response.StatusCode.ShouldBe(StatusCodes.Status200OK);
         body["isComplete"]!.GetValue<bool>().ShouldBeFalse();
-        body["skippedPackages"]![0]!.GetValue<string>().ShouldStartWith("broken@2.0.0");
+        body["skippedPackages"]![0]!.GetValue<string>().ShouldBe("broken@2.0.0 (skipped: package could not be loaded)");
         body["closureMembers"]![1]!["status"]!.GetValue<string>().ShouldBe("LoadFailed");
+        body["closureMembers"]![1]!["reason"]!.GetValue<string>().ShouldBe("package could not be loaded");
         body["closureMembers"]![1]!["isBlocking"]!.GetValue<bool>().ShouldBeTrue();
         body["activation"]!["succeeded"]!.GetValue<bool>().ShouldBeFalse();
         body["activation"]!["issues"]![0]!["code"]!.GetValue<string>().ShouldBe("conflict");
+        body.ToJsonString().ShouldNotContain("token=do-not-return");
+    }
+
+    [Fact]
+    public void GivenLoadPackageEndpoint_WhenInspectingSuccessMetadata_ThenItDeclaresLoadPackageResponse()
+    {
+        IEndpointRouteBuilder endpointRouteBuilder = _app;
+        var endpoint = endpointRouteBuilder.DataSources
+            .SelectMany(dataSource => dataSource.Endpoints)
+            .OfType<RouteEndpoint>()
+            .Single(candidate => candidate.RoutePattern.RawText == "/tenant/{tenantId:int}/admin/packages/load");
+
+        var responseMetadata = endpoint.Metadata
+            .OfType<IProducesResponseTypeMetadata>()
+            .Single(metadata => metadata.StatusCode == StatusCodes.Status200OK);
+
+        responseMetadata.Type.ShouldBe(typeof(AdminPackageEndpoints.LoadPackageResponse));
     }
 
     [Fact]
