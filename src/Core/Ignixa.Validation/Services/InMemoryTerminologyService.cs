@@ -3,10 +3,10 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Collections.Concurrent;
-using System.Collections.Frozen;
 using Ignixa.Abstractions;
 using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Abstractions.Terminology;
+using Ignixa.Validation.Services.Terminology;
 
 namespace Ignixa.Validation.Services;
 
@@ -17,28 +17,7 @@ namespace Ignixa.Validation.Services;
 /// </summary>
 public class InMemoryTerminologyService : ITerminologyService
 {
-    private readonly ConcurrentDictionary<string, ValueSetMembership> _valueSets = new(StringComparer.Ordinal);
-    private readonly IValueSetProvider _valueSetProvider;
-    private readonly ICodeSystemProvider? _codeSystemProvider;
-
-    /// <summary>
-    /// Code systems that cannot be completely enumerated from local expansions (large external
-    /// terminologies). A code from one of these that is absent from a local value-set expansion is
-    /// reported as unverifiable (Warning) rather than absent (Error), since offline membership is
-    /// undecidable — matching the behaviour of a validator with no terminology server.
-    /// </summary>
-    private static readonly FrozenSet<string> NonEnumerableSystems = new[]
-    {
-        "http://snomed.info/sct",
-        "http://loinc.org",
-        "http://unitsofmeasure.org",
-        "http://www.nlm.nih.gov/research/umls/rxnorm",
-        "http://hl7.org/fhir/sid/icd-10",
-        "http://hl7.org/fhir/sid/icd-10-cm",
-        "http://hl7.org/fhir/sid/icd-9-cm",
-        "http://hl7.org/fhir/sid/cvx",
-        "http://www.ama-assn.org/go/cpt",
-    }.ToFrozenSet(StringComparer.Ordinal);
+    private readonly PackageTerminologySource _source;
 
     /// <summary>
     /// Initializes a new instance of the InMemoryTerminologyService using a ValueSet provider.
@@ -52,8 +31,7 @@ public class InMemoryTerminologyService : ITerminologyService
         IValueSetProvider valueSetProvider,
         ICodeSystemProvider? codeSystemProvider = null)
     {
-        _valueSetProvider = valueSetProvider ?? throw new ArgumentNullException(nameof(valueSetProvider));
-        _codeSystemProvider = codeSystemProvider;
+        _source = new PackageTerminologySource(valueSetProvider, codeSystemProvider);
     }
 
     /// <summary>
@@ -75,199 +53,37 @@ public class InMemoryTerminologyService : ITerminologyService
     {
         ArgumentNullException.ThrowIfNull(primary);
         ArgumentNullException.ThrowIfNull(additional);
-        _valueSetProvider = new LayeredValueSetProvider(primary, additional);
-        _codeSystemProvider = codeSystemProvider;
+        _source = new PackageTerminologySource(primary, additional, codeSystemProvider);
     }
 
-    /// <summary>
-    /// IValueSetProvider decorator that queries additional providers (in declared order)
-    /// before falling back to the primary. Returns null only when no provider in the
-    /// chain knows the ValueSet.
-    /// </summary>
-    private sealed class LayeredValueSetProvider : IValueSetProvider
-    {
-        private readonly IValueSetProvider _primary;
-        private readonly IReadOnlyList<IValueSetProvider> _additional;
-
-        public LayeredValueSetProvider(IValueSetProvider primary, IEnumerable<IValueSetProvider> additional)
-        {
-            _primary = primary;
-            _additional = additional.ToArray();
-        }
-
-        public IReadOnlyList<FhirCode>? GetCodes(string valueSetUrl)
-        {
-            foreach (var src in _additional)
-            {
-                var codes = src.GetCodes(valueSetUrl);
-                if (codes is not null)
-                {
-                    return codes;
-                }
-            }
-            return _primary.GetCodes(valueSetUrl);
-        }
-
-        public bool IsKnownValueSet(string valueSetUrl)
-        {
-            foreach (var src in _additional)
-            {
-                if (src.IsKnownValueSet(valueSetUrl))
-                {
-                    return true;
-                }
-            }
-            return _primary.IsKnownValueSet(valueSetUrl);
-        }
-
-        public bool? IsValidCode(string valueSetUrl, string code)
-        {
-            foreach (var src in _additional)
-            {
-                var result = src.IsValidCode(valueSetUrl, code);
-                if (result.HasValue)
-                {
-                    return result;
-                }
-            }
-            return _primary.IsValidCode(valueSetUrl, code);
-        }
-    }
-
-    /// <summary>
-    /// Validates a code against a locally-expanded ValueSet, distinguishing three outcomes:
-    /// verified-in-valueset (valid), verified-not-in-valueset (Error), and unverifiable (non-failing Warning).
-    /// Membership is system-aware: when a system is supplied, matching is on the (system, code) pair, and a
-    /// code whose system is not enumerated by the local expansion is reported as unverifiable rather than absent.
-    /// </summary>
-    /// <param name="system">The code system URL.</param>
-    /// <param name="code">The code to validate.</param>
-    /// <param name="display">The display text (not validated in this implementation).</param>
-    /// <param name="valueSetUrl">The ValueSet canonical URL.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Validation result with severity and message.</returns>
     public Task<TerminologyValidationResult> ValidateCodeAsync(
         string? system,
         string? code,
         string? display,
         string? valueSetUrl,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(code))
-        {
-            return Task.FromResult(new TerminologyValidationResult(
-                IsValid: false,
-                Severity: IssueSeverity.Error,
-                Message: "Code is required for terminology validation"));
-        }
-
-        if (string.IsNullOrWhiteSpace(valueSetUrl))
-        {
-            return Task.FromResult(new TerminologyValidationResult(
-                IsValid: true,
-                Severity: IssueSeverity.Warning,
-                Message: "No ValueSet URL provided - skipping terminology validation"));
-        }
-
-        var normalizedUrl = valueSetUrl.Contains('|', StringComparison.Ordinal)
-            ? valueSetUrl[..valueSetUrl.LastIndexOf('|')]
-            : valueSetUrl;
-
-        if (!_valueSets.TryGetValue(normalizedUrl, out var membership))
-        {
-            var providerCodes = _valueSetProvider.GetCodes(normalizedUrl);
-            if (providerCodes is null)
-            {
-                return Task.FromResult(new TerminologyValidationResult(
-                    IsValid: true,
-                    Severity: IssueSeverity.Warning,
-                    Message: $"Terminology validation unavailable for ValueSet '{valueSetUrl}' - provider does not contain this ValueSet"));
-            }
-            membership = _valueSets.GetOrAdd(
-                normalizedUrl,
-                static (_, codes) => new ValueSetMembership(codes),
-                providerCodes);
-        }
-
-        var hasSystem = !string.IsNullOrWhiteSpace(system);
-
-        if (hasSystem)
-        {
-            if (membership.ContainsPair(system!, code))
-            {
-                return Verified();
-            }
-
-            // A miss is only an authoritative "not in value set" (Error) when the local expansion can
-            // COMPLETELY enumerate the code's system. Well-known external terminologies (SNOMED, LOINC,
-            // UCUM, ...) can never be fully expanded offline — even when the value set enumerates a
-            // subset of their codes — so a miss there is unverifiable (Warning), matching a validator
-            // with no terminology server, rather than a false "not found" error.
-            if (NonEnumerableSystems.Contains(system!) || !membership.EnumeratesSystem(system!))
-            {
-                return Task.FromResult(new TerminologyValidationResult(
-                    IsValid: true,
-                    Severity: IssueSeverity.Warning,
-                    Message: $"Unable to verify code '{system}#{code}' against value set '{valueSetUrl}' - the system is not locally enumerable"));
-            }
-
-            return Task.FromResult(new TerminologyValidationResult(
-                IsValid: false,
-                Severity: IssueSeverity.Error,
-                Message: $"The provided code '{system}#{code}' was not found in the value set '{valueSetUrl}'"));
-        }
-
-        if (membership.ContainsCode(code))
-        {
-            return Verified();
-        }
-
-        return Task.FromResult(new TerminologyValidationResult(
-            IsValid: false,
-            Severity: IssueSeverity.Error,
-            Message: $"The provided code '{code}' was not found in the value set '{valueSetUrl}'"));
-    }
-
-    private static Task<TerminologyValidationResult> Verified() =>
-        Task.FromResult(new TerminologyValidationResult(
-            IsValid: true,
-            Severity: IssueSeverity.Information,
-            Message: null));
+        CancellationToken cancellationToken) =>
+        _source.ValidateCodeAsync(system, code, display, valueSetUrl, cancellationToken);
 
     /// <summary>
     /// $lookup against locally-loaded CodeSystem content. When a <see cref="ICodeSystemProvider"/>
     /// was supplied and it enumerates the (system, code), returns the concept with its display;
     /// otherwise reports not found (the in-memory service has no external terminology server).
     /// </summary>
-    public Task<LookupResult> LookupCodeAsync(
+    public async Task<LookupResult> LookupCodeAsync(
         string system,
         string code,
         string? version,
         CancellationToken cancellationToken)
     {
-        if (_codeSystemProvider is not null
-            && !string.IsNullOrEmpty(system)
-            && !string.IsNullOrEmpty(code)
-            && _codeSystemProvider.ContainsCode(system, code) == true)
+        if (string.IsNullOrEmpty(system) || string.IsNullOrEmpty(code))
         {
-            return Task.FromResult(new LookupResult(
-                Found: true,
-                Name: null,
-                Version: null,
-                Display: _codeSystemProvider.GetDisplay(system, code),
-                Definition: null,
-                Properties: null,
-                Designations: null));
+            return new LookupResult(false, null, null, null, null, null, null);
         }
 
-        return Task.FromResult(new LookupResult(
-            Found: false,
-            Name: null,
-            Version: null,
-            Display: null,
-            Definition: null,
-            Properties: null,
-            Designations: null));
+        var lookup = await _source.LookupAsync(new CodeRef(system, code, version), cancellationToken);
+        return lookup.Concept is { } concept
+            ? new LookupResult(true, concept.Name, concept.Version, concept.Display, concept.Definition, concept.Properties, concept.Designations)
+            : new LookupResult(false, null, null, null, null, null, null);
     }
 
     /// <summary>
@@ -276,33 +92,22 @@ public class InMemoryTerminologyService : ITerminologyService
     /// </summary>
     public Task<ExpandResult?> ExpandValueSetAsync(
         ExpansionParameters parameters,
-        CancellationToken cancellationToken)
-    {
-        return Task.FromResult<ExpandResult?>(null);
-    }
+        CancellationToken cancellationToken) =>
+        _source.ExpandValueSetAsync(parameters, cancellationToken);
 
     /// <summary>
     /// Validates a coded element against a terminology binding.
     /// In-memory implementation uses hardcoded ValueSets for common bindings.
     /// </summary>
-    public async Task<BindingValidationResult> ValidateBindingAsync(
+    public Task<BindingValidationResult> ValidateBindingAsync(
         string valueSetUrl,
         BindingStrength strength,
         string? system,
         string? code,
         string? display,
         string? version,
-        CancellationToken cancellationToken)
-    {
-        var codeValidation = await ValidateCodeAsync(system, code, display, valueSetUrl, cancellationToken);
-        var (isValid, severity, message) = DetermineSeverity(strength, codeValidation);
-        return new BindingValidationResult(
-            IsValid: isValid,
-            Strength: strength,
-            Severity: severity,
-            Message: message,
-            SuggestedDisplay: null);
-    }
+        CancellationToken cancellationToken) =>
+        _source.ValidateBindingAsync(valueSetUrl, strength, system, code, display, version, cancellationToken);
 
     /// <summary>
     /// $translate operation is not supported by the in-memory implementation.
@@ -310,13 +115,8 @@ public class InMemoryTerminologyService : ITerminologyService
     /// </summary>
     public Task<TranslateResult> TranslateCodeAsync(
         TranslateParameters parameters,
-        CancellationToken cancellationToken)
-    {
-        return Task.FromResult(new TranslateResult(
-            Result: false,
-            Message: "ConceptMap translation not supported in in-memory terminology service",
-            Matches: Array.Empty<TranslateMatch>()));
-    }
+        CancellationToken cancellationToken) =>
+        _source.TranslateCodeAsync(parameters, cancellationToken);
 
     /// <summary>
     /// $subsumes operation is not supported by the in-memory implementation.
@@ -327,69 +127,5 @@ public class InMemoryTerminologyService : ITerminologyService
         CancellationToken cancellationToken)
     {
         return Task.FromResult(new SubsumesResult("not-subsumed"));
-    }
-
-    /// <summary>
-    /// Determines validation result severity based on binding strength and code validation outcome.
-    /// </summary>
-    private static (bool IsValid, IssueSeverity Severity, string? Message) DetermineSeverity(
-        BindingStrength strength,
-        TerminologyValidationResult codeValidation)
-    {
-        return strength switch
-        {
-            BindingStrength.Required => codeValidation.IsValid
-                ? (true, codeValidation.Severity, codeValidation.Message)
-                : (false, IssueSeverity.Error, codeValidation.Message),
-
-            BindingStrength.Extensible => codeValidation.IsValid
-                ? (true, codeValidation.Severity, codeValidation.Message)
-                : (true, IssueSeverity.Warning, codeValidation.Message),
-
-            BindingStrength.Preferred => (true, codeValidation.Severity, codeValidation.Message),
-
-            BindingStrength.Example => (true, codeValidation.Severity, codeValidation.Message),
-
-            _ => (true, IssueSeverity.Warning, "Unknown binding strength")
-        };
-    }
-
-    /// <summary>
-    /// System-aware membership snapshot of a locally-expanded ValueSet. Tracks which (system, code)
-    /// pairs the expansion enumerates, the bare code strings (for systemless <c>code</c>-typed bindings),
-    /// and the set of systems the expansion covers so that a code carrying an unenumerated system can be
-    /// reported as unverifiable rather than absent.
-    /// </summary>
-    private sealed class ValueSetMembership
-    {
-        private readonly HashSet<(string System, string Code)> _pairs = new();
-        private readonly HashSet<string> _codes = new(StringComparer.Ordinal);
-        private readonly HashSet<string> _systems = new(StringComparer.Ordinal);
-
-        public ValueSetMembership(IReadOnlyList<FhirCode> codes)
-        {
-            foreach (var entry in codes)
-            {
-                // FhirCode is a non-nullable readonly record struct, so entry/entry.Code can't be
-                // null; guard only against an empty code (a malformed expansion entry).
-                if (string.IsNullOrEmpty(entry.Code))
-                {
-                    continue;
-                }
-
-                _codes.Add(entry.Code);
-                if (!string.IsNullOrWhiteSpace(entry.System))
-                {
-                    _systems.Add(entry.System);
-                    _pairs.Add((entry.System, entry.Code));
-                }
-            }
-        }
-
-        public bool ContainsPair(string system, string code) => _pairs.Contains((system, code));
-
-        public bool ContainsCode(string code) => _codes.Contains(code);
-
-        public bool EnumeratesSystem(string system) => _systems.Contains(system);
     }
 }
