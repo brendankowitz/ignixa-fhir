@@ -205,12 +205,26 @@ public class TenantPackagePreloadService : BackgroundService
                             var command = new LoadPackageCommand(tenant.TenantId.ToString(), packageId, version);
                             var result = await mediator.SendAsync(command, ct);
 
-                            _logger.LogInformation(
-                                "Successfully loaded {PackageId}@{Version} for tenant {TenantId}. Imported {Count} resources",
-                                packageId,
-                                version,
-                                tenant.TenantId,
-                                result.ImportedResources);
+                            if (result.IsComplete)
+                            {
+                                _logger.LogInformation(
+                                    "Successfully loaded {PackageId}@{Version} for tenant {TenantId}. Imported {Count} resources",
+                                    packageId,
+                                    version,
+                                    tenant.TenantId,
+                                    result.ImportedResources);
+                            }
+                            else
+                            {
+                                _logger.LogWarning(
+                                    "Loaded {PackageId}@{Version} for tenant {TenantId} incompletely. Activation succeeded: {ActivationSucceeded}. Activation issues: {ActivationIssues}. Blocking closure members: {BlockingMembers}",
+                                    packageId,
+                                    version,
+                                    tenant.TenantId,
+                                    result.Activation?.Success,
+                                    string.Join("; ", result.Activation?.Issues.Select(i => $"{i.Code}: {i.Message}") ?? []),
+                                    string.Join("; ", result.ClosureMembers.Where(m => m.IsBlocking).Select(m => $"{m.PackageId}@{m.Version} {m.Status}")));
+                            }
 
                             Interlocked.Add(ref totalResourcesImported, result.ImportedResources);
                         }

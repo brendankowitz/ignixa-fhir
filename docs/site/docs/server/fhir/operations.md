@@ -439,6 +439,18 @@ Package administration uses tenant-explicit routes:
 - `POST /tenant/{tenantId}/admin/packages/load` loads a package.
 - `DELETE /tenant/{tenantId}/admin/packages/{packageId}/{version}` unloads a package.
 
+`POST /tenant/{tenantId}/admin/packages/load` accepts `packageId`, `version`, and optional
+`includeDependencies`. A `200 OK` response means the request ran, not that the package is usable.
+Check `isComplete`: it is `true` only when no dependency in `closureMembers` is blocking
+(`VersionConflict`, `LoadFailed`, or `ManifestUnavailable`) and `activation.succeeded` is `true`.
+`ProvidedInProcess` entries, such as core FHIR packages, are informational. Each
+`closureMembers` entry has `packageId`, `version`, `status`, `reason`, and `isBlocking`.
+The `reason` values and the compatibility `skippedPackages` strings are fixed, status-derived safe
+text; raw upstream exception details remain in server logs and are not returned to clients.
+When activation is rejected, imported resources remain installed but inactive, and
+`activation.issues` explains why. `activation.pendingReindex` lists resource types to reindex after
+a successful activation. `loadedPackages` and `skippedPackages` are retained for compatibility.
+
 `tenantId` must be an integer identifying an active tenant. System partition `0` remains inaccessible
 through these routes. Package administration paths take precedence over generic FHIR resource routes.
 

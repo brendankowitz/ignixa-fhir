@@ -201,6 +201,9 @@ Install a FHIR package from the NPM registry.
 }
 ```
 
+`success` is `false` when the package was imported but activation was rejected; inspect
+`activationIssues`. `pendingReindex` lists resource types to reindex after activation.
+
 #### list_fhir_packages
 
 List installed packages for a tenant.
