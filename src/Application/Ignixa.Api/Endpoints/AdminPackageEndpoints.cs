@@ -138,10 +138,7 @@ public static class AdminPackageEndpoints
         string[] skippedPackages =
         [
             .. closureMembers
-                .Where(member => member.Status is PackageClosureMemberStatus.ProvidedInProcess
-                    or PackageClosureMemberStatus.VersionConflict
-                    or PackageClosureMemberStatus.LoadFailed
-                    or PackageClosureMemberStatus.ManifestUnavailable)
+                .Where(member => member.IsBlocking || member.Status == PackageClosureMemberStatus.ProvidedInProcess)
                 .Select(member => member.Status == PackageClosureMemberStatus.ManifestUnavailable
                     ? $"{member.PackageId}@{member.Version} dependencies (skipped: {member.Reason})"
                     : $"{member.PackageId}@{member.Version} (skipped: {member.Reason})"),
@@ -284,7 +281,8 @@ public static class AdminPackageEndpoints
         /// <summary>
         /// When true, also loads every package declared in the root package's
         /// <c>dependencies</c> (transitively). Each member of the closure is loaded
-        /// idempotently and <c>hl7.fhir.r4.core</c> is skipped (provided in-process).
+        /// idempotently, and core FHIR packages in <see cref="Ignixa.PackageManagement.KnownPackages.CorePackages"/>
+        /// are skipped and reported as provided in-process.
         /// Defaults to false to preserve historical single-package semantics.
         /// </summary>
         public bool IncludeDependencies { get; init; }
@@ -332,7 +330,8 @@ public static class AdminPackageEndpoints
         public bool IsComplete { get; init; }
 
         /// <summary>
-        /// Human-readable closure summary strings derived from <see cref="ClosureMembers"/>.
+        /// Legacy count-based package summary strings. <c>null</c> for single-package loads;
+        /// prefer <see cref="ClosureMembers"/> for authoritative per-observation outcomes.
         /// </summary>
         public IReadOnlyList<string>? LoadedPackages { get; init; }
 

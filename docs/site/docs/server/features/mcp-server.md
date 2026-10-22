@@ -201,8 +201,32 @@ Install a FHIR package from the NPM registry.
 }
 ```
 
-`success` is `false` when the package was imported but activation was rejected; inspect
-`activationIssues`. `pendingReindex` lists resource types to reindex after activation.
+`install_fhir_package` loads and activates only the requested package; it does not load
+dependencies. `success` is `false` when the package was installed (or already present) but
+activation was rejected; inspect `activationIssues`. `pendingReindex` lists resource types to
+reindex after a successful activation.
+
+```json
+{
+  "success": false,
+  "tenantId": 1,
+  "tenantName": "Default",
+  "packageId": "hl7.fhir.us.core",
+  "packageVersion": "6.1.0",
+  "totalResources": 2,
+  "importedResources": 2,
+  "updatedResources": 0,
+  "durationSeconds": 3,
+  "resourcesByType": {
+    "SearchParameter": 2
+  },
+  "activationIssues": [
+    "SP_CONFLICT: SearchParameter 'status' on Observation conflicts with existing from hl7.fhir.r4.core"
+  ],
+  "pendingReindex": [],
+  "message": "Installed hl7.fhir.us.core@6.1.0 but activation failed: SP_CONFLICT: SearchParameter 'status' on Observation conflicts with existing from hl7.fhir.r4.core"
+}
+```
 
 #### list_fhir_packages
 

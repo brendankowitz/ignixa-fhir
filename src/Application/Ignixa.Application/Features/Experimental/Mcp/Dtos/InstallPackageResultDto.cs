@@ -13,7 +13,8 @@ namespace Ignixa.Application.Features.Experimental.Mcp.Dtos;
 public record InstallPackageResultDto
 {
     /// <summary>
-    /// Whether the installation was successful.
+    /// True when the package was installed and activated. False when activation was rejected;
+    /// resources stay installed but inactive (see <see cref="ActivationIssues"/>).
     /// </summary>
     public required bool Success { get; init; }
 
@@ -68,7 +69,7 @@ public record InstallPackageResultDto
     public IReadOnlyList<string> ActivationIssues { get; init; } = [];
 
     /// <summary>
-    /// Resource types that require reindexing after activation.
+    /// Resource types that require reindexing after successful activation; empty when activation fails.
     /// </summary>
     public IReadOnlyList<string> PendingReindex { get; init; } = [];
 

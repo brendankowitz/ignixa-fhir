@@ -35,10 +35,7 @@ public class PackageActivationPipeline(
     private readonly SearchParameterResolutionOptions _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
     private readonly ILogger<PackageActivationPipeline> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-    /// <summary>
-    /// Activates a package by validating resources, emitting events, and updating state.
-    /// Returns success result with pending reindex list or failure result with validation issues.
-    /// </summary>
+    /// <inheritdoc/>
     public async Task<ActivationResult> ActivateAsync(
         string packageId,
         string version,

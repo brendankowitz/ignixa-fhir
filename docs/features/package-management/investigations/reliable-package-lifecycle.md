@@ -1,7 +1,7 @@
 # Investigation: Reliable Package Lifecycle and Dependency Planning
 
 **Feature**: package-management
-**Status**: Merged into [ADR-2610](../adr-2610-reliable-package-lifecycle.md) (Proposed; not implemented)
+**Status**: Complete (synthesized into [ADR-2610](../adr-2610-reliable-package-lifecycle.md))
 **Created**: 2026-10-20
 
 ## Approach

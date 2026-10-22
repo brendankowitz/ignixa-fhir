@@ -14,6 +14,10 @@ for a completed installation. Dependency traversal imports while resolving, keep
 first encountered version, and tolerates missing dependencies; HTTP responses omit
 dependency completeness and activation outcomes.
 
+This ADR describes the [`9db0620`](https://github.com/brendankowitz/ignixa-fhir/tree/9db0620d5909e1a0ffd11917a7fa1d78d3299c2b)
+baseline; slice 1 (typed closure outcomes, `IsComplete`, HTTP/preload closure reporting, and MCP activation reporting) has since
+been implemented, while durable installation remains unimplemented.
+
 The [reliable-package-lifecycle investigation](investigations/reliable-package-lifecycle.md)
 compares current source with dotnet-fhir-packages and distinguishes reusable ideas from
 capabilities Ignixa already has. Package bytes and resources are currently shared content,

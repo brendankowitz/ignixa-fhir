@@ -223,7 +223,7 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
             // Was the import a no-op (already loaded)? If so we don't have a manifest in hand
             // but we still need to walk that package's dependencies. Best-effort re-fetch via
             // PackageCacheManager - the local tarball is typically already on disk.
-            if (manifest == null)
+            if (wasAlreadyInstalled)
             {
                 try
                 {
@@ -269,7 +269,8 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
                 }
             }
 
-            // Preserve the legacy LoadedPackages calculation, which uses resource counts.
+            // Legacy LoadedPackages uses resource counts, so a zero-resource import appears already loaded;
+            // ClosureMembers uses wasAlreadyInstalled, which is authoritative.
             var alreadyLoaded = perPackageResult.ImportedResources == 0 && perPackageResult.TotalResources == 0;
             loadedSpecs.Add(alreadyLoaded ? $"{id}@{ver} (already loaded)" : $"{id}@{ver}");
             closureMembers.Add(new(id, ver, wasAlreadyInstalled ? PackageClosureMemberStatus.AlreadyInstalled : PackageClosureMemberStatus.Imported));

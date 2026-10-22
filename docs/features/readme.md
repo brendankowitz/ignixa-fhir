@@ -138,7 +138,7 @@ docs/features/
 | [history](history/) | Research | streaming-migration |
 | [mcp-integration](mcp-integration/) | Proposed | mcp-overview, tool-design |
 | [multi-tenancy](multi-tenancy/) | Research | partitioning-modes, tenant-providers |
-| [package-management](package-management/) | Research | npm-simplifier, multi-version-ig |
+| [package-management](package-management/) | Partial Implementation | npm-simplifier, multi-version-ig, reliable-package-lifecycle |
 | [performance](performance/) | Active | post-put-analysis, version-override |
 | [search](search/) | Partial | query-parsing, compartment-wildcard, +6 more |
 | [serialization](serialization/) | Viable | model-refactoring, viewdefinition-support |

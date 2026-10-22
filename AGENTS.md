@@ -110,7 +110,7 @@ Write focused, self-documenting methods. Avoid deep nesting, high cyclomatic com
 - Verify regressions at the base commit, normally in a temporary worktree with the new test copied in.
 - Mutation-test guards: break the behavior they pin, observe the failure, then revert the mutation.
 - Run `git submodule update --init --recursive` before suites that use vendored fixtures; `Ignixa.SqlOnFhir.Tests` requires `sql-on-fhir-tests`.
-- `SystemValueElementDeclarationTests.Decisions` is a reflection census: every new production `IElement` producer needs a recorded classification and rationale.
+- `SystemValueElementDeclarationTests.Decisions` is a reflection census: every new production `IElement` producer needs a recorded classification and rationale. Do not remove it.
 - Keep `MustCompile` tripwires for corpus rows expected to compile, so an un-compilable row cannot pass merely by being skipped.
 
 ## Mutation Testing
@@ -156,11 +156,9 @@ Stryker from the test project directory with
 | `test/Ignixa.RepoGuards.Tests` | excluded | repository/architecture guards, not unit tests |
 | `test/Ignixa.Tests.Compatibility.CLI.Tests` | excluded | contract fixtures only |
 
-- Setup: `git submodule update --init --recursive` before suites using vendored fixtures.
-- Test conventions: xUnit, Shouldly, NSubstitute; Arrange/Act/Assert; `GivenContext_WhenAction_ThenResult`.
+- See [Testing](#testing) for test setup, conventions, and the protected
+  `SystemValueElementDeclarationTests.Decisions` and `MustCompile` tripwires.
 - Never remove:
-  - `SystemValueElementDeclarationTests.Decisions`: reflection census of `IElement` producers.
-  - `MustCompile` corpus tripwires: stop un-compilable rows passing by being skipped.
   - All `Ignixa.RepoGuards.Tests`: architecture and layering guards.
   - Regression tests (names or comments citing an issue or a base-commit failure).
   - Version-specific STU3/R4/R4B/R5 variants and Phase3 conformance rows.

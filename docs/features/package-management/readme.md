@@ -1,6 +1,6 @@
 # Feature: Package Management
 
-**Status**: Decided (lifecycle ADR Proposed; not implemented)
+**Status**: Partial Implementation (ADR-2610 Proposed; slice 1 outcome reporting implemented)
 **Created**: 2025-10-08
 
 ## Problem Statement

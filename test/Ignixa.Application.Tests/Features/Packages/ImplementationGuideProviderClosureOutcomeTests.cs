@@ -123,6 +123,22 @@ public sealed class ImplementationGuideProviderClosureOutcomeTests
     }
 
     [Fact]
+    public async Task GivenCallerCancellationDuringTransitiveLoad_WhenLoadingWithDependencies_ThenCancellationPropagates()
+    {
+        RegisterPackage("root", "1.0.0", new Dictionary<string, string> { ["dep"] = "1.0.0" });
+        using CancellationTokenSource cancellation = new();
+        _loader.DownloadPackageAsync("dep", "1.0.0", Arg.Any<CancellationToken>())
+            .Returns<Task<Stream>>(_ =>
+            {
+                cancellation.Cancel();
+                throw new OperationCanceledException(cancellation.Token);
+            });
+
+        await Should.ThrowAsync<OperationCanceledException>(
+            () => _provider.LoadPackageWithDependenciesAsync("1", "root", "1.0.0", cancellation.Token));
+    }
+
+    [Fact]
     public async Task GivenConflictingExactVersions_WhenLoadingWithDependencies_ThenConflictIsBlocking()
     {
         RegisterPackage("root", "1.0.0", new Dictionary<string, string> { ["A"] = "1.0.0", ["B"] = "1.0.0" });
@@ -139,6 +155,23 @@ public sealed class ImplementationGuideProviderClosureOutcomeTests
     }
 
     [Fact]
+    public async Task GivenConflictingVersionsQueuedBeforeEitherIsLoaded_WhenLoadingWithDependencies_ThenSecondVersionIsBlocking()
+    {
+        RegisterPackage("root", "1.0.0", new Dictionary<string, string> { ["A"] = "1.0.0", ["B"] = "1.0.0" });
+        RegisterPackage("A", "1.0.0", new Dictionary<string, string> { ["C"] = "1.0.0" });
+        RegisterPackage("B", "1.0.0", new Dictionary<string, string> { ["C"] = "2.0.0" });
+        RegisterPackage("C", "1.0.0");
+
+        var result = await _provider.LoadPackageWithDependenciesAsync("1", "root", "1.0.0", CancellationToken.None);
+
+        var conflict = result.ClosureMembers.Single(member =>
+            member.PackageId == "C" &&
+            member.Version == "2.0.0" &&
+            member.Status == PackageClosureMemberStatus.VersionConflict);
+        conflict.IsBlocking.ShouldBeTrue();
+    }
+
+    [Fact]
     public async Task GivenAlreadyInstalledManifestUnavailable_WhenLoadingWithDependencies_ThenManifestUnavailableIsBlocking()
     {
         RegisterPackage("root", "1.0.0", new Dictionary<string, string> { ["dep"] = "1.0.0" });
@@ -151,6 +184,8 @@ public sealed class ImplementationGuideProviderClosureOutcomeTests
 
         result.ClosureMembers.ShouldContain(member =>
             member.PackageId == "dep" && member.Status == PackageClosureMemberStatus.ManifestUnavailable && member.IsBlocking);
+        result.ClosureMembers.ShouldContain(member =>
+            member.PackageId == "dep" && member.Status == PackageClosureMemberStatus.AlreadyInstalled);
     }
 
     [Fact]
@@ -166,8 +201,9 @@ public sealed class ImplementationGuideProviderClosureOutcomeTests
 
         var manifestUnavailable = result.ClosureMembers.Single(member =>
             member.PackageId == "dep" && member.Status == PackageClosureMemberStatus.ManifestUnavailable);
-        manifestUnavailable.Status.ShouldBe(PackageClosureMemberStatus.ManifestUnavailable);
         manifestUnavailable.IsBlocking.ShouldBeTrue();
+        result.ClosureMembers.ShouldContain(member =>
+            member.PackageId == "dep" && member.Status == PackageClosureMemberStatus.AlreadyInstalled);
     }
 
     [Fact]

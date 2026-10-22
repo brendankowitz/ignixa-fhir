@@ -51,14 +51,15 @@ public record LoadPackageResult
     public Dictionary<string, int> ResourcesByType { get; init; } = new();
 
     /// <summary>
-    /// Human-readable package summary strings derived from the dependency closure.
-    /// Non-null when the request used <see cref="LoadPackageCommand.IncludeDependencies"/>.
+    /// Legacy count-based package summary strings. <c>null</c> for single-package loads;
+    /// prefer <see cref="ClosureMembers"/> for authoritative per-observation outcomes.
     /// </summary>
     public IReadOnlyList<string>? LoadedPackages { get; init; }
 
     /// <summary>
-    /// Human-readable skipped-package summary strings derived from the dependency closure.
-    /// Null for single-package loads; a non-empty list indicates a partial load.
+    /// Human-readable skipped-package summary strings, including informational core-package entries.
+    /// <c>null</c> for single-package loads or when nothing was skipped. Use <see cref="IsComplete"/> or
+    /// <c>ClosureMembers[].IsBlocking</c> to determine whether the load is incomplete.
     /// </summary>
     public IReadOnlyList<string>? SkippedPackages { get; init; }
 

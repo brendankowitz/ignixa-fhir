@@ -447,9 +447,14 @@ Check `isComplete`: it is `true` only when dependency-closure import has no bloc
 dependencies imported through `includeDependencies` are not activated by this call.
 `ProvidedInProcess` entries, such as core FHIR packages, are informational. Each
 `closureMembers` entry has `packageId`, `version`, `status`, `reason`, and `isBlocking`.
-The `reason` values, `loadedPackages`, and `skippedPackages` are human-readable summary strings
-derived from `closureMembers`, with fixed status-derived safe text; raw upstream exception details
-remain in server logs and are not returned to clients.
+The `reason` values and `skippedPackages` use fixed status-derived text, so dependency failure
+details remain in server logs. `loadedPackages` is the legacy count-based `id@version` summary,
+optionally marked `(already loaded)`, and is not derived from `closureMembers`; prefer
+`closureMembers[].status`. Entries are not unique per package ID: an already-installed package
+whose manifest cannot be re-read appears as both `AlreadyInstalled` and `ManifestUnavailable`,
+and `ProvidedInProcess` may repeat for each dependent. When `includeDependencies` is `false`,
+`closureMembers` is empty and `isComplete` reflects activation only. Errors that fail the whole
+request (`400` or `500`) still include an error message.
 When activation is rejected, imported resources remain installed but inactive, and
 `activation.issues` explains why. `activation.pendingReindex` lists resource types to reindex after
 a successful activation.

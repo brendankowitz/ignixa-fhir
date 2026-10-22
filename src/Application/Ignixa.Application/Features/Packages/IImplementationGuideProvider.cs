@@ -24,10 +24,10 @@ public interface IImplementationGuideProvider
     /// <summary>
     /// Loads a package and its full declared dependency closure into a tenant's database.
     /// Walks <see cref="PackageManifest.Dependencies"/> breadth-first, deduplicating by
-    /// package id, skipping <c>hl7.fhir.r4.core</c> (provided in-process by the base
-    /// schema provider, not distributed as a downloadable tarball), and tolerating
-    /// individual dependency failures so a missing transitive dep does not abort the
-    /// whole operation.
+    /// package id, skipping core FHIR packages in <see cref="Ignixa.PackageManagement.KnownPackages.CorePackages"/>
+    /// (provided in-process by the base schema provider), and recording individual dependency
+    /// failures as blocking closure members so a missing transitive dep does not abort the
+    /// whole operation. Caller cancellation propagates.
     /// </summary>
     /// <param name="tenantId">Tenant ID for database selection.</param>
     /// <param name="packageId">Root package id.</param>
