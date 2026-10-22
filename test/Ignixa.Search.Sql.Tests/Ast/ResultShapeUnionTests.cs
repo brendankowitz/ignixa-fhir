@@ -32,6 +32,7 @@ public class ResultShapeUnionTests
         data.Add(typeof(ResultShape.Count.AllMatches));
         data.Add(typeof(ResultShape.Count.CurrentSortPhase));
         data.Add(typeof(ResultShape.IncludesPage));
+        data.Add(typeof(ResultShape.IncludesCount));
         data.Add(typeof(SearchPaging.Keyset));
         data.Add(typeof(SearchPaging.Offset));
         return data;
@@ -68,7 +69,7 @@ public class ResultShapeUnionTests
             .Where(t => typeof(ResultShape).IsAssignableFrom(t) && t != typeof(ResultShape) && !t.IsAbstract)
             .Select(t => t.Name)
             .OrderBy(n => n, StringComparer.Ordinal)
-            .ShouldBe(["AllMatches", "CurrentSortPhase", "IncludesPage", "Matches"]);
+            .ShouldBe(["AllMatches", "CurrentSortPhase", "IncludesCount", "IncludesPage", "Matches"]);
     }
 
     [Fact]
@@ -76,24 +77,38 @@ public class ResultShapeUnionTests
     {
         // The collapse that removed SearchPlanOptions.Paging: a count discarded it silently and an includes
         // page rejected it at runtime while carrying its own resume boundary. Both are now unrepresentable.
-        // If a second shape gains a SearchPaging member, those runtime guards have to come back.
+        // If a second shape gains a SearchPaging member, those runtime guards have to come back. An includes
+        // page's MatchReplay is deliberately not a SearchPaging: it cannot express an offset or a probe row.
         typeof(ResultShape).Assembly.GetTypes()
             .Where(t => typeof(ResultShape).IsAssignableFrom(t))
             .Where(t => t.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Any(p => p.PropertyType == typeof(SearchPaging)))
+                .Any(p => typeof(SearchPaging).IsAssignableFrom(p.PropertyType)))
             .ShouldHaveSingleItem()
             .ShouldBe(typeof(ResultShape.Matches));
     }
 
     [Fact]
-    public void GivenAnIncludesPage_WhenInspected_ThenItsOnlyPagingCoordinateIsItsOwnResumeBoundary()
+    public void GivenAnIncludesPage_WhenInspected_ThenItsPagingCoordinatesAreItsResumeBoundaryAndTheMatchPageItReplays()
     {
-        // An includes page bounds its match set by a surrogate range and pages its own rows by Resume. Having
-        // exactly one paging coordinate is what makes "two paging mechanisms disagree" impossible to express.
+        // An includes page pages its own rows by Resume and may bound its seed by replaying a match page. The
+        // replay carries only a page size and a keyset boundary -- no probe flag and no offset -- so the
+        // shapes PlanShapeValidator rejects for an includes page cannot be written down through the options.
         typeof(ResultShape.IncludesPage)
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Select(p => p.Name)
-            .ShouldContain(nameof(ResultShape.IncludesPage.Resume));
+            .ShouldBe([nameof(ResultShape.IncludesPage.Resume), nameof(ResultShape.IncludesPage.MatchReplay)], ignoreOrder: true);
+        typeof(MatchPageReplay)
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Select(p => p.Name)
+            .ShouldBe([nameof(MatchPageReplay.PageSize), nameof(MatchPageReplay.Boundary)], ignoreOrder: true);
+    }
+
+    [Fact]
+    public void GivenAnIncludesCount_WhenInspected_ThenItCarriesNoPagingCoordinateAtAll()
+    {
+        typeof(ResultShape.IncludesCount)
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .ShouldBeEmpty();
     }
 
     private static MethodInfo? MarkerIn(Type type)

@@ -32,7 +32,8 @@ public sealed record SearchPlanOptions
     /// <see cref="ResultShape.IncludesPage"/>. The extra row is over-fetched deliberately: it is returned,
     /// flagged <c>IsPartial</c>, and the caller trims it. That is how truncation stays detectable, and why
     /// zero — the default — reports whether included resources exist without fetching any of them.
-    /// Null leaves include and iterate traversal unbounded. Rejected when negative, and at
+    /// Null leaves include and iterate traversal unbounded. <see cref="ResultShape.IncludesCount"/> ignores it:
+    /// the count is of every included resource. Rejected when negative, and at
     /// <see cref="int.MaxValue"/> because the extra row overflows the cap.
     /// </summary>
     public int? IncludeLimit { get; init; } = 0;
@@ -40,7 +41,8 @@ public sealed record SearchPlanOptions
     /// <summary>
     /// An inclusive surrogate-id bound. When set it wins over <c>SearchOptions.StartSurrogateId</c>/
     /// <c>EndSurrogateId</c>. Named to match <c>QueryPlan.SurrogateRange</c>, but typed as raw longs so a
-    /// caller never has to construct the AST's <c>SurrogateIdRange</c> node.
+    /// caller never has to construct the AST's <c>SurrogateIdRange</c> node. Ignored, from either source, under
+    /// <see cref="ResultShape.IncludesCount"/>, which counts the includes of the whole search.
     /// </summary>
     public (long Start, long End)? SurrogateRange { get; init; }
 
