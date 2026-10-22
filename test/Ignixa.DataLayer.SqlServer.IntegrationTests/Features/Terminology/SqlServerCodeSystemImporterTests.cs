@@ -1,5 +1,6 @@
 using Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
 using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Abstractions.Terminology;
 using Shouldly;
 using Xunit;
 
@@ -81,18 +82,26 @@ public class SqlServerCodeSystemImporterTests : IAsyncLifetime
         var service = _fixture.CreateTerminologyService();
 
         var parentToChild = await service.SubsumesAsync(
-            new SubsumesParameters("vehicle", "car", SystemUrl, null), CancellationToken.None);
+            new CodeRef(SystemUrl, "vehicle"),
+            new CodeRef(SystemUrl, "car"),
+            CancellationToken.None);
         var childToParent = await service.SubsumesAsync(
-            new SubsumesParameters("car", "vehicle", SystemUrl, null), CancellationToken.None);
+            new CodeRef(SystemUrl, "car"),
+            new CodeRef(SystemUrl, "vehicle"),
+            CancellationToken.None);
         var siblings = await service.SubsumesAsync(
-            new SubsumesParameters("car", "truck", SystemUrl, null), CancellationToken.None);
+            new CodeRef(SystemUrl, "car"),
+            new CodeRef(SystemUrl, "truck"),
+            CancellationToken.None);
         var self = await service.SubsumesAsync(
-            new SubsumesParameters("car", "car", SystemUrl, null), CancellationToken.None);
+            new CodeRef(SystemUrl, "car"),
+            new CodeRef(SystemUrl, "car"),
+            CancellationToken.None);
 
-        parentToChild.Outcome.ShouldBe("subsumes");
-        childToParent.Outcome.ShouldBe("subsumed-by");
-        siblings.Outcome.ShouldBe("not-subsumed");
-        self.Outcome.ShouldBe("equivalent");
+        parentToChild.KnownRelation.ShouldBe(SubsumptionRelation.Subsumes);
+        childToParent.KnownRelation.ShouldBe(SubsumptionRelation.SubsumedBy);
+        siblings.KnownRelation.ShouldBe(SubsumptionRelation.NotSubsumed);
+        self.KnownRelation.ShouldBe(SubsumptionRelation.Equivalent);
     }
 
     [Fact]
@@ -114,8 +123,7 @@ public class SqlServerCodeSystemImporterTests : IAsyncLifetime
     public async Task GivenTheSameCodeSystemTwice_WhenTheContentIsUnchanged_ThenTheStatusStaysCompletedAndNoWorkIsRedone()
     {
         // The second pass must report Completed, not Skipped. Reporting Skipped was how the row's status got
-        // downgraded from Completed, which both took $expand off the database for this CodeSystem --
-        // HybridTerminologyService routes anything other than Completed to the in-memory fallback -- and
+        // downgraded from Completed, which removes SQL's authoritative coverage for this CodeSystem and
         // failed this very guard on the following load, re-importing in full every time.
         var packageResource = await _fixture.SeedPackageResourceAsync(
             "CodeSystem", SystemUrl, TerminologyTestFixture.HierarchicalCodeSystemJson(SystemUrl));
@@ -247,7 +255,7 @@ public class SqlServerCodeSystemImporterTests : IAsyncLifetime
     {
         // A supplement adds properties to concepts belonging to another CodeSystem and carries that
         // CodeSystem's url. Importing it as an ordinary CodeSystem puts a second TermCodeSystem row under the
-        // same SystemId, and LookupCodeAsync breaks ties by ImportedDate DESC — so the supplement's concepts
+        // same SystemId, and LookupAsync breaks ties by ImportedDate DESC — so the supplement's concepts
         // would shadow the real ones. Both implementations skip supplements; merging them is unimplemented.
         await ImportAsync(SystemUrl);
 

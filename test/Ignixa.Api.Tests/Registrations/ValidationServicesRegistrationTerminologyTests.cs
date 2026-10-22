@@ -12,6 +12,8 @@ using Ignixa.DataLayer.SqlServer.Features.Terminology;
 using Ignixa.Domain.Constants;
 using Ignixa.Domain.Terminology;
 using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Abstractions.Terminology;
+using Ignixa.Validation.Services.Terminology;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
@@ -57,7 +59,7 @@ public class ValidationServicesRegistrationTerminologyTests
         builder.RegisterInstance(_sqlExecutionService).As<ISqlExecutionService>();
         builder.RegisterInstance(requestContextAccessor).As<IFhirRequestContextAccessor>();
 
-        // Recursive substitution supplies the schema provider and its ValueSetProvider; the fallback service
+        // Recursive substitution supplies the schema provider and its ValueSetProvider; package terminology
         // is constructed but never reached by the assertions below.
         builder.RegisterInstance(Substitute.For<IFhirVersionContext>()).As<IFhirVersionContext>();
         if (registerCache)
@@ -77,15 +79,16 @@ public class ValidationServicesRegistrationTerminologyTests
         using var scope = container.BeginLifetimeScope();
         var service = scope.Resolve<SqlServerTerminologyService>();
 
-        (await service.LookupCodeAsync("http://example.org/uncached", "code", null, CancellationToken.None))
-            .Found.ShouldBeFalse();
+        (await service.LookupAsync(
+            new CodeRef("http://example.org/uncached", "code"),
+            CancellationToken.None)).Result.ShouldBe(Determination.Unknown);
         await _sqlExecutionService.Received(1).ExecuteReaderAsync(
             SystemConstants.SystemPartitionId, Arg.Any<SqlCommand>(),
             Arg.Any<Func<SqlDataReader, int>>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public void GivenTheValidationServiceRegistrations_WhenResolvingTerminology_ThenTheHybridServiceIsReturned()
+    public void GivenTheValidationServiceRegistrations_WhenResolvingTerminology_ThenTheComposingServiceIsReturned()
     {
         // Arrange
         using var container = BuildContainer();
@@ -95,7 +98,7 @@ public class ValidationServicesRegistrationTerminologyTests
         var terminologyService = scope.Resolve<ITerminologyService>();
 
         // Assert
-        terminologyService.ShouldBeOfType<HybridTerminologyService>();
+        terminologyService.ShouldBeOfType<ComposingTerminologyService>();
     }
 
     [Fact]
@@ -111,13 +114,13 @@ public class ValidationServicesRegistrationTerminologyTests
         // Assert
         statusProvider.ShouldBeOfType<SqlServerTerminologyService>();
 
-        // The hybrid receives this same per-scope instance for both its SQL side and its routing decision.
+        // The composing service receives this same per-scope instance as its SQL source.
         statusProvider.ShouldBeSameAs(scope.Resolve<SqlServerTerminologyService>());
     }
 
     /// <summary>
-    /// $translate routes to the SQL side unconditionally, so it reaches the hybrid's SQL dependency without
-    /// an import-status query standing in the way. The resolved graph issuing a raw ADO.NET command against
+    /// $translate routes to the first legacy source unconditionally, so it reaches SQL without an import-status
+    /// query standing in the way. The resolved graph issuing a raw ADO.NET command against
     /// the system partition is the behavioural proof that it is the ported service: the EF implementation
     /// went through a <c>FhirDbContext</c> and never touched <see cref="ISqlExecutionService"/>.
     /// </summary>

@@ -220,7 +220,7 @@ public sealed class SqlServerCodeSystemImporter(
     /// <c>supplement</c> is the load-bearing one: a supplement adds properties to concepts belonging to
     /// <b>another</b> CodeSystem and carries that CodeSystem's <c>url</c>. Importing it as an ordinary
     /// CodeSystem would put a second <c>dbo.TermCodeSystem</c> row under the same <c>SystemId</c>, and
-    /// <c>LookupCodeAsync</c> resolves ties by <c>ImportedDate DESC</c> — so the supplement would shadow the
+    /// <c>LookupAsync</c> resolves ties by <c>ImportedDate DESC</c> — so the supplement would shadow the
     /// real CodeSystem's concepts. Merging supplements is unimplemented in both implementations; skipping
     /// them is what keeps that from silently corrupting lookups.
     /// </para>

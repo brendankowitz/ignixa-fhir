@@ -101,7 +101,7 @@ public class TerminologyImportResult
     /// Distinct from <see cref="CreateSkipped"/> on purpose. Reporting this case as
     /// <see cref="TerminologyImportStatus.Skipped"/> overwrote a <see cref="TerminologyImportStatus.Completed"/>
     /// row that had every one of its concepts in the database, which both lied to
-    /// <c>HybridTerminologyService</c> — it routes anything other than <c>Completed</c> to the in-memory
+    /// <c>ComposingTerminologyService</c> — it routes anything other than <c>Completed</c> to the package
     /// fallback, so <c>$expand</c> stopped using the tables — and broke the importer's own
     /// unchanged-content guard, which re-imported the resource in full on the next package load.
     /// </para>

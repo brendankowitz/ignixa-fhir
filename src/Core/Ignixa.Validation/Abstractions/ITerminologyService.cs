@@ -4,6 +4,7 @@
 // </copyright>
 
 using Ignixa.Validation;
+using Ignixa.Validation.Abstractions.Terminology;
 
 namespace Ignixa.Validation.Abstractions;
 
@@ -13,6 +14,21 @@ namespace Ignixa.Validation.Abstractions;
 /// </summary>
 public interface ITerminologyService
 {
+    /// <summary>
+    /// Looks up a concept without answering for content no source holds.
+    /// </summary>
+    Task<ConceptLookup> LookupAsync(LookupRequest request, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Validates a code in a CodeSystem without answering for content no source holds.
+    /// </summary>
+    Task<ValidateCodeResult> ValidateCodeInCodeSystemAsync(ValidateCodeRequest request, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Tests subsumption without answering for content no source holds.
+    /// </summary>
+    Task<SubsumesOutcome> SubsumesAsync(SubsumesRequest request, CancellationToken cancellationToken);
+
     /// <summary>
     /// Validates a code against a ValueSet binding.
     /// </summary>
@@ -27,21 +43,6 @@ public interface ITerminologyService
         string? code,
         string? display,
         string? valueSetUrl,
-        CancellationToken cancellationToken);
-
-    /// <summary>
-    /// $lookup operation - Look up concept details by system and code.
-    /// Returns concept display, definition, properties, and designations.
-    /// </summary>
-    /// <param name="system">The code system URL (e.g., "http://loinc.org").</param>
-    /// <param name="code">The code to look up (e.g., "8310-5").</param>
-    /// <param name="version">The code system version (optional).</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Lookup result with concept details or not found indication.</returns>
-    Task<LookupResult> LookupCodeAsync(
-        string system,
-        string code,
-        string? version,
         CancellationToken cancellationToken);
 
     /// <summary>
@@ -87,16 +88,6 @@ public interface ITerminologyService
         TranslateParameters parameters,
         CancellationToken cancellationToken);
 
-    /// <summary>
-    /// $subsumes operation - Test hierarchical subsumption relationship between two codes.
-    /// Returns whether codeA subsumes codeB, is subsumed by codeB, is equivalent, or has no relationship.
-    /// </summary>
-    /// <param name="parameters">Subsumption parameters (codeA, codeB, system, version).</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Subsumption result indicating relationship (equivalent, subsumes, subsumed-by, not-subsumed).</returns>
-    Task<SubsumesResult> SubsumesAsync(
-        SubsumesParameters parameters,
-        CancellationToken cancellationToken);
 }
 
 /// <summary>

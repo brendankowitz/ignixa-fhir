@@ -439,7 +439,7 @@ public class SqlServerValueSetImporterTests : IAsyncLifetime
     public async Task GivenTheSameValueSetTwice_WhenTheContentIsUnchanged_ThenTheStatusStaysCompleted()
     {
         // Was asserting Skipped. That is what overwrote a Completed row whose expansion was fully in the
-        // database, and HybridTerminologyService reads that column to decide whether $expand may use the
+        // database, and ComposingTerminologyService reads that column to decide whether SQL covers the
         // database at all -- so this ValueSet silently fell back to in-memory expansion on every reload.
         const string url = "http://example.org/fhir/ValueSet/ported-reimport";
 

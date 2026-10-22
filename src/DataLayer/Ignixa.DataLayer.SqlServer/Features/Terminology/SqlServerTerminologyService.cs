@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging;
 namespace Ignixa.DataLayer.SqlServer.Features.Terminology;
 
 /// <summary>
-/// <see cref="ITerminologyService"/> over <see cref="ISqlExecutionService"/>, replacing the EF
+/// SQL terminology source over <see cref="ISqlExecutionService"/>, replacing the EF
 /// implementation. Verified against the 31-fact oracle captured in Phase F Task 5b, which recorded the EF
 /// implementation's behaviour before it was replaced.
 /// <para>
@@ -30,7 +30,7 @@ public sealed class SqlServerTerminologyService(
     ISqlExecutionService sqlExecutionService,
     int systemPartitionId,
     ILogger<SqlServerTerminologyService> logger)
-    : ITerminologyService, ITerminologySource, ILegacyValueSetOperations, ITerminologyImportStatusProvider
+    : ITerminologySource, ILegacyValueSetOperations, ITerminologyImportStatusProvider
 {
     /// <summary>
     /// Retains source compatibility for callers supplying an application cache. Mutable SQL terminology
@@ -139,43 +139,6 @@ public sealed class SqlServerTerminologyService(
         // Name stays null: TermCodeSystem carries no name column.
         return ConceptLookup.Found(
             new ConceptDetails(null, row.Version, row.Display, row.Definition, properties, designations));
-    }
-
-    public async Task<LookupResult> LookupCodeAsync(
-        string system, string code, string? version, CancellationToken cancellationToken)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(system);
-        ArgumentException.ThrowIfNullOrWhiteSpace(code);
-
-        var systemId = await ResolveSystemIdAsync(system, cancellationToken);
-        if (systemId is null)
-        {
-            return new LookupResult(false, null, null, null, null, null, null);
-        }
-
-        var rows = await ReadConceptAsync(systemId.Value, code, version, MatchMode.CaseSensitive, cancellationToken);
-        if (rows.Count == 0)
-        {
-            rows = await ReadConceptAsync(
-                systemId.Value, code, version, MatchMode.CaseInsensitiveFallback, cancellationToken);
-        }
-
-        if (rows.Count == 0)
-        {
-            return new LookupResult(false, null, null, null, null, null, null);
-        }
-
-        var row = rows[0];
-        var (properties, designations) = ParsePropertiesJson(row.PropertiesJson);
-
-        return new LookupResult(
-            true,
-            null,
-            row.Version,
-            row.Display,
-            row.Definition,
-            properties,
-            designations);
     }
 
     public async Task<ExpandResult?> ExpandValueSetAsync(
@@ -342,19 +305,18 @@ public sealed class SqlServerTerminologyService(
             && !string.IsNullOrEmpty(system)
             && !string.IsNullOrEmpty(code))
         {
-            var lookup = await LookupCodeAsync(system, code, version, cancellationToken);
+            var lookup = await LookupAsync(new CodeRef(system, code, version), cancellationToken);
 
-            if (lookup.Found
-                && !string.IsNullOrEmpty(lookup.Display)
-                && !string.Equals(display, lookup.Display, StringComparison.Ordinal))
+            if (lookup.Concept is { Display: { } expectedDisplay }
+                && !string.Equals(display, expectedDisplay, StringComparison.Ordinal))
             {
-                suggestedDisplay = lookup.Display;
+                suggestedDisplay = expectedDisplay;
                 if (severity < IssueSeverity.Warning)
                 {
                     severity = IssueSeverity.Warning;
                 }
 
-                message = $"{message ?? "Code is valid"} However, display '{display}' does not match expected '{lookup.Display}'";
+                message = $"{message ?? "Code is valid"} However, display '{display}' does not match expected '{expectedDisplay}'";
             }
         }
 
@@ -553,45 +515,6 @@ public sealed class SqlServerTerminologyService(
         return await IsDescendantOfAsync(conceptA.Value, conceptB.Value, cancellationToken)
             ? new SubsumesOutcome.Related(SubsumptionRelation.SubsumedBy)
             : new SubsumesOutcome.Related(SubsumptionRelation.NotSubsumed);
-    }
-
-    public async Task<SubsumesResult> SubsumesAsync(
-        SubsumesParameters parameters, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(parameters);
-        ArgumentException.ThrowIfNullOrWhiteSpace(parameters.CodeA);
-        ArgumentException.ThrowIfNullOrWhiteSpace(parameters.CodeB);
-        ArgumentException.ThrowIfNullOrWhiteSpace(parameters.System);
-
-        var systemId = await ResolveSystemIdAsync(parameters.System, cancellationToken);
-        if (systemId is null)
-        {
-            return new SubsumesResult("not-subsumed");
-        }
-
-        var conceptA = await FindConceptIdAsync(
-            systemId.Value, parameters.CodeA, parameters.Version, cancellationToken);
-        var conceptB = await FindConceptIdAsync(
-            systemId.Value, parameters.CodeB, parameters.Version, cancellationToken);
-
-        if (conceptA is null || conceptB is null)
-        {
-            return new SubsumesResult("not-subsumed");
-        }
-
-        if (conceptA == conceptB)
-        {
-            return new SubsumesResult("equivalent");
-        }
-
-        if (await IsDescendantOfAsync(conceptB.Value, conceptA.Value, cancellationToken))
-        {
-            return new SubsumesResult("subsumes");
-        }
-
-        return await IsDescendantOfAsync(conceptA.Value, conceptB.Value, cancellationToken)
-            ? new SubsumesResult("subsumed-by")
-            : new SubsumesResult("not-subsumed");
     }
 
     public async Task<TerminologyImportStatus?> GetImportStatusAsync(

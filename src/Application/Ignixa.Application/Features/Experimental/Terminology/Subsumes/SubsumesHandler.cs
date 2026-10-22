@@ -1,6 +1,7 @@
-using System.Text.Json;
 using System.Text.Json.Nodes;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Abstractions.Terminology;
 using Medino;
 using Microsoft.Extensions.Logging;
 
@@ -37,31 +38,26 @@ public class SubsumesHandler : IRequestHandler<SubsumesQuery, SubsumesQueryResul
         SubsumesQuery request,
         CancellationToken cancellationToken)
     {
-        var parameters = new SubsumesParameters(
-            CodeA: request.CodeA,
-            CodeB: request.CodeB,
-            System: request.System,
-            Version: request.Version);
+        var subsumes = new SubsumesRequest(
+            new CodeRef(request.System, request.CodeA, request.Version),
+            new CodeRef(request.System, request.CodeB, request.Version));
 
-        var result = await _terminologyService.SubsumesAsync(parameters, cancellationToken);
-
-        // Convert to FHIR Parameters resource
-        var parametersResponse = new
+        var outcome = await _terminologyService.SubsumesAsync(subsumes, cancellationToken);
+        if (outcome is SubsumesOutcome.Undetermined undetermined)
         {
-            resourceType = "Parameters",
-            parameter = new[]
+            throw new BadRequestException($"Cannot determine subsumption: {undetermined.Reason.Detail}");
+        }
+
+        var parametersResponse = new JsonObject
+        {
+            ["resourceType"] = "Parameters",
+            ["parameter"] = new JsonArray(new JsonObject
             {
-                new
-                {
-                    name = "outcome",
-                    valueCode = result.Outcome
-                }
-            }
+                ["name"] = "outcome",
+                ["valueCode"] = outcome.KnownRelation!.Value.ToFhirCode(),
+            }),
         };
 
-        var jsonNode = JsonNode.Parse(JsonSerializer.Serialize(parametersResponse))
-            ?? throw new InvalidOperationException("Failed to serialize Parameters");
-
-        return new SubsumesQueryResult(jsonNode);
+        return new SubsumesQueryResult(parametersResponse);
     }
 }

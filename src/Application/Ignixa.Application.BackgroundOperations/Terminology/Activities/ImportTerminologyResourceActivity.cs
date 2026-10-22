@@ -24,7 +24,7 @@ namespace Ignixa.Application.BackgroundOperations.Terminology.Activities;
 /// importer's unchanged-content guard unreachable — that guard tests the status on the row, so it never saw
 /// anything but <c>InProgress</c> and every package load re-imported every terminology resource in full.
 /// Writing <c>result.Status</c> back afterwards then overwrote <c>Completed</c> rows with <c>Skipped</c>,
-/// which <c>HybridTerminologyService</c> reads as "not in the database" and answers from the in-memory
+/// which <c>ComposingTerminologyService</c> reads as not covered by SQL and answers from the package
 /// fallback instead.
 /// </para>
 /// <para>

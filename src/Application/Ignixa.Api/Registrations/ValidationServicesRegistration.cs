@@ -18,6 +18,7 @@ using Ignixa.Specification;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Schema;
 using Ignixa.Validation.Services;
+using Ignixa.Validation.Services.Terminology;
 
 namespace Ignixa.Api.Registrations;
 
@@ -94,18 +95,16 @@ public static class ValidationServicesRegistration
 
     private static void RegisterTerminologyServices(ContainerBuilder builder)
     {
-        // InMemoryTerminologyService (fallback for non-imported terminology)
-        // Note: This service requires a valid FHIR request context to determine the
-        // correct FHIR version and tenant for terminology resolution.
-        builder.Register<InMemoryTerminologyService>(c =>
+        // Package content for the request's FHIR version and tenant. Needs a valid request context.
+        builder.Register(c =>
         {
             var versionContext = c.Resolve<IFhirVersionContext>();
             var requestContext = c.Resolve<IFhirRequestContextAccessor>().RequestContext
                 ?? throw new InvalidOperationException(
-                    "FHIR request context not available. InMemoryTerminologyService requires " +
+                    "FHIR request context not available. PackageTerminologySource requires " +
                     "a valid request context with FhirVersion and TenantId for terminology resolution.");
             var schemaProvider = versionContext.GetSchemaProvider(requestContext.FhirVersion, requestContext.TenantId);
-            return new InMemoryTerminologyService(schemaProvider.ValueSetProvider);
+            return new PackageTerminologySource(schemaProvider.ValueSetProvider);
         })
         .AsSelf()
         .InstancePerLifetimeScope();
@@ -121,15 +120,10 @@ public static class ValidationServicesRegistration
             .As<ITerminologyImportStatusProvider>()
             .InstancePerLifetimeScope();
 
-        // HybridTerminologyService (routes to SQL or fallback based on import status)
-        builder.Register<ITerminologyService>(c =>
-        {
-            var sqlService = c.Resolve<SqlServerTerminologyService>();
-            var fallbackService = c.Resolve<InMemoryTerminologyService>();
-            var logger = c.Resolve<ILogger<HybridTerminologyService>>();
-
-            return new HybridTerminologyService(sqlService, sqlService, fallbackService, logger);
-        }).InstancePerLifetimeScope();
+        // Source order is routing order: SQL is authoritative for imported content, then package content.
+        builder.Register<ITerminologyService>(c => new ComposingTerminologyService(
+            [c.Resolve<SqlServerTerminologyService>(), c.Resolve<PackageTerminologySource>()]))
+            .InstancePerLifetimeScope();
     }
 
     private static void RegisterConformanceServices(ContainerBuilder builder)

@@ -4,6 +4,7 @@ using Ignixa.DataLayer.SqlServer.Features.Terminology;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Abstractions.Terminology;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.FileProviders;
@@ -183,10 +184,14 @@ public class PopulatedTerminologySchemaUpgradeTests
             NullLogger<SqlExecutionService>.Instance);
         using var cache = new MemoryCache(new MemoryCacheOptions());
         var service = new SqlServerTerminologyService(sql, 0, cache, NullLogger<SqlServerTerminologyService>.Instance);
-        (await service.LookupCodeAsync(system, "child", "1", CancellationToken.None)).Display.ShouldBe("Child");
-        (await service.LookupCodeAsync(system, "CHILD", "1", CancellationToken.None)).Found.ShouldBeFalse();
-        (await service.SubsumesAsync(new SubsumesParameters("parent", "child", system, "1"), CancellationToken.None))
-            .Outcome.ShouldBe("subsumes");
+        (await service.LookupAsync(new CodeRef(system, "child", "1"), CancellationToken.None))
+            .Concept!.Display.ShouldBe("Child");
+        (await service.LookupAsync(new CodeRef(system, "CHILD", "1"), CancellationToken.None))
+            .Result.ShouldBe(Determination.False);
+        (await service.SubsumesAsync(
+            new CodeRef(system, "parent", "1"),
+            new CodeRef(system, "child", "1"),
+            CancellationToken.None)).KnownRelation.ShouldBe(SubsumptionRelation.Subsumes);
         (await service.ExpandValueSetAsync(new ExpansionParameters(system + "/vs"), CancellationToken.None))!
             .Contains.Single().Code.ShouldBe("child");
         (await service.ExpandValueSetAsync(new ExpansionParameters(system + "/VS"), CancellationToken.None)).ShouldBeNull();

@@ -11,27 +11,26 @@ using Ignixa.Validation.Services.Terminology;
 namespace Ignixa.Validation.Services;
 
 /// <summary>
-/// In-memory terminology service with version-specific ValueSets.
-/// Returns warnings for unknown ValueSets to enable graceful degradation.
-/// Intended for testing and prototype scenarios - production systems should use external terminology servers.
+/// Package source behind <see cref="ComposingTerminologyService"/> for standalone, serverless validation.
 /// </summary>
 public class InMemoryTerminologyService : ITerminologyService
 {
     private readonly PackageTerminologySource _source;
+    private readonly ComposingTerminologyService _composer;
 
     /// <summary>
     /// Initializes a new instance of the InMemoryTerminologyService using a ValueSet provider.
     /// </summary>
     /// <param name="valueSetProvider">The value set provider to use for terminology validation.</param>
     /// <param name="codeSystemProvider">
-    /// Optional CodeSystem content surface consulted by <see cref="LookupCodeAsync"/> for
+    /// Optional CodeSystem content surface consulted by package terminology lookup for
     /// code&#8594;display resolution. Does not affect value-set binding validation.
     /// </param>
     public InMemoryTerminologyService(
         IValueSetProvider valueSetProvider,
         ICodeSystemProvider? codeSystemProvider = null)
+        : this(new PackageTerminologySource(valueSetProvider, codeSystemProvider))
     {
-        _source = new PackageTerminologySource(valueSetProvider, codeSystemProvider);
     }
 
     /// <summary>
@@ -43,19 +42,36 @@ public class InMemoryTerminologyService : ITerminologyService
     /// <param name="primary">Base-spec ValueSet provider (e.g. <c>R4ValueSetProvider</c>).</param>
     /// <param name="additional">Additional sources, queried first.</param>
     /// <param name="codeSystemProvider">
-    /// Optional CodeSystem content surface consulted by <see cref="LookupCodeAsync"/> for
+    /// Optional CodeSystem content surface consulted by package terminology lookup for
     /// code&#8594;display resolution. Does not affect value-set binding validation.
     /// </param>
     public InMemoryTerminologyService(
         IValueSetProvider primary,
         IEnumerable<IValueSetProvider> additional,
         ICodeSystemProvider? codeSystemProvider = null)
+        : this(new PackageTerminologySource(primary, additional, codeSystemProvider))
     {
-        ArgumentNullException.ThrowIfNull(primary);
-        ArgumentNullException.ThrowIfNull(additional);
-        _source = new PackageTerminologySource(primary, additional, codeSystemProvider);
     }
 
+    private InMemoryTerminologyService(PackageTerminologySource source)
+    {
+        _source = source;
+        _composer = new ComposingTerminologyService([source]);
+    }
+
+    public Task<ConceptLookup> LookupAsync(LookupRequest request, CancellationToken cancellationToken) =>
+        _composer.LookupAsync(request, cancellationToken);
+
+    public Task<ValidateCodeResult> ValidateCodeInCodeSystemAsync(
+        ValidateCodeRequest request,
+        CancellationToken cancellationToken) =>
+        _composer.ValidateCodeInCodeSystemAsync(request, cancellationToken);
+
+    public Task<SubsumesOutcome> SubsumesAsync(SubsumesRequest request, CancellationToken cancellationToken) =>
+        _composer.SubsumesAsync(request, cancellationToken);
+
+    // Direct to the source: Hybrid's empty-URL error is server behavior, while standalone validation has
+    // always warned and skipped when the binding omits a ValueSet.
     public Task<TerminologyValidationResult> ValidateCodeAsync(
         string? system,
         string? code,
@@ -64,41 +80,6 @@ public class InMemoryTerminologyService : ITerminologyService
         CancellationToken cancellationToken) =>
         _source.ValidateCodeAsync(system, code, display, valueSetUrl, cancellationToken);
 
-    /// <summary>
-    /// $lookup against locally-loaded CodeSystem content. When a <see cref="ICodeSystemProvider"/>
-    /// was supplied and it enumerates the (system, code), returns the concept with its display;
-    /// otherwise reports not found (the in-memory service has no external terminology server).
-    /// </summary>
-    public async Task<LookupResult> LookupCodeAsync(
-        string system,
-        string code,
-        string? version,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(system) || string.IsNullOrWhiteSpace(code))
-        {
-            return new LookupResult(false, null, null, null, null, null, null);
-        }
-
-        var lookup = await _source.LookupAsync(new CodeRef(system, code, version), cancellationToken);
-        return lookup.Concept is { } concept
-            ? new LookupResult(true, concept.Name, concept.Version, concept.Display, concept.Definition, concept.Properties, concept.Designations)
-            : new LookupResult(false, null, null, null, null, null, null);
-    }
-
-    /// <summary>
-    /// $expand operation is not supported by the in-memory implementation.
-    /// Always returns null (expansion not available).
-    /// </summary>
-    public Task<ExpandResult?> ExpandValueSetAsync(
-        ExpansionParameters parameters,
-        CancellationToken cancellationToken) =>
-        _source.ExpandValueSetAsync(parameters, cancellationToken);
-
-    /// <summary>
-    /// Validates a coded element against a terminology binding.
-    /// In-memory implementation uses hardcoded ValueSets for common bindings.
-    /// </summary>
     public Task<BindingValidationResult> ValidateBindingAsync(
         string valueSetUrl,
         BindingStrength strength,
@@ -109,23 +90,13 @@ public class InMemoryTerminologyService : ITerminologyService
         CancellationToken cancellationToken) =>
         _source.ValidateBindingAsync(valueSetUrl, strength, system, code, display, version, cancellationToken);
 
-    /// <summary>
-    /// $translate operation is not supported by the in-memory implementation.
-    /// Returns no matches.
-    /// </summary>
+    public Task<ExpandResult?> ExpandValueSetAsync(
+        ExpansionParameters parameters,
+        CancellationToken cancellationToken) =>
+        _source.ExpandValueSetAsync(parameters, cancellationToken);
+
     public Task<TranslateResult> TranslateCodeAsync(
         TranslateParameters parameters,
         CancellationToken cancellationToken) =>
         _source.TranslateCodeAsync(parameters, cancellationToken);
-
-    /// <summary>
-    /// $subsumes operation is not supported by the in-memory implementation.
-    /// Returns not-subsumed.
-    /// </summary>
-    public Task<SubsumesResult> SubsumesAsync(
-        SubsumesParameters parameters,
-        CancellationToken cancellationToken)
-    {
-        return Task.FromResult(new SubsumesResult("not-subsumed"));
-    }
 }

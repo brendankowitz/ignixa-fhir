@@ -228,30 +228,6 @@ public class InMemoryTerminologyServiceTests
     }
 
     [Fact]
-    public async Task GivenWhitespaceSystem_WhenLookingUpCode_ThenReturnsNotFoundWithoutThrowing()
-    {
-        var service = new InMemoryTerminologyService(
-            new R4CoreSchemaProvider().ValueSetProvider,
-            Substitute.For<ICodeSystemProvider>());
-
-        var result = await service.LookupCodeAsync("   ", "male", null, CancellationToken.None);
-
-        Assert.False(result.Found);
-    }
-
-    [Fact]
-    public async Task GivenWhitespaceCode_WhenLookingUpCode_ThenReturnsNotFoundWithoutThrowing()
-    {
-        var service = new InMemoryTerminologyService(
-            new R4CoreSchemaProvider().ValueSetProvider,
-            Substitute.For<ICodeSystemProvider>());
-
-        var result = await service.LookupCodeAsync("http://hl7.org/fhir/administrative-gender", "   ", null, CancellationToken.None);
-
-        Assert.False(result.Found);
-    }
-
-    [Fact]
     public async Task GivenNullValueSetUrl_WhenValidating_ThenReturnsWarning()
     {
         // Arrange
