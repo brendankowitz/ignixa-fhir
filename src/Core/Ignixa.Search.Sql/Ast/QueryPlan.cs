@@ -64,6 +64,9 @@ public sealed record QueryPlan(
     /// <summary>True when the statement omits match rows from its final result and returns include-stage rows only.</summary>
     public bool IncludesOnly => MatchSpec.IncludesOnly;
 
+    /// <summary>True when the statement returns a count of the distinct included resources rather than rows.</summary>
+    public bool IncludesCountOnly => MatchSpec.IncludesCountOnly;
+
     /// <summary>
     /// The keyset boundary for later pages of an includes-only stream, or null for any other result shape.
     /// </summary>
