@@ -72,27 +72,6 @@ public sealed class InstallPackageToolTests : McpTestBase
     }
 
     [Fact]
-    public async Task GivenActivationReportsConcurrencyException_WhenInstalling_ThenResultDoesNotExposeExceptionDetails()
-    {
-        // Arrange
-        _activation.ActivateAsync("example.ig", "1.0.0", Arg.Any<CancellationToken>())
-            .Returns(ActivationResult.Failed(
-            [
-                new ValidationIssue(
-                    "CONFORMANCE_CONFLICT",
-                    "SqlException at C:\\packages\\tenant.db: token=do-not-return"),
-            ]));
-
-        // Act
-        var result = await _tool.InstallPackageAsync("example.ig", "1.0.0", 1, CancellationToken.None);
-
-        // Assert
-        result.ActivationIssues.ShouldBe(["CONFORMANCE_CONFLICT: A concurrent conformance update prevented activation."]);
-        result.Message.ShouldNotContain("token=do-not-return");
-        result.Message.ShouldNotContain("C:\\packages");
-    }
-
-    [Fact]
     public async Task GivenActivationIsCancelled_WhenInstalling_ThenCancellationPropagates()
     {
         // Arrange

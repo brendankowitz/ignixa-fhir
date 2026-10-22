@@ -99,7 +99,17 @@ public class PackageActivationPipeline(
         }
         catch (SourceEventConcurrencyException exception)
         {
-            return RejectActivation([new ValidationIssue("CONFORMANCE_CONFLICT", exception.Message)]);
+            _logger.LogWarning(
+                exception,
+                "Package {PackageId}@{Version} activation encountered a conformance concurrency conflict",
+                packageId,
+                version);
+            return RejectActivation(
+            [
+                new ValidationIssue(
+                    "CONFORMANCE_CONFLICT",
+                    "A concurrent conformance update prevented activation."),
+            ]);
         }
 
         // 5. Apply events with correct EventIds to in-memory state

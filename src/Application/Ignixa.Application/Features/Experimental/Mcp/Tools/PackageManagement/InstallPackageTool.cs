@@ -120,7 +120,7 @@ NOTE: This operation may take 30-60 seconds for large packages.")]
             .OrderByDescending(kvp => kvp.Value)
             .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
         var activationIssues = activationResult.Issues
-            .Select(issue => $"{issue.Code}: {GetSafeActivationIssueMessage(issue)}")
+            .Select(issue => $"{issue.Code}: {issue.Message}")
             .ToList();
         var message = activationResult.Success
             ? $"Successfully installed {result.PackageId}@{result.PackageVersion} " +
@@ -145,9 +145,4 @@ NOTE: This operation may take 30-60 seconds for large packages.")]
             Message = message,
         };
     }
-
-    private static string GetSafeActivationIssueMessage(ValidationIssue issue) =>
-        issue.Code.Equals("CONFORMANCE_CONFLICT", StringComparison.Ordinal)
-            ? "A concurrent conformance update prevented activation."
-            : issue.Message;
 }
