@@ -1,4 +1,6 @@
 using Ignixa.Application.Features.Admin;
+using Ignixa.Application.Features.Conformance;
+using Ignixa.PackageManagement.Models;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
 
@@ -73,8 +75,8 @@ public static class AdminPackageEndpoints
             var result = await mediator.SendAsync(command, cancellationToken);
 
             logger.LogInformation(
-                "Package {PackageId}@{Version} loaded successfully. {Count} resources imported",
-                result.PackageId, result.PackageVersion, result.ImportedResources);
+                "Package {PackageId}@{Version} load finished. {Count} resources imported. Complete: {IsComplete}",
+                result.PackageId, result.PackageVersion, result.ImportedResources, result.IsComplete);
 
             var response = new LoadPackageResponse
             {
@@ -83,10 +85,21 @@ public static class AdminPackageEndpoints
                 TotalResources = result.TotalResources,
                 ImportedResources = result.ImportedResources,
                 DurationMilliseconds = result.DurationMilliseconds,
-                ResourcesByType = result.ResourcesByType
+                ResourcesByType = result.ResourcesByType,
+                IsComplete = result.IsComplete,
+                LoadedPackages = result.LoadedPackages,
+                SkippedPackages = result.SkippedPackages,
+                ClosureMembers = result.ClosureMembers,
+                Activation = result.Activation is { } activation
+                    ? new PackageActivationResponse(activation.Success, activation.Issues, activation.PendingReindex)
+                    : null,
             };
 
             return Results.Ok(response);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (ArgumentException ex)
         {
@@ -271,7 +284,40 @@ public static class AdminPackageEndpoints
         /// Breakdown by resource type.
         /// </summary>
         public Dictionary<string, int> ResourcesByType { get; init; } = new();
+
+        /// <summary>
+        /// True only when the dependency closure has no blocking member and root activation succeeded.
+        /// </summary>
+        public bool IsComplete { get; init; }
+
+        /// <summary>
+        /// Legacy closure description strings; prefer <see cref="ClosureMembers"/>.
+        /// </summary>
+        public IReadOnlyList<string>? LoadedPackages { get; init; }
+
+        /// <summary>
+        /// Legacy skipped-package description strings; prefer <see cref="ClosureMembers"/>.
+        /// </summary>
+        public IReadOnlyList<string>? SkippedPackages { get; init; }
+
+        /// <summary>
+        /// Typed per-package closure outcomes.
+        /// </summary>
+        public IReadOnlyList<PackageClosureMember> ClosureMembers { get; init; } = [];
+
+        /// <summary>
+        /// Root package activation outcome.
+        /// </summary>
+        public PackageActivationResponse? Activation { get; init; }
     }
+
+    /// <summary>
+    /// Activation outcome for the requested root package.
+    /// </summary>
+    public record PackageActivationResponse(
+        bool Succeeded,
+        IReadOnlyList<ValidationIssue> Issues,
+        IReadOnlyList<string> PendingReindex);
 
     /// <summary>
     /// Response from listing packages.
