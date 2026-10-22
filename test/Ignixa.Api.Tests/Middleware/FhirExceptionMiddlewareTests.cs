@@ -5,6 +5,7 @@
 
 using System.Text.Json;
 using Ignixa.Api.Middleware;
+using Ignixa.Domain.Exceptions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
@@ -45,6 +46,21 @@ public class FhirExceptionMiddlewareTests
         // Assert
         context.Response.StatusCode.ShouldBe(StatusCodes.Status400BadRequest);
         IssueCode(body).ShouldBe("invalid");
+    }
+
+    [Fact]
+    public async Task GivenUnsupportedContent_WhenHandled_ThenRespondsUnprocessableEntityWithNotSupportedOutcome()
+    {
+        // A default FhirException status would turn unsupported terminology content into a 400 response.
+        var (context, body) = CreateContext();
+        var middleware = new FhirExceptionMiddleware(
+            _ => throw new ResourceNotSupportedException("Package terminology content carries no concept hierarchy"),
+            NullLogger<FhirExceptionMiddleware>.Instance);
+
+        await middleware.InvokeAsync(context);
+
+        context.Response.StatusCode.ShouldBe(StatusCodes.Status422UnprocessableEntity);
+        IssueCode(body).ShouldBe("not-supported");
     }
 
     private static (DefaultHttpContext Context, MemoryStream Body) CreateContext()

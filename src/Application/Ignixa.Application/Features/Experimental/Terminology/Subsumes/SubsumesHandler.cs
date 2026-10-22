@@ -45,6 +45,11 @@ public class SubsumesHandler : IRequestHandler<SubsumesQuery, SubsumesQueryResul
         var outcome = await _terminologyService.SubsumesAsync(subsumes, cancellationToken);
         if (outcome is SubsumesOutcome.Undetermined undetermined)
         {
+            if (undetermined.Reason.Kind is UnknownKind.UnsupportedFilter or UnknownKind.NonEnumerableSystem)
+            {
+                throw new ResourceNotSupportedException(undetermined.Reason.Detail);
+            }
+
             throw new BadRequestException($"Cannot determine subsumption: {undetermined.Reason.Detail}");
         }
 

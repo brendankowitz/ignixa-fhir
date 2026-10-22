@@ -16,6 +16,8 @@ namespace Ignixa.Domain.Exceptions;
 /// </summary>
 public class ResourceNotSupportedException : FhirException
 {
+    public override int StatusCode => 422;
+
     public ResourceNotSupportedException()
         : base()
     {

@@ -38,6 +38,24 @@ public class SubsumesHandlerTests
         exception.Message.ShouldContain("Code 'b' is not defined");
     }
 
+    [Fact]
+    public async Task GivenUnsupportedContent_WhenHandled_ThenUnprocessableExceptionNamesTheReason()
+    {
+        // Mapping this reason to BadRequestException loses the unsupported-content distinction required by
+        // $subsumes and incorrectly makes a package hierarchy limitation look like invalid client input.
+        _terminologyService.SubsumesAsync(Arg.Any<SubsumesRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new SubsumesOutcome.Undetermined(new UnknownReason(
+                UnknownKind.UnsupportedFilter,
+                System,
+                "Package terminology content carries no concept hierarchy")));
+
+        var exception = await Should.ThrowAsync<ResourceNotSupportedException>(
+            () => CreateHandler().HandleAsync(new SubsumesQuery(1, "a", "b", System, null), CancellationToken.None));
+
+        exception.StatusCode.ShouldBe(422);
+        exception.Message.ShouldContain("Package terminology content carries no concept hierarchy");
+    }
+
     [Theory]
     [InlineData(SubsumptionRelation.Subsumes, "subsumes")]
     [InlineData(SubsumptionRelation.NotSubsumed, "not-subsumed")]
