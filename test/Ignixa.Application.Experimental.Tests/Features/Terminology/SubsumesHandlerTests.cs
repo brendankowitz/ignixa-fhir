@@ -49,11 +49,11 @@ public class SubsumesHandlerTests
                 System,
                 "Package terminology content carries no concept hierarchy")));
 
-        var exception = await Should.ThrowAsync<ResourceNotSupportedException>(
+        var exception = await Should.ThrowAsync<TerminologyOperationNotSupportedException>(
             () => CreateHandler().HandleAsync(new SubsumesQuery(1, "a", "b", System, null), CancellationToken.None));
 
         exception.StatusCode.ShouldBe(422);
-        exception.Message.ShouldContain("Package terminology content carries no concept hierarchy");
+        exception.Message.ShouldBe("Cannot determine subsumption: Package terminology content carries no concept hierarchy");
     }
 
     [Theory]

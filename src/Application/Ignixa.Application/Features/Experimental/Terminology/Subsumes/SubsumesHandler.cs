@@ -47,7 +47,8 @@ public class SubsumesHandler : IRequestHandler<SubsumesQuery, SubsumesQueryResul
         {
             if (undetermined.Reason.Kind is UnknownKind.UnsupportedFilter or UnknownKind.NonEnumerableSystem)
             {
-                throw new ResourceNotSupportedException(undetermined.Reason.Detail);
+                throw new TerminologyOperationNotSupportedException(
+                    $"Cannot determine subsumption: {undetermined.Reason.Detail}");
             }
 
             throw new BadRequestException($"Cannot determine subsumption: {undetermined.Reason.Detail}");

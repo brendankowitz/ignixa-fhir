@@ -51,16 +51,17 @@ public class FhirExceptionMiddlewareTests
     [Fact]
     public async Task GivenUnsupportedContent_WhenHandled_ThenRespondsUnprocessableEntityWithNotSupportedOutcome()
     {
-        // A default FhirException status would turn unsupported terminology content into a 400 response.
+        const string message = "Cannot determine subsumption: Package terminology content carries no concept hierarchy";
         var (context, body) = CreateContext();
         var middleware = new FhirExceptionMiddleware(
-            _ => throw new ResourceNotSupportedException("Package terminology content carries no concept hierarchy"),
+            _ => throw new TerminologyOperationNotSupportedException(message),
             NullLogger<FhirExceptionMiddleware>.Instance);
 
         await middleware.InvokeAsync(context);
 
         context.Response.StatusCode.ShouldBe(StatusCodes.Status422UnprocessableEntity);
         IssueCode(body).ShouldBe("not-supported");
+        Diagnostics(body).ShouldBe(message);
     }
 
     private static (DefaultHttpContext Context, MemoryStream Body) CreateContext()
@@ -75,5 +76,11 @@ public class FhirExceptionMiddlewareTests
     {
         using JsonDocument document = JsonDocument.Parse(body.ToArray());
         return document.RootElement.GetProperty("issue")[0].GetProperty("code").GetString();
+    }
+
+    private static string? Diagnostics(MemoryStream body)
+    {
+        using JsonDocument document = JsonDocument.Parse(body.ToArray());
+        return document.RootElement.GetProperty("issue")[0].GetProperty("diagnostics").GetString();
     }
 }
