@@ -63,6 +63,16 @@ public record InstallPackageResultDto
     public required Dictionary<string, int> ResourcesByType { get; init; }
 
     /// <summary>
+    /// Activation validation issues; empty when activation succeeded.
+    /// </summary>
+    public IReadOnlyList<string> ActivationIssues { get; init; } = [];
+
+    /// <summary>
+    /// Resource types that require reindexing after activation.
+    /// </summary>
+    public IReadOnlyList<string> PendingReindex { get; init; } = [];
+
+    /// <summary>
     /// Human-readable message summarizing the installation.
     /// </summary>
     public required string Message { get; init; }

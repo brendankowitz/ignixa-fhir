@@ -38,7 +38,7 @@ public class InstallPackageTool(
 Downloads the package, extracts conformance resources, and imports them.
 Use search_fhir_packages first to find the exact package ID and version.
 Example: packageId='hl7.fhir.us.core', version='6.1.0'
-Returns statistics about imported resources (counts, types, duration).
+Returns statistics plus activation outcome; Success is false when activation is rejected (resources stay installed but inactive).
 NOTE: This operation may take 30-60 seconds for large packages.")]
     public async Task<InstallPackageResultDto> InstallPackageAsync(
         [Description("Package ID (e.g., 'hl7.fhir.us.core')")]
@@ -119,10 +119,18 @@ NOTE: This operation may take 30-60 seconds for large packages.")]
         var resourcesByType = result.ResourcesByType
             .OrderByDescending(kvp => kvp.Value)
             .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+        var activationIssues = activationResult.Issues
+            .Select(issue => $"{issue.Code}: {GetSafeActivationIssueMessage(issue)}")
+            .ToList();
+        var message = activationResult.Success
+            ? $"Successfully installed {result.PackageId}@{result.PackageVersion} " +
+              $"({result.ImportedResources} new, {result.UpdatedResources} updated)"
+            : $"Installed {result.PackageId}@{result.PackageVersion} but activation failed: " +
+              string.Join("; ", activationIssues);
 
         return new InstallPackageResultDto
         {
-            Success = true,
+            Success = activationResult.Success,
             TenantId = resolvedTenantId,
             TenantName = tenantConfig.DisplayName,
             PackageId = result.PackageId,
@@ -132,8 +140,14 @@ NOTE: This operation may take 30-60 seconds for large packages.")]
             UpdatedResources = result.UpdatedResources,
             DurationSeconds = (int)duration.TotalSeconds,
             ResourcesByType = resourcesByType,
-            Message = $"Successfully installed {result.PackageId}@{result.PackageVersion} " +
-                      $"({result.ImportedResources} new, {result.UpdatedResources} updated)"
+            ActivationIssues = activationIssues,
+            PendingReindex = activationResult.PendingReindex,
+            Message = message,
         };
     }
+
+    private static string GetSafeActivationIssueMessage(ValidationIssue issue) =>
+        issue.Code.Equals("CONFORMANCE_CONFLICT", StringComparison.Ordinal)
+            ? "A concurrent conformance update prevented activation."
+            : issue.Message;
 }
