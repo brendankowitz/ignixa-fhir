@@ -14,4 +14,8 @@ public interface ITerminologySource
     string Name { get; }
 
     ValueTask<SourceCoverage> GetCoverageAsync(CanonicalKind kind, CanonicalRef canonical, CancellationToken cancellationToken);
+
+    Task<ConceptLookup> LookupAsync(CodeRef code, CancellationToken cancellationToken);
+
+    Task<SubsumesOutcome> SubsumesAsync(CodeRef codeA, CodeRef codeB, CancellationToken cancellationToken);
 }
