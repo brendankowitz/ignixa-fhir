@@ -14,13 +14,13 @@ namespace Ignixa.Application.Features.Admin;
 public class LoadPackageHandler(
     IImplementationGuideProvider provider,
     IMediator mediator,
-    PackageActivationPipeline activationPipeline,
+    IPackageActivationPipeline activationPipeline,
     ILogger<LoadPackageHandler> logger)
     : IRequestHandler<LoadPackageCommand, LoadPackageResult>
 {
     private readonly IImplementationGuideProvider _provider = provider ?? throw new ArgumentNullException(nameof(provider));
     private readonly IMediator _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
-    private readonly PackageActivationPipeline _activationPipeline = activationPipeline ?? throw new ArgumentNullException(nameof(activationPipeline));
+    private readonly IPackageActivationPipeline _activationPipeline = activationPipeline ?? throw new ArgumentNullException(nameof(activationPipeline));
     private readonly ILogger<LoadPackageHandler> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     public async Task<LoadPackageResult> HandleAsync(
@@ -66,6 +66,11 @@ public class LoadPackageHandler(
                     request.Version,
                     cancellationToken);
 
+            var activationResult = await _activationPipeline.ActivateAsync(
+                request.PackageId,
+                request.Version,
+                cancellationToken);
+
             var result = new LoadPackageResult
             {
                 PackageId = importResult.PackageId,
@@ -76,11 +81,13 @@ public class LoadPackageHandler(
                 ResourcesByType = importResult.ResourcesByType,
                 LoadedPackages = importResult.LoadedPackages,
                 SkippedPackages = importResult.SkippedPackages,
+                ClosureMembers = importResult.ClosureMembers,
+                Activation = activationResult,
             };
 
             _logger.LogInformation(
-                "Package {PackageId}@{Version} loaded successfully. Resources: {Count}, Duration: {Duration}ms",
-                result.PackageId, result.PackageVersion, result.ImportedResources, result.DurationMilliseconds);
+                "Package {PackageId}@{Version} load finished. Resources: {Count}, Duration: {Duration}ms, Complete: {IsComplete}",
+                result.PackageId, result.PackageVersion, result.ImportedResources, result.DurationMilliseconds, result.IsComplete);
 
             if (importResult.SkippedPackages is { Count: > 0 } skipped)
             {
@@ -89,11 +96,6 @@ public class LoadPackageHandler(
                     result.PackageId, result.PackageVersion, skipped.Count,
                     string.Join(", ", skipped));
             }
-
-            var activationResult = await _activationPipeline.ActivateAsync(
-                request.PackageId,
-                request.Version,
-                cancellationToken);
 
             if (!activationResult.Success)
             {

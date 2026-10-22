@@ -26,7 +26,7 @@ public class PackageActivationPipeline(
     ConformanceState state,
     IFhirVersionContext fhirVersionContext,
     IOptions<SearchParameterResolutionOptions> options,
-    ILogger<PackageActivationPipeline> logger)
+    ILogger<PackageActivationPipeline> logger) : IPackageActivationPipeline
 {
     private readonly IPackageResourceRepository _packageRepo = packageRepo ?? throw new ArgumentNullException(nameof(packageRepo));
     private readonly ISourceEventStore _eventStore = eventStore ?? throw new ArgumentNullException(nameof(eventStore));

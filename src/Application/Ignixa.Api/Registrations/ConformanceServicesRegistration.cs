@@ -71,6 +71,7 @@ public static class ConformanceServicesRegistration
         // PackageActivationPipeline
         builder.RegisterType<PackageActivationPipeline>()
             .AsSelf()
+            .As<IPackageActivationPipeline>()
             .InstancePerDependency();
 
         return builder;

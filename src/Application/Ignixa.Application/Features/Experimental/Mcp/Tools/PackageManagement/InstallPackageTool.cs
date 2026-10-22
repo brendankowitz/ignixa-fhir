@@ -24,13 +24,13 @@ public class InstallPackageTool(
     ITenantConfigurationStore tenantStore,
     IImplementationGuideProvider packageProvider,
     INpmPackageSearchService searchService,
-    PackageActivationPipeline activationPipeline,
+    IPackageActivationPipeline activationPipeline,
     ILogger<InstallPackageTool> logger)
     : TenantAwareMcpTool(fhirRequestContextAccessor, tenantStore)
 {
     private readonly IImplementationGuideProvider _packageProvider = packageProvider ?? throw new ArgumentNullException(nameof(packageProvider));
     private readonly INpmPackageSearchService _searchService = searchService ?? throw new ArgumentNullException(nameof(searchService));
-    private readonly PackageActivationPipeline _activationPipeline = activationPipeline ?? throw new ArgumentNullException(nameof(activationPipeline));
+    private readonly IPackageActivationPipeline _activationPipeline = activationPipeline ?? throw new ArgumentNullException(nameof(activationPipeline));
     private readonly ILogger<InstallPackageTool> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     [McpServerTool(Name = "install_fhir_package")]

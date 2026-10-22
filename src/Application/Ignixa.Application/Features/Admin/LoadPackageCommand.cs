@@ -1,3 +1,5 @@
+using Ignixa.Application.Features.Conformance;
+using Ignixa.PackageManagement.Models;
 using Medino;
 
 namespace Ignixa.Application.Features.Admin;
@@ -63,4 +65,20 @@ public record LoadPackageResult
     /// Non-null non-empty list indicates a partial load.
     /// </summary>
     public IReadOnlyList<string>? SkippedPackages { get; init; }
+
+    /// <summary>
+    /// Typed per-package closure outcomes; empty for single-package loads.
+    /// </summary>
+    public IReadOnlyList<PackageClosureMember> ClosureMembers { get; init; } = [];
+
+    /// <summary>
+    /// Activation outcome for the requested root package.
+    /// </summary>
+    public ActivationResult? Activation { get; init; }
+
+    /// <summary>
+    /// True only when no closure member is blocking and root activation succeeded.
+    /// Installed content is retained when this is false.
+    /// </summary>
+    public bool IsComplete => ClosureMembers.All(member => !member.IsBlocking) && Activation is { Success: true };
 }
