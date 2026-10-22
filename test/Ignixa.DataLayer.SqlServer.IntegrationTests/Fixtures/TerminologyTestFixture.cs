@@ -4,7 +4,6 @@ using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
-using Ignixa.Validation.Abstractions;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -79,7 +78,7 @@ public sealed class TerminologyTestFixture : IAsyncDisposable
     /// A separate terminology service per call, retaining coverage of the cache-accepting compatibility
     /// constructor. SQL terminology no longer memoises results, and the supplied cache remains unused.
     /// </summary>
-    public ITerminologyService CreateTerminologyService()
+    public SqlServerTerminologyService CreateTerminologyService()
     {
         var cache = new MemoryCache(new MemoryCacheOptions());
         _caches.Add(cache);

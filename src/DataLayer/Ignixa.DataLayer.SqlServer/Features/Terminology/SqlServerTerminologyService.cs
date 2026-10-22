@@ -3,6 +3,7 @@ using Ignixa.Domain.Terminology;
 using Ignixa.Search.Sql.Catalog;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Abstractions.Terminology;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
@@ -28,7 +29,8 @@ namespace Ignixa.DataLayer.SqlServer.Features.Terminology;
 public sealed class SqlServerTerminologyService(
     ISqlExecutionService sqlExecutionService,
     int systemPartitionId,
-    ILogger<SqlServerTerminologyService> logger) : ITerminologyService, ITerminologyImportStatusProvider
+    ILogger<SqlServerTerminologyService> logger)
+    : ITerminologyService, ITerminologySource, ILegacyValueSetOperations, ITerminologyImportStatusProvider
 {
     /// <summary>
     /// Retains source compatibility for callers supplying an application cache. Mutable SQL terminology
@@ -83,44 +85,61 @@ public sealed class SqlServerTerminologyService(
 #pragma warning restore CA2100
     }
 
-    public async Task<LookupResult> LookupCodeAsync(
-        string system, string code, string? version, CancellationToken cancellationToken)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(system);
-        ArgumentException.ThrowIfNullOrWhiteSpace(code);
+    public string Name => "sql";
 
-        var systemId = await ResolveSystemIdAsync(system, cancellationToken);
+    public async ValueTask<SourceCoverage> GetCoverageAsync(
+        CanonicalKind kind, CanonicalRef canonical, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(canonical);
+        var status = await GetImportStatusAsync(canonical.Url, cancellationToken);
+        return status == TerminologyImportStatus.Completed ? SourceCoverage.Authoritative : SourceCoverage.None;
+    }
+
+    public async Task<ConceptLookup> LookupAsync(CodeRef code, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(code);
+
+        var systemId = await ResolveSystemIdAsync(code.System, cancellationToken);
         if (systemId is null)
         {
-            return NotFound();
+            return ConceptLookup.Undetermined(NotLoaded(code.System));
         }
 
-        var rows = await ReadConceptAsync(systemId.Value, code, version, MatchMode.CaseSensitive, cancellationToken);
+        var rows = await ReadConceptAsync(
+            systemId.Value, code.Code, code.Version, MatchMode.CaseSensitive, cancellationToken);
         if (rows.Count == 0)
         {
-            rows = await ReadConceptAsync(systemId.Value, code, version, MatchMode.CaseInsensitiveFallback, cancellationToken);
+            rows = await ReadConceptAsync(
+                systemId.Value, code.Code, code.Version, MatchMode.CaseInsensitiveFallback, cancellationToken);
         }
 
         if (rows.Count == 0)
         {
-            return NotFound();
+            return ConceptLookup.NotFound;
         }
 
         var row = rows[0];
         var (properties, designations) = ParsePropertiesJson(row.PropertiesJson);
 
-        // Name stays null: TermCodeSystem carries no name column, which the EF implementation noted as a
-        // gap rather than filled.
-        return new LookupResult(
-            Found: true,
-            Name: null,
-            Version: row.Version,
-            Display: row.Display,
-            Definition: row.Definition,
-            Properties: properties,
-            Designations: designations);
+        // Name stays null: TermCodeSystem carries no name column.
+        return ConceptLookup.Found(
+            new ConceptDetails(null, row.Version, row.Display, row.Definition, properties, designations));
+    }
 
-        static LookupResult NotFound() => new(false, null, null, null, null, null, null);
+    public async Task<LookupResult> LookupCodeAsync(
+        string system, string code, string? version, CancellationToken cancellationToken)
+    {
+        var lookup = await LookupAsync(new CodeRef(system, code, version), cancellationToken);
+        return lookup.Concept is { } concept
+            ? new LookupResult(
+                true,
+                concept.Name,
+                concept.Version,
+                concept.Display,
+                concept.Definition,
+                concept.Properties,
+                concept.Designations)
+            : new LookupResult(false, null, null, null, null, null, null);
     }
 
     public async Task<ExpandResult?> ExpandValueSetAsync(
@@ -287,19 +306,19 @@ public sealed class SqlServerTerminologyService(
             && !string.IsNullOrEmpty(system)
             && !string.IsNullOrEmpty(code))
         {
-            var lookup = await LookupCodeAsync(system, code, version, cancellationToken);
+            var lookup = await LookupAsync(new CodeRef(system, code, version), cancellationToken);
 
-            if (lookup.Found
-                && !string.IsNullOrEmpty(lookup.Display)
-                && !string.Equals(display, lookup.Display, StringComparison.Ordinal))
+            if (lookup.Result == Determination.True
+                && !string.IsNullOrEmpty(lookup.Concept!.Display)
+                && !string.Equals(display, lookup.Concept.Display, StringComparison.Ordinal))
             {
-                suggestedDisplay = lookup.Display;
+                suggestedDisplay = lookup.Concept.Display;
                 if (severity < IssueSeverity.Warning)
                 {
                     severity = IssueSeverity.Warning;
                 }
 
-                message = $"{message ?? "Code is valid"} However, display '{display}' does not match expected '{lookup.Display}'";
+                message = $"{message ?? "Code is valid"} However, display '{display}' does not match expected '{lookup.Concept.Display}'";
             }
         }
 
@@ -440,48 +459,58 @@ public sealed class SqlServerTerminologyService(
         }
     }
 
-    public async Task<SubsumesResult> SubsumesAsync(
-        SubsumesParameters parameters, CancellationToken cancellationToken)
+    public async Task<SubsumesOutcome> SubsumesAsync(
+        CodeRef codeA, CodeRef codeB, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(parameters);
-        ArgumentException.ThrowIfNullOrWhiteSpace(parameters.CodeA);
-        ArgumentException.ThrowIfNullOrWhiteSpace(parameters.CodeB);
-        ArgumentException.ThrowIfNullOrWhiteSpace(parameters.System);
+        ArgumentNullException.ThrowIfNull(codeA);
+        ArgumentNullException.ThrowIfNull(codeB);
 
-        var systemId = await ResolveSystemIdAsync(parameters.System, cancellationToken);
+        var systemId = await ResolveSystemIdAsync(codeA.System, cancellationToken);
         if (systemId is null)
         {
-            return new SubsumesResult("not-subsumed");
+            return new SubsumesOutcome.Undetermined(NotLoaded(codeA.System));
         }
 
         // One resolution per code, each matching exactly the way the other read paths do. See
         // FindConceptIdAsync for why this is not the single IN (@codeA, @codeB) query it replaces.
-        var conceptA = await FindConceptIdAsync(systemId.Value, parameters.CodeA, parameters.Version, cancellationToken);
-        var conceptB = await FindConceptIdAsync(systemId.Value, parameters.CodeB, parameters.Version, cancellationToken);
-
-        if (conceptA is null || conceptB is null)
+        var conceptA = await FindConceptIdAsync(systemId.Value, codeA.Code, codeA.Version, cancellationToken);
+        if (conceptA is null)
         {
-            return new SubsumesResult("not-subsumed");
+            return new SubsumesOutcome.Undetermined(NotInSystem(codeA));
+        }
+
+        var conceptB = await FindConceptIdAsync(systemId.Value, codeB.Code, codeA.Version, cancellationToken);
+        if (conceptB is null)
+        {
+            return new SubsumesOutcome.Undetermined(NotInSystem(codeB));
         }
 
         // Two codes differing only by case in a caseSensitive=false CodeSystem resolve to the same concept,
         // and "equivalent" is the right answer for them.
         if (conceptA == conceptB)
         {
-            return new SubsumesResult("equivalent");
+            return new SubsumesOutcome.Related(SubsumptionRelation.Equivalent);
         }
 
         if (await IsDescendantOfAsync(conceptB.Value, conceptA.Value, cancellationToken))
         {
-            return new SubsumesResult("subsumes");
+            return new SubsumesOutcome.Related(SubsumptionRelation.Subsumes);
         }
 
-        if (await IsDescendantOfAsync(conceptA.Value, conceptB.Value, cancellationToken))
-        {
-            return new SubsumesResult("subsumed-by");
-        }
+        return await IsDescendantOfAsync(conceptA.Value, conceptB.Value, cancellationToken)
+            ? new SubsumesOutcome.Related(SubsumptionRelation.SubsumedBy)
+            : new SubsumesOutcome.Related(SubsumptionRelation.NotSubsumed);
+    }
 
-        return new SubsumesResult("not-subsumed");
+    public async Task<SubsumesResult> SubsumesAsync(
+        SubsumesParameters parameters, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        var outcome = await SubsumesAsync(
+            new CodeRef(parameters.System, parameters.CodeA, parameters.Version),
+            new CodeRef(parameters.System, parameters.CodeB, parameters.Version),
+            cancellationToken);
+        return new SubsumesResult(outcome.KnownRelation?.ToFhirCode() ?? "not-subsumed");
     }
 
     public async Task<TerminologyImportStatus?> GetImportStatusAsync(
@@ -522,6 +551,12 @@ public sealed class SqlServerTerminologyService(
         logger.LogWarning("Invalid TerminologyImportStatus value: {Status}", rows[0]);
         return null;
     }
+
+    private static UnknownReason NotLoaded(string system) =>
+        new(UnknownKind.SystemNotAvailable, system, "CodeSystem is not loaded in the SQL terminology store");
+
+    private static UnknownReason NotInSystem(CodeRef code) =>
+        new(UnknownKind.CodeNotInSystem, code.ToString(), $"Code '{code.Code}' is not defined in '{code.CodeSystem}'");
 
     /// <summary>
     /// Walks parent links upward one query per level, capped at 50, with a visited set guarding cycles.
