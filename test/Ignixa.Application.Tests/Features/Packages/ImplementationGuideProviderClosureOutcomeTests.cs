@@ -64,6 +64,24 @@ public sealed class ImplementationGuideProviderClosureOutcomeTests
     }
 
     [Fact]
+    public async Task GivenNewPackageWithNoResources_WhenLoadingWithDependencies_ThenMemberIsImported()
+    {
+        RegisterPackage("empty", "1.0.0");
+        _importer.ImportAsync(Arg.Any<PackageExtractionResult>(), _repository, Arg.Any<CancellationToken>())
+            .Returns(new PackageImportResult
+            {
+                PackageId = "empty",
+                PackageVersion = "1.0.0",
+                TotalResources = 0,
+                ImportedResources = 0,
+            });
+
+        var result = await _provider.LoadPackageWithDependenciesAsync("1", "empty", "1.0.0", CancellationToken.None);
+
+        result.ClosureMembers.ShouldContain(new PackageClosureMember("empty", "1.0.0", PackageClosureMemberStatus.Imported));
+    }
+
+    [Fact]
     public async Task GivenCoreDependency_WhenLoadingWithDependencies_ThenProvidedInProcessIsNotBlocking()
     {
         RegisterPackage("root", "1.0.0", new Dictionary<string, string> { ["hl7.fhir.r4.core"] = "4.0.1" });

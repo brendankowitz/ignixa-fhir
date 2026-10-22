@@ -218,6 +218,8 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
                 continue;
             }
 
+            var wasAlreadyInstalled = manifest is null;
+
             // Was the import a no-op (already loaded)? If so we don't have a manifest in hand
             // but we still need to walk that package's dependencies. Best-effort re-fetch via
             // PackageCacheManager - the local tarball is typically already on disk.
@@ -267,12 +269,10 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
                 }
             }
 
-            // Mark whether the import was a no-op (already loaded) for caller visibility.
-            // perPackageResult is the empty result from the idempotent short-circuit when
-            // ImportedResources == 0 && TotalResources == 0 was returned by LoadPackageInternalAsync.
+            // Preserve the legacy LoadedPackages calculation, which uses resource counts.
             var alreadyLoaded = perPackageResult.ImportedResources == 0 && perPackageResult.TotalResources == 0;
             loadedSpecs.Add(alreadyLoaded ? $"{id}@{ver} (already loaded)" : $"{id}@{ver}");
-            closureMembers.Add(new(id, ver, alreadyLoaded ? PackageClosureMemberStatus.AlreadyInstalled : PackageClosureMemberStatus.Imported));
+            closureMembers.Add(new(id, ver, wasAlreadyInstalled ? PackageClosureMemberStatus.AlreadyInstalled : PackageClosureMemberStatus.Imported));
 
             aggregatedTotal += perPackageResult.TotalResources;
             aggregatedImported += perPackageResult.ImportedResources;
