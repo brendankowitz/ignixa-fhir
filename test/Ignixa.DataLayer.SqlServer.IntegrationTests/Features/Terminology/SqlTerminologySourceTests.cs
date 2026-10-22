@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
 using Ignixa.Validation.Abstractions.Terminology;
 using Shouldly;
@@ -8,6 +9,7 @@ namespace Ignixa.DataLayer.SqlServer.IntegrationTests.Features.Terminology;
 public class SqlTerminologySourceTests : IAsyncLifetime
 {
     private const string SystemUrl = "http://example.org/fhir/CodeSystem/source-vehicles";
+    private const string OtherSystemUrl = "http://example.org/fhir/CodeSystem/other-vehicles";
 
     private TerminologyTestFixture _fixture = null!;
 
@@ -15,10 +17,13 @@ public class SqlTerminologySourceTests : IAsyncLifetime
 
     public async Task DisposeAsync() => await _fixture.DisposeAsync();
 
-    private async Task ImportAsync()
+    private async Task ImportAsync(string version = "1.0.0")
     {
+        var resource = JsonNode.Parse(TerminologyTestFixture.HierarchicalCodeSystemJson(SystemUrl))!;
+        resource["version"] = version;
+
         var packageResource = await _fixture.SeedPackageResourceAsync(
-            "CodeSystem", SystemUrl, TerminologyTestFixture.HierarchicalCodeSystemJson(SystemUrl));
+            "CodeSystem", SystemUrl, resource.ToJsonString());
         await _fixture.CreateSqlServerImporter().ImportCodeSystemAsync(
             _fixture.SystemPartitionId, packageResource, CancellationToken.None);
     }
@@ -39,6 +44,17 @@ public class SqlTerminologySourceTests : IAsyncLifetime
     {
         var coverage = await _fixture.CreateTerminologyService()
             .GetCoverageAsync(CanonicalKind.CodeSystem, new CanonicalRef("http://example.org/never"), CancellationToken.None);
+
+        coverage.ShouldBe(SourceCoverage.None);
+    }
+
+    [Fact]
+    public async Task GivenImportedCodeSystemVersion_WhenOtherVersionCoverageAsked_ThenNone()
+    {
+        await ImportAsync("1.0.0");
+
+        var coverage = await _fixture.CreateTerminologyService()
+            .GetCoverageAsync(CanonicalKind.CodeSystem, new CanonicalRef(SystemUrl, "2.0.0"), CancellationToken.None);
 
         coverage.ShouldBe(SourceCoverage.None);
     }
@@ -67,6 +83,18 @@ public class SqlTerminologySourceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GivenImportedCodeSystemVersion_WhenOtherVersionLookedUp_ThenUndeterminedSystemVersionNotAvailable()
+    {
+        await ImportAsync("1.0.0");
+
+        var lookup = await _fixture.CreateTerminologyService().LookupAsync(
+            new CodeRef(SystemUrl, "car", "2.0.0"), CancellationToken.None);
+
+        lookup.Result.ShouldBe(Determination.Unknown);
+        lookup.Unknown!.Kind.ShouldBe(UnknownKind.SystemVersionNotAvailable);
+    }
+
+    [Fact]
     public async Task GivenUnknownCode_WhenSubsumesAsked_ThenUndeterminedCodeNotInSystem()
     {
         // Regression: this answered "not-subsumed", a false negative presented as a valid FHIR result.
@@ -89,6 +117,35 @@ public class SqlTerminologySourceTests : IAsyncLifetime
                 CancellationToken.None);
 
         outcome.Unknown!.Kind.ShouldBe(UnknownKind.SystemNotAvailable);
+    }
+
+    [Fact]
+    public async Task GivenImportedCodeSystemVersion_WhenOtherVersionSubsumesAsked_ThenUndeterminedSystemVersionNotAvailable()
+    {
+        await ImportAsync("1.0.0");
+
+        var outcome = await _fixture.CreateTerminologyService().SubsumesAsync(
+            new CodeRef(SystemUrl, "vehicle", "1.0.0"),
+            new CodeRef(SystemUrl, "car", "2.0.0"),
+            CancellationToken.None);
+
+        outcome.KnownRelation.ShouldBeNull();
+        outcome.Unknown!.Kind.ShouldBe(UnknownKind.SystemVersionNotAvailable);
+    }
+
+    [Fact]
+    public async Task GivenDifferentSystemsWithSharedCode_WhenSubsumesAsked_ThenUndetermined()
+    {
+        await ImportAsync();
+
+        var outcome = await _fixture.CreateTerminologyService().SubsumesAsync(
+            new CodeRef(SystemUrl, "vehicle"),
+            new CodeRef(OtherSystemUrl, "vehicle"),
+            CancellationToken.None);
+
+        outcome.KnownRelation.ShouldBeNull();
+        outcome.Unknown!.Kind.ShouldBe(UnknownKind.SystemNotAvailable);
+        outcome.Unknown.Subject.ShouldBe(OtherSystemUrl);
     }
 
     [Theory]

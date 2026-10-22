@@ -91,6 +91,13 @@ public sealed class SqlServerTerminologyService(
         CanonicalKind kind, CanonicalRef canonical, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(canonical);
+        if (canonical.Version is not null)
+        {
+            return await HasCompletedCodeSystemVersionAsync(canonical.Url, canonical.Version, cancellationToken)
+                ? SourceCoverage.Authoritative
+                : SourceCoverage.None;
+        }
+
         var status = await GetImportStatusAsync(canonical.Url, cancellationToken);
         return status == TerminologyImportStatus.Completed ? SourceCoverage.Authoritative : SourceCoverage.None;
     }
@@ -103,6 +110,12 @@ public sealed class SqlServerTerminologyService(
         if (systemId is null)
         {
             return ConceptLookup.Undetermined(NotLoaded(code.System));
+        }
+
+        if (code.Version is not null
+            && !await HasCompletedCodeSystemVersionAsync(code.System, code.Version, cancellationToken))
+        {
+            return ConceptLookup.Undetermined(VersionNotLoaded(code.CodeSystem));
         }
 
         var rows = await ReadConceptAsync(
@@ -129,17 +142,38 @@ public sealed class SqlServerTerminologyService(
     public async Task<LookupResult> LookupCodeAsync(
         string system, string code, string? version, CancellationToken cancellationToken)
     {
-        var lookup = await LookupAsync(new CodeRef(system, code, version), cancellationToken);
-        return lookup.Concept is { } concept
-            ? new LookupResult(
-                true,
-                concept.Name,
-                concept.Version,
-                concept.Display,
-                concept.Definition,
-                concept.Properties,
-                concept.Designations)
-            : new LookupResult(false, null, null, null, null, null, null);
+        ArgumentException.ThrowIfNullOrWhiteSpace(system);
+        ArgumentException.ThrowIfNullOrWhiteSpace(code);
+
+        var systemId = await ResolveSystemIdAsync(system, cancellationToken);
+        if (systemId is null)
+        {
+            return new LookupResult(false, null, null, null, null, null, null);
+        }
+
+        var rows = await ReadConceptAsync(systemId.Value, code, version, MatchMode.CaseSensitive, cancellationToken);
+        if (rows.Count == 0)
+        {
+            rows = await ReadConceptAsync(
+                systemId.Value, code, version, MatchMode.CaseInsensitiveFallback, cancellationToken);
+        }
+
+        if (rows.Count == 0)
+        {
+            return new LookupResult(false, null, null, null, null, null, null);
+        }
+
+        var row = rows[0];
+        var (properties, designations) = ParsePropertiesJson(row.PropertiesJson);
+
+        return new LookupResult(
+            true,
+            null,
+            row.Version,
+            row.Display,
+            row.Definition,
+            properties,
+            designations);
     }
 
     public async Task<ExpandResult?> ExpandValueSetAsync(
@@ -306,19 +340,19 @@ public sealed class SqlServerTerminologyService(
             && !string.IsNullOrEmpty(system)
             && !string.IsNullOrEmpty(code))
         {
-            var lookup = await LookupAsync(new CodeRef(system, code, version), cancellationToken);
+            var lookup = await LookupCodeAsync(system, code, version, cancellationToken);
 
-            if (lookup.Result == Determination.True
-                && !string.IsNullOrEmpty(lookup.Concept!.Display)
-                && !string.Equals(display, lookup.Concept.Display, StringComparison.Ordinal))
+            if (lookup.Found
+                && !string.IsNullOrEmpty(lookup.Display)
+                && !string.Equals(display, lookup.Display, StringComparison.Ordinal))
             {
-                suggestedDisplay = lookup.Concept.Display;
+                suggestedDisplay = lookup.Display;
                 if (severity < IssueSeverity.Warning)
                 {
                     severity = IssueSeverity.Warning;
                 }
 
-                message = $"{message ?? "Code is valid"} However, display '{display}' does not match expected '{lookup.Concept.Display}'";
+                message = $"{message ?? "Code is valid"} However, display '{display}' does not match expected '{lookup.Display}'";
             }
         }
 
@@ -465,10 +499,26 @@ public sealed class SqlServerTerminologyService(
         ArgumentNullException.ThrowIfNull(codeA);
         ArgumentNullException.ThrowIfNull(codeB);
 
+        if (!string.Equals(codeA.System, codeB.System, StringComparison.Ordinal))
+        {
+            return new SubsumesOutcome.Undetermined(NotLoaded(codeB.System));
+        }
+
+        if (!string.Equals(codeA.Version, codeB.Version, StringComparison.Ordinal))
+        {
+            return new SubsumesOutcome.Undetermined(VersionNotLoaded(codeB.CodeSystem));
+        }
+
         var systemId = await ResolveSystemIdAsync(codeA.System, cancellationToken);
         if (systemId is null)
         {
             return new SubsumesOutcome.Undetermined(NotLoaded(codeA.System));
+        }
+
+        if (codeA.Version is not null
+            && !await HasCompletedCodeSystemVersionAsync(codeA.System, codeA.Version, cancellationToken))
+        {
+            return new SubsumesOutcome.Undetermined(VersionNotLoaded(codeA.CodeSystem));
         }
 
         // One resolution per code, each matching exactly the way the other read paths do. See
@@ -479,7 +529,7 @@ public sealed class SqlServerTerminologyService(
             return new SubsumesOutcome.Undetermined(NotInSystem(codeA));
         }
 
-        var conceptB = await FindConceptIdAsync(systemId.Value, codeB.Code, codeA.Version, cancellationToken);
+        var conceptB = await FindConceptIdAsync(systemId.Value, codeB.Code, codeB.Version, cancellationToken);
         if (conceptB is null)
         {
             return new SubsumesOutcome.Undetermined(NotInSystem(codeB));
@@ -506,11 +556,39 @@ public sealed class SqlServerTerminologyService(
         SubsumesParameters parameters, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
-        var outcome = await SubsumesAsync(
-            new CodeRef(parameters.System, parameters.CodeA, parameters.Version),
-            new CodeRef(parameters.System, parameters.CodeB, parameters.Version),
-            cancellationToken);
-        return new SubsumesResult(outcome.KnownRelation?.ToFhirCode() ?? "not-subsumed");
+        ArgumentException.ThrowIfNullOrWhiteSpace(parameters.CodeA);
+        ArgumentException.ThrowIfNullOrWhiteSpace(parameters.CodeB);
+        ArgumentException.ThrowIfNullOrWhiteSpace(parameters.System);
+
+        var systemId = await ResolveSystemIdAsync(parameters.System, cancellationToken);
+        if (systemId is null)
+        {
+            return new SubsumesResult("not-subsumed");
+        }
+
+        var conceptA = await FindConceptIdAsync(
+            systemId.Value, parameters.CodeA, parameters.Version, cancellationToken);
+        var conceptB = await FindConceptIdAsync(
+            systemId.Value, parameters.CodeB, parameters.Version, cancellationToken);
+
+        if (conceptA is null || conceptB is null)
+        {
+            return new SubsumesResult("not-subsumed");
+        }
+
+        if (conceptA == conceptB)
+        {
+            return new SubsumesResult("equivalent");
+        }
+
+        if (await IsDescendantOfAsync(conceptB.Value, conceptA.Value, cancellationToken))
+        {
+            return new SubsumesResult("subsumes");
+        }
+
+        return await IsDescendantOfAsync(conceptA.Value, conceptB.Value, cancellationToken)
+            ? new SubsumesResult("subsumed-by")
+            : new SubsumesResult("not-subsumed");
     }
 
     public async Task<TerminologyImportStatus?> GetImportStatusAsync(
@@ -555,8 +633,35 @@ public sealed class SqlServerTerminologyService(
     private static UnknownReason NotLoaded(string system) =>
         new(UnknownKind.SystemNotAvailable, system, "CodeSystem is not loaded in the SQL terminology store");
 
+    private static UnknownReason VersionNotLoaded(CanonicalRef codeSystem) =>
+        new(UnknownKind.SystemVersionNotAvailable, codeSystem.ToString(),
+            "CodeSystem version is not loaded in the SQL terminology store");
+
     private static UnknownReason NotInSystem(CodeRef code) =>
         new(UnknownKind.CodeNotInSystem, code.ToString(), $"Code '{code.Code}' is not defined in '{code.CodeSystem}'");
+
+    private async Task<bool> HasCompletedCodeSystemVersionAsync(
+        string canonical, string version, CancellationToken cancellationToken)
+    {
+        using var command = Command("""
+            SELECT CASE WHEN EXISTS (
+                SELECT 1
+                FROM dbo.PackageResource p
+                JOIN dbo.TermCodeSystem cs ON cs.PackageResourceId = p.PackageResourceId
+                WHERE p.Canonical = @canonical
+                  AND p.IsActive = 1
+                  AND p.TerminologyImportStatus = 'Completed'
+                  AND cs.Version = @version
+            ) THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END
+            """);
+        command.Parameters.AddWithValue("@canonical", canonical);
+        command.Parameters.AddWithValue("@version", version);
+
+        var rows = await sqlExecutionService.ExecuteReaderAsync(
+            systemPartitionId, command, reader => reader.GetBoolean(0), cancellationToken);
+
+        return rows.Count > 0 && rows[0];
+    }
 
     /// <summary>
     /// Walks parent links upward one query per level, capped at 50, with a visited set guarding cycles.
