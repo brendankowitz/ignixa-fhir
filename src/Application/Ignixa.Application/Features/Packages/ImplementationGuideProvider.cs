@@ -169,6 +169,7 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
         var aggregatedResourcesByType = new Dictionary<string, int>(StringComparer.Ordinal);
         var loadedSpecs = new List<string>();
         var skippedSpecs = new List<string>();
+        var closureMembers = new List<PackageClosureMember>();
         int aggregatedTotal = 0;
         int aggregatedImported = 0;
         int aggregatedUpdated = 0;
@@ -182,6 +183,7 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
                 if (existingVer == "*")
                 {
                     skippedSpecs.Add($"{id}@{ver} (core package, provided in-process)");
+                    closureMembers.Add(new(id, ver, PackageClosureMemberStatus.ProvidedInProcess));
                 }
                 else if (!string.Equals(existingVer, ver, StringComparison.OrdinalIgnoreCase))
                 {
@@ -189,6 +191,7 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
                         "Version conflict for {PackageId}: already loading @{ExistingVersion}, skipping @{RequestedVersion}",
                         id, existingVer, ver);
                     skippedSpecs.Add($"{id}@{ver} (version conflict: @{existingVer} already queued)");
+                    closureMembers.Add(new(id, ver, PackageClosureMemberStatus.VersionConflict, $"@{existingVer} already selected"));
                 }
                 continue;
             }
@@ -211,6 +214,7 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
                     "Failed to load transitive dependency {PackageId}@{Version} of {RootPackageId}@{RootVersion} - skipping",
                     id, ver, packageId, version);
                 skippedSpecs.Add($"{id}@{ver} (skipped: {ex.GetType().Name}: {ex.Message})");
+                closureMembers.Add(new(id, ver, PackageClosureMemberStatus.LoadFailed, $"{ex.GetType().Name}: {ex.Message}"));
                 continue;
             }
 
@@ -225,13 +229,14 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
                     var refetched = await _packageExtractor.ExtractAsync(stream, cancellationToken);
                     manifest = refetched.Manifest;
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     _logger.LogWarning(
                         ex,
                         "Failed to re-read manifest of already-loaded package {PackageId}@{Version} - skipping its transitive deps",
                         id, ver);
                     skippedSpecs.Add($"{id}@{ver} dependencies (manifest unavailable: {ex.GetType().Name}: {ex.Message})");
+                    closureMembers.Add(new(id, ver, PackageClosureMemberStatus.ManifestUnavailable, $"{ex.GetType().Name}: {ex.Message}"));
                 }
             }
 
@@ -244,6 +249,7 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
                         if (alreadyQueuedVer == "*")
                         {
                             skippedSpecs.Add($"{dep.Key}@{dep.Value} (core package, provided in-process)");
+                            closureMembers.Add(new(dep.Key, dep.Value, PackageClosureMemberStatus.ProvidedInProcess));
                         }
                         else if (!string.Equals(alreadyQueuedVer, dep.Value, StringComparison.OrdinalIgnoreCase))
                         {
@@ -251,6 +257,7 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
                                 "Version conflict for {PackageId}: already loading @{ExistingVersion}, skipping @{RequestedVersion}",
                                 dep.Key, alreadyQueuedVer, dep.Value);
                             skippedSpecs.Add($"{dep.Key}@{dep.Value} (version conflict: @{alreadyQueuedVer} already queued)");
+                            closureMembers.Add(new(dep.Key, dep.Value, PackageClosureMemberStatus.VersionConflict, $"@{alreadyQueuedVer} already selected"));
                         }
                     }
                     else
@@ -265,6 +272,7 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
             // ImportedResources == 0 && TotalResources == 0 was returned by LoadPackageInternalAsync.
             var alreadyLoaded = perPackageResult.ImportedResources == 0 && perPackageResult.TotalResources == 0;
             loadedSpecs.Add(alreadyLoaded ? $"{id}@{ver} (already loaded)" : $"{id}@{ver}");
+            closureMembers.Add(new(id, ver, alreadyLoaded ? PackageClosureMemberStatus.AlreadyInstalled : PackageClosureMemberStatus.Imported));
 
             aggregatedTotal += perPackageResult.TotalResources;
             aggregatedImported += perPackageResult.ImportedResources;
@@ -293,6 +301,7 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
             ResourcesByType = aggregatedResourcesByType,
             LoadedPackages = loadedSpecs,
             SkippedPackages = skippedSpecs.Count > 0 ? skippedSpecs : null,
+            ClosureMembers = closureMembers,
         };
     }
 

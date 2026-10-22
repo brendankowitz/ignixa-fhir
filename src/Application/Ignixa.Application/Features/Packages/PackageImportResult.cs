@@ -55,4 +55,10 @@ public record PackageImportResult
     /// Non-null non-empty list indicates a partial load; callers should inspect and log.
     /// </summary>
     public IReadOnlyList<string>? SkippedPackages { get; init; }
+
+    /// <summary>
+    /// Typed per-package outcomes for a dependency-closure load; empty for single-package loads.
+    /// Prefer this over the legacy <see cref="LoadedPackages"/> and <see cref="SkippedPackages"/> strings.
+    /// </summary>
+    public IReadOnlyList<PackageClosureMember> ClosureMembers { get; init; } = [];
 }
