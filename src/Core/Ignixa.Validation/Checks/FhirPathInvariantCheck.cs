@@ -196,11 +196,12 @@ public class FhirPathInvariantCheck : IValidationCheck
         var expression = _compiledExpression.Value;
         if (expression is null)
         {
-            var parseFailureIssue = new ValidationIssue(
+            var parseFailureIssue = ValidationIssue.FromTemplate(
                 IssueSeverity.Warning,
                 _constraint.Key,
                 element.Location ?? string.Empty,
-                $"Constraint '{_constraint.Key}' could not be evaluated: FHIRPath expression failed to parse");
+                IssueTemplates.InvariantNotParsed,
+                _constraint.Key);
             return new ValidationResult(isValid: true, issues: new[] { parseFailureIssue });
         }
 
@@ -257,11 +258,13 @@ public class FhirPathInvariantCheck : IValidationCheck
                 "Constraint {ConstraintKey} uses an unsupported FHIRPath feature; treating as non-failing",
                 _constraint.Key);
 
-            var issue = new ValidationIssue(
+            var issue = ValidationIssue.FromTemplate(
                 IssueSeverity.Warning,
                 _constraint.Key,
                 element.Location ?? string.Empty,
-                $"Constraint '{_constraint.Key}' could not be evaluated: {ex.Message}");
+                IssueTemplates.InvariantNotEvaluated,
+                _constraint.Key,
+                ex.Message);
 
             return new ValidationResult(isValid: true, issues: new[] { issue });
         }
@@ -279,11 +282,13 @@ public class FhirPathInvariantCheck : IValidationCheck
                 "Constraint {ConstraintKey} is not evaluable against this instance; treating as non-failing",
                 _constraint.Key);
 
-            var issue = new ValidationIssue(
+            var issue = ValidationIssue.FromTemplate(
                 IssueSeverity.Warning,
                 _constraint.Key,
                 element.Location ?? string.Empty,
-                $"Constraint '{_constraint.Key}' could not be evaluated: {ex.Message}");
+                IssueTemplates.InvariantNotEvaluated,
+                _constraint.Key,
+                ex.Message);
 
             return new ValidationResult(isValid: true, issues: new[] { issue });
         }
@@ -297,11 +302,13 @@ public class FhirPathInvariantCheck : IValidationCheck
                 "Unexpected error evaluating constraint {ConstraintKey}",
                 _constraint.Key);
 
-            var issue = new ValidationIssue(
+            var issue = ValidationIssue.FromTemplate(
                 IssueSeverity.Error,
                 _constraint.Key,
                 element.Location ?? string.Empty,
-                $"{_constraint.Key}: unexpected error evaluating FHIRPath expression: {ex.Message}");
+                IssueTemplates.InvariantEvaluationError,
+                _constraint.Key,
+                ex.Message);
 
             return ValidationResult.Failure(issue);
         }

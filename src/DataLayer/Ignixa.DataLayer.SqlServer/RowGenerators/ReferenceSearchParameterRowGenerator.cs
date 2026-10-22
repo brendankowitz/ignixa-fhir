@@ -18,6 +18,10 @@ namespace Ignixa.DataLayer.SqlServer.RowGenerators;
 /// </summary>
 public class ReferenceSearchParameterRowGenerator : ISearchParameterRowGenerator
 {
+    private static readonly int BaseUriWidth = SearchParamColumnWidths.For("ReferenceSearchParam", "BaseUri");
+
+    private static readonly int ResourceIdWidth = SearchParamColumnWidths.For("ReferenceSearchParam", "ReferenceResourceId");
+
     public IEnumerable<SqlDataRecord> GenerateSqlDataRecords(
         IReadOnlyList<ResourceWrapper> resources,
         IReadOnlyDictionary<string, short> resourceTypeIdMap,
@@ -30,9 +34,9 @@ public class ReferenceSearchParameterRowGenerator : ISearchParameterRowGenerator
             new SqlMetaData("ResourceTypeId", SqlDbType.SmallInt),
             new SqlMetaData("ResourceSurrogateId", SqlDbType.BigInt),
             new SqlMetaData("SearchParamId", SqlDbType.SmallInt),
-            new SqlMetaData("BaseUri", SqlDbType.VarChar, 128),
+            new SqlMetaData("BaseUri", SqlDbType.VarChar, BaseUriWidth),
             new SqlMetaData("ReferenceResourceTypeId", SqlDbType.SmallInt),
-            new SqlMetaData("ReferenceResourceId", SqlDbType.VarChar, 64),
+            new SqlMetaData("ReferenceResourceId", SqlDbType.VarChar, ResourceIdWidth),
             new SqlMetaData("ReferenceResourceVersion", SqlDbType.Int),
         };
 
@@ -66,6 +70,12 @@ public class ReferenceSearchParameterRowGenerator : ISearchParameterRowGenerator
 
                 // Calculate values for deduplication key
                 var baseUri = refValue.BaseUri?.ToString();
+
+                // SqlDataRecord.SetString truncates a value longer than the column, which would store a different
+                // reference - and two long values sharing the prefix would then collide on the TVP's UNIQUE key and fail
+                // the whole write. Such a value has no row here (no overflow column exists), like an uncached system.
+                if (!ReferenceColumnWidths.Fit(baseUri, BaseUriWidth, refValue.ResourceId, ResourceIdWidth, searchIndex.SearchParameter, resource, logger))
+                    continue;
                 var refResourceTypeId = !string.IsNullOrEmpty(refValue.ResourceType) && resourceTypeIdMap.TryGetValue(refValue.ResourceType, out var tempRefTypeId)
                     ? (short?)tempRefTypeId
                     : null;

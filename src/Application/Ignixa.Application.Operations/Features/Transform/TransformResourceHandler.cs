@@ -153,7 +153,7 @@ public class TransformResourceHandler(
 
         try
         {
-            evaluator.Execute(map, context);
+            evaluator.Execute(map, context, cancellationToken);
 
             logger.LogInformation(
                 "Successfully transformed {SourceType}/{SourceId} to {TargetType}",

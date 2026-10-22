@@ -78,6 +78,11 @@ public class UnknownPropertyCheck : IValidationCheck, ISingletonCheck
     /// <returns>A validation result indicating success or failure.</returns>
     public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
+        if (element.Meta<JsonNode>() is JsonObject raw && AllMembersKnown(raw))
+        {
+            return ValidationResult.Success();
+        }
+
         var issues = new List<ValidationIssue>();
         var location = element.Location ?? "Resource";
 
@@ -105,14 +110,9 @@ public class UnknownPropertyCheck : IValidationCheck, ISingletonCheck
                 // Check if this might be a choice type property (e.g., "valueQuantity" where "value[x]" is allowed)
                 if (!IsChoiceTypeProperty(property))
                 {
-                    var message = string.IsNullOrEmpty(_resourceTypeName)
-                        ? $"Property '{property}' is not defined in the FHIR StructureDefinition for this resource type"
-                        : $"Property '{property}' is not defined in the FHIR StructureDefinition for {_resourceTypeName}";
-                    issues.Add(new ValidationIssue(
-                        IssueSeverity.Error,
-                        "unknown-property",
-                        $"{location}.{property}",
-                        message));
+                    issues.Add(string.IsNullOrEmpty(_resourceTypeName)
+                        ? ValidationIssue.FromTemplate(IssueSeverity.Error, "unknown-property", $"{location}.{property}", IssueTemplates.UnknownPropertyUntyped, property)
+                        : ValidationIssue.FromTemplate(IssueSeverity.Error, "unknown-property", $"{location}.{property}", IssueTemplates.UnknownProperty, property, _resourceTypeName));
                 }
             }
         }
@@ -127,6 +127,32 @@ public class UnknownPropertyCheck : IValidationCheck, ISingletonCheck
     /// </summary>
     /// <param name="propertyName">The property name to check (e.g., "valueQuantity", "effectiveDateTime").</param>
     /// <returns>True if the property matches a choice type base name; otherwise, false.</returns>
+    /// <summary>
+    /// Whether every member of <paramref name="raw"/> is certainly a known property, so the full check below would report
+    /// nothing; it is then skipped, which spares materializing every child of every validated node. Each property the
+    /// check examines is a member name, or the member name without its leading underscore, so a member is enough when it
+    /// is <c>resourceType</c>, an allowed or choice-typed name, or one underscore before one. Anything else (including
+    /// <c>__x</c> or a differently cased <c>resourceType</c>) falls through to the full check.
+    /// </summary>
+    private bool AllMembersKnown(JsonObject raw)
+    {
+        foreach (var (key, _) in raw)
+        {
+            if (UniversalProperties.Contains(key))
+            {
+                continue;
+            }
+
+            var name = key.Length > 1 && key[0] == '_' && key[1] != '_' ? key[1..] : key;
+            if (name.Length == 0 || name[0] == '_' || (!_allowedPropertyNames.Contains(name) && !IsChoiceTypeProperty(name)))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private bool IsChoiceTypeProperty(string propertyName)
     {
         // Check if any choice element base is a prefix of this property

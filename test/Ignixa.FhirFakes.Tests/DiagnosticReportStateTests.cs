@@ -373,13 +373,29 @@ public class DiagnosticReportStateTests
             .Build();
 
         // Assert
-        // DiagnosticReport.performer is a BackboneElement[] with actor (Reference)
-        // The actor reference can have either "reference" or "display" or both
+        // From R4 on DiagnosticReport.performer is Reference[] itself (STU3's BackboneElement with an "actor" is gone),
+        // with either "reference" or "display" or both
         var report = scenario.DiagnosticReports[0];
-        var performerActor = report.MutableNode()["performer"]?[0]?["actor"];
-        performerActor.ShouldNotBeNull();
-        var hasRefOrDisplay = performerActor?["reference"] != null || performerActor?["display"] != null;
-        hasRefOrDisplay.ShouldBeTrue("performer.actor should have either reference or display");
+        var performer = report.MutableNode()["performer"]?[0];
+        performer.ShouldNotBeNull();
+        performer["actor"].ShouldBeNull();
+        var hasRefOrDisplay = performer["reference"] != null || performer["display"] != null;
+        hasRefOrDisplay.ShouldBeTrue("performer should have either reference or display");
+    }
+
+    // Guard: STU3 keeps the BackboneElement shape, the Reference in "actor".
+    [Fact]
+    public void GivenAnStu3DiagnosticReportWithPerformer_WhenGenerated_ThenThePerformerHoldsAnActor()
+    {
+        var scenario = new ScenarioBuilder(new Ignixa.Specification.Generated.STU3CoreSchemaProvider())
+            .WithPatient()
+            .AddEncounter("Lab work")
+            .AddComprehensiveMetabolicPanel()
+            .Build();
+
+        var actor = scenario.DiagnosticReports[0].MutableNode()["performer"]?[0]?["actor"];
+        actor.ShouldNotBeNull();
+        (actor["reference"] != null || actor["display"] != null).ShouldBeTrue();
     }
 
     #endregion

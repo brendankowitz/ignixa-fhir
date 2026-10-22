@@ -7,6 +7,7 @@ using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using EnsureThat;
+using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Extensions.Logging;
 using Ignixa.Specification;
 using Ignixa.Search.Generated;
@@ -80,6 +81,8 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
         // Pre-generated parameters have Component[].DefinitionUrl set, but ResolvedSearchParameter is null
         // We must resolve these references by looking up the component parameters in UrlLookup
         ResolveCompositeComponents(baseParameters, logger);
+        MarkInconsistentComposites(baseParameters);
+        MarkCanonicalReferences(baseParameters);
 
         CalculateSearchParameterHash();
     }
@@ -151,6 +154,7 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
             for (int i = 0; i < parameter.Component.Count; i++)
             {
                 var component = parameter.Component[i];
+                CompositeComponentDefinitionRepairs.RepairExpression(parameter.Url, component);
 
                 // Skip if already resolved (shouldn't happen with pre-generated params, but defensive check)
                 if (component.ResolvedSearchParameter != null)
@@ -184,6 +188,30 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
         }
 
         LogCompositeComponentsResolved(logger, resolvedCount, unresolvedCount);
+    }
+
+    /// <summary>
+    /// Marks the shipped composites listed in <see cref="KnownInconsistentComposites"/>, whose components can never match a
+    /// query, so in-memory search refuses them instead of answering "nothing".
+    /// </summary>
+    private void MarkInconsistentComposites(SearchParameterInfo[] parameters)
+    {
+        foreach (SearchParameterInfo composite in parameters.Where(parameter => parameter.Type == SearchParamType.Composite))
+        {
+            composite.ComponentInconsistency = KnownInconsistentComposites.For(_modelInfoProvider.Version, composite.Url);
+        }
+    }
+
+    /// <summary>
+    /// Marks the shipped reference parameters listed in <see cref="KnownCanonicalReferenceParameters"/>, so in-memory search
+    /// indexes their canonicals and decides from the definition alone whether a chain or include can follow them.
+    /// </summary>
+    private void MarkCanonicalReferences(SearchParameterInfo[] parameters)
+    {
+        foreach (SearchParameterInfo reference in parameters.Where(parameter => parameter.Type == SearchParamType.Reference))
+        {
+            reference.CanonicalReferences = KnownCanonicalReferenceParameters.For(_modelInfoProvider.Version, reference.Url);
+        }
     }
 
     internal ConcurrentDictionary<Uri, SearchParameterInfo> UrlLookup { get; set; }

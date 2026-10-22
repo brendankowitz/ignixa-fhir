@@ -29,7 +29,7 @@ string fhirVersion = (mode != "structure" && args.Length > 1) ? args[1] : (args.
 
 string defaultOutputDir = mode switch
 {
-    "search" or "compartment" or "codesystem" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Ignixa.Search", "Generated"),
+    "search" or "compartment" or "codesystem" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Search", "Generated"),
     "valueset" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Specification", "ValueSets", "Normative"),
     "valueset-provider" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Specification", "Generated"),
     "invariant" or "coreschema" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Specification", "Generated"),
@@ -57,7 +57,7 @@ string title = mode switch
     "validation-terminology" => "Ignixa FHIR In-Memory Terminology Service Generator",
     "narrative-template" => "Ignixa FHIR Narrative Template Generator",
     "typed-model" => "Ignixa FHIR Typed-Model (POCO Facade) Generator",
-    _ => "Ignixa FHIR Structure Definition Provider Generator"
+    _ => "Ignixa FHIR Reference Metadata Generator"
 };
 
 Console.WriteLine(title);
@@ -219,14 +219,14 @@ switch (mode)
         break;
 
     default: // structure
-        Console.WriteLine("Generating provider code...");
-        var structureLanguage = new CSharpStructureProviderLanguage();
-        var providerConfig = new CSharpStructureProviderConfig
+        Console.WriteLine("Generating reference metadata code...");
+        var referenceMetadataLanguage = new CSharpReferenceMetadataLanguage();
+        var referenceMetadataConfig = new CSharpReferenceMetadataConfig
         {
             OutputDirectory = Path.GetFullPath(outputDir),
             Namespace = "Ignixa.Specification.Generated"
         };
-        structureLanguage.Export(providerConfig, definitions);
+        referenceMetadataLanguage.Export(referenceMetadataConfig, definitions);
         break;
 }
 
