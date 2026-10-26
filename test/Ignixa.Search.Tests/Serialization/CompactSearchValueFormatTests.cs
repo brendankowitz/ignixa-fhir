@@ -23,8 +23,6 @@ public class CompactSearchValueFormatTests
 {
     private static readonly JsonSerializerOptions IndexOptions = new() { Converters = { new CompactSearchIndexConverter() } };
 
-    private static readonly JsonSerializerOptions ValueOptions = new() { Converters = { new CompactSearchValueConverter() } };
-
     [Fact]
     public void GivenEveryFieldCombinationOfEveryValueType_WhenRoundTrippedAsAnIndex_ThenNoFieldDiffers()
     {
@@ -42,17 +40,6 @@ public class CompactSearchValueFormatTests
 
         values.Count.ShouldBeGreaterThan(150);
         mismatches.ShouldBeEmpty();
-    }
-
-    [Fact]
-    public void GivenEveryValueType_WhenRoundTrippedAsOneValue_ThenNoFieldDiffers()
-    {
-        foreach ((string name, ISearchValue value) in AllValues())
-        {
-            ISearchValue reloaded = JsonSerializer.Deserialize<ISearchValue>(JsonSerializer.Serialize(value, ValueOptions), ValueOptions)!;
-
-            SearchValueCanon.Describe(reloaded).ShouldBe(SearchValueCanon.Describe(value), name);
-        }
     }
 
     [Fact]
@@ -89,7 +76,7 @@ public class CompactSearchValueFormatTests
     [Fact]
     public void GivenAValueTypeTheFormatDoesNotKnow_WhenWritten_ThenItThrows()
     {
-        Should.Throw<NotSupportedException>(() => JsonSerializer.Serialize<ISearchValue>(new OfTypeTokenSearchValue("123", "http://type", "MR"), ValueOptions));
+        Should.Throw<NotSupportedException>(() => RoundTripIndex(new OfTypeTokenSearchValue("123", "http://type", "MR")));
     }
 
     [Theory]

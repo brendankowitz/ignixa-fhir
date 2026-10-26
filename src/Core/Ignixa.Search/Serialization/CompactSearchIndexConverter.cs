@@ -84,6 +84,11 @@ public class CompactSearchIndexConverter : JsonConverter<List<SearchIndexEntry>>
         while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
         {
             string parameterCode = reader.GetString();
+            if (string.IsNullOrWhiteSpace(parameterCode))
+            {
+                throw new JsonException("A search parameter code is empty.");
+            }
+
             reader.Read();
             if (reader.TokenType != JsonTokenType.StartArray)
             {

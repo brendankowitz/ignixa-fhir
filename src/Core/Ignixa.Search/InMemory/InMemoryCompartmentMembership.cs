@@ -165,7 +165,12 @@ public sealed class InMemoryCompartmentMembership
         CompartmentType compartmentType,
         string resourceType)
     {
-        compartments.TryGetSearchParams(resourceType, compartmentType, out HashSet<string> codes);
+        // resourceType comes from the same manager's TryGetResourceTypes, so a miss means its two lookups disagree.
+        if (!compartments.TryGetSearchParams(resourceType, compartmentType, out HashSet<string> codes))
+        {
+            throw new InvalidOperationException($"The {compartmentType} compartment lists {resourceType} but defines no search parameters for it.");
+        }
+
         HashSet<string> references = new(StringComparer.Ordinal);
         List<string> unevaluable = [];
         foreach (string code in codes.Where(code => code != FocalResourceCode))

@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Ignixa.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.IO;
@@ -36,10 +37,20 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
     private readonly string _baseDirectory;
     private readonly ILogger<FileBasedFhirRepository> _logger;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
+    // The search index format written by CompactSearchIndexConverter. Sidecars without this marker (or with another value)
+    // still yield their version, deletion and request metadata, but their search index is not read.
+    private const int CurrentIndexFormat = 2;
+
+    private static readonly byte[] Utf8Bom = [0xEF, 0xBB, 0xBF];
+
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
         WriteIndented = false,
         Converters = { new CompactSearchIndexConverter() }
+    };
+    private readonly JsonSerializerOptions _staleIndexJsonOptions = new()
+    {
+        Converters = { new SkippedSearchIndexConverter() }
     };
     private readonly RecyclableMemoryStreamManager _memoryStreamManager;
 
@@ -349,20 +360,43 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
     }
 
     /// <summary>
-    /// Reads one sidecar. A sidecar that cannot be read (corrupt, a literal <c>null</c>, written by an older search index
-    /// format, or inaccessible) is logged with its path and surfaced as <see cref="SidecarUnreadableException"/>, a server
-    /// fault whose message names no file: skipping it would make the resource vanish from reads, searches and history, and
-    /// would restart its version numbering on the next write.
+    /// Reads one sidecar. A sidecar that cannot be read (corrupt, a literal <c>null</c>, or inaccessible) is logged with its
+    /// path and surfaced as <see cref="SidecarUnreadableException"/>, a server fault whose message names no file: skipping
+    /// it would make the resource vanish from reads, searches and history, and would restart its version numbering on the
+    /// next write. A sidecar whose search index is in another format (see <see cref="CurrentIndexFormat"/>) is read without
+    /// its index and marked <see cref="ResourceMetadata.SearchIndexIsStale"/>, so reads, history and writes keep working
+    /// while searches that need the index refuse it.
     /// </summary>
     private async ValueTask<ResourceMetadata> ReadMetadataFileAsync(string path, CancellationToken cancellationToken)
     {
         try
         {
-            string metadataJson = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
-            return JsonSerializer.Deserialize<ResourceMetadata>(metadataJson, _jsonOptions)
+            byte[] metadataJson = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
+
+            // JsonDocument rejects a UTF-8 BOM, which File.ReadAllText used to strip; sidecars edited by hand may carry one.
+            int start = metadataJson.AsSpan().StartsWith(Utf8Bom) ? Utf8Bom.Length : 0;
+            using JsonDocument document = JsonDocument.Parse(metadataJson.AsMemory(start));
+            JsonElement root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                throw new JsonException("The sidecar holds no metadata object.");
+            }
+
+            int storedFormat = root.TryGetProperty(nameof(ResourceMetadata.IndexFormat), out JsonElement format)
+                && format.ValueKind == JsonValueKind.Number
+                && format.TryGetInt32(out int formatVersion)
+                    ? formatVersion
+                    : 0;
+
+            ResourceMetadata metadata = root.Deserialize<ResourceMetadata>(storedFormat == CurrentIndexFormat ? _jsonOptions : _staleIndexJsonOptions)
                 ?? throw new JsonException("The sidecar holds no metadata object.");
+
+            // Recorded as stored (0 when absent) rather than left at the default, so a stale sidecar can never be taken for,
+            // or written back as, a current one whose index is empty.
+            metadata.IndexFormat = storedFormat;
+            return metadata;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
             LogFailedToReadMetadataFile(_logger, ex, path);
             throw new SidecarUnreadableException(
@@ -793,27 +827,43 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
 
         // For each resource ID directory, find the latest metadata file
         // A sidecar that cannot be read fails the whole load (ReadMetadataFileAsync logs which one): leaving the resource
-        // out would answer the search as if it did not exist.
+        // out would answer the search as if it did not exist. So does a live resource whose index is in an older format,
+        // after every such sidecar has been logged so they can all be re-saved at once.
+        bool anyStale = false;
         foreach (var resourceIdDir in resourceIdDirs)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             // Find the latest metadata file based on LastModified timestamp
-            ResourceMetadata? latest = null;
+            (ResourceMetadata Metadata, string File)? latest = null;
             foreach (var file in Directory.GetFiles(resourceIdDir, "*.metadata.json", SearchOption.TopDirectoryOnly))
             {
                 var metadata = await ReadMetadataFileAsync(file, cancellationToken).ConfigureAwait(false);
-                if (latest is null || metadata.LastModified > latest.LastModified)
+                if (latest is null || metadata.LastModified > latest.Value.Metadata.LastModified)
                 {
-                    latest = metadata;
+                    latest = (metadata, file);
                 }
             }
 
-            if (latest is not null)
+            if (latest is not { Metadata: var current, File: var currentFile })
             {
-                var key = new ResourceKey(latest.ResourceType, latest.ResourceId, latest.VersionId);
-                results.Add((key, latest.SearchIndexes ?? new List<SearchIndexEntry>()));
+                continue;
             }
+
+            if (current is { SearchIndexIsStale: true, IsDeleted: false })
+            {
+                LogStaleSearchIndex(_logger, currentFile);
+                anyStale = true;
+                continue;
+            }
+
+            var key = new ResourceKey(current.ResourceType, current.ResourceId, current.VersionId);
+            results.Add((key, current.SearchIndexes ?? new List<SearchIndexEntry>()));
+        }
+
+        if (anyStale)
+        {
+            throw new SearchIndexReindexRequiredException();
         }
 
         LogMetadataLoaded(_logger, results.Count, resourceType);
@@ -1213,6 +1263,29 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         public bool IsDeleted { get; set; }
         public ResourceRequest Request { get; set; } = new ResourceRequest("PUT", "");
         public List<SearchIndexEntry>? SearchIndexes { get; set; } = new List<SearchIndexEntry>();
+
+        /// <summary>
+        /// The search index format this sidecar was written in: <see cref="CurrentIndexFormat"/> for a new sidecar, and as
+        /// stored (0 when absent, in sidecars from earlier builds) for one that was read.
+        /// </summary>
+        public int IndexFormat { get; set; } = CurrentIndexFormat;
+
+        /// <summary>True when <see cref="IndexFormat"/> is not the current format, so <see cref="SearchIndexes"/> was not read.</summary>
+        [JsonIgnore]
+        public bool SearchIndexIsStale => IndexFormat != CurrentIndexFormat;
+    }
+
+    /// <summary>Skips a search index this version cannot read, leaving the rest of the sidecar readable.</summary>
+    private sealed class SkippedSearchIndexConverter : JsonConverter<List<SearchIndexEntry>>
+    {
+        public override List<SearchIndexEntry>? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            reader.Skip();
+            return null;
+        }
+
+        public override void Write(Utf8JsonWriter writer, List<SearchIndexEntry> value, JsonSerializerOptions options) =>
+            throw new NotSupportedException("A stale search index is never written.");
     }
 
     private class TransactionManifest
@@ -1337,4 +1410,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
 
     [LoggerMessage(EventId = 37, Level = LogLevel.Warning, Message = "HardDeleteResourceAsync not implemented for FileBasedFhirRepository - TTL cleanup not supported")]
     private static partial void LogHardDeleteNotImplemented(ILogger logger);
+
+    [LoggerMessage(EventId = 38, Level = LogLevel.Error, Message = "Search index in {File} was written in an older format; save the resource again to rebuild it")]
+    private static partial void LogStaleSearchIndex(ILogger logger, string file);
 }

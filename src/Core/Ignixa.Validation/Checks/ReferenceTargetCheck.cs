@@ -17,8 +17,8 @@ namespace Ignixa.Validation.Checks;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The referenced resource's type is told, in order, from: a contained resource a <c>#id</c> names; the host's
-/// <see cref="ValidationSettings.ReferenceTypeResolver"/>; an entry of the enclosing Bundle or Parameters; a relative
+/// The referenced resource's type is told, in order, from: a contained resource a <c>#id</c> names; an entry of the
+/// enclosing Bundle or Parameters; a relative
 /// <c>Type/id</c> (optionally <c>/_history/vid</c>); an absolute http(s) URL ending in <c>Type/id</c>, where the id need not be
 /// a FHIR id (another server's <c>abc_def</c>) but a page (<c>.html</c>), a query, a fragment or an id longer than 64
 /// characters is not a resource reference. When it is told and <c>Reference.type</c> names another type, the reference is
@@ -155,11 +155,6 @@ internal sealed partial class ReferenceTargetCheck : IValidationCheck
                 : lookup.IsContained ? lookup.Index.ResolveContainerScope(lookup.Resource)
                 : lookup.Resource;
             return target?.InstanceType is { } containedType && _isResourceType(containedType) ? containedType : null;
-        }
-
-        if (settings.ReferenceTypeResolver?.ResolveResourceType(written) is { } hosted)
-        {
-            return _isResourceType(hosted) ? hosted : null;
         }
 
         if (lookup.InContainer && lookup.Index.Resolve(written, location)?.InstanceType is { } entryType && _isResourceType(entryType))

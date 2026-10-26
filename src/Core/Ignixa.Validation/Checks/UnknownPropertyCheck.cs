@@ -123,11 +123,6 @@ public class UnknownPropertyCheck : IValidationCheck, ISingletonCheck
     }
 
     /// <summary>
-    /// Checks if a property name matches a choice type pattern.
-    /// </summary>
-    /// <param name="propertyName">The property name to check (e.g., "valueQuantity", "effectiveDateTime").</param>
-    /// <returns>True if the property matches a choice type base name; otherwise, false.</returns>
-    /// <summary>
     /// Whether every member of <paramref name="raw"/> is certainly a known property, so the full check below would report
     /// nothing; it is then skipped, which spares materializing every child of every validated node. Each property the
     /// check examines is a member name, or the member name without its leading underscore, so a member is enough when it
@@ -153,6 +148,11 @@ public class UnknownPropertyCheck : IValidationCheck, ISingletonCheck
         return true;
     }
 
+    /// <summary>
+    /// Checks if a property name matches a choice type pattern.
+    /// </summary>
+    /// <param name="propertyName">The property name to check (e.g., "valueQuantity", "effectiveDateTime").</param>
+    /// <returns>True if the property matches a choice type base name; otherwise, false.</returns>
     private bool IsChoiceTypeProperty(string propertyName)
     {
         // Check if any choice element base is a prefix of this property

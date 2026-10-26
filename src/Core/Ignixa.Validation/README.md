@@ -207,6 +207,8 @@ Additional checks extracted from StructureDefinition metadata:
 | **PatternCheck** | Validates element matches pattern constraint                     | Elements with patternValue constraint |
 | **BindingCheck** | Validates coded values against built-in, required ValueSets      | Elements with binding |
 | **NestedComplexTypeCheck** | Validates nested BackboneElement and complex types               | BackboneElement children |
+| **ChoiceVariantNestedCheck** | Validates a complex choice variant (e.g. `valueAttachment`) against its datatype schema | Complex `[x]` variants |
+| **EntryResourceCheck** | Validates each resource a Bundle or Parameters carries against its own type and `meta.profile` | `Bundle.entry.resource`, `Parameters.parameter.resource` |
 | **UnknownPropertyCheck** | Rejects unknown/undefined properties                             | All resources |
 | **FhirPathInvariantCheck** | Validates FHIRPath constraints (ele-1, dom-1, custom invariants) | Elements with constraint definitions |
 

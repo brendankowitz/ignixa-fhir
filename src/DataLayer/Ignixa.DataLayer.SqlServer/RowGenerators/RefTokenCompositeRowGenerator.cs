@@ -84,8 +84,8 @@ public class RefTokenCompositeRowGenerator : ISearchParameterRowGenerator
                 if (compositeValue.Components.Count < 2)
                     continue;
 
-                // Find Reference and Token components by type, not by position
-                // This handles cases where component definitions have swapped expressions
+                // Collect by type rather than position: the SQL row has fixed columns (reference in *1, token in *2)
+                // whatever order the parameter's components are declared in.
                 var refComponents = new List<ReferenceSearchValue>();
                 var tokenComponents = new List<TokenSearchValue>();
 

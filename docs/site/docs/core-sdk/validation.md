@@ -280,23 +280,13 @@ other dateTime rule (component ranges, calendar validity) applies at every depth
 ### Reference target types
 
 A reference's target type is told from, in order: a contained resource its `#id` names, or for `#` alone the
-containing resource (from a contained resource) or the resource itself (at its root); the host's
-`ValidationSettings.ReferenceTypeResolver`; an entry of the enclosing Bundle or Parameters; a relative `Type/id`; a
+containing resource (from a contained resource) or the resource itself (at its root); an entry of the enclosing Bundle
+or Parameters; a relative `Type/id`; a
 conditional reference `Type?query` (the type before `?`); an absolute URL ending in `Type/id` (an id of at most 64
 characters, not a page such as `.html`). In R4B and R5 the `reference` of a CodeableReference is checked against the
 element's target profiles in the same way. A reference whose type
 cannot be told (an unresolved `urn:uuid:`, an identifier only), one with only a display, and one at an element whose
-target profile is not loaded are reported as `reference-target-unchecked` (Information), never passed. A host that
-validates resources extracted from a Bundle can resolve their `urn:uuid:` references by setting a resolver on that
-resource's settings:
-
-```csharp
-var settings = new ValidationSettings
-{
-    Depth = ValidationDepth.Spec,
-    ReferenceTypeResolver = new MyBundleUrnResolver(bundleEntriesByFullUrl),
-};
-```
+target profile is not loaded are reported as `reference-target-unchecked` (Information), never passed.
 
 ## Validation Settings
 
@@ -592,9 +582,6 @@ var bundleResult = bundleSchema.Validate(bundleElement, settings);
 // e.g. "Bundle.entry[1].resource.status": an error in the second entry
 var entryIssues = bundleResult.Issues.Where(i => i.Path.StartsWith("Bundle.entry[", StringComparison.Ordinal));
 ```
-
-A host that validates entries separately instead (for example while processing a transaction) can still resolve their
-`urn:uuid:` references with a `ReferenceTypeResolver`, as above.
 
 ## CLI Tool
 

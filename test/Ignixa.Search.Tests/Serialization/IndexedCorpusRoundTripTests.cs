@@ -17,12 +17,10 @@ namespace Ignixa.Search.Tests.Serialization;
 /// <summary>
 /// Guard for the compact format round trip: every value the production indexer
 /// (with the in-memory <c>_lastUpdated</c> and canonical entries) extracts from a realistic corpus survives the compact
-/// format unchanged, one value at a time and as a whole index. Mutation-checked by breaking the writer.
+/// format unchanged, each value in an index of its own and as a whole index.
 /// </summary>
 public class IndexedCorpusRoundTripTests
 {
-    private static readonly JsonSerializerOptions ValueOptions = new() { Converters = { new CompactSearchValueConverter() } };
-
     private static readonly JsonSerializerOptions IndexOptions = new() { Converters = { new CompactSearchIndexConverter() } };
 
     private static readonly string[] Corpus =
@@ -39,19 +37,23 @@ public class IndexedCorpusRoundTripTests
     ];
 
     [Fact]
-    public void GivenARealisticCorpus_WhenEveryIndexedValueRoundTripsAsOneValue_ThenNoneDiffers()
+    public void GivenARealisticCorpus_WhenEveryIndexedValueRoundTripsAlone_ThenNoneDiffers()
     {
-        List<(string Where, ISearchValue Value)> values = [.. IndexCorpus().SelectMany(resource => resource.Index.Select(entry => ($"{resource.Id} {entry.SearchParameter.Code}", entry.Value)))];
+        List<(string Where, SearchIndexEntry Entry)> values = [.. IndexCorpus().SelectMany(resource => resource.Index.Select(entry => ($"{resource.Id} {entry.SearchParameter.Code}", entry)))];
 
         List<string> mismatches = [.. values
-            .Select(item => (item.Where, Written: SearchValueCanon.Describe(item.Value), Loaded: SearchValueCanon.Describe(JsonSerializer.Deserialize<ISearchValue>(JsonSerializer.Serialize(item.Value, ValueOptions), ValueOptions)!)))
+            .Select(item => (item.Where, Written: SearchValueCanon.Describe(item.Entry.Value), Loaded: SearchValueCanon.Describe(RoundTripAlone(item.Entry))))
             .Where(item => item.Written != item.Loaded)
             .Select(item => $"{item.Where}\n  wrote  {item.Written}\n  loaded {item.Loaded}")];
 
         values.Count.ShouldBeGreaterThan(80);
-        values.Select(item => item.Value.GetType()).Distinct().Count().ShouldBe(8, "the corpus must exercise every persisted value type");
+        values.Select(item => item.Entry.Value.GetType()).Distinct().Count().ShouldBe(8, "the corpus must exercise every persisted value type");
         mismatches.ShouldBeEmpty();
     }
+
+    private static ISearchValue RoundTripAlone(SearchIndexEntry entry) =>
+        JsonSerializer.Deserialize<List<SearchIndexEntry>>(JsonSerializer.Serialize(new List<SearchIndexEntry> { entry }, IndexOptions), IndexOptions)!
+            .ShouldHaveSingleItem().Value;
 
     [Fact]
     public void GivenARealisticCorpus_WhenEachResourcesIndexRoundTrips_ThenEveryEntryIsUnchangedAndInOrder()

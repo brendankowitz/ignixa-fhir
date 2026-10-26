@@ -94,21 +94,19 @@ public class IssueTemplateTests
         Should.Throw<ArgumentException>(() => ValidationIssue.FromTemplate(IssueSeverity.Error, "x", "Patient", IssueTemplates.ReferenceTargetType, "Patient"));
     }
 
-    // Regression (new API): the host resolver tells the type of a urn the resource cannot, so its target type is checked.
-    [Theory]
-    [InlineData("Organization", true)]
-    [InlineData("Patient", false)]
-    public void GivenAHostResolverForAUrn_WhenValidated_ThenTheResolvedTypeIsChecked(string resolvedType, bool rejected)
+    // Guard: the issue keeps its own copy of the arguments, so a caller reusing its array cannot change an issue's
+    // equality or hash after it is in a set.
+    [Fact]
+    public void GivenTheCallersArgumentArrayChanges_WhenTheIssueIsCompared_ThenItIsUnaffected()
     {
-        var settings = new ValidationSettings { Depth = ValidationDepth.Spec, ReferenceTypeResolver = new FixedTypes(new() { ["urn:uuid:1"] = resolvedType }) };
-        var resolver = new ProfileAwareValidationSchemaResolver(new StructureDefinitionSchemaResolver(TestSchemaProvider.GetR4Schema()));
+        string[] arguments = ["x", "Patient"];
+        var issue = ValidationIssue.FromTemplate(IssueSeverity.Error, "unknown-property", "Patient.x", IssueTemplates.UnknownProperty, arguments);
+        var issues = new HashSet<ValidationIssue> { issue };
 
-        var result = JsonResourceValidator.Validate("""
-            {"resourceType":"Observation","id":"o","status":"final","code":{"text":"x"},"subject":{"reference":"urn:uuid:1"}}
-            """, settings, resolver);
+        arguments[0] = "y";
 
-        result.Issues.Any(i => i.Code == "reference-target-type").ShouldBe(rejected);
-        result.Issues.ShouldNotContain(i => i.Code == "reference-target-unchecked");
+        issue.TemplateArguments.ShouldBe(["x", "Patient"]);
+        issues.ShouldContain(issue);
     }
 
     // Regression: at b0f34da two issues built from the same template and arguments were unequal (the argument array compared
@@ -122,10 +120,5 @@ public class IssueTemplateTests
         second.ShouldBe(first);
         second.GetHashCode().ShouldBe(first.GetHashCode());
         new HashSet<ValidationIssue> { first, second }.Count.ShouldBe(1);
-    }
-
-    private sealed class FixedTypes(Dictionary<string, string> types) : IReferenceTypeResolver
-    {
-        public string? ResolveResourceType(string reference) => types.GetValueOrDefault(reference);
     }
 }

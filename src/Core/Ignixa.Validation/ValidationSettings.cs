@@ -61,13 +61,6 @@ public class ValidationSettings
     public bool CheckExampleUrls { get; set; }
 
     /// <summary>
-    /// Gets or sets the host's answer to which resource type a reference names when the resource itself cannot tell (a
-    /// Bundle's <c>urn:uuid:</c>, say). Consulted by reference target-type validation; null (the default) leaves such
-    /// references undeterminable, which validation reports as an information issue rather than passing them.
-    /// </summary>
-    public IReferenceTypeResolver? ReferenceTypeResolver { get; set; }
-
-    /// <summary>
     /// Unified depth (alias for backward compatibility).
     /// </summary>
     public ValidationDepth ValidationDepth

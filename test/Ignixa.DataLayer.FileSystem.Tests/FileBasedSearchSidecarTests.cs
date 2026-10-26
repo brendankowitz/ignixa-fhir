@@ -3,7 +3,9 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.DataLayer.FileSystem.FileSystem;
 using Ignixa.Domain.Models;
@@ -80,7 +82,7 @@ public sealed class FileBasedSearchSidecarTests : IDisposable
 
         SidecarUnreadableException failure = await Should.ThrowAsync<SidecarUnreadableException>(() => _search.SearchAsync(Options("Observation", "status=final"), CancellationToken.None).AsTask());
 
-        failure.InnerException.ShouldBeOfType<JsonException>();
+        failure.InnerException.ShouldBeAssignableTo<JsonException>();
         failure.Message.ShouldNotContain(_baseDirectory);
         _logger.Entries.ShouldContain(entry => entry.Level == LogLevel.Error && entry.Message.Contains(sidecar, StringComparison.Ordinal) && entry.Exception is JsonException);
     }
@@ -105,11 +107,11 @@ public sealed class FileBasedSearchSidecarTests : IDisposable
 
     [Theory]
     [InlineData("null")]
-    [InlineData("{\"SearchIndexes\":{\"status\":[{\"n_s\":\"FINAL\"}]}}")]
+    [InlineData("[]")]
     [InlineData("{not json")]
     public async Task GivenASidecarThatIsNotMetadata_WhenSearched_ThenItSurfacesAsAServerFaultThatNamesNoFile(string content)
     {
-        // Regression: a literal null sidecar threw InvalidOperationException, which the API reports as a 400 carrying the
+        // A literal null sidecar once threw InvalidOperationException, which the API reports as a 400 carrying the
         // message - the sidecar's path. Every unreadable sidecar is now the same server fault.
         await WriteIndexedAsync(WeightObservation);
         string sidecar = CorruptSidecar("Observation", "o1", content);
@@ -120,6 +122,75 @@ public sealed class FileBasedSearchSidecarTests : IDisposable
         failure.Message.ShouldNotContain(sidecar);
         failure.Message.ShouldNotContain(_baseDirectory);
         failure.InnerException.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task GivenASidecarWithAnEmptySearchParameterCode_WhenSearched_ThenItIsUnreadableAndLogged()
+    {
+        await WriteIndexedAsync(WeightObservation);
+        string sidecar = Directory.GetFiles(Path.Combine(_baseDirectory, "_internal", "Observation", "o1"), "*.metadata.json").ShouldHaveSingleItem();
+        JsonObject metadata = JsonNode.Parse(await File.ReadAllTextAsync(sidecar))!.AsObject();
+        JsonObject indexes = metadata["SearchIndexes"]!.AsObject();
+        string code = indexes.First().Key;
+        JsonNode values = indexes[code]!.DeepClone();
+        indexes.Clear();
+        indexes[" "] = values;
+        await File.WriteAllTextAsync(sidecar, metadata.ToJsonString());
+
+        await Should.ThrowAsync<SidecarUnreadableException>(() => _search.SearchAsync(Options("Observation", "status=final"), CancellationToken.None).AsTask());
+
+        _logger.Entries.ShouldContain(entry => entry.Level == LogLevel.Error && entry.Message.Contains(sidecar, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task GivenASidecarSavedWithAByteOrderMark_WhenSearched_ThenTheResourceIsFound()
+    {
+        await WriteIndexedAsync(WeightObservation);
+        string sidecar = Directory.GetFiles(Path.Combine(_baseDirectory, "_internal", "Observation", "o1"), "*.metadata.json").ShouldHaveSingleItem();
+        await File.WriteAllTextAsync(sidecar, await File.ReadAllTextAsync(sidecar), new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+
+        IReadOnlyList<SearchEntryResult> results = await _search.SearchAsync(Options("Observation", "status=final"), CancellationToken.None);
+
+        results.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task GivenASidecarFromAnEarlierIndexFormat_WhenSearched_ThenReindexIsRequiredAndTheSidecarLogged()
+    {
+        await WriteIndexedAsync(WeightObservation);
+        string sidecar = MakeSidecarsLegacy("Observation", "o1").ShouldHaveSingleItem();
+
+        SearchIndexReindexRequiredException failure = await Should.ThrowAsync<SearchIndexReindexRequiredException>(
+            () => _search.SearchAsync(Options("Observation", "status=final"), CancellationToken.None).AsTask());
+
+        failure.Message.ShouldNotContain(_baseDirectory);
+        _logger.Entries.ShouldContain(entry => entry.Level == LogLevel.Error && entry.Message.Contains(sidecar, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task GivenASidecarFromAnEarlierIndexFormat_WhenTheResourceIsReadAndSavedAgain_ThenItKeepsItsVersionAndBecomesSearchable()
+    {
+        await WriteIndexedAsync(WeightObservation);
+        MakeSidecarsLegacy("Observation", "o1");
+
+        SearchEntryResult? read = await _repository.GetAsync(new ResourceKey("Observation", "o1"));
+        await WriteIndexedAsync(WeightObservation);
+        IReadOnlyList<SearchEntryResult> results = await _search.SearchAsync(Options("Observation", "status=final"), CancellationToken.None);
+
+        read.ShouldNotBeNull().VersionId.ShouldBe("1");
+        results.ShouldHaveSingleItem().VersionId.ShouldBe("2");
+    }
+
+    [Fact]
+    public async Task GivenADeletedResourceWhoseSidecarsAreFromAnEarlierIndexFormat_WhenSearched_ThenNoReindexIsRequired()
+    {
+        await WriteIndexedAsync(WeightObservation);
+        await _repository.DeleteAsync(new ResourceKey("Observation", "o1"), new ResourceRequest("DELETE", "Observation/o1"));
+        MakeSidecarsLegacy("Observation", "o1").Length.ShouldBe(2);
+
+        IReadOnlyList<SearchEntryResult> results = await _search.SearchAsync(Options("Observation", "status=final"), CancellationToken.None);
+
+        results.ShouldBeEmpty();
     }
 
     public void Dispose()
@@ -149,11 +220,30 @@ public sealed class FileBasedSearchSidecarTests : IDisposable
         return index;
     }
 
-    private string CorruptSidecar(string resourceType, string id, string content = """{"TransactionId":"x","SearchIndexes":{"status":[{"n_s":"FINAL"}]}}""")
+    private string CorruptSidecar(string resourceType, string id, string content = "{not json")
     {
         string sidecar = Directory.GetFiles(Path.Combine(_baseDirectory, "_internal", resourceType, id), "*.metadata.json").ShouldHaveSingleItem();
         File.WriteAllText(sidecar, content);
         return sidecar;
+    }
+
+    // Rewrites every sidecar as an earlier build wrote it: no IndexFormat marker, and the lossy pre-"k" value shape.
+    private string[] MakeSidecarsLegacy(string resourceType, string id)
+    {
+        string[] sidecars = Directory.GetFiles(Path.Combine(_baseDirectory, "_internal", resourceType, id), "*.metadata.json");
+        foreach (string sidecar in sidecars)
+        {
+            JsonObject metadata = JsonNode.Parse(File.ReadAllText(sidecar))!.AsObject();
+            metadata.Remove("IndexFormat").ShouldBeTrue();
+            if (metadata["SearchIndexes"] is not null)
+            {
+                metadata["SearchIndexes"] = JsonNode.Parse("""{"status":[{"s":"http://hl7.org/fhir/observation-status","c":"final"}]}""");
+            }
+
+            File.WriteAllText(sidecar, metadata.ToJsonString());
+        }
+
+        return sidecars;
     }
 
     private static SearchOptions Options(string resourceType, string query)

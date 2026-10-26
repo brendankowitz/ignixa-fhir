@@ -84,13 +84,13 @@ public sealed record ValidationIssue
     /// issue was built from free text. Consumers that render their own text, or must not echo instance or definition content,
     /// key on this rather than parsing <see cref="Message"/>. The validator's templates are listed in <see cref="IssueTemplates"/>.
     /// </summary>
-    public string? TemplateId { get; init; }
+    public string? TemplateId { get; private init; }
 
     /// <summary>
     /// Gets the values the template's placeholders were filled with, in placeholder order; empty when <see cref="TemplateId"/>
     /// is null. Each argument may be instance or definition content and is untrusted.
     /// </summary>
-    public IReadOnlyList<string> TemplateArguments { get; init; } = [];
+    public IReadOnlyList<string> TemplateArguments { get; private init; } = [];
 
     /// <summary>
     /// Whether <paramref name="other"/> is the same issue: equal severity, code, path, message, details, template id, and
@@ -141,10 +141,12 @@ public sealed record ValidationIssue
         ArgumentNullException.ThrowIfNull(template);
         ArgumentNullException.ThrowIfNull(arguments);
 
-        return new ValidationIssue(severity, code, path, template.Render(arguments))
+        // Copied: equality and the hash are computed over the arguments, so they must not change with the caller's array.
+        string[] ownArguments = [.. arguments];
+        return new ValidationIssue(severity, code, path, template.Render(ownArguments))
         {
             TemplateId = template.Id,
-            TemplateArguments = arguments,
+            TemplateArguments = ownArguments,
         };
     }
 
