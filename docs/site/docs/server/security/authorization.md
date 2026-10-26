@@ -218,7 +218,7 @@ The headers are written to the audit channel and nowhere else in logs or error m
 
 For `$export` and `$import`, the values are also persisted with the job record for its lifetime (see below).
 
-Validation and capture run on every audited FHIR interaction, including `$export`/`$import` kick-off, status, and cancel requests.
+Validation and capture run on every audited FHIR interaction, including `$export`, `$import`, and `$bulk-delete` kick-off, status, and cancel requests.
 Unaudited endpoints such as `/metadata` ignore these headers, as AHDS does. The MCP `start_export_job` and `start_import_job`
 tools also validate the headers. A violation fails the tool call with the same message, but the rejection itself is not audited,
 because the MCP route is outside the audit filter.

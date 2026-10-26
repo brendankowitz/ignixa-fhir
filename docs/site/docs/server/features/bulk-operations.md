@@ -763,6 +763,9 @@ Each job also stores the kick-off request's user, correlation ID, and custom aud
 When the job finishes as `Completed`, `Failed`, or `Cancelled`, one completion audit event is emitted with those values.
 If the runtime fails before the job records its own outcome, the event is emitted on the next status check.
 
+`-delete` kick-off, status, and cancel requests are audited the same way, including custom audit headers.
+Its jobs do not yet store the kick-off attribution or emit a completion audit event.
+
 ## DurableTask Framework
 
 Bulk operations use the DurableTask framework for reliability:
