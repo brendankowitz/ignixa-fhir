@@ -139,7 +139,17 @@ internal static class Resolve
             quantityCodeIds[code] = await resolver.GetQuantityCodeIdAsync(code, cancellationToken);
         }
 
-        return new ResolvedSymbols(new SymbolTable(searchParamIds, resourceTypeIds, compartmentMembership, systemIds, quantityCodeIds, notReferencedPaths), unresolved);
+        // Same three-state contract: a key with no dbo.EmbeddingModel row is a known miss (no vector was ever
+        // written under it), which Lower turns into an empty match.
+        var embeddingModelIds = new Dictionary<string, short?>(StringComparer.Ordinal);
+        foreach (var modelKey in collector.EmbeddingModelKeys)
+        {
+            embeddingModelIds[modelKey] = await resolver.GetEmbeddingModelIdAsync(modelKey, cancellationToken);
+        }
+
+        return new ResolvedSymbols(
+            new SymbolTable(searchParamIds, resourceTypeIds, compartmentMembership, systemIds, quantityCodeIds, notReferencedPaths, embeddingModelIds),
+            unresolved);
     }
 
     /// <summary>

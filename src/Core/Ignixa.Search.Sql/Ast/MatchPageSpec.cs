@@ -7,6 +7,7 @@
 /// <c>TopIncludesProbeRow</c> states that <c>Top</c> is the page size plus a has-more lookahead row. The
 /// OFFSET/FETCH equivalent lives on <see cref="OffsetSpec.ProbeExtraRow"/>; ask <see cref="TrimmedPageSize"/>
 /// rather than either flag, so the two paging mechanisms cannot be handled inconsistently.
+/// <c>Ranking</c>, when set, orders the page by semantic distance and adds a <c>Distance</c> result column.
 /// </remarks>
 public sealed record MatchPageSpec(
     CteRef Root,
@@ -18,7 +19,8 @@ public sealed record MatchPageSpec(
     SurrogateIdRange? SurrogateRange = null,
     SqlParameterRef? SearchParameterHash = null,
     OffsetSpec? OffsetPage = null,
-    bool TopIncludesProbeRow = false)
+    bool TopIncludesProbeRow = false,
+    VectorRankSpec? Ranking = null)
 {
     /// <summary>The result shape, defaulting to <see cref="ResultShape.Matches"/>.</summary>
     public ResultShape EffectiveShape => Shape ?? ResultShape.Default;

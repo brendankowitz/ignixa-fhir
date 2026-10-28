@@ -79,6 +79,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         var elementsParameters = new List<string>();
         var unsupportedParameters = new List<string>();
         var unsupportedModifierParameters = new List<string>();
+        var unsupportedModifierReasons = new Dictionary<string, string>();
         var typeFilterParameters = new List<string>();
 
         // For system-wide search (resourceType is null), we need to first extract _type parameters
@@ -260,6 +261,31 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                         dataType: null));
                 }
             }
+            catch (SemanticSearchChainNotSupportedException ex)
+            {
+                // Same SHALL-reject routing as the SearchModifierNotSupportedException catch below (this
+                // is a subclass, so it must be caught first), but the generic modifier diagnostics text
+                // built by FhirEndpoints.BuildUnsupportedParametersResult would misreport this case: the
+                // query didn't use an unsupported modifier (e.g. ":Patient" in
+                // "subject:Patient.semantic-text" is a valid reference type qualifier), the chain simply
+                // cannot terminate in a semantic parameter. Recording the exception's message here lets
+                // the HTTP boundary report the accurate reason instead of the generic template.
+                unsupportedParameters.Add(param.Name);
+                unsupportedModifierParameters.Add(param.Name);
+                unsupportedModifierReasons[param.Name] = ex.Message;
+                if (outcomes is not null && param.Category == ParameterCategory.Search)
+                {
+                    outcomes.Add(new ParameterTrace(
+                        ordinal: searchOrdinal++,
+                        key: param.Name,
+                        keySyntax: null,
+                        value: param.Value,
+                        valueSyntax: null,
+                        ir: null,
+                        outcome: new ParameterOutcome.Ignored(ex.Message, null),
+                        dataType: null));
+                }
+            }
             catch (SearchModifierNotSupportedException ex)
             {
                 // R4 splits these two catches apart deliberately. An unsupported *parameter* SHOULD be
@@ -401,6 +427,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         // STEP 8: Record unsupported parameters and create Bundle issues
         options.UnsupportedParams = unsupportedParameters;
         options.UnsupportedModifierParams = unsupportedModifierParameters;
+        options.UnsupportedModifierReasons = unsupportedModifierReasons;
         foreach (var param in unsupportedParameters)
         {
             var diagnostics = $"Search parameter '{param}' is not supported";

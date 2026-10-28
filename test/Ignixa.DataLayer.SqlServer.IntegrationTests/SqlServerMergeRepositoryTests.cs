@@ -68,6 +68,41 @@ public class SqlServerMergeRepositoryTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Pins the fail-fast guard on <c>MergeResourcesAsync</c>: <c>SqlServerVectorIndexWriter</c> may only
+    /// run after the core merge has committed, which holds only under <c>singleTransaction: true</c> (see
+    /// that method's remarks). A caller combining <c>singleTransaction: false</c> with a vector-bearing
+    /// resource must be rejected before anything is committed, not silently skipped or committed with
+    /// vectors left unwritten.
+    /// </summary>
+    [Fact]
+    public async Task GivenVectorIndicesAndSingleTransactionFalse_WhenMerged_ThenThrowsAndNothingCommits()
+    {
+        var (transactionId, _) = await _repository.BeginTransactionAsync(resourceCount: 1, CancellationToken.None);
+
+        const string ResourceId = "test-patient-vector-guard";
+        var wrapper = new ResourceWrapper(
+            "Patient", ResourceId, "1", DateTimeOffset.UtcNow,
+            ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"{{ResourceId}}"}"""),
+            new ResourceRequest("PUT", $"Patient/{ResourceId}"))
+        {
+            VectorIndices =
+            [
+                new VectorIndexEntry(
+                    new Uri("http://example.org/fhir/SearchParameter/test-semantic"),
+                    "test-model|v1",
+                    [new VectorChunk(0, "some semantic text", new float[1536])]),
+            ],
+        };
+
+        await Should.ThrowAsync<InvalidOperationException>(() =>
+            _repository.MergeResourcesAsync(transactionId, singleTransaction: false, [wrapper], [0], CancellationToken.None));
+
+        var rowCount = await _database.ExecuteScalarAsync<int>(
+            $"SELECT COUNT(*) FROM dbo.Resource WHERE ResourceId = '{ResourceId}'");
+        rowCount.ShouldBe(0, "the guard must reject the call before the merge stored procedure ever runs");
+    }
+
+    /// <summary>
     /// Pins the <c>catch (SqlException ex) when (ex.Number == 50409)</c> mapping in
     /// <c>MergeResourcesAsync</c>. Merging the SAME explicit version for the same
     /// (ResourceTypeId, ResourceId) twice forces the conflict inside <c>dbo.MergeResources</c> itself,

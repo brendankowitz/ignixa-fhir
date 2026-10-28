@@ -22,6 +22,9 @@ public class ResolvedSymbolsTests
 
         public Task<int?> GetQuantityCodeIdAsync(string code, CancellationToken cancellationToken)
             => Task.FromResult<int?>(null);
+
+        public Task<short?> GetEmbeddingModelIdAsync(string modelKey, CancellationToken cancellationToken)
+            => Task.FromResult<short?>(null);
     }
 
     [Fact]
@@ -50,6 +53,9 @@ public class ResolvedSymbolsTests
 
         public Task<int?> GetQuantityCodeIdAsync(string code, CancellationToken cancellationToken)
             => Task.FromResult<int?>(1);
+
+        public Task<short?> GetEmbeddingModelIdAsync(string modelKey, CancellationToken cancellationToken)
+            => Task.FromResult<short?>(1);
     }
 
     [Fact]

@@ -1,0 +1,22 @@
+{
+  "resourceType": "SearchParameter",
+  "id": "semantic-text",
+  "url": "http://example.org/fhir/SearchParameter/semantic-text",
+  "version": "1.0.0",
+  "name": "SemanticText",
+  "status": "active",
+  "description": "Semantic (vector) search over Observation free text: the string value and note text are embedded, and matches are ranked by cosine similarity.",
+  "code": "semantic-text",
+  "base": ["Observation"],
+  "type": "special",
+  "expression": "Observation.value.ofType(string) | Observation.note.text",
+  "extension": [
+    {
+      "url": "http://microsoft.com/fhir/StructureDefinition/vector-search-config",
+      "extension": [
+        { "url": "extractionPolicy", "valueCode": "concatenate" },
+        { "url": "minimumScore", "valueDecimal": 0 }
+      ]
+    }
+  ]
+}

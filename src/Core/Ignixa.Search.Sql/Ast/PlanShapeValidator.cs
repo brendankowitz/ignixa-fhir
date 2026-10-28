@@ -138,6 +138,8 @@ internal static class PlanShapeValidator
                 "paging mechanisms to one query.");
         }
 
+        RejectUnsupportedRanking(plan);
+
         // Guarded independently of Lower.Run because QueryPlan is a public construction surface.
         // A zero Limit is legal only alongside a probe row: the page itself is empty but the lookahead row
         // still makes the fetch positive. See OffsetSpec.
@@ -192,6 +194,33 @@ internal static class PlanShapeValidator
         if (!plan.CountOnly)
         {
             RejectUnsupportedPageCombinations(plan);
+        }
+    }
+
+    /// <summary>
+    /// Rejects a semantic ranking where its order cannot be honoured. Guarded independently of Lower.Run, which
+    /// never builds these, because QueryPlan is a public construction surface.
+    /// </summary>
+    private static void RejectUnsupportedRanking(QueryPlan plan)
+    {
+        if (plan.MatchSpec.Ranking is null)
+        {
+            return;
+        }
+
+        if (plan.EffectiveShape is not ResultShape.Matches)
+        {
+            throw new NotSupportedException(
+                "MatchPageSpec.Ranking orders match rows, so it requires ResultShape.Matches. A count reads the " +
+                "semantic gate alone, and an includes page returns no match rows to order; clear Ranking.");
+        }
+
+        if (plan.Page is not null)
+        {
+            throw new NotSupportedException(
+                "MatchPageSpec.Ranking cannot be combined with a keyset Page: the seek predicate compares the " +
+                "sort keys and identity only, while the ORDER BY puts distance ahead of the identity, so rows " +
+                "would be skipped or repeated at the page seam. Page a ranked search with OffsetPage.");
         }
     }
 

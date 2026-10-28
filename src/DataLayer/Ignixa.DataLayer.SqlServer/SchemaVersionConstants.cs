@@ -9,7 +9,7 @@ namespace Ignixa.DataLayer.SqlServer;
 public static class SchemaVersionConstants
 {
     /// <summary>The schema version this build's dacpac represents.</summary>
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
 
     /// <summary>
     /// The oldest tenant schema version this build still tolerates reading an
@@ -38,4 +38,13 @@ public static class SchemaVersionConstants
     // columns in PackageResource, TermValueSet and TermConceptMap, and TermCodeSystem.Version, use CS_AS
     // identity comparisons and indexes. Existing procedure callers may omit the new optional ContentHash
     // parameter. No core resource tables or TVPs change.
+    // Version 4 (expand) -- semantic vector search, slice 1. Adds dbo.EmbeddingModel and
+    // dbo.VectorSearchParam (Embedding vector(1536), native SQL Database Engine type -- requires Azure SQL
+    // Database or SQL Server 2025+; SchemaDeployer refuses to deploy or upgrade onto an engine without it),
+    // the dbo.VectorResourceList and dbo.VectorSearchParamList table types, and dbo.MergeVectorSearchParams
+    // / dbo.GetOrCreateEmbeddingModel. HardDeleteResource.sql and DeleteHistory.sql gain a VectorSearchParam
+    // cleanup step alongside every other search-index table. dbo.MergeResources, its TVPs and
+    // dbo.MergeResourcesAndSearchParams are unchanged -- vectors are written by a separate post-merge
+    // procedure, never atomically with the resource write (see docs/features/semantic-search). No column
+    // or table used by an older build is dropped, renamed or retyped.
 }

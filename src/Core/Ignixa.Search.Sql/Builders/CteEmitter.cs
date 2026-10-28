@@ -103,6 +103,7 @@ internal static class CteEmitter
         CteDefinition.TableExistsPredicate tep => new(EmitTableExistsPredicate(tep, parameters, visibility)),
         CteDefinition.VisibleSinceFilter vsf => new(EmitVisibleSinceFilter(vsf, parameters, visibility)),
         CteDefinition.ReferencedTypeExpansion re => new(EmitReferencedTypeExpansion(re, visibility)),
+        CteDefinition.VectorMatchSource vms => new(VectorSearchEmitter.EmitGate(vms, parameters, visibility)),
         CteDefinition.MatchPage page => MatchPageEmitter.EmitMatchPage(page.Spec, parameters),
         CteDefinition.MatchSeed seed => MatchPageEmitter.EmitMatchSeed(seed),
         _ => throw new NotSupportedException($"No Emit for {cte.GetType().Name}."),
