@@ -54,7 +54,9 @@ public sealed class FileSystemHistoryCountTests : IDisposable
         string corrupt = Path.Combine(_directory, "_internal", "Patient", "history", "corrupt.metadata.json");
         await File.WriteAllTextAsync(corrupt, "{not json");
 
-        await Should.ThrowAsync<JsonException>(() => CountAsync(scope, new HistoryQueryParameters()));
+        // The sidecar failure is a server fault that names no file; the parse error is its cause.
+        SidecarUnreadableException failure = await Should.ThrowAsync<SidecarUnreadableException>(() => CountAsync(scope, new HistoryQueryParameters()));
+        failure.InnerException.ShouldBeAssignableTo<JsonException>();
     }
 
     [Theory]

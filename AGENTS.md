@@ -31,7 +31,7 @@ The published documentation is at https://brendankowitz.github.io/ignixa-fhir/.
 - Run the full suite with `dotnet test All.sln`.
 - Start the API with `dotnet run --project src/Ignixa.Api/Ignixa.Api.csproj`.
 - Run `./run-compat-tests.ps1` when changing cross-version behavior.
-- Regenerate specification providers with `cd codegen && ./generate.ps1` on Windows or `./generate.sh` elsewhere.
+- Regenerate specification providers with `cd codegen && ./generate.sh` (Git Bash or WSL on Windows).
 
 Use the smallest existing validation command that covers a change, then escalate when results require it. Do not add new build or test tooling unless the task requires it.
 

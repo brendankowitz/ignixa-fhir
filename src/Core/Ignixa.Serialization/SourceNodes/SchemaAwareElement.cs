@@ -427,9 +427,10 @@ internal class SchemaAwareElement : IElement
                 {
                     // Check if this is a choice element (IsChoiceElement == true)
                     // OR if there's an element with [x] suffix
+                    var choiceName = name + "[x]";
                     var choiceElement = cachedTypeDef.Children
                         .FirstOrDefault(e => (e.Info.Name == name && e.Info.IsChoiceElement) ||
-                                              e.Info.Name == name + "[x]");
+                                              e.Info.Name == choiceName);
 
                     // If this element is polymorphic, match any child starting with the name
                     if (choiceElement != null)

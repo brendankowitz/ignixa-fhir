@@ -226,6 +226,21 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
                     searchParameter.Code,
                     index,
                     component.DefinitionUrl?.ToString() ?? "unknown"));
+
+            // A Special component (R5/R6 Composition-section-code-text's section.text, a Narrative) has no value
+            // grammar and no converter, so nothing is indexed for it. Refused here, before the value-shape inference
+            // below could read a '|' in the value as a token and answer a query no index entry can match.
+            if (resolved.Type == SearchParamType.Special)
+            {
+                throw new SearchOperationNotSupportedException(string.Format(
+                    CultureInfo.InvariantCulture,
+                    Resources.CompositeComponentTypeNotSearchable,
+                    searchParameter.Code,
+                    index,
+                    resolved.Code,
+                    resolved.Type));
+            }
+
             SearchParameterInfo effective = InferEffectiveParameter(
                 resolved,
                 syntax.Components[index].RawText);
@@ -270,13 +285,13 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
         SearchParameterInfo component,
         string value)
     {
-        // A quantity, number, or date component owns the '|' and '/' characters within its own value
-        // grammar -- a quantity value is [prefix]number|system|code -- so the "any '|' means token, any
-        // '/' means reference" heuristic below must not fire for it. Without this guard a value-quantity
-        // component carrying a full system|code (e.g. gt38|http://unitsofmeasure.org|Cel) is misread as a
-        // token with two separators and the whole search is rejected. The same three ordered types are
-        // the ones NormalizeCompositeComparator already treats specially, for the same reason.
-        if (component.Type is SearchParamType.Quantity or SearchParamType.Number or SearchParamType.Date)
+        // The shape heuristic below ("any '|' means token, a Type/id means reference") exists only to tell a
+        // reference from a token where a definition's declared component type disagrees with what its
+        // expression selects. Every other component keeps its declared type: a quantity, number or date owns
+        // '|' and '/' in its own value grammar (gt38|http://unitsofmeasure.org|Cel), and a string may contain
+        // either character as text, so retyping one (code-value-string=x$a|b as a token) answers a query no
+        // index entry can match.
+        if (component.Type is not (SearchParamType.Reference or SearchParamType.Token))
         {
             return component;
         }
@@ -372,7 +387,7 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
                 reference.Kind,
                 reference.BaseUri,
                 modifier.ResourceType,
-                reference.ResourceId);
+                reference.ResourceId) { OriginalString = reference.OriginalString };
         }
         catch (ArgumentException)
         {
