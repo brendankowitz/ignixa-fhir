@@ -374,10 +374,11 @@ public class SqlServerFhirRepository(
 
         // Computed here, OUTSIDE the unit of work below, because that callback can be re-run from the top
         // after a transient fault and must produce the same delete each time. Both values are safe to reuse
-        // across attempts precisely because the rollback undid the attempt that used them: the tombstone's
-        // meta.lastUpdated stays the instant the delete was asked for rather than drifting to whenever the
-        // last retry happened, and the surrogate ID stays one ID per delete instead of burning a fresh
-        // sequence value (and a fresh round trip) per attempt.
+        // across attempts precisely because the rollback undid the attempt that used them: the surrogate ID
+        // stays one ID per delete instead of burning a fresh sequence value (and a fresh round trip) per
+        // attempt, and the tombstone's meta.lastUpdated, read back from that ID as every merge path does,
+        // stays the instant it was allocated rather than drifting to whenever the last retry happened.
+        var newSurrogateId = await GetNextSurrogateIdAsync(cancellationToken);
         var tombstoneJsonNode = new ResourceJsonNode
         {
             ResourceType = key.ResourceType,
@@ -385,11 +386,10 @@ public class SqlServerFhirRepository(
             Meta = new Meta
             {
                 VersionId = newVersion.ToString(),
-                LastUpdatedOffset = DateTimeOffset.UtcNow
+                LastUpdatedOffset = newSurrogateId.ToDate()
             }
         };
         var compressedTombstone = _compressor.SerializeAndCompress(tombstoneJsonNode);
-        var newSurrogateId = await GetNextSurrogateIdAsync(cancellationToken);
 
         // All four effects -- history flip, tombstone insert, TTL removal, search-index wipe -- commit
         // together or not at all. What the EF port expressed as one SaveChangesAsync became four
@@ -415,9 +415,9 @@ public class SqlServerFhirRepository(
                 // Zero rows means exactly that happened.
                 //
                 // This guard is also what makes the FROZEN surrogate ID above safe, which is the less
-                // obvious half of why it is load-bearing. GetNextSurrogateIdAsync encodes SQL Server's clock at
-                // the moment the delete was asked for, so a writer that versions the row afterwards gets a
-                // surrogate that sorts ABOVE the tombstone's. Weakening this predicate -- dropping
+                // obvious half of why it is load-bearing. GetNextSurrogateIdAsync stamps SQL Server's clock when
+                // the ID is allocated, before this transaction starts, so a writer that versions the row
+                // afterwards gets a surrogate that sorts ABOVE the tombstone's. Weakening this predicate -- dropping
                 // "IsHistory = 0", or letting a zero-row flip carry on -- would let the tombstone land BELOW
                 // a newer live version and invert the surrogate ordering that
                 // GetCurrentVersionOrderedBySurrogateIdAsync (ORDER BY ResourceSurrogateId DESC),
@@ -1402,10 +1402,9 @@ public class SqlServerFhirRepository(
     // attempt may have burned, and a sequence is allowed to have gaps -- NEXT VALUE FOR is not rolled back
     // by a transaction either. Declining the retry would fail an entire delete over a transient blip.
     //
-    // The timestamp comes from SQL Server's clock, exactly as MergeResourcesBeginTransaction stamps the
-    // transaction IDs that later versions use as surrogates. Taking it from this host's clock let a host
-    // running ahead of SQL Server give a tombstone a surrogate above the next PUT's, which MergeResources
-    // rejects with 50409 and a recreate after a delete then failed with 412.
+    // The timestamp must come from SQL Server's clock with MergeResourcesBeginTransaction's formula, because
+    // the transaction IDs that stamps become the surrogates of later versions. From any other clock, skew can
+    // put a tombstone's surrogate above the next PUT's, which MergeResources rejects with 50409 (a 412).
     private async Task<long> GetNextSurrogateIdAsync(CancellationToken cancellationToken)
     {
         using var command = new SqlCommand(

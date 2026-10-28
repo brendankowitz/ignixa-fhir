@@ -1,8 +1,11 @@
 using System.Diagnostics;
+using System.Globalization;
+using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.DataLayer.SqlServer.Compression;
 using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
+using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization.SourceNodes;
@@ -356,6 +359,42 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
         fetched.ShouldNotBeNull();
         fetched!.VersionId.ShouldBe("2");
         fetched.IsDeleted.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// A recreate after a delete gets its surrogate from <c>MergeResourcesBeginTransaction</c>, stamped with SQL
+    /// Server's clock, and <c>MergeResources</c> rejects any version whose surrogate does not sort above the
+    /// tombstone's. So the tombstone must be stamped with that same clock. Stamped from this host's clock instead, a
+    /// host running ahead of SQL Server made the recreate fail with 412 (seen once in E2E, PR #516). This test's
+    /// host and server share one clock, so it pins the stamp to SQL Server's clock rather than reproducing the skew.
+    /// The tombstone's meta.lastUpdated is read back from its surrogate, as on every merge path, so history
+    /// filtered by surrogate never disagrees with the timestamp it returns.
+    /// </summary>
+    [Fact]
+    public async Task GivenADeletedResource_WhenItIsRecreated_ThenTheTombstoneIsStampedBySqlServersClockAndTheRecreateSortsAboveIt()
+    {
+        const string ResourceId = "delete-recreate-clock-1";
+        const string SqlServerMilliseconds = "SELECT datediff_big(millisecond, '0001-01-01', sysutcdatetime())";
+        await _repository.CreateOrUpdateAsync(BuildTestPatientWrapper(ResourceId), CancellationToken.None);
+
+        var before = await _database.ExecuteScalarAsync<long>(SqlServerMilliseconds);
+        await _repository.DeleteAsync(
+            new ResourceKey("Patient", ResourceId), new ResourceRequest("DELETE", $"Patient/{ResourceId}"), null, CancellationToken.None);
+        var after = await _database.ExecuteScalarAsync<long>(SqlServerMilliseconds);
+
+        var tombstoneSurrogateId = await _database.ExecuteScalarAsync<long>(
+            $"SELECT ResourceSurrogateId FROM dbo.Resource WHERE ResourceId = '{ResourceId}' AND IsDeleted = 1");
+        (tombstoneSurrogateId / 80000).ShouldBeInRange(before, after);
+        var tombstone = await _repository.GetAsync(new ResourceKey("Patient", ResourceId), CancellationToken.None);
+        DateTimeOffset.Parse(JsonNode.Parse(tombstone!.ResourceBytes.Span)!["meta"]!["lastUpdated"]!.GetValue<string>(), CultureInfo.InvariantCulture)
+            .ShouldBe(tombstoneSurrogateId.ToDate());
+
+        var recreated = await _repository.CreateOrUpdateAsync(BuildTestPatientWrapper(ResourceId), CancellationToken.None);
+
+        recreated.Key.VersionId.ShouldBe("3");
+        var recreatedSurrogateId = await _database.ExecuteScalarAsync<long>(
+            $"SELECT ResourceSurrogateId FROM dbo.Resource WHERE ResourceId = '{ResourceId}' AND IsHistory = 0");
+        recreatedSurrogateId.ShouldBeGreaterThan(tombstoneSurrogateId);
     }
 
     /// <summary>
