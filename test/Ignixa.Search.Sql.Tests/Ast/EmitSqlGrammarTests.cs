@@ -57,6 +57,12 @@ public class EmitSqlGrammarTests
         yield return ["includes-only, :iterate page with boundary", IncludesOnlyIteratePageWithBoundaryPlan()];
         yield return ["includes-only, custom sort (missing-value phase)", IncludesOnlyWithMissingPrimarySortPlan()];
         yield return ["includes-only, custom sort (valued phase)", IncludesOnlyWithValuedSortPlan()];
+        yield return ["includes-only, replayed -date match page with resume", IncludesShapePlans.Replay(new MatchPageReplay(10, new PageSpec([new SqlParameterRef("2024-03-01")], null, new SqlParameterRef(4200L))), new SortSpec([new SortKey(203, SortKeyKind.Date, SearchSortOrder.Descending)], SortPhase.Valued), new IncludeBoundary(105, 900))];
+        yield return ["includes-only, replayed -_lastUpdated match page", IncludesShapePlans.Replay(new MatchPageReplay(10, new PageSpec([new SqlParameterRef(4200L)], new SqlParameterRef((short)103), new SqlParameterRef(4200L))), new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SearchSortOrder.Descending)], SortPhase.Valued))];
+        yield return ["includes-only, replayed first match page, :iterate", IncludesShapePlans.Replay(new MatchPageReplay(10), sort: null, resume: null, IncludesShapePlans.ForwardStage(), IncludesShapePlans.IterateStage(seedStage: 0))];
+        yield return ["includes count, single stage", IncludesShapePlans.IncludesCount(IncludesShapePlans.ForwardStage())];
+        yield return ["includes count, forward + reverse + :iterate + wildcard", IncludesShapePlans.IncludesCount(IncludesShapePlans.ForwardStage(), IncludesShapePlans.ReverseStage(), IncludesShapePlans.IterateStage(seedStage: 0), IncludesShapePlans.WildcardReverseStage())];
+        yield return ["includes count, outer predicate + hash", IncludesShapePlans.IncludesCount(new MatchPageSpec(new CteRef(0), OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("abc")), Shape: new ResultShape.IncludesCount(), SearchParameterHash: StandardHash()), IncludesShapePlans.ForwardStage())];
         yield return ["patient $everything alone", EverythingAlonePlan()];
         yield return ["patient $everything with _since", EverythingWithSincePlan()];
         yield return ["patient $everything with _type", EverythingWithTypePlan()];

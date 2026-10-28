@@ -20,9 +20,11 @@ internal static class MatchPageEmitter
         var top = SelectBlock.RenderTop(spec.Top);
         var sortJoins = EmitSortJoins(spec.Sort);
 
-        // An includes-only page never orders by the sort key, so the match CTE projects no SortValueN columns.
-        // The sort JOINs stay: the Valued phase's INNER join bounds the match set to rows that have the sort
-        // value, and the include stages seed from that bounded set.
+        // An includes-only page never orders its result by the sort key, so the match CTE projects no SortValueN
+        // columns. The sort JOINs stay: the Valued phase's INNER join bounds the match set to rows that have the
+        // sort value, and the include stages seed from that bounded set. A replayed match page (MatchReplay)
+        // still orders by the key under its TOP, but its ORDER BY and seek render the value expressions
+        // directly, so it needs no projected column either.
         var sortColumns = spec.IncludesOnly ? string.Empty : EmitSortSelectColumns(spec.Sort);
 
         // Projection is handled in the UNION ALL assembly, not here, so includesProjection is false.

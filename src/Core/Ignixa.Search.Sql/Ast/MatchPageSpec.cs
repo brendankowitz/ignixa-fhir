@@ -29,6 +29,16 @@ public sealed record MatchPageSpec(
     /// <summary>True when the statement omits match rows from its final result and returns include-stage rows only.</summary>
     public bool IncludesOnly => EffectiveShape is ResultShape.IncludesPage;
 
+    /// <summary>True when the statement returns a count of the distinct included resources rather than rows.</summary>
+    public bool IncludesCountOnly => EffectiveShape is ResultShape.IncludesCount;
+
+    /// <summary>
+    /// The match page an <see cref="ResultShape.IncludesPage"/> replays to seed its include stages, or null
+    /// when it seeds from the whole match set or the shape is not an includes page. When set,
+    /// <see cref="Top"/> and <see cref="Page"/> must carry its page size and boundary.
+    /// </summary>
+    public MatchPageReplay? MatchReplay => (EffectiveShape as ResultShape.IncludesPage)?.MatchReplay;
+
     /// <summary>
     /// How many rows are genuinely on the page, excluding any has-more probe row — the row count the
     /// include-seed wrapper trims down to. Null when the page does not over-fetch, which makes this the

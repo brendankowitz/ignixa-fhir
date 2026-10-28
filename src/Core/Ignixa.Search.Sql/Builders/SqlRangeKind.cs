@@ -60,4 +60,11 @@ public static class SqlRangeKind
     /// counterpart of the per-stage <see cref="IncludeLimit"/>.
     /// </summary>
     public const string IncludePage = "includePage";
+
+    /// <summary>
+    /// The outer SELECT of an includes count: one <c>COUNT_BIG(*)</c> over the deduplicated union of every
+    /// include stage body, with no budget and no resume boundary. No row is named for it; the plan's
+    /// <see cref="Ast.PlanRowKind.IncludesCount"/> row describes the shape.
+    /// </summary>
+    public const string IncludeCount = "includeCount";
 }
