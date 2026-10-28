@@ -54,7 +54,7 @@ public class StructureDefinitionSchemaBuilder
     /// </summary>
     /// <param name="typeDefinition">The type definition containing element metadata.</param>
     /// <param name="schema">The schema used to resolve type references and build nested schemas.</param>
-    /// <param name="terminologyService">Optional terminology service for binding validation. If null, binding checks are not created.</param>
+    /// <param name="terminologyService">Optional terminology service for binding validation. If null, only required bindings get a check, for the text-only rule that needs no terminology.</param>
     /// <param name="validResourceTypes">Optional set of valid FHIR resource type names for resourceType validation. If provided, a ResourceTypeValidationCheck is added.</param>
     /// <param name="validationSchemaResolver">Optional validation schema resolver for contained resource validation. If provided, a ContainedResourceCheck is added for resources.</param>
     /// <returns>A ValidationSchema with checks derived from the type definition metadata.</returns>
@@ -335,26 +335,25 @@ public class StructureDefinitionSchemaBuilder
             });
         specChecks.AddRange(patternChecks);
 
-        // Extract binding checks from ITypeExtended (only if terminology service is provided)
-        if (terminologyService != null)
-        {
-            var bindingChecks = elements
-                .Where(e => e is ITypeExtended extended && extended.Binding != null)
-                .Select(e =>
-                {
-                    var extended = (ITypeExtended)e;
-                    var binding = extended.Binding!;
-                    // A choice element is bound by its "[x]" name, through its coded variants; generated core
-                    // metadata may name it by its base name alone.
-                    return new BindingCheck(
-                        e.Info.IsChoiceElement && !e.Info.Name.EndsWith("[x]", StringComparison.Ordinal) ? e.Info.Name + "[x]" : e.Info.Name,
-                        binding.ValueSet ?? string.Empty,
-                        binding.Strength,
-                        terminologyService,
-                        e.Info.IsChoiceElement ? null : GetTypeName(e));
-                });
-            specChecks.AddRange(bindingChecks);
-        }
+        // Binding checks: every binding with a terminology service; without one only a required binding, whose text-only
+        // rule (binding-required-text-only) needs no terminology.
+        var bindingChecks = elements
+            .Where(e => e is ITypeExtended { Binding: { } binding }
+                && (terminologyService != null || string.Equals(binding.Strength, "Required", StringComparison.OrdinalIgnoreCase)))
+            .Select(e =>
+            {
+                var extended = (ITypeExtended)e;
+                var binding = extended.Binding!;
+                // A choice element is bound by its "[x]" name, through its coded variants; generated core
+                // metadata may name it by its base name alone.
+                return new BindingCheck(
+                    e.Info.IsChoiceElement && !e.Info.Name.EndsWith("[x]", StringComparison.Ordinal) ? e.Info.Name + "[x]" : e.Info.Name,
+                    binding.ValueSet ?? string.Empty,
+                    binding.Strength,
+                    terminologyService,
+                    e.Info.IsChoiceElement ? null : GetTypeName(e));
+            });
+        specChecks.AddRange(bindingChecks);
 
         // Extract nested complex type checks (BackboneElement, complex datatypes)
         // Push the current type onto the cycle guard so any recursive Build via

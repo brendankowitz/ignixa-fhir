@@ -192,7 +192,8 @@ Checks (includes Minimal, plus):
   `Reference.type` that disagrees with the reference is `reference-type-mismatch`
 - Choice element validation
 - Required terminology bindings; a CodeableConcept with text only under a required binding is an error (it carries
-  no coding from the ValueSet)
+  no coding from the ValueSet). That rule needs no terminology, so it also applies without a terminology service and
+  with `SkipTerminologyValidation`
 - Fixed value constraints
 - Pattern constraints
 - Coding.system must be an absolute URI (one starting with a scheme, so `/foo` is relative), wherever the Coding appears (a choice variant such as `valueCodeableConcept`
@@ -262,11 +263,17 @@ and bindings) are not modelled, only the slices' cardinalities.
 
 An extension's use is checked when the schema provider also implements the optional `IExtensionDefinitionInfo` lookup
 (`ProfileLayeredSchemaProvider` does), which answers a definition's contexts and `isModifier` by url. An `element`
-context matches the parent's type name (`HumanName`, or a specialization of it such as `Age` for `Quantity`), its
-element path (`Patient.name`), `Element`, or for a resource-level extension `Resource` or `DomainResource`; an
-`extension` context matches the url of the extension it is nested in. A definition allowing an extension only in
-`fhirpath` contexts, which are not evaluated, and a schema without the lookup, make it `extension-context-unchecked`
-(Information).
+context matches the parent's type name (`HumanName`), the concrete type a concrete datatype specializes (`Quantity`
+for `Age`, `string` for `code`, `uri` for `url`, `integer` for `positiveInt`), its element path (`Patient.name`; an element
+that reuses another's definition is named by either path, so `ValueSet.compose.exclude` by itself or by
+`ValueSet.compose.include`, and a nested `Questionnaire.item` by `Questionnaire.item`), `Element`, `BackboneElement`,
+or for a resource-level extension `Resource` or `DomainResource`; an `extension` context matches the url of the
+extension it is nested in. When no context matches, an extension is reported `extension-context-unchecked`
+(Information) instead of failing if one of its contexts cannot be decided: a `fhirpath` context, which is not evaluated;
+an abstract type the matcher cannot decide on that element (`CanonicalResource` or `MetadataResource` on a resource,
+`DataType`, `PrimitiveType` or `BackboneType` on an element within one, or a path rooted at an abstract type such as
+`Resource.meta`); or an R5 profile-qualified element id
+(`http://example.org/StructureDefinition/p#Patient.name:official`). A schema without the lookup is reported the same way.
 
 ### dateTime timezone leniency
 
@@ -296,7 +303,7 @@ var settings = new ValidationSettings
     // Validation depth (Minimal/Spec/Full)
     Depth = ValidationDepth.Full,
 
-    // Skip terminology validation if needed
+    // Skip terminology validation if needed (the text-only required-binding rule still applies)
     SkipTerminologyValidation = false,
 
     // How to handle terminology service failures

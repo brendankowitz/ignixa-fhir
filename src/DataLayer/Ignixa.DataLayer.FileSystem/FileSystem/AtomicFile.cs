@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.DataLayer.FileSystem.FileSystem;
@@ -23,7 +24,20 @@ internal static partial class AtomicFile
         string temporaryPath = $"{path}.{Guid.NewGuid():N}.tmp";
         try
         {
-            await File.WriteAllTextAsync(temporaryPath, contents, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Flushed to disk before the rename, so after a crash the file is never empty or torn (readers would treat
+            // that as an unreadable sidecar). The rename itself is not made durable (on Linux that needs an fsync of the
+            // directory), so a crash can still leave the previous content in place.
+            await using (var stream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, useAsync: true))
+            {
+                await stream.WriteAsync(new UTF8Encoding(false).GetBytes(contents), cancellationToken).ConfigureAwait(false);
+                await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+#pragma warning disable CA1849 // FlushAsync has no flush-to-disk overload; the synchronous call is the durability barrier.
+                stream.Flush(flushToDisk: true);
+#pragma warning restore CA1849
+            }
+
             File.Move(temporaryPath, path, overwrite: true);
         }
         catch

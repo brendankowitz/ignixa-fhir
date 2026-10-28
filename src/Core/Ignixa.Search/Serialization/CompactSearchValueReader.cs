@@ -46,16 +46,19 @@ public static class CompactSearchValueReader
 
         // Wrong token types and constructor invariants (a token with nothing in it, an empty composite) surface as
         // ArgumentException, InvalidOperationException or FormatException; they all mean the input is not what was written.
+        // The property being read when a failure is thrown, or null once all are read and the value is being built.
+        string? property = null;
         try
         {
             var fields = new CompactSearchValueFields();
             while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
             {
-                string name = reader.GetString()!;
+                property = reader.GetString()!;
                 reader.Read();
-                fields.Set(name, ref reader);
+                fields.Set(property, ref reader);
             }
 
+            property = null;
             if (reader.TokenType != JsonTokenType.EndObject)
             {
                 throw new JsonException("The search value object is not terminated.");
@@ -65,7 +68,12 @@ public static class CompactSearchValueReader
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or FormatException or OverflowException)
         {
-            throw new JsonException($"Invalid search value: {ex.Message}", ex);
+            // Neither ex.Message nor ex itself is carried: parser messages quote the indexed value, which is PHI and is logged.
+            // The property name is one of the format's own keys (Set rejects any other as a JsonException, not caught
+            // here), so it locates the fault without the value.
+            throw new JsonException(property is null
+                ? $"Invalid search value ({ex.GetType().Name}) while building it from its properties."
+                : $"Invalid search value ({ex.GetType().Name}) in property '{property}'.");
         }
     }
 

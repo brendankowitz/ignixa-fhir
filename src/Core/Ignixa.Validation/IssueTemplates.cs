@@ -146,6 +146,12 @@ public static class IssueTemplates
     /// <summary>An extension whose definition's context is a FHIRPath expression, which is not evaluated: the extension url.</summary>
     public static IssueTemplate ExtensionContextFhirPathUnchecked { get; } = new("extension-context-fhirpath-unchecked", "The context of extension '{0}' was not checked: its definition states it as a FHIRPath expression", 1);
 
+    /// <summary>
+    /// An extension whose element context names a type or element id the validator does not resolve (an abstract type such
+    /// as <c>CanonicalResource</c>, a profile-qualified element id): the extension url, then the context.
+    /// </summary>
+    public static IssueTemplate ExtensionContextUnresolved { get; } = new("extension-context-unresolved", "The context of extension '{0}' was not checked: its context '{1}' names a type or element id this validator does not resolve", 2);
+
     /// <summary>An extension whose definition's contexts the schema does not describe: the extension url.</summary>
     public static IssueTemplate ExtensionContextNotDescribed { get; } = new("extension-context-not-described", "The context of extension '{0}' was not checked: the schema does not describe extension contexts", 1);
 
@@ -164,6 +170,6 @@ public static class IssueTemplates
         CodingWithoutSystemOrCode, CodingSystemNotAbsolute, ProfileNotResolved, ExtensionExampleUrl,
         ExtensionDefinitionNotLoaded, ExtensionSliceNotValidated, EntryResourceTypeUnknown, ExtensionContextMismatch,
         ExtensionModifierNotInModifierExtension, ExtensionNotModifierInModifierExtension, ExtensionContextFhirPathUnchecked,
-        ExtensionContextNotDescribed, ExtensionUrlRelative,
+        ExtensionContextUnresolved, ExtensionContextNotDescribed, ExtensionUrlRelative,
     ];
 }

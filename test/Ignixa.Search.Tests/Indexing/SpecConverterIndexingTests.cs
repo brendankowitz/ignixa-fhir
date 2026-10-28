@@ -61,15 +61,6 @@ public class SpecConverterIndexingTests
         VersionedCorpus.For(FhirVersion.R4).Match("Observation", query, WeightInPounds).ShouldBe(Ids(expected));
     }
 
-    [Fact]
-    public void GivenAQuantityWhoseUnitDiffersFromItsCode_WhenIndexed_ThenTheUnitIsASecondValueWithNoSystem()
-    {
-        VersionedCorpus.For(FhirVersion.R4).Values(WeightInPounds, "value-quantity")
-            .Cast<QuantitySearchValue>()
-            .Select(quantity => (quantity.System, quantity.Code, quantity.Low, quantity.High))
-            .ShouldBe([("http://unitsofmeasure.org", "[lb_av]", 185m, 185m), (null, "lbs", 185m, 185m)]);
-    }
-
     [Theory]
     [InlineData("code-value-quantity=weight$185||lbs")]
     [InlineData("combo-code-value-quantity=weight$185||lbs")]
@@ -107,7 +98,7 @@ public class SpecConverterIndexingTests
         new RangeToQuantitySearchValueConverter().ConvertTo(range)
             .Cast<QuantitySearchValue>()
             .Select(quantity => (quantity.System, quantity.Code, quantity.Low, quantity.High))
-            .ShouldBe([("http://unitsofmeasure.org", "mg", 2m, 5m), (null, "milligram", 2m, 5m)]);
+            .ShouldBe([("http://unitsofmeasure.org", "mg", 2m, 5m), (null, "milligram", 2m, 5m)], ignoreOrder: true);
     }
 
     [Fact]

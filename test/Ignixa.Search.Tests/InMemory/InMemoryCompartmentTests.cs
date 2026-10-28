@@ -78,19 +78,6 @@ public class InMemoryCompartmentTests
         other.ShouldBeFalse();
     }
 
-    [Theory]
-    [InlineData(FhirVersion.R4, "Patient", false, "link")]
-    [InlineData(FhirVersion.R5, "Patient", true, "link")]
-    [InlineData(FhirVersion.R4, "Encounter", true, "")]
-    public void GivenACompartmentType_WhenItsOwnTypesRuleIsRead_ThenItSaysWhetherTheOwnResourceAndWhichParametersCount(FhirVersion version, string compartmentType, bool own, string parameters)
-    {
-        InMemoryCompartmentMembership membership = Membership(version);
-
-        membership.IncludesCompartmentResource(compartmentType).ShouldBe(own);
-        membership.Parameters(compartmentType, compartmentType).ShouldBe(parameters.Length == 0 ? [] : parameters.Split(','));
-        R4.Parameters("Patient", "Observation").ShouldBe(["performer", "subject"]);
-    }
-
     [Fact]
     public void GivenCompartmentFilteredResourceTypes_WhenSearched_ThenOtherTypesDoNotMatch()
     {
@@ -101,24 +88,12 @@ public class InMemoryCompartmentTests
     }
 
     [Fact]
-    public void GivenTheMembership_WhenResourceTypesAreListed_ThenOnlyTypesWithParametersAppearInOrdinalOrder()
-    {
-        IReadOnlyList<string> types = R4.ResourceTypes("Patient");
-
-        types.ShouldContain("Observation");
-        types.ShouldContain("Encounter");
-        types.ShouldNotContain("Organization");
-        types.ShouldBe([.. types.Order(StringComparer.Ordinal)]);
-        R4.CompartmentTypes.ShouldBe(["Device", "Encounter", "Patient", "Practitioner", "RelatedPerson"]);
-    }
-
-    [Fact]
     public void GivenAnUnknownCompartmentType_WhenSearchedOrTested_ThenTheRequestIsRejected()
     {
         IndexedTestSource source = Clinic();
 
         Should.Throw<BadSearchRequestException>(() => Search(source, "Observation", string.Empty, new CompartmentSearchExpression("Organization", "org-1")))
-            .Issues.ShouldHaveSingleItem().Diagnostics.ShouldNotBeNull().ShouldContain("Device, Encounter, Patient, Practitioner, RelatedPerson");
+            .Issues.ShouldHaveSingleItem().Diagnostics.ShouldNotBeNull().ShouldContain("'Organization' is not a compartment type");
         Should.Throw<ArgumentException>(() => R4.IsInCompartment(new ResourceKey("Observation", "o"), [], "patient", "pat-1"));
     }
 

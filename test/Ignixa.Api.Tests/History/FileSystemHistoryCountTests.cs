@@ -56,7 +56,7 @@ public sealed class FileSystemHistoryCountTests : IDisposable
 
         // The sidecar failure is a server fault that names no file; the parse error is its cause.
         SidecarUnreadableException failure = await Should.ThrowAsync<SidecarUnreadableException>(() => CountAsync(scope, new HistoryQueryParameters()));
-        failure.InnerException.ShouldBeOfType<JsonException>();
+        failure.InnerException.ShouldBeAssignableTo<JsonException>();
     }
 
     [Theory]

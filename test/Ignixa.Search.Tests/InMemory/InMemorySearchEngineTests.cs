@@ -154,17 +154,16 @@ public class InMemorySearchEngineTests
         Should.Throw<SearchOperationNotSupportedException>(() => new InMemorySearchEngine(Clinic(), InMemorySearchFeatures.All & ~InMemorySearchFeatures.Sort).Search(options));
     }
 
-    // Ported: SearchExecutorTests.ResolveIncludes_ObservationSubject_YieldsReferencedPatient.
+    // Ported: SearchExecutorTests.ResolveIncludes_ObservationSubject_YieldsReferencedPatient. FHIR leaves the order of included resources unspecified.
     [Theory]
     [InlineData("_include=Observation:subject", "Patient/pat-1,Patient/pat-2")]
     [InlineData("code=8480-6&_include=Observation:subject", "Patient/pat-1")]
     [InlineData("_include=Observation:subject:Group", "")]
     [InlineData("_include=Observation:performer&_include=Observation:subject", "Practitioner/dr-1,Patient/pat-1,Patient/pat-2")]
-    [InlineData("_include=Observation:subject&_include=Observation:performer", "Patient/pat-1,Practitioner/dr-1,Patient/pat-2")]
     [InlineData("_include=Patient:organization", "")]
     public void GivenInclude_WhenSearched_ThenReferencedResourcesTheSourceHoldsAreIncludedOnce(string query, string expected)
     {
-        Clinic().Included("Observation", query).ShouldBe(Ids(expected));
+        Clinic().Included("Observation", query).ShouldBe(Ids(expected), ignoreOrder: true);
     }
 
     // A wildcard follows the references in the order the source's index entries are enumerated, which is not specified.
@@ -181,7 +180,7 @@ public class InMemorySearchEngineTests
     [InlineData("_id=pat-1&_revinclude=Observation:performer", "")]
     public void GivenRevInclude_WhenSearched_ThenResourcesReferencingTheMatchesAreIncluded(string query, string expected)
     {
-        Clinic().Included("Patient", query).ShouldBe(Ids(expected));
+        Clinic().Included("Patient", query).ShouldBe(Ids(expected), ignoreOrder: true);
     }
 
     [Theory]
@@ -189,7 +188,7 @@ public class InMemorySearchEngineTests
     [InlineData("_id=obs-1&_include=Observation:subject&_include:iterate=Patient:organization", "Patient/pat-1,Organization/org-1")]
     public void GivenIterateInclude_WhenSearched_ThenItAppliesToIncludedResourcesToo(string query, string expected)
     {
-        Clinic().Included("Observation", query).ShouldBe(Ids(expected));
+        Clinic().Included("Observation", query).ShouldBe(Ids(expected), ignoreOrder: true);
     }
 
     [Fact]

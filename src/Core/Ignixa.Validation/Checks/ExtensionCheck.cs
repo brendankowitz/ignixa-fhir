@@ -32,7 +32,8 @@ namespace Ignixa.Validation.Checks;
 /// a modifier extension only under <c>modifierExtension</c> and the others never there (<c>extension-modifier-mismatch</c>),
 /// and only on an element one of its contexts allows (<c>extension-context</c>: an element context names the element's type,
 /// its element path, its path within its datatype, or <c>Element</c>; an extension context names the url of the extension
-/// it is nested in). A FHIRPath context, or a schema that does not describe contexts, is reported as a non-failing
+/// it is nested in). A FHIRPath context, an element context naming an abstract type the matcher cannot decide there or an R5
+/// profile-qualified element id, or a schema that does not describe contexts, is reported as a non-failing
 /// <c>extension-context-unchecked</c> issue. An extension without a loaded definition is validated as the datatype and
 /// reported as a non-failing <c>extension-definition-unchecked</c> information issue (the HL7 validator's "unknown
 /// extension" hint), never passed as checked. So is a sub-extension of a loaded complex extension that the definition
@@ -183,8 +184,8 @@ internal sealed class ExtensionCheck : IValidationCheck, ISingletonCheck
 
     /// <summary>
     /// Where the extension is used, against its definition: under <c>modifierExtension</c> exactly when it is a modifier
-    /// extension, and on an element one of its contexts allows. A FHIRPath context, or a schema that does not describe
-    /// contexts, leaves the context reported as not checked.
+    /// extension, and on an element one of its contexts allows. A context the matcher cannot decide, or a schema that does
+    /// not describe contexts, leaves the context reported as not checked.
     /// </summary>
     private ValidationResult ValidateUse(IElement extension, string url, ExtensionHost host)
     {
@@ -207,18 +208,53 @@ internal sealed class ExtensionCheck : IValidationCheck, ISingletonCheck
 
         if (info.Contexts.Count > 0 && !info.Contexts.Any(host.Allows))
         {
-            issues.Add(info.Contexts.Any(context => context.Type == ExtensionContextType.FhirPath)
-                ? ValidationIssue.FromTemplate(IssueSeverity.Information, "extension-context-unchecked", extension.Location, IssueTemplates.ExtensionContextFhirPathUnchecked, url)
-                : ValidationIssue.FromTemplate(
-                    IssueSeverity.Error,
-                    "extension-context",
-                    extension.Location,
-                    IssueTemplates.ExtensionContextMismatch,
-                    url,
-                    string.Join(", ", info.Contexts.Select(context => context.Expression))));
+            issues.Add(ContextIssue(extension, url, info.Contexts, host));
         }
 
         return new ValidationResult(!issues.Any(issue => issue.Severity == IssueSeverity.Error), issues);
+    }
+
+    /// <summary>
+    /// The issue for an extension none of whose contexts allow it here. A context the matcher cannot decide may still allow
+    /// it, so that is reported as not checked rather than failed.
+    /// </summary>
+    private ValidationIssue ContextIssue(IElement extension, string url, IReadOnlyList<ExtensionContext> contexts, ExtensionHost host)
+    {
+        if (contexts.Any(context => context.Type == ExtensionContextType.FhirPath))
+        {
+            return ValidationIssue.FromTemplate(IssueSeverity.Information, "extension-context-unchecked", extension.Location, IssueTemplates.ExtensionContextFhirPathUnchecked, url);
+        }
+
+        if (contexts.FirstOrDefault(context => context.Type == ExtensionContextType.Element && !IsResolvable(context.Expression.Trim(), host)) is { } unresolved)
+        {
+            return ValidationIssue.FromTemplate(IssueSeverity.Information, "extension-context-unchecked", extension.Location, IssueTemplates.ExtensionContextUnresolved, url, unresolved.Expression);
+        }
+
+        return ValidationIssue.FromTemplate(
+            IssueSeverity.Error,
+            "extension-context",
+            extension.Location,
+            IssueTemplates.ExtensionContextMismatch,
+            url,
+            string.Join(", ", contexts.Select(context => context.Expression)));
+    }
+
+    /// <summary>
+    /// Whether <see cref="ExtensionHost.Allows"/> can decide an element context on <paramref name="host"/>: it names an
+    /// abstract type the host decides (<see cref="ExtensionHost.Decides"/>), or a path rooted at a concrete type of this
+    /// schema. So not another abstract type, whose members the schema does not list (<c>CanonicalResource</c> on a
+    /// resource, <c>DataType</c> on an element); nor an R5 profile-qualified element id (<c>url#Observation.category:vscat</c>,
+    /// defining-extensions.html), whose root is a url, not a type.
+    /// </summary>
+    private bool IsResolvable(string expression, ExtensionHost host)
+    {
+        if (host.Decides(expression))
+        {
+            return true;
+        }
+
+        var dot = expression.IndexOf('.', StringComparison.Ordinal);
+        return _schema.GetTypeDefinition(dot < 0 ? expression : expression[..dot]) is { Info.IsAbstract: false };
     }
 
     /// <summary>The loaded extension definition <paramref name="url"/> names, built into a schema; null when none is loaded.</summary>

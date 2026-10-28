@@ -522,8 +522,8 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         }
         else
         {
-            // Its return type is unknown, not the focus's: a host function such as patientSearch() returns other resources,
-            // and navigation after it must not be checked against the focus type.
+            // An unknown function's return type is unknown, not the focus's, so navigation after it must not be checked
+            // against the focus type.
             context.AddWarning($"Unknown function '{functionName}'", expression);
             result.AddUnknown(focusTypes.IsCollection());
         }

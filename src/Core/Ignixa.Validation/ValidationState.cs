@@ -227,6 +227,25 @@ public record ValidationState
         /// Gets a cache for expensive computations (e.g., compiled FHIRPath expressions).
         /// </summary>
         public Dictionary<string, object> Cache { get; } = new();
+
+        private readonly Dictionary<IElement, ReferenceIndex> _referenceIndexes = new(ReferenceEqualityComparer.Instance);
+
+        /// <summary>
+        /// The reference index over <paramref name="root"/>, built on first use and then shared by the run: every Reference
+        /// in every entry of a Bundle resolves against the one index over that Bundle, not a fresh build per Reference.
+        /// Keyed on identity, which is sound because the element tree is read-only for the run; not thread-safe, as a run is
+        /// sequential.
+        /// </summary>
+        internal ReferenceIndex ReferenceIndexFor(IElement root)
+        {
+            if (!_referenceIndexes.TryGetValue(root, out var index))
+            {
+                index = ReferenceIndex.Build(root);
+                _referenceIndexes.Add(root, index);
+            }
+
+            return index;
+        }
     }
 
     /// <summary>

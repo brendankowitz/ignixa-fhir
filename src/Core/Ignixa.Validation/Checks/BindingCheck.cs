@@ -24,7 +24,8 @@ namespace Ignixa.Validation.Checks;
 /// Constructed with the element's declared type, the check knows a CodeableConcept from a Coding or a code. A
 /// CodeableConcept with no coding under a <c>required</c> binding is then an error at Spec and Full: a required binding
 /// needs a coding from the ValueSet, and text alone is not one (R4 terminologies.html#strength). The rule needs no terminology,
-/// so it holds whether or not the ValueSet is available. Compatibility depth keeps accepting text-only concepts, as the
+/// so it holds whether or not the ValueSet is available: without a terminology service, or with
+/// <see cref="ValidationSettings.SkipTerminologyValidation"/>, it is the only rule the check applies. Compatibility depth keeps accepting text-only concepts, as the
 /// Microsoft FHIR Server does. A choice element (<c>value[x]</c>) is bound through its coded variant
 /// (<c>valueCode</c>, <c>valueCoding</c>, <c>valueCodeableConcept</c>).
 /// </para>
@@ -34,7 +35,7 @@ public class BindingCheck : IValidationCheck
     private readonly string _elementPath;
     private readonly string _valueSetUrl;
     private readonly string _bindingStrength;
-    private readonly ITerminologyService _terminologyService;
+    private readonly ITerminologyService? _terminologyService;
     private readonly string? _declaredType;
 
     private const string DataAbsentReasonUrl = "http://hl7.org/fhir/StructureDefinition/data-absent-reason";
@@ -45,17 +46,17 @@ public class BindingCheck : IValidationCheck
     /// <param name="elementPath">The element path to validate (e.g., "gender", "status").</param>
     /// <param name="valueSetUrl">The canonical URL of the ValueSet.</param>
     /// <param name="bindingStrength">The binding strength (Required, Extensible, Preferred, Example).</param>
-    /// <param name="terminologyService">The terminology service for code validation.</param>
+    /// <param name="terminologyService">The terminology service for code validation; null for none, leaving only the text-only rule.</param>
     public BindingCheck(
         string elementPath,
         string valueSetUrl,
         string bindingStrength,
-        ITerminologyService terminologyService)
+        ITerminologyService? terminologyService)
     {
         _elementPath = elementPath ?? throw new ArgumentNullException(nameof(elementPath));
         _valueSetUrl = valueSetUrl ?? throw new ArgumentNullException(nameof(valueSetUrl));
         _bindingStrength = bindingStrength ?? throw new ArgumentNullException(nameof(bindingStrength));
-        _terminologyService = terminologyService ?? throw new ArgumentNullException(nameof(terminologyService));
+        _terminologyService = terminologyService;
     }
 
     /// <summary>
@@ -64,13 +65,13 @@ public class BindingCheck : IValidationCheck
     /// <param name="elementPath">The element path to validate (e.g., "gender", "status", "value[x]").</param>
     /// <param name="valueSetUrl">The canonical URL of the ValueSet.</param>
     /// <param name="bindingStrength">The binding strength (Required, Extensible, Preferred, Example).</param>
-    /// <param name="terminologyService">The terminology service for code validation.</param>
+    /// <param name="terminologyService">The terminology service for code validation; null for none, leaving only the text-only rule.</param>
     /// <param name="declaredType">The element's declared type (e.g. <c>CodeableConcept</c>); null when it cannot be told.</param>
     public BindingCheck(
         string elementPath,
         string valueSetUrl,
         string bindingStrength,
-        ITerminologyService terminologyService,
+        ITerminologyService? terminologyService,
         string? declaredType)
         : this(elementPath, valueSetUrl, bindingStrength, terminologyService)
     {
@@ -86,8 +87,9 @@ public class BindingCheck : IValidationCheck
     /// <returns>A validation result indicating success or failure.</returns>
     public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
-        // Skip terminology validation if configured
-        if (settings.SkipTerminologyValidation || settings.Depth == ValidationDepth.Minimal)
+        // Without terminology only the text-only rule applies, and only a required binding has it.
+        if (settings.Depth == ValidationDepth.Minimal
+            || ((settings.SkipTerminologyValidation || _terminologyService is null) && ParseStrength(_bindingStrength) != BindingStrength.Required))
         {
             return ValidationResult.Success();
         }
@@ -180,16 +182,21 @@ public class BindingCheck : IValidationCheck
             return ValidateTextOnlyConcept(element, settings);
         }
 
+        if (settings.SkipTerminologyValidation || _terminologyService is not { } terminology)
+        {
+            return ValidationResult.Success();
+        }
+
         if (hasCoding)
         {
             // This is a CodeableConcept - validate each coding
-            return await ValidateCodeableConcept(element, location, settings).ConfigureAwait(false);
+            return await ValidateCodeableConcept(element, location, settings, terminology).ConfigureAwait(false);
         }
 
         if (hasSystem || hasCode)
         {
             // This is a Coding - validate it
-            return await ValidateCoding(element, location, settings).ConfigureAwait(false);
+            return await ValidateCoding(element, location, settings, terminology).ConfigureAwait(false);
         }
 
         // Check for primitive code element (e.g., "status": "planned")
@@ -197,7 +204,7 @@ public class BindingCheck : IValidationCheck
         var codeValue = element.Value?.ToString();
         if (!string.IsNullOrEmpty(codeValue))
         {
-            return await ValidateCode(null, codeValue, null, location, settings).ConfigureAwait(false);
+            return await ValidateCode(null, codeValue, null, location, settings, terminology).ConfigureAwait(false);
         }
 
         // Element structure doesn't match expected patterns
@@ -232,7 +239,8 @@ public class BindingCheck : IValidationCheck
     private async Task<ValidationResult> ValidateCodeableConcept(
         IElement element,
         string location,
-        ValidationSettings settings)
+        ValidationSettings settings,
+        ITerminologyService terminology)
     {
         var codings = element.Children("coding").ToList();
         if (codings.Count == 0)
@@ -248,7 +256,7 @@ public class BindingCheck : IValidationCheck
 
         foreach (var coding in codings)
         {
-            var result = await ValidateCoding(coding, $"{location}.coding", settings).ConfigureAwait(false);
+            var result = await ValidateCoding(coding, $"{location}.coding", settings, terminology).ConfigureAwait(false);
             issues.AddRange(result.Issues);
 
             // Track if we have at least one valid coding
@@ -282,7 +290,8 @@ public class BindingCheck : IValidationCheck
     private async Task<ValidationResult> ValidateCoding(
         IElement element,
         string location,
-        ValidationSettings settings)
+        ValidationSettings settings,
+        ITerminologyService terminology)
     {
         var systemChildren = element.Children("system");
         var codeChildren = element.Children("code");
@@ -292,7 +301,7 @@ public class BindingCheck : IValidationCheck
         var code = codeChildren.Count > 0 ? codeChildren[0].Value?.ToString() : null;
         var display = displayChildren.Count > 0 ? displayChildren[0].Value?.ToString() : null;
 
-        return await ValidateCode(system, code, display, location, settings).ConfigureAwait(false);
+        return await ValidateCode(system, code, display, location, settings, terminology).ConfigureAwait(false);
     }
 
     private async Task<ValidationResult> ValidateCode(
@@ -300,7 +309,8 @@ public class BindingCheck : IValidationCheck
         string? code,
         string? display,
         string location,
-        ValidationSettings settings)
+        ValidationSettings settings,
+        ITerminologyService terminology)
     {
         var strengthEnum = ParseStrength(_bindingStrength);
 
@@ -313,7 +323,7 @@ public class BindingCheck : IValidationCheck
 
         try
         {
-            var result = await _terminologyService.ValidateBindingAsync(
+            var result = await terminology.ValidateBindingAsync(
                 _valueSetUrl,
                 strengthEnum,
                 system,

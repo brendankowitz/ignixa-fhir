@@ -136,48 +136,23 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
         return VisitSearchParameter(Expression.SearchParameter(expression.Parameter, expression), context);
     }
 
-    public SearchPredicate VisitCompositeComponent(CompositeComponentExpression expression, Context context)
-    {
-        EnsureArg.IsNotNull(expression, nameof(expression));
+    // Binary, String, MissingField and CompositeComponent nodes are field-level: they only mean something beneath a
+    // SearchParameterExpression, which compiles them against that parameter's entries. Reached directly they have no
+    // parameter to test, so matching nothing would be a silent wrong answer.
+    public SearchPredicate VisitCompositeComponent(CompositeComponentExpression expression, Context context) => throw FieldLevel(expression);
 
-        return VisitFieldLevel(expression, context);
-    }
+    public SearchPredicate VisitBinary(BinaryExpression expression, Context context) => throw FieldLevel(expression);
 
-    // Binary, String and MissingField nodes normally sit beneath a SearchParameterExpression, which compiles them
-    // per entry. Reached directly, they are tested against the entries of the parameter named by the context.
-    public SearchPredicate VisitBinary(BinaryExpression expression, Context context)
-    {
-        EnsureArg.IsNotNull(expression, nameof(expression));
+    public SearchPredicate VisitString(StringExpression expression, Context context) => throw FieldLevel(expression);
 
-        return VisitFieldLevel(expression, context);
-    }
-
-    public SearchPredicate VisitString(StringExpression expression, Context context)
-    {
-        EnsureArg.IsNotNull(expression, nameof(expression));
-
-        if (context.ParameterName == SearchParameterNames.ResourceType)
-        {
-            Func<string, bool> matchesType = CompileKeyField(expression, SearchParameterNames.ResourceType);
-            return input => input.Where(x => matchesType(x.Location.ResourceType));
-        }
-
-        return VisitFieldLevel(expression, context);
-    }
-
-    public SearchPredicate VisitMissingField(MissingFieldExpression expression, Context context)
-    {
-        EnsureArg.IsNotNull(expression, nameof(expression));
-
-        return VisitFieldLevel(expression, context);
-    }
+    public SearchPredicate VisitMissingField(MissingFieldExpression expression, Context context) => throw FieldLevel(expression);
 
     public SearchPredicate VisitMissingSearchParameter(MissingSearchParameterExpression expression, Context context)
     {
         EnsureArg.IsNotNull(expression, nameof(expression));
 
-        // Every resource has an id and none has an _id index entry.
-        if (expression.Parameter.Code == SearchParameterNames.Id)
+        // Every resource has an id and a type, and neither has index entries; both come from the ResourceKey.
+        if (expression.Parameter.Code is SearchParameterNames.Id or SearchParameterNames.ResourceType)
         {
             return expression.IsMissing
                 ? input => Enumerable.Empty<(Abstractions.ResourceKey, IReadOnlyCollection<SearchIndexEntry>)>()
@@ -303,12 +278,9 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
         throw new SearchOperationNotSupportedException("_not-referenced is not supported in in-memory search.");
     }
 
-    private static SearchPredicate VisitFieldLevel(Expression expression, Context context)
-    {
-        string? parameterName = context.ParameterName;
-        Func<SearchIndexEntry, bool> matcher = SearchIndexEntryMatcher.Compile(LegacyExpressionLowerer.LowerToLegacy(expression), parameter: null);
-        return input => input.Where(x => x.Index.Any(y => y.SearchParameter.Name == parameterName && matcher(y)));
-    }
+    // A defect in whoever built the expression tree, not a query the client could rephrase.
+    private static InvalidOperationException FieldLevel(Expression expression) =>
+        new($"{expression.GetType().Name} is a field-level expression and cannot be searched in memory outside a SearchParameterExpression.");
 
     /// <summary>
     /// A resource matches when one of its references through the chain's parameter points at a resource of a
@@ -404,44 +376,9 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
         };
 
     /// <summary>
-    /// Context that is passed through the visit.
+    /// The visitor interface requires a context type; this visitor carries no state through the visit.
     /// </summary>
-    public struct Context : IEquatable<Context>
+    public readonly struct Context
     {
-        public string? ParameterName { get; set; }
-
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Public API")]
-        public Context WithParameterName(string paramName)
-        {
-            return new Context
-            {
-                ParameterName = paramName,
-            };
-        }
-
-        public readonly bool Equals(Context other)
-        {
-            return ParameterName == other.ParameterName;
-        }
-
-        public override readonly bool Equals(object? obj)
-        {
-            return obj is Context context && Equals(context);
-        }
-
-        public override readonly int GetHashCode()
-        {
-            return ParameterName?.GetHashCode(StringComparison.Ordinal) ?? 0;
-        }
-
-        public static bool operator ==(Context left, Context right)
-        {
-            return left.Equals(right);
-        }
-
-        public static bool operator !=(Context left, Context right)
-        {
-            return !(left == right);
-        }
     }
 }

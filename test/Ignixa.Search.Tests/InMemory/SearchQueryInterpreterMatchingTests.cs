@@ -13,8 +13,8 @@ namespace Ignixa.Search.Tests.InMemory;
 
 /// <summary>
 /// Regressions: what <see cref="Search.InMemory.SearchQueryInterpreter"/> matches where it returned a wrong result or
-/// threw before it compiled each parameter into a test of one index entry. Every row here fails at 419b668; rows that
-/// pin unchanged behavior live in <see cref="SearchQueryInterpreterMatchingGuardTests"/>.
+/// threw before it compiled each parameter into a test of one index entry. Rows fail at 419b668 unless marked
+/// <c>// guard</c>: those pin behavior that held at 419b668 and were mutation-checked.
 /// </summary>
 public class SearchQueryInterpreterMatchingTests
 {
@@ -26,6 +26,7 @@ public class SearchQueryInterpreterMatchingTests
     [InlineData("code=http://loinc.org|8867-4", "hr")]
     [InlineData("code=http://snomed.info/sct|1234-5", "")]
     [InlineData("code:not=http://loinc.org|8867-4", "mixed")]
+    [InlineData("code=http://snomed.info/sct|8867-4", "mixed")] // guard
     public void GivenCodingsFromDifferentSystems_WhenSearchedBySystemAndCode_ThenBothMustComeFromTheSameCoding(string query, string expected)
     {
         Match("Observation", query, TwoCodings, HeartRate).ShouldBe(Ids(expected));
@@ -65,6 +66,10 @@ public class SearchQueryInterpreterMatchingTests
     [InlineData("date=eq2021-01-01T00:00:00Z", false)]
     [InlineData("date=ne2021-01-01T00:00:00Z", true)]
     [InlineData("date=eb2021-01-01T00:20:00Z", false)]
+    [InlineData("date=sa2020-12-31T23:59:00Z", true)] // guard
+    [InlineData("date=sa2021-01-01T00:10:00Z", false)] // guard
+    [InlineData("date=gt2021-01-01T01:00:00Z", false)] // guard
+    [InlineData("date=lt2021-01-01T00:15:00Z", true)] // guard
     public void GivenAPeriod_WhenSearchedWithDatePrefixes_ThenTheBoundTheFhirPrefixTableNamesIsCompared(string query, bool matches)
     {
         string[] matched = Match(
@@ -78,6 +83,8 @@ public class SearchQueryInterpreterMatchingTests
     [Theory]
     [InlineData("probability=sa0.3", false)]
     [InlineData("probability=lt0.3", true)]
+    [InlineData("probability=gt0.3", true)] // guard
+    [InlineData("probability=eb0.6", true)] // guard
     public void GivenARange_WhenSearchedWithNumberPrefixes_ThenTheLowOrHighBoundTheTableNamesIsCompared(string query, bool matches)
     {
         // Built by hand: the stock Range-to-number converter reads Range.low as a scalar and so never indexes a Range.
@@ -142,7 +149,9 @@ public class SearchQueryInterpreterMatchingTests
 
     [Theory]
     [InlineData("family=odegaard")]
-    public void GivenAccentedName_WhenSearchedWithoutAccents_ThenItMatches(string query)
+    [InlineData("family=Ödegaard")] // guard
+    [InlineData("family:contains=DEGA")] // guard
+    public void GivenAccentedName_WhenSearchedWithOrWithoutTheAccentOrCaseInsensitively_ThenItMatches(string query)
     {
         Match("Patient", query, """{"resourceType":"Patient","id":"p3","name":[{"family":"Ödegaard"}]}""").ShouldBe(["p3"]);
     }
@@ -168,6 +177,7 @@ public class SearchQueryInterpreterMatchingTests
     [InlineData("_id=p1", "p1")]
     [InlineData("_id=p1,p3", "p1,p3")]
     [InlineData("_id:not=p1", "p2,p3")]
+    [InlineData("_id=nope", "")] // guard
     public void GivenIds_WhenSearchedById_ThenTheResourceKeyIsMatched(string query, string expected)
     {
         Match(
@@ -177,6 +187,17 @@ public class SearchQueryInterpreterMatchingTests
             """{"resourceType":"Patient","id":"p2"}""",
             """{"resourceType":"Patient","id":"p3"}""")
             .ShouldBe(Ids(expected));
+    }
+
+    // Regression: _id and _type come from the ResourceKey and never have index entries, so :missing=false matched nothing.
+    [Theory]
+    [InlineData("_id:missing=false", "p1,p2")]
+    [InlineData("_id:missing=true", "")]
+    [InlineData("_type:missing=false", "p1,p2")]
+    [InlineData("_type:missing=true", "")]
+    public void GivenAKeyParameter_WhenSearchedByMissing_ThenEveryResourceHasIt(string query, string expected)
+    {
+        Match("Patient", query, """{"resourceType":"Patient","id":"p1"}""", """{"resourceType":"Patient","id":"p2"}""").ShouldBe(Ids(expected));
     }
 
     private static string[] Ids(string expected) => expected.Length == 0 ? [] : expected.Split(',');

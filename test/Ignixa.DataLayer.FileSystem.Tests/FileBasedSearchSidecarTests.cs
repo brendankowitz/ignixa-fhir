@@ -125,6 +125,20 @@ public sealed class FileBasedSearchSidecarTests : IDisposable
     }
 
     [Fact]
+    public async Task GivenASidecarWithANullVersionId_WhenTheResourceIsRead_ThenItIsUnreadableAndLogged()
+    {
+        await WriteIndexedAsync(WeightObservation);
+        string sidecar = Directory.GetFiles(Path.Combine(_baseDirectory, "_internal", "Observation", "o1"), "*.metadata.json").ShouldHaveSingleItem();
+        JsonObject metadata = JsonNode.Parse(await File.ReadAllTextAsync(sidecar))!.AsObject();
+        metadata["VersionId"] = null;
+        await File.WriteAllTextAsync(sidecar, metadata.ToJsonString());
+
+        await Should.ThrowAsync<SidecarUnreadableException>(() => _repository.GetAsync(new ResourceKey("Observation", "o1")).AsTask());
+
+        _logger.Entries.ShouldContain(entry => entry.Level == LogLevel.Error && entry.Message.Contains(sidecar, StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task GivenASidecarWithAnEmptySearchParameterCode_WhenSearched_ThenItIsUnreadableAndLogged()
     {
         await WriteIndexedAsync(WeightObservation);

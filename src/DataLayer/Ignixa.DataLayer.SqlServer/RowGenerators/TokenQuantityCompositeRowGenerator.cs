@@ -150,6 +150,9 @@ public class TokenQuantityCompositeRowGenerator : ISearchParameterRowGenerator
                             continue;
                         }
 
+                        if (!string.IsNullOrEmpty(quantityComponent.Code) && !QuantityCodeColumnWidth.Fit(quantityComponent.Code, searchIndex.SearchParameter, resource, logger))
+                            continue;
+
                         if (string.IsNullOrEmpty(quantityComponent.Code))
                         {
                             record.SetDBNull(7);
@@ -160,9 +163,10 @@ public class TokenQuantityCompositeRowGenerator : ISearchParameterRowGenerator
                         }
                         else
                         {
+                            // The length, never the code: a Quantity's free-text unit is indexed as one and may be patient-entered.
                             logger.LogWarning(
-                                "QuantityCodeId not found in cache for {Code} on {SearchParameterUrl} while indexing {ResourceType}/{ResourceId} -- row skipped",
-                                quantityComponent.Code, searchIndex.SearchParameter.Url, resource.ResourceType, resource.ResourceId);
+                                "QuantityCodeId not found in cache for a code of {CodeLength} characters on {SearchParameterUrl} while indexing {ResourceType}/{ResourceId} -- row skipped",
+                                quantityComponent.Code.Length, searchIndex.SearchParameter.Url, resource.ResourceType, resource.ResourceId);
                             continue;
                         }
 

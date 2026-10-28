@@ -23,6 +23,11 @@ public class ExtensionUseTests
     private static readonly string PathExtension = Definition("ext-path", """[{"type":"element","expression":"Patient.name"}]""");
     private static readonly string ModifierExtension = Definition("ext-mod", """[{"type":"element","expression":"Patient"}]""", isModifier: true);
     private static readonly string FhirPathExtension = Definition("ext-fp", """[{"type":"fhirpath","expression":"Patient.name.where(use = 'official')"}]""");
+    private static readonly string ItemExtension = Definition("ext-item", """[{"type":"element","expression":"Questionnaire.item"}]""");
+    private static readonly string CanonicalResourceExtension = Definition("ext-canonical", """[{"type":"element","expression":"CanonicalResource"}]""");
+    private static readonly string ExcludeExtension = Definition("ext-exclude", """[{"type":"element","expression":"ValueSet.compose.exclude"}]""");
+    private static readonly string StringExtension = Definition("ext-string", """[{"type":"element","expression":"string"}]""");
+    private static readonly string ElementIdExtension = Definition("ext-elementid", """[{"type":"element","expression":"http://example.org/fhir/StructureDefinition/p#Patient.name:official"}]""");
     private static readonly string SubExtension = Definition("ext-sub", """[{"type":"extension","expression":"http://example.org/fhir/StructureDefinition/parent"}]""");
 
     // Regression: at b0f34da an extension defined for Patient passed on an Observation.
@@ -130,6 +135,82 @@ public class ExtensionUseTests
             """, SubExtension);
 
         result.Issues.ShouldNotContain(i => i.Code == "extension-context" || i.Code == "extension-context-unchecked");
+    }
+
+    // Regression (PR #516 review, finding 1): a nested item's path was built from instance names
+    // (Questionnaire.item.item), so a context naming Questionnaire.item, as SDC's questionnaire-itemControl does, failed on it.
+    [Fact]
+    public void GivenAQuestionnaireItemContextExtensionOnANestedItem_WhenValidatedAtFull_ThenNoContextIssueIsRaised()
+    {
+        var result = Validate("""
+            {"resourceType":"Questionnaire","id":"q","name":"Q","status":"active","item":[{"linkId":"1","type":"group","text":"g","item":[{"linkId":"1.1","type":"string","text":"s","extension":[{"url":"@ext-item","valueCode":"male"}]}]}],@TEXT}
+            """, ItemExtension);
+
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    // Guard (PR #516 review round 2, finding 1): a non-recursive element that reuses another's definition
+    // (ValueSet.compose.exclude reuses #ValueSet.compose.include) is still named by its own path.
+    [Fact]
+    public void GivenAValueSetExcludeContextExtensionOnAnExclude_WhenValidatedAtFull_ThenNoContextIssueIsRaised()
+    {
+        var result = Validate("""
+            {"resourceType":"ValueSet","id":"v","name":"V","status":"active","compose":{"include":[{"system":"http://example.org/a"}],"exclude":[{"system":"http://example.org/b","extension":[{"url":"@ext-exclude","valueCode":"male"}]}]},@TEXT}
+            """, ExcludeExtension);
+
+        result.Issues.ShouldNotContain(i => i.Code == "extension-context" || i.Code == "extension-context-unchecked");
+    }
+
+    // Regression (PR #516 review round 2, finding 4): a context naming the primitive a primitive specializes (string for
+    // code) failed on it; only Quantity's specializations were matched.
+    [Fact]
+    public void GivenAStringContextExtensionOnACodeElement_WhenValidatedAtFull_ThenNoContextIssueIsRaised()
+    {
+        var result = Validate("""
+            {"resourceType":"Patient","id":"p","gender":"male","_gender":{"extension":[{"url":"@ext-string","valueCode":"male"}]},@TEXT}
+            """, StringExtension);
+
+        result.Issues.ShouldNotContain(i => i.Code == "extension-context" || i.Code == "extension-context-unchecked");
+    }
+
+    // Guard (PR #516 review round 2, finding 3): CanonicalResource can allow only a resource root, so on a datatype it is
+    // decided, and a mismatch stays an error rather than being reported unchecked.
+    [Fact]
+    public void GivenAnExtensionWithACanonicalResourceContextOnAnObservationCode_WhenValidatedAtFull_ThenItIsAnError()
+    {
+        var result = Validate("""
+            {"resourceType":"Observation","id":"o","status":"final","code":{"text":"x","extension":[{"url":"@ext-canonical","valueCode":"male"}]},@TEXT}
+            """, CanonicalResourceExtension);
+
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldContain(i => i.Severity == IssueSeverity.Error && i.Code == "extension-context" && i.Path == "Observation.code.extension[0]");
+    }
+
+    // Regression (PR #516 review, finding 2): a context naming an abstract type the schema carries no members for
+    // (CanonicalResource) failed on every resource; the docs promise specialization matching, so can't-tell is reported.
+    [Fact]
+    public void GivenAnExtensionWithACanonicalResourceContextOnAValueSet_WhenValidatedAtFull_ThenItsContextIsReportedUncheckedWithoutFailing()
+    {
+        var result = Validate("""
+            {"resourceType":"ValueSet","id":"v","name":"V","status":"active","extension":[{"url":"@ext-canonical","valueCode":"male"}],@TEXT}
+            """, CanonicalResourceExtension);
+
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldContain(i => i.Severity == IssueSeverity.Information && i.Code == "extension-context-unchecked" && i.Path == "ValueSet.extension[0]");
+    }
+
+    // Regression (PR #516 review, finding 3): R5 lets an element context be a profile-qualified element id
+    // (defining-extensions.html: "[url]#[elementid]"), which instance paths cannot spell, so it failed everywhere.
+    [Fact]
+    public void GivenAnExtensionWithAProfileQualifiedElementIdContext_WhenValidatedAtFull_ThenItsContextIsReportedUncheckedWithoutFailing()
+    {
+        var result = Validate("""
+            {"resourceType":"Patient","id":"p","name":[{"family":"x","extension":[{"url":"@ext-elementid","valueCode":"male"}]}],@TEXT}
+            """, ElementIdExtension);
+
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldContain(i => i.Severity == IssueSeverity.Information && i.Code == "extension-context-unchecked" && i.Path == "Patient.name[0].extension[0]");
     }
 
     // Regression: at b0f34da a resource-level extension with a relative url passed.

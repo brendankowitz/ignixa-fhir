@@ -96,8 +96,7 @@ public class CompactSearchValueFormatTests
     {
         string json = $$"""{"x":[{{valueJson}}]}""";
 
-        Exception failure = Should.Throw<Exception>(() => JsonSerializer.Deserialize<List<SearchIndexEntry>>(json, IndexOptions));
-        failure.ShouldBeOfType<JsonException>(failure.ToString());
+        Should.Throw<JsonException>(() => JsonSerializer.Deserialize<List<SearchIndexEntry>>(json, IndexOptions));
     }
 
     private static ISearchValue RoundTripIndex(ISearchValue value)

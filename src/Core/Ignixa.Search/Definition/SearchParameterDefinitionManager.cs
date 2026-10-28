@@ -81,8 +81,7 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
         // Pre-generated parameters have Component[].DefinitionUrl set, but ResolvedSearchParameter is null
         // We must resolve these references by looking up the component parameters in UrlLookup
         ResolveCompositeComponents(baseParameters, logger);
-        MarkInconsistentComposites(baseParameters);
-        MarkCanonicalReferences(baseParameters);
+        MarkKnownDefinitions();
 
         CalculateSearchParameterHash();
     }
@@ -192,25 +191,24 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
 
     /// <summary>
     /// Marks the shipped composites listed in <see cref="KnownInconsistentComposites"/>, whose components can never match a
-    /// query, so in-memory search refuses them instead of answering "nothing".
+    /// query, so in-memory search refuses them instead of answering "nothing"; and the shipped reference parameters listed in
+    /// <see cref="KnownCanonicalReferenceParameters"/>, so in-memory search indexes their canonicals and decides from the
+    /// definition alone whether a chain or include can follow them. Runs over every registered parameter after each load or
+    /// add, because <see cref="AddNewSearchParameters"/> builds a new <see cref="SearchParameterInfo"/> for a re-added URL.
     /// </summary>
-    private void MarkInconsistentComposites(SearchParameterInfo[] parameters)
+    private void MarkKnownDefinitions()
     {
-        foreach (SearchParameterInfo composite in parameters.Where(parameter => parameter.Type == SearchParamType.Composite))
+        foreach (SearchParameterInfo parameter in UrlLookup.Values)
         {
-            composite.ComponentInconsistency = KnownInconsistentComposites.For(_modelInfoProvider.Version, composite.Url);
-        }
-    }
-
-    /// <summary>
-    /// Marks the shipped reference parameters listed in <see cref="KnownCanonicalReferenceParameters"/>, so in-memory search
-    /// indexes their canonicals and decides from the definition alone whether a chain or include can follow them.
-    /// </summary>
-    private void MarkCanonicalReferences(SearchParameterInfo[] parameters)
-    {
-        foreach (SearchParameterInfo reference in parameters.Where(parameter => parameter.Type == SearchParamType.Reference))
-        {
-            reference.CanonicalReferences = KnownCanonicalReferenceParameters.For(_modelInfoProvider.Version, reference.Url);
+            switch (parameter.Type)
+            {
+                case SearchParamType.Composite:
+                    parameter.ComponentInconsistency = KnownInconsistentComposites.For(_modelInfoProvider.Version, parameter.Url);
+                    break;
+                case SearchParamType.Reference:
+                    parameter.CanonicalReferences = KnownCanonicalReferenceParameters.For(_modelInfoProvider.Version, parameter.Url);
+                    break;
+            }
         }
     }
 
@@ -306,6 +304,9 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
             UrlLookup,
             TypeLookup,
             _modelInfoProvider);
+
+        // Unlocked: a concurrent search can see a re-added parameter, already published to the lookups, before it is marked.
+        MarkKnownDefinitions();
 
         if (calculateHash) CalculateSearchParameterHash();
     }

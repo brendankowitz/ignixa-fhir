@@ -18,7 +18,6 @@ using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Data.SqlClient.Server;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using NSubstitute;
 
 namespace Ignixa.DataLayer.SqlServer.Tests.RowGenerators;
 
@@ -135,7 +134,7 @@ public class IndexedValueRowTests
     {
         string prefix = "urn:oid:1.2.840.113619." + new string('1', 50);
         string fitting = "urn:oid:1.2.3";
-        ILogger logger = Substitute.For<ILogger>();
+        var logger = new RecordingLogger();
 
         IReadOnlyList<SqlDataRecord> rows = Rows(
             new ReferenceSearchParameterRowGenerator(),
@@ -144,7 +143,7 @@ public class IndexedValueRowTests
             logger);
 
         rows.Select(row => row.GetString(5)).ShouldBe([fitting]);
-        logger.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(ILogger.Log) && (LogLevel)call.GetArguments()[0]! == LogLevel.Warning).ShouldBe(2);
+        logger.Entries.Count(entry => entry.Level == LogLevel.Warning && entry.EventId.Id == 4001).ShouldBe(2);
     }
 
     [Fact]
@@ -152,7 +151,7 @@ public class IndexedValueRowTests
     {
         string longOid = "urn:oid:1.2.840.113619." + new string('1', 50) + ".1";
         string fitting = "urn:oid:1.2.3";
-        ILogger logger = Substitute.For<ILogger>();
+        var logger = new RecordingLogger();
 
         IReadOnlyList<SqlDataRecord> rows = Rows(
             new RefTokenCompositeRowGenerator(Systems),
@@ -161,14 +160,14 @@ public class IndexedValueRowTests
             logger);
 
         rows.Select(row => (row.GetString(5), row.GetString(8))).ShouldBe([(fitting, "appends")]);
-        logger.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(ILogger.Log) && (LogLevel)call.GetArguments()[0]! == LogLevel.Warning).ShouldBe(1);
+        logger.Entries.Count(entry => entry.Level == LogLevel.Warning && entry.EventId.Id == 4001).ShouldBe(1);
     }
 
     [Fact]
     public void GivenABaseUriLongerThanTheColumn_WhenReferenceRowsAreGenerated_ThenTheRowIsSkippedAndLogged()
     {
         string longBase = "https://example.org/" + new string('b', 120) + "/fhir/";
-        ILogger logger = Substitute.For<ILogger>();
+        var logger = new RecordingLogger();
 
         IReadOnlyList<SqlDataRecord> rows = Rows(
             new ReferenceSearchParameterRowGenerator(),
@@ -177,7 +176,24 @@ public class IndexedValueRowTests
             logger);
 
         rows.ShouldBeEmpty();
-        logger.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(ILogger.Log) && (LogLevel)call.GetArguments()[0]! == LogLevel.Warning).ShouldBe(1);
+        logger.Entries.Count(entry => entry.Level == LogLevel.Warning && entry.EventId.Id == 4001).ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenAQuantityUnitLongerThanTheCodeColumn_WhenQuantityRowsAreGenerated_ThenTheUnitRowIsSkippedAndLoggedAndTheCodeRowIsWritten()
+    {
+        // The mapping knows the long unit, as the on-demand resolver would after creating it: only the width check stops it.
+        string longUnit = new string('u', 300);
+        var logger = new RecordingLogger();
+
+        IReadOnlyList<SqlDataRecord> rows = Rows(
+            new QuantitySearchParameterRowGenerator(Systems, new Dictionary<string, int>(QuantityCodes) { [longUnit] = 99 }),
+            WeightInPounds.Replace("\"lbs\"", $"\"{longUnit}\"", StringComparison.Ordinal),
+            "Observation-value-quantity",
+            logger);
+
+        rows.ShouldHaveSingleItem().GetInt32(4).ShouldBe(11);
+        logger.Entries.Count(entry => entry.Level == LogLevel.Warning && entry.EventId.Id == 4002).ShouldBe(1);
     }
 
     [Fact]

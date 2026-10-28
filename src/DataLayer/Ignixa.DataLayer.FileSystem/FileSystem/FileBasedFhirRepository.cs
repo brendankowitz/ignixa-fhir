@@ -394,6 +394,17 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
             // Recorded as stored (0 when absent) rather than left at the default, so a stale sidecar can never be taken for,
             // or written back as, a current one whose index is empty.
             metadata.IndexFormat = storedFormat;
+
+            // Callers parse VersionId and key on the other fields; a null or malformed one must fail here, as an unreadable
+            // sidecar, not later as an unrelated ArgumentNullException or FormatException.
+            if (!int.TryParse(metadata.VersionId, out _)
+                || string.IsNullOrEmpty(metadata.ResourceType)
+                || string.IsNullOrEmpty(metadata.ResourceId)
+                || string.IsNullOrEmpty(metadata.TransactionId))
+            {
+                throw new JsonException("The sidecar lacks a valid VersionId, ResourceType, ResourceId or TransactionId.");
+            }
+
             return metadata;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)

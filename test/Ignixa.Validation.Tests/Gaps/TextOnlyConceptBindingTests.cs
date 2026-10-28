@@ -3,7 +3,10 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Json.Nodes;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Schema;
 using Ignixa.Validation.Tests.TestHelpers;
 using Shouldly;
 
@@ -32,6 +35,23 @@ public class TextOnlyConceptBindingTests
         issue.Code.ShouldBe("code-invalid");
         issue.Path.ShouldBe("Condition.clinicalStatus");
         issue.Message.ShouldContain("http://hl7.org/fhir/ValueSet/condition-clinical");
+    }
+
+    // Regression (PR #516 review, finding 5): the rule needs no terminology (R4 terminologies.html#strength), yet a schema
+    // built without a terminology service had no BindingCheck, and SkipTerminologyValidation returned before the rule ran.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GivenATextOnlyConceptUnderARequiredBindingWithoutTerminology_WhenValidatedAtSpec_ThenItIsAnError(bool skipTerminology)
+    {
+        var element = JsonNodeSourceNode.Create(JsonNode.Parse(TextOnlyClinicalStatus)!).ToElement(TestSchemaProvider.GetR4Schema());
+        var schema = skipTerminology
+            ? new StructureDefinitionSchemaResolver(TestSchemaProvider.GetR4Schema()).GetSchema("Condition")!
+            : new StructureDefinitionSchemaBuilder().BuildSchema(TestSchemaProvider.GetR4Schema().GetTypeDefinition("Condition")!, TestSchemaProvider.GetR4Schema(), terminologyService: null);
+
+        var result = schema.Validate(element, new ValidationSettings { Depth = ValidationDepth.Spec, SkipTerminologyValidation = skipTerminology });
+
+        result.Issues.ShouldContain(i => i.Severity == IssueSeverity.Error && i.TemplateId == IssueTemplates.BindingRequiredTextOnly.Id && i.Path == "Condition.clinicalStatus");
     }
 
     // Regression: at 635c8f6 a text-only concept passed beside a coded one; only the text-only one is reported, at its path.

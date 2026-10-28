@@ -19,7 +19,9 @@ namespace Ignixa.Search.Indexing.Converters;
 /// <c>5.4|http://unitsofmeasure.org|mg</c> constrains system and code together. <see cref="QuantitySearchValue"/> has
 /// no unit field and the SQL quantity rows have no unit column, so the unit is indexed as a second value whose code is
 /// the unit and whose system is absent: a search without a system matches it through the ordinary code comparison
-/// (in memory and in SQL), and a search with a system never does, because the second value has none.
+/// (in memory and in SQL), and a search with a system never does, because the second value has none. SQL still lowers
+/// an empty system to <c>SystemId IS NULL</c>, so there a system-less search misses the coded value row; that predates
+/// this converter and is tracked separately.
 /// </remarks>
 internal static class QuantityUnitSearchValues
 {

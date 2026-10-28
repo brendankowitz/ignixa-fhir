@@ -211,19 +211,19 @@ internal sealed partial class ReferenceTargetCheck : IValidationCheck
     private static partial Regex Conditional();
 
     /// <summary>
-    /// The reference index for one validation of the check, built only when a reference needs it: over the Bundle or
-    /// Parameters whose entry is being validated, else over the resource validation is rooted at.
+    /// The reference index for one validation of the check, fetched only when a reference needs it: over the Bundle or
+    /// Parameters whose entry is being validated, else over the resource validation is rooted at. This check builds each
+    /// index once per run (<see cref="ValidationState.GlobalState.ReferenceIndexFor"/>), so a Bundle is not re-indexed per
+    /// Reference; <see cref="ReferenceResolutionCheck"/> still builds its own.
     /// </summary>
     private sealed class Lookup(ValidationState state)
     {
-        private ReferenceIndex? _index;
-
         public IElement Resource => state.Scope.Resource;
 
         public bool IsContained => !ReferenceEquals(state.Scope.Resource, state.Scope.RootResource);
 
         public bool InContainer => state.EnclosingContainer is not null || state.Scope.RootResource.InstanceType is "Bundle" or "Parameters";
 
-        public ReferenceIndex Index => _index ??= ReferenceIndex.Build(state.EnclosingContainer ?? state.Scope.RootResource);
+        public ReferenceIndex Index => state.Global.ReferenceIndexFor(state.EnclosingContainer ?? state.Scope.RootResource);
     }
 }

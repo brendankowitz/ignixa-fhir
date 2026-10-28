@@ -31,5 +31,6 @@ public static class SqlCatalogTableFilter
             || tableName == "SourceEvents"
             || tableName == "BackgroundJobs"
             || tableName == "PackageResource"
-            || tableName == "System";
+            || tableName == "System"
+            || tableName == "QuantityCode";
 }

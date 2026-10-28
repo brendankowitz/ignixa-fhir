@@ -65,6 +65,16 @@ public class SearchQueryInterpreterCompileTests
         Should.Throw<SearchOperationNotSupportedException>(() => query.AcceptVisitor(interpreter, interpreter.InitialContext));
     }
 
+    // Regression: these visits matched against a parameter name nothing set, so they silently matched nothing.
+    [Fact]
+    public void GivenAFieldLevelExpression_WhenVisitedOutsideASearchParameter_ThenItIsRefused()
+    {
+        var interpreter = new SearchQueryInterpreter();
+
+        Should.Throw<InvalidOperationException>(() => Expression.StringEquals(FieldName.TokenCode, null, "x", false).AcceptVisitor(interpreter, interpreter.InitialContext))
+            .Message.ShouldContain("field-level");
+    }
+
     [Theory]
     [InlineData(FieldName.DateTimeStart)]
     [InlineData(FieldName.ParamName)]

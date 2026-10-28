@@ -128,7 +128,7 @@ internal sealed class CompactSearchValueFields
         var value = new StringSearchValue(CompactSearchValueReader.EscapeString(text)) { IsMin = _isMin, IsMax = _isMax };
         return string.Equals(value.String, text, StringComparison.Ordinal)
             ? value
-            : throw new JsonException($"The string '{text}' cannot be reconstructed exactly.");
+            : throw new JsonException("A stored string value cannot be reconstructed exactly.");
     }
 
     private ReferenceSearchValue BuildReference()
@@ -157,7 +157,7 @@ internal sealed class CompactSearchValueFields
             || date.End != DateTimeOffset.Parse(end, CultureInfo.InvariantCulture)
             || (_dateText is not null && !string.Equals(date.ToString(), _dateText, StringComparison.Ordinal)))
         {
-            throw new JsonException($"The date '{_dateText}' does not reproduce the persisted range {start} to {end}.");
+            throw new JsonException("A stored date value does not reproduce its persisted range.");
         }
 
         date.IsMin = _isMin;

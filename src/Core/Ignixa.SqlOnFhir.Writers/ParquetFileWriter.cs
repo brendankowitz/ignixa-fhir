@@ -24,6 +24,7 @@ public partial class ParquetFileWriter : IAsyncDisposable
     private readonly List<Dictionary<string, object?>> _rowBuffer;
     private Stream? _fileStream;
     private ParquetWriter? _parquetWriter;
+    private bool _finished;
     private bool _disposed;
 
     /// <summary>
@@ -59,8 +60,8 @@ public partial class ParquetFileWriter : IAsyncDisposable
 
     /// <summary>
     /// Writes to <paramref name="stream"/>, which must be seekable and writable. The caller opened it and the writer owns it from
-    /// here: it is finished and disposed by <see cref="FlushAsync"/> (or by <see cref="DisposeAsync"/>), and the file is never
-    /// reopened by path, which matters because the footer is only written then.
+    /// here: it is finished and disposed by <see cref="FlushAsync"/> (or by <see cref="DisposeAsync"/>, which leaves it unfinished
+    /// if no row was written), and the file is never reopened by path, which matters because the footer is only written then.
     /// </summary>
     public ParquetFileWriter(
         Stream stream,
@@ -87,6 +88,12 @@ public partial class ParquetFileWriter : IAsyncDisposable
     {
         ThrowIfDisposed();
 
+        // A finished file has its footer written; writing on would truncate it (path) or reopen "(stream)" by name.
+        if (_finished)
+        {
+            throw new InvalidOperationException("The Parquet file has been finished by FlushAsync and cannot take more rows.");
+        }
+
         _rowBuffer.Add(row);
 
         // Flush batch if buffer is full
@@ -108,43 +115,19 @@ public partial class ParquetFileWriter : IAsyncDisposable
     }
 
     /// <summary>
-    /// Flushes all buffered rows and finalizes the Parquet file.
+    /// Flushes all buffered rows and finalizes the Parquet file. With no rows written it still produces a valid empty file,
+    /// replacing whatever an earlier run left at the path, so an empty result is never mistaken for that stale output.
     /// </summary>
     public async Task FlushAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-
-        try
-        {
-            // Flush any remaining rows in buffer
-            if (_rowBuffer.Count > 0)
-            {
-                await FlushBatchAsync(cancellationToken);
-            }
-
-            // Finalize the Parquet file
-            if (_parquetWriter != null)
-            {
-                await _parquetWriter.DisposeAsync();
-                _parquetWriter = null;
-            }
-
-            if (_fileStream != null)
-            {
-                BytesWritten = _fileStream.Length;
-                await _fileStream.DisposeAsync();
-                _fileStream = null;
-
-                LogParquetFileWritten(_logger, BytesWritten, _outputPath);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error flushing Parquet file to: {OutputPath}", _outputPath);
-            throw;
-        }
+        await FinishAsync(createWhenEmpty: true, cancellationToken);
     }
 
+    /// <summary>
+    /// Finishes the file if <see cref="FlushAsync"/> has not: buffered rows are written and the footer added, but with no
+    /// rows a dispose never fabricates a valid empty file, since nobody asked for the result to be complete.
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
         if (_disposed)
@@ -154,7 +137,7 @@ public partial class ParquetFileWriter : IAsyncDisposable
 
         try
         {
-            await FlushAsync(CancellationToken.None);
+            await FinishAsync(createWhenEmpty: false, CancellationToken.None);
         }
         catch (Exception ex)
         {
@@ -171,6 +154,50 @@ public partial class ParquetFileWriter : IAsyncDisposable
             _fileStream?.Dispose();
             _disposed = true;
             GC.SuppressFinalize(this);
+        }
+    }
+
+    private async Task FinishAsync(bool createWhenEmpty, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_rowBuffer.Count > 0)
+            {
+                await FlushBatchAsync(cancellationToken);
+            }
+
+            // Once finished, initializing again would truncate the finished file (path) or write into a disposed stream.
+            if (createWhenEmpty && _parquetWriter == null && !_finished)
+            {
+                await InitializeWriterAsync(cancellationToken);
+            }
+
+            if (_parquetWriter == null)
+            {
+                // Nothing was written: a handed-over stream is still the writer's to dispose.
+                if (_fileStream != null)
+                {
+                    await _fileStream.DisposeAsync();
+                    _fileStream = null;
+                }
+
+                return;
+            }
+
+            await _parquetWriter.DisposeAsync();
+            _parquetWriter = null;
+
+            BytesWritten = _fileStream!.Length;
+            await _fileStream.DisposeAsync();
+            _fileStream = null;
+
+            LogParquetFileWritten(_logger, BytesWritten, _outputPath);
+            _finished = true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error flushing Parquet file to: {OutputPath}", _outputPath);
+            throw;
         }
     }
 

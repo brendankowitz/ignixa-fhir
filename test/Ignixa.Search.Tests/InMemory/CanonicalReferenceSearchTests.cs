@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
+using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
@@ -11,6 +12,7 @@ using Ignixa.Search.InMemory;
 using Ignixa.Search.Models;
 using Ignixa.Search.Tests.Indexing;
 using Ignixa.Specification.ValueSets.Normative;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ignixa.Search.Tests.InMemory;
 
@@ -118,6 +120,26 @@ public class CanonicalReferenceSearchTests
 
         Should.Throw<SearchOperationNotSupportedException>(() => Expression.SearchParameter(profile, predicate).AcceptVisitor(interpreter, interpreter.InitialContext))
             .Issues.ShouldHaveSingleItem().Diagnostics.ShouldNotBeNull().ShouldContain("not supported for canonical references");
+    }
+
+    // Regression: the canonical marking was applied once at construction, so a parameter deleted and re-added through
+    // AddNewSearchParameters came back unmarked and _profile=<url> matched nothing.
+    [Fact]
+    public void GivenAShippedCanonicalParameterDeletedAndAddedAgain_WhenLooked_ThenItIsStillMarkedAsCanonical()
+    {
+        var definitions = new SearchParameterDefinitionManager(R5.Schema, NullLogger<SearchParameterDefinitionManager>.Instance);
+        definitions.TryGetSearchParameter("Patient", "_profile", out SearchParameterInfo original).ShouldBeTrue();
+        original.CanonicalReferences.ShouldNotBe(CanonicalReferenceKind.None);
+
+        definitions.DeleteSearchParameter(original.Url.ToString());
+        definitions.AddNewSearchParameters([R5.Parse($$"""
+            {"resourceType":"SearchParameter","id":"profile","url":"{{original.Url}}","name":"_profile","status":"active",
+             "code":"_profile","base":["Resource"],"type":"reference","expression":"Resource.meta.profile"}
+            """)]);
+
+        definitions.TryGetSearchParameter("Patient", "_profile", out SearchParameterInfo readded).ShouldBeTrue();
+        readded.ShouldNotBeSameAs(original);
+        readded.CanonicalReferences.ShouldBe(original.CanonicalReferences);
     }
 
     private static string Patient(string id, string profile) =>

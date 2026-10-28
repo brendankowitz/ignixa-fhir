@@ -8,6 +8,7 @@
 
 using System.Collections.Immutable;
 using Ignixa.FhirPath.Evaluation;
+using Ignixa.FhirPath.Evaluation.Functions;
 using Ignixa.Abstractions;
 using Ignixa.SqlOnFhir.Expressions;
 
@@ -429,6 +430,11 @@ internal class SqlOnFhirEvaluationVisitor
             if (depth > MaxRepeatDepth)
                 throw new InvalidOperationException(
                     $"repeat went deeper than {MaxRepeatDepth} levels; a repeat path must lead to child elements");
+
+            // Depth alone does not bound the work: ["item", "item"] over a 30-deep tree visits ~2^30 nodes. Same cap as FhirPath repeat().
+            if (result.Count >= RepeatGuardLimits.MaxIterations)
+                throw new InvalidOperationException(
+                    $"repeat produced more than {RepeatGuardLimits.MaxIterations} nodes; a repeat path must lead to child elements");
 
             result.Add(element);
             foreach (var path in repeatPaths)
