@@ -415,7 +415,7 @@ public class SqlServerFhirRepository(
                 // Zero rows means exactly that happened.
                 //
                 // This guard is also what makes the FROZEN surrogate ID above safe, which is the less
-                // obvious half of why it is load-bearing. GetNextSurrogateIdAsync encodes the wall clock at
+                // obvious half of why it is load-bearing. GetNextSurrogateIdAsync encodes SQL Server's clock at
                 // the moment the delete was asked for, so a writer that versions the row afterwards gets a
                 // surrogate that sorts ABOVE the tombstone's. Weakening this predicate -- dropping
                 // "IsHistory = 0", or letting a zero-row flip carry on -- would let the tombstone land BELOW
@@ -1401,12 +1401,17 @@ public class SqlServerFhirRepository(
     // consumes another value and hands back that one instead. The caller never saw the value the failed
     // attempt may have burned, and a sequence is allowed to have gaps -- NEXT VALUE FOR is not rolled back
     // by a transaction either. Declining the retry would fail an entire delete over a transient blip.
+    //
+    // The timestamp comes from SQL Server's clock, exactly as MergeResourcesBeginTransaction stamps the
+    // transaction IDs that later versions use as surrogates. Taking it from this host's clock let a host
+    // running ahead of SQL Server give a tombstone a surrogate above the next PUT's, which MergeResources
+    // rejects with 50409 and a recreate after a delete then failed with 412.
     private async Task<long> GetNextSurrogateIdAsync(CancellationToken cancellationToken)
     {
-        using var command = new SqlCommand("SELECT NEXT VALUE FOR dbo.ResourceSurrogateIdUniquifierSequence");
-        var results = await _sqlExecutionService.ExecuteReaderAsync(_tenantId, command, reader => reader.GetInt32(0), cancellationToken);
-        var sequenceValue = results[0];
-        return (long)(DateTimeOffset.UtcNow - DateTimeOffset.MinValue).TotalMilliseconds * 80000 + sequenceValue;
+        using var command = new SqlCommand(
+            "SELECT datediff_big(millisecond, '0001-01-01', sysutcdatetime()) * 80000 + NEXT VALUE FOR dbo.ResourceSurrogateIdUniquifierSequence");
+        var results = await _sqlExecutionService.ExecuteReaderAsync(_tenantId, command, reader => reader.GetInt64(0), cancellationToken);
+        return results[0];
     }
 
     /// <param name="transaction">
