@@ -120,6 +120,19 @@ public class SearchParameterInfo : IEquatable<SearchParameterInfo>
     public SearchParamType Type { get; }
 
     /// <summary>
+    /// For a shipped composite listed in <c>KnownInconsistentComposites</c>: why its components can never index values a query
+    /// could match; null otherwise, including for composites registered from packages, which are not checked.
+    /// </summary>
+    internal string ComponentInconsistency { get; set; }
+
+    /// <summary>
+    /// For a shipped reference parameter listed in <c>KnownCanonicalReferenceParameters</c>: whether it selects canonicals
+    /// only or beside references; <see cref="CanonicalReferenceKind.None"/> otherwise, including for parameters registered
+    /// from packages, which are not checked.
+    /// </summary>
+    internal CanonicalReferenceKind CanonicalReferences { get; set; }
+
+    /// <summary>
     /// Returns true if this parameter is enabled for searches
     /// </summary>
     public bool IsSearchable { get; set; } = true;

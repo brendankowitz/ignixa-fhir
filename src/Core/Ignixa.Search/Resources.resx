@@ -589,4 +589,12 @@
   <data name="LinksCantBeCreated" xml:space="preserve">
     <value>Bundle.link values omitted because they exceeded the maximum Uri length.</value>
   </data>
+  <data name="CompositeComponentTypeNotSearchable" xml:space="preserve">
+    <value>Composite search parameter '{0}' cannot be searched: component {1} ('{2}') is of type {3}, which has no searchable value.</value>
+    <comment>{0} is the composite search parameter code. {1} is the zero-based component index. {2} is the component's search parameter code. {3} is its type.</comment>
+  </data>
+  <data name="SearchParamTypeNotSearchableByValue" xml:space="preserve">
+    <value>Search parameters of type {0} cannot be searched by value.</value>
+    <comment>{0} is the search parameter type.</comment>
+  </data>
 </root>

@@ -13,6 +13,9 @@ namespace Ignixa.Validation;
 /// </summary>
 public sealed record ValidationResult
 {
+    // Immutable, so one instance serves every passing check: validation calls Success() once per check per element.
+    private static readonly ValidationResult SuccessResult = new(isValid: true, issues: Array.Empty<ValidationIssue>());
+
     /// <summary>
     /// Initializes a new instance of the <see cref="ValidationResult"/> class.
     /// </summary>
@@ -50,7 +53,7 @@ public sealed record ValidationResult
     /// Creates a successful validation result with no issues.
     /// </summary>
     /// <returns>A validation result indicating success.</returns>
-    public static ValidationResult Success() => new(isValid: true, issues: Array.Empty<ValidationIssue>());
+    public static ValidationResult Success() => SuccessResult;
 
     /// <summary>
     /// Creates a failed validation result with the specified issues.

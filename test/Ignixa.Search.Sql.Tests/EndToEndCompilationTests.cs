@@ -370,11 +370,12 @@ public class EndToEndCompilationTests
     public async Task GivenADocumentReferenceRelatesToCompositeQuery_WhenCompiled_ThenProducesTheExpectedPlanAndSql()
     {
         // Arrange -- DocumentReference?relatesto=replaces$DocumentReference/456
-        var compositeParam = new SearchParameterInfo(
-            "relatesto", "relatesto", SearchParamType.Composite,
-            new Uri("http://example.org/fhir/SearchParameter/DocumentReference-relatesto"));
         var targetParam = new SearchParameterInfo("target", "target", SearchParamType.Reference, new Uri("http://example.org/fhir/SearchParameter/DocumentReference-target"));
         var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://example.org/fhir/SearchParameter/DocumentReference-code"));
+        var compositeParam = new SearchParameterInfo(
+            "relatesto", "relatesto", SearchParamType.Composite,
+            new Uri("http://example.org/fhir/SearchParameter/DocumentReference-relatesto"),
+            [new SearchParameterComponentInfo { ResolvedSearchParameter = targetParam }, new SearchParameterComponentInfo { ResolvedSearchParameter = codeParam }]);
 
         var tree = new SearchParameterExpression(
             compositeParam,

@@ -30,9 +30,9 @@ public class UriToReferenceSearchValueConverter : FhirElementToSearchValueConver
 
         if (uri == null) yield break;
 
-        // Contained resources will not be searchable.
-        if (uri.StartsWith("#", StringComparison.Ordinal)
-            || uri.StartsWith("urn:", StringComparison.Ordinal))
+        // Contained resources will not be searchable. A urn: is kept, for the reason given on
+        // ResourceReferenceToReferenceSearchValueConverter.
+        if (uri.StartsWith("#", StringComparison.Ordinal))
             yield break;
 
         yield return _referenceSearchValueParser.Parse(uri);

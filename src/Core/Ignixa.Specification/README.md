@@ -190,9 +190,10 @@ This package is code-generated from official FHIR StructureDefinitions using the
 
 ```bash
 cd codegen
-./generate.ps1 -FhirVersion All  # Windows
-./generate.sh all                # Linux/Mac
+./generate.sh        # every version; or ./generate.sh R4 (R4, R4B, R5, R6, STU3)
 ```
+
+There is no PowerShell script; on Windows run `generate.sh` from Git Bash or WSL. See `codegen/README.md` for prerequisites.
 
 ## FHIR Specification Compliance
 

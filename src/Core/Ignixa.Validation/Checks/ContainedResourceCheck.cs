@@ -124,31 +124,10 @@ public class ContainedResourceCheck(IValidationSchemaResolver schemaResolver) : 
 
             // Adjust paths to be relative to parent resource
             var parentPrefix = $"{element.Location}.{containedPath}";
-            foreach (var issue in containedResult.IssuesOrSynthesizedFailure(
-                parentPrefix, $"contained '{resourceType}' resource"))
-            {
-                // The nested validation returns paths relative to the contained resource (e.g., "Patient.unknownField")
-                // We need to replace the resource type prefix with the contained path
-                var adjustedPath = issue.Path;
-
-                // If path starts with the contained resource type (e.g., "Patient."), replace with contained path
-                if (adjustedPath.StartsWith($"{resourceType}.", StringComparison.Ordinal))
-                {
-                    adjustedPath = $"{parentPrefix}.{adjustedPath.Substring(resourceType.Length + 1)}";
-                }
-                else if (adjustedPath == resourceType)
-                {
-                    // Path is just the resource type (e.g., "Patient")
-                    adjustedPath = parentPrefix;
-                }
-                else if (!adjustedPath.StartsWith(parentPrefix, StringComparison.Ordinal))
-                {
-                    // Path doesn't start with parent prefix, so prepend it
-                    adjustedPath = $"{parentPrefix}.{adjustedPath}";
-                }
-
-                issues.Add(issue with { Path = adjustedPath });
-            }
+            issues.AddRange(NestedResourceIssues.Rebase(
+                containedResult.IssuesOrSynthesizedFailure(parentPrefix, $"contained '{resourceType}' resource"),
+                resourceType,
+                parentPrefix));
         }
 
         // Validity is the conjunction of the contained results' own verdicts and the severity of the

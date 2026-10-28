@@ -7,6 +7,7 @@ using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using EnsureThat;
+using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Extensions.Logging;
 using Ignixa.Specification;
 using Ignixa.Search.Generated;
@@ -80,6 +81,7 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
         // Pre-generated parameters have Component[].DefinitionUrl set, but ResolvedSearchParameter is null
         // We must resolve these references by looking up the component parameters in UrlLookup
         ResolveCompositeComponents(baseParameters, logger);
+        MarkKnownDefinitions();
 
         CalculateSearchParameterHash();
     }
@@ -151,6 +153,7 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
             for (int i = 0; i < parameter.Component.Count; i++)
             {
                 var component = parameter.Component[i];
+                CompositeComponentDefinitionRepairs.RepairExpression(parameter.Url, component);
 
                 // Skip if already resolved (shouldn't happen with pre-generated params, but defensive check)
                 if (component.ResolvedSearchParameter != null)
@@ -184,6 +187,29 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
         }
 
         LogCompositeComponentsResolved(logger, resolvedCount, unresolvedCount);
+    }
+
+    /// <summary>
+    /// Marks the shipped composites listed in <see cref="KnownInconsistentComposites"/>, whose components can never match a
+    /// query, so in-memory search refuses them instead of answering "nothing"; and the shipped reference parameters listed in
+    /// <see cref="KnownCanonicalReferenceParameters"/>, so in-memory search indexes their canonicals and decides from the
+    /// definition alone whether a chain or include can follow them. Runs over every registered parameter after each load or
+    /// add, because <see cref="AddNewSearchParameters"/> builds a new <see cref="SearchParameterInfo"/> for a re-added URL.
+    /// </summary>
+    private void MarkKnownDefinitions()
+    {
+        foreach (SearchParameterInfo parameter in UrlLookup.Values)
+        {
+            switch (parameter.Type)
+            {
+                case SearchParamType.Composite:
+                    parameter.ComponentInconsistency = KnownInconsistentComposites.For(_modelInfoProvider.Version, parameter.Url);
+                    break;
+                case SearchParamType.Reference:
+                    parameter.CanonicalReferences = KnownCanonicalReferenceParameters.For(_modelInfoProvider.Version, parameter.Url);
+                    break;
+            }
+        }
     }
 
     internal ConcurrentDictionary<Uri, SearchParameterInfo> UrlLookup { get; set; }
@@ -278,6 +304,9 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
             UrlLookup,
             TypeLookup,
             _modelInfoProvider);
+
+        // Unlocked: a concurrent search can see a re-added parameter, already published to the lookups, before it is marked.
+        MarkKnownDefinitions();
 
         if (calculateHash) CalculateSearchParameterHash();
     }

@@ -438,7 +438,7 @@ public sealed class StructureDefinitionTypeAdapter
         {
             foreach (var t in typeArr.EnumerateArray())
             {
-                var profiles = ReadAllStringsInArray(t, "profile");
+                var profiles = ReadStrings(t, "profile");
                 if (profiles.Count > 0)
                 {
                     return profiles[0];
@@ -484,8 +484,8 @@ public sealed class StructureDefinitionTypeAdapter
             var rawCode = ReadString(t, "code") ?? string.Empty;
             // The FHIRPath system-type extension overrides code with a friendly FHIR type name.
             var resolvedCode = ResolveFhirPathSystemTypeOverride(t) ?? rawCode;
-            var profiles = ReadAllStringsInArray(t, "profile");
-            var targetProfiles = ReadAllStringsInArray(t, "targetProfile");
+            var profiles = ReadStrings(t, "profile");
+            var targetProfiles = ReadStrings(t, "targetProfile");
 
             // ITypeReference holds a single profile/targetProfile string. Emit one entry per
             // (profile, targetProfile) cross product. For Reference elements with multiple
@@ -662,14 +662,28 @@ public sealed class StructureDefinitionTypeAdapter
             ? v.ValueKind == JsonValueKind.True ? true : v.ValueKind == JsonValueKind.False ? false : (bool?)null
             : null;
 
-    private static IReadOnlyList<string> ReadAllStringsInArray(JsonElement parent, string property)
+    /// <summary>
+    /// The non-empty strings of an array property, or of a single string property: STU3 states <c>type.profile</c> and
+    /// <c>type.targetProfile</c> as one uri (0..1), R4 onwards as an array of canonicals.
+    /// </summary>
+    private static IReadOnlyList<string> ReadStrings(JsonElement parent, string property)
     {
-        if (!parent.TryGetProperty(property, out var arr) || arr.ValueKind != JsonValueKind.Array)
+        if (!parent.TryGetProperty(property, out var value))
         {
             return Array.Empty<string>();
         }
-        var list = new List<string>(arr.GetArrayLength());
-        foreach (var item in arr.EnumerateArray())
+
+        if (value.ValueKind == JsonValueKind.String)
+        {
+            return value.GetString() is { Length: > 0 } single ? [single] : Array.Empty<string>();
+        }
+
+        if (value.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<string>();
+        }
+        var list = new List<string>(value.GetArrayLength());
+        foreach (var item in value.EnumerateArray())
         {
             if (item.ValueKind == JsonValueKind.String)
             {

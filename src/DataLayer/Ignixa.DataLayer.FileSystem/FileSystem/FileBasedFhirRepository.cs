@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Ignixa.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.IO;
@@ -36,10 +37,20 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
     private readonly string _baseDirectory;
     private readonly ILogger<FileBasedFhirRepository> _logger;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
+    // The search index format written by CompactSearchIndexConverter. Sidecars without this marker (or with another value)
+    // still yield their version, deletion and request metadata, but their search index is not read.
+    private const int CurrentIndexFormat = 2;
+
+    private static readonly byte[] Utf8Bom = [0xEF, 0xBB, 0xBF];
+
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
         WriteIndented = false,
         Converters = { new CompactSearchIndexConverter() }
+    };
+    private readonly JsonSerializerOptions _staleIndexJsonOptions = new()
+    {
+        Converters = { new SkippedSearchIndexConverter() }
     };
     private readonly RecyclableMemoryStreamManager _memoryStreamManager;
 
@@ -169,8 +180,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
                 SearchIndexes = resource.SearchIndices?.Cast<SearchIndexEntry>().ToList(),
             };
 
-            string metadataJson = JsonSerializer.Serialize(metadata, _jsonOptions);
-            await File.WriteAllTextAsync(internalMetadataPath, metadataJson, cancellationToken).ConfigureAwait(false);
+            await WriteMetadataFileAsync(internalMetadataPath, metadata, cancellationToken).ConfigureAwait(false);
 
             LogResourceStored(_logger, resource.ResourceType, resource.ResourceId, metadata.VersionId, transactionId);
 
@@ -272,8 +282,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
                 SearchIndexes = null, // Deleted resources have no search indices
             };
 
-            string metadataJson = JsonSerializer.Serialize(deletedMetadata, _jsonOptions);
-            await File.WriteAllTextAsync(internalMetadataPath, metadataJson, cancellationToken).ConfigureAwait(false);
+            await WriteMetadataFileAsync(internalMetadataPath, deletedMetadata, cancellationToken).ConfigureAwait(false);
 
             var resultKey = new ResourceKey(key.ResourceType, key.Id, newVersion.ToString(), key.TenantId);
 
@@ -308,15 +317,8 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
             return 1;
         }
 
-        try
-        {
-            var metadata = await ReadMetadataFileAsync(metadataFile, cancellationToken).ConfigureAwait(false);
-            return int.Parse(metadata.VersionId) + 1;
-        }
-        catch
-        {
-            return 1;
-        }
+        var metadata = await ReadMetadataFileAsync(metadataFile, cancellationToken).ConfigureAwait(false);
+        return int.Parse(metadata.VersionId, CultureInfo.InvariantCulture) + 1;
     }
 
     private string GetDateDirectory(string resourceType, DateTimeOffset timestamp)
@@ -346,30 +348,79 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
 
         foreach (var file in metadataFiles)
         {
-            try
+            var metadata = await ReadMetadataFileAsync(file, cancellationToken).ConfigureAwait(false);
+            if (metadata.LastModified > latestTimestamp)
             {
-                var metadata = await ReadMetadataFileAsync(file, cancellationToken).ConfigureAwait(false);
-                if (metadata.LastModified > latestTimestamp)
-                {
-                    latestTimestamp = metadata.LastModified;
-                    latestFile = file;
-                }
-            }
-            catch
-            {
-                // Skip corrupted metadata files
+                latestTimestamp = metadata.LastModified;
+                latestFile = file;
             }
         }
 
         return latestFile;
     }
 
+    /// <summary>
+    /// Reads one sidecar. A sidecar that cannot be read (corrupt, a literal <c>null</c>, or inaccessible) is logged with its
+    /// path and surfaced as <see cref="SidecarUnreadableException"/>, a server fault whose message names no file: skipping
+    /// it would make the resource vanish from reads, searches and history, and would restart its version numbering on the
+    /// next write. A sidecar whose search index is in another format (see <see cref="CurrentIndexFormat"/>) is read without
+    /// its index and marked <see cref="ResourceMetadata.SearchIndexIsStale"/>, so reads, history and writes keep working
+    /// while searches that need the index refuse it.
+    /// </summary>
     private async ValueTask<ResourceMetadata> ReadMetadataFileAsync(string path, CancellationToken cancellationToken)
     {
-        string metadataJson = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
-        return JsonSerializer.Deserialize<ResourceMetadata>(metadataJson, _jsonOptions)
-            ?? throw new InvalidOperationException($"Failed to deserialize metadata from {path}");
+        try
+        {
+            byte[] metadataJson = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
+
+            // JsonDocument rejects a UTF-8 BOM, which File.ReadAllText used to strip; sidecars edited by hand may carry one.
+            int start = metadataJson.AsSpan().StartsWith(Utf8Bom) ? Utf8Bom.Length : 0;
+            using JsonDocument document = JsonDocument.Parse(metadataJson.AsMemory(start));
+            JsonElement root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                throw new JsonException("The sidecar holds no metadata object.");
+            }
+
+            int storedFormat = root.TryGetProperty(nameof(ResourceMetadata.IndexFormat), out JsonElement format)
+                && format.ValueKind == JsonValueKind.Number
+                && format.TryGetInt32(out int formatVersion)
+                    ? formatVersion
+                    : 0;
+
+            ResourceMetadata metadata = root.Deserialize<ResourceMetadata>(storedFormat == CurrentIndexFormat ? _jsonOptions : _staleIndexJsonOptions)
+                ?? throw new JsonException("The sidecar holds no metadata object.");
+
+            // Recorded as stored (0 when absent) rather than left at the default, so a stale sidecar can never be taken for,
+            // or written back as, a current one whose index is empty.
+            metadata.IndexFormat = storedFormat;
+
+            // Callers parse VersionId and key on the other fields; a null or malformed one must fail here, as an unreadable
+            // sidecar, not later as an unrelated ArgumentNullException or FormatException.
+            if (!int.TryParse(metadata.VersionId, out _)
+                || string.IsNullOrEmpty(metadata.ResourceType)
+                || string.IsNullOrEmpty(metadata.ResourceId)
+                || string.IsNullOrEmpty(metadata.TransactionId))
+            {
+                throw new JsonException("The sidecar lacks a valid VersionId, ResourceType, ResourceId or TransactionId.");
+            }
+
+            return metadata;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            LogFailedToReadMetadataFile(_logger, ex, path);
+            throw new SidecarUnreadableException(
+                "A stored resource's metadata could not be read; the server log names the file.", ex);
+        }
     }
+
+    /// <summary>
+    /// Writes one sidecar atomically (<see cref="AtomicFile"/>), so a concurrent reader - which no longer skips a sidecar
+    /// it cannot read - never sees one half written.
+    /// </summary>
+    private Task WriteMetadataFileAsync(string path, ResourceMetadata metadata, CancellationToken cancellationToken) =>
+        AtomicFile.WriteAllTextAsync(path, JsonSerializer.Serialize(metadata, _jsonOptions), _logger, cancellationToken);
 
     private async ValueTask<string> ReadResourceFromNdjsonByIdAsync(string path, string resourceId, CancellationToken cancellationToken)
     {
@@ -630,8 +681,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
                 Directory.CreateDirectory(metadataDir);
 
                 string metadataPath = Path.Combine(metadataDir, $"{metadata.TransactionId}.metadata.json");
-                string metadataJson = JsonSerializer.Serialize(metadata, _jsonOptions);
-                await File.WriteAllTextAsync(metadataPath, metadataJson, cancellationToken).ConfigureAwait(false);
+                await WriteMetadataFileAsync(metadataPath, metadata, cancellationToken).ConfigureAwait(false);
 
                 LogMetadataWritten(_logger, metadataPath);
             }
@@ -787,59 +837,44 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         LogFoundResourceDirectories(_logger, resourceIdDirs.Length, resourceType);
 
         // For each resource ID directory, find the latest metadata file
+        // A sidecar that cannot be read fails the whole load (ReadMetadataFileAsync logs which one): leaving the resource
+        // out would answer the search as if it did not exist. So does a live resource whose index is in an older format,
+        // after every such sidecar has been logged so they can all be re-saved at once.
+        bool anyStale = false;
         foreach (var resourceIdDir in resourceIdDirs)
         {
-            if (cancellationToken.IsCancellationRequested)
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Find the latest metadata file based on LastModified timestamp
+            (ResourceMetadata Metadata, string File)? latest = null;
+            foreach (var file in Directory.GetFiles(resourceIdDir, "*.metadata.json", SearchOption.TopDirectoryOnly))
             {
-                break;
-            }
-
-            try
-            {
-                // Get all metadata files for this resource ID
-                var metadataFiles = Directory.GetFiles(resourceIdDir, "*.metadata.json", SearchOption.TopDirectoryOnly);
-
-                if (metadataFiles.Length == 0)
+                var metadata = await ReadMetadataFileAsync(file, cancellationToken).ConfigureAwait(false);
+                if (latest is null || metadata.LastModified > latest.Value.Metadata.LastModified)
                 {
-                    continue;
-                }
-
-                // Find the latest metadata file based on LastModified timestamp
-                string? latestFile = null;
-                DateTimeOffset latestTimestamp = DateTimeOffset.MinValue;
-
-                foreach (var file in metadataFiles)
-                {
-                    try
-                    {
-                        var metadata = await ReadMetadataFileAsync(file, cancellationToken).ConfigureAwait(false);
-                        if (metadata.LastModified > latestTimestamp)
-                        {
-                            latestTimestamp = metadata.LastModified;
-                            latestFile = file;
-                        }
-                    }
-                    catch
-                    {
-                        // Skip corrupted metadata files
-                    }
-                }
-
-                // Load the latest metadata file
-                if (latestFile != null)
-                {
-                    var latestMetadata = await ReadMetadataFileAsync(latestFile, cancellationToken).ConfigureAwait(false);
-
-                    var key = new ResourceKey(latestMetadata.ResourceType, latestMetadata.ResourceId, latestMetadata.VersionId);
-                    var searchIndices = latestMetadata.SearchIndexes ?? new List<SearchIndexEntry>();
-
-                    results.Add((key, searchIndices));
+                    latest = (metadata, file);
                 }
             }
-            catch (Exception ex)
+
+            if (latest is not { Metadata: var current, File: var currentFile })
             {
-                LogFailedToLoadMetadata(_logger, ex, resourceIdDir);
+                continue;
             }
+
+            if (current is { SearchIndexIsStale: true, IsDeleted: false })
+            {
+                LogStaleSearchIndex(_logger, currentFile);
+                anyStale = true;
+                continue;
+            }
+
+            var key = new ResourceKey(current.ResourceType, current.ResourceId, current.VersionId);
+            results.Add((key, current.SearchIndexes ?? new List<SearchIndexEntry>()));
+        }
+
+        if (anyStale)
+        {
+            throw new SearchIndexReindexRequiredException();
         }
 
         LogMetadataLoaded(_logger, results.Count, resourceType);
@@ -937,15 +972,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            try
-            {
-                var metadata = await ReadMetadataFileAsync(file, cancellationToken).ConfigureAwait(false);
-                allMetadata.Add(metadata);
-            }
-            catch (Exception ex)
-            {
-                LogFailedToReadMetadataFile(_logger, ex, file);
-            }
+            allMetadata.Add(await ReadMetadataFileAsync(file, cancellationToken).ConfigureAwait(false));
         }
 
         // Apply filters and sorting
@@ -1014,15 +1041,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                try
-                {
-                    var metadata = await ReadMetadataFileAsync(file, cancellationToken).ConfigureAwait(false);
-                    allMetadata.Add(metadata);
-                }
-                catch (Exception ex)
-                {
-                    LogFailedToReadMetadataFile(_logger, ex, file);
-                }
+                allMetadata.Add(await ReadMetadataFileAsync(file, cancellationToken).ConfigureAwait(false));
             }
         }
 
@@ -1097,15 +1116,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    try
-                    {
-                        var metadata = await ReadMetadataFileAsync(file, cancellationToken).ConfigureAwait(false);
-                        allMetadata.Add(metadata);
-                    }
-                    catch (Exception ex)
-                    {
-                        LogFailedToReadMetadataFile(_logger, ex, file);
-                    }
+                    allMetadata.Add(await ReadMetadataFileAsync(file, cancellationToken).ConfigureAwait(false));
                 }
             }
         }
@@ -1263,6 +1274,29 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         public bool IsDeleted { get; set; }
         public ResourceRequest Request { get; set; } = new ResourceRequest("PUT", "");
         public List<SearchIndexEntry>? SearchIndexes { get; set; } = new List<SearchIndexEntry>();
+
+        /// <summary>
+        /// The search index format this sidecar was written in: <see cref="CurrentIndexFormat"/> for a new sidecar, and as
+        /// stored (0 when absent, in sidecars from earlier builds) for one that was read.
+        /// </summary>
+        public int IndexFormat { get; set; } = CurrentIndexFormat;
+
+        /// <summary>True when <see cref="IndexFormat"/> is not the current format, so <see cref="SearchIndexes"/> was not read.</summary>
+        [JsonIgnore]
+        public bool SearchIndexIsStale => IndexFormat != CurrentIndexFormat;
+    }
+
+    /// <summary>Skips a search index this version cannot read, leaving the rest of the sidecar readable.</summary>
+    private sealed class SkippedSearchIndexConverter : JsonConverter<List<SearchIndexEntry>>
+    {
+        public override List<SearchIndexEntry>? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            reader.Skip();
+            return null;
+        }
+
+        public override void Write(Utf8JsonWriter writer, List<SearchIndexEntry> value, JsonSerializerOptions options) =>
+            throw new NotSupportedException("A stale search index is never written.");
     }
 
     private class TransactionManifest
@@ -1355,16 +1389,13 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
     [LoggerMessage(EventId = 25, Level = LogLevel.Debug, Message = "Found {Count} resource directories for type {ResourceType}")]
     private static partial void LogFoundResourceDirectories(ILogger logger, int count, string resourceType);
 
-    [LoggerMessage(EventId = 26, Level = LogLevel.Warning, Message = "Failed to load latest metadata from directory {Directory}")]
-    private static partial void LogFailedToLoadMetadata(ILogger logger, Exception ex, string directory);
-
     [LoggerMessage(EventId = 27, Level = LogLevel.Debug, Message = "Loaded metadata for {Count} {ResourceType} resources (latest versions only)")]
     private static partial void LogMetadataLoaded(ILogger logger, int count, string resourceType);
 
     [LoggerMessage(EventId = 28, Level = LogLevel.Debug, Message = "No history found for resource: {ResourceType}/{Id}")]
     private static partial void LogNoHistoryForResource(ILogger logger, string resourceType, string id);
 
-    [LoggerMessage(EventId = 29, Level = LogLevel.Warning, Message = "Failed to read metadata file {File}")]
+    [LoggerMessage(EventId = 29, Level = LogLevel.Error, Message = "Failed to read metadata file {File}")]
     private static partial void LogFailedToReadMetadataFile(ILogger logger, Exception ex, string file);
 
     [LoggerMessage(EventId = 30, Level = LogLevel.Debug, Message = "Resource history query: {ResourceType}/{Id} returned {Count} versions")]
@@ -1390,4 +1421,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
 
     [LoggerMessage(EventId = 37, Level = LogLevel.Warning, Message = "HardDeleteResourceAsync not implemented for FileBasedFhirRepository - TTL cleanup not supported")]
     private static partial void LogHardDeleteNotImplemented(ILogger logger);
+
+    [LoggerMessage(EventId = 38, Level = LogLevel.Error, Message = "Search index in {File} was written in an older format; save the resource again to rebuild it")]
+    private static partial void LogStaleSearchIndex(ILogger logger, string file);
 }

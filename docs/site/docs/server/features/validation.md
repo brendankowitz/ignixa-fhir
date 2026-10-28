@@ -200,9 +200,92 @@ with a FHIR `OperationOutcome`; a rejected update does not create a new version.
 `Prefer: validation=minimal|spec|full` request header overrides that tenant default.
 `Minimal` is **not** a validation-off switch: it runs the schema's universal
 structural checks, including required fields, primitive types, and narrative checks.
-`Spec` adds schema checks and required terminology bindings. `Full` additionally
-evaluates profile invariants, slicing, and advanced terminology checks. Selecting a
-lower tier does not disable logical-ID validation.
+`Spec` adds schema checks and required terminology bindings, reference target types,
+and every nested datatype, whether it is a plain element, a complex choice variant
+(`valueQuantity`), an extension's value, or the inside of a CodeableConcept, Coding or
+Reference. A Bundle or Parameters resource has each resource it carries validated too.
+`Full` additionally evaluates profile invariants, slicing, extensible bindings, and
+extensions against their loaded definitions, including where each may be used. Selecting
+a lower tier does not disable logical-ID validation. See
+[Validation depths](/docs/core-sdk/validation#validation-depths) for what each tier
+checks and reports.
+
+:::note Behaviour changes in this release
+Writes stay strict at the default `Spec` depth: checks that were skipped now run, so a
+write the server accepted before can be rejected. The list below is every change a
+server caller can see.
+
+**Newly rejected at `Spec` and `Full`** (HTTP 400):
+
+- Rules that already applied to a plain element now also apply inside a complex choice
+  variant (`valueCodeableConcept`, `valueQuantity`, ...) and an extension's value. For
+  example, an Observation whose `valueCodeableConcept.coding.system` is a relative
+  reference such as `"system1"` now fails `coding-system-absolute`, as
+  `Observation.code.coding.system = "system1"` always did and as the HL7 validator
+  reports it.
+- The inside of a CodeableConcept, Coding or Reference: an unknown property
+  (`code.foo`, `subject.actor`), a wrong JSON type (`coding.version: 5`,
+  `reference: 123`), or an element repeated past its cardinality.
+- A CodeableConcept with text only under a required binding (`binding-required-text-only`).
+  A concept carrying only a `data-absent-reason` extension is not affected: the binding has
+  no value to apply to.
+- A reference to a resource type its element does not allow (`reference-target-type`),
+  or one whose `type` disagrees with it (`reference-type-mismatch`). This covers relative,
+  absolute and `_history` references, contained `#id`, `#` (the containing resource, or the
+  resource itself at its root), conditional references (`Patient?identifier=...`, typed by
+  the part before `?`), Bundle `urn:uuid:` entries, and in R4B and R5 the `reference` of a
+  CodeableReference.
+- A malformed extension: no `url`, more than one `value[x]`, a value breaking its datatype.
+- A resource-level extension with a relative `url` (`extension-url-relative`); only a
+  complex extension's sub-extensions may use one. A url, like a `Coding.system`, is
+  absolute only when it starts with a scheme (`http:`, `urn:`): `/foo` is relative on every
+  platform (it used to pass `coding-system-absolute` on Linux).
+- A Bundle or Parameters resource whose entries break their own type or `meta.profile`:
+  each `Bundle.entry.resource`, `Bundle.entry.response.outcome` and
+  `Parameters.parameter.resource` (parts included) is validated, and an entry with no known
+  `resourceType` is `entry-invalid-resourcetype`. The entries' references resolve against
+  the Bundle that holds them (the innermost one, for a Bundle nested in another).
+
+**Newly rejected at `Full` only:**
+
+- An extension used where its loaded definition's contexts do not allow it
+  (`extension-context`), and a modifier extension under `extension` or a non-modifier
+  under `modifierExtension` (`extension-modifier-mismatch`).
+- The invariants of a nested Reference, CodeableConcept or Coding (for example `ref-1`,
+  which now runs on every Reference). Published invariants the HL7 validator corrects are
+  corrected the same way: `ref-1` passes a Reference with only an identifier or a display,
+  and in STU3 and R4 a `#` reference, and STU3's reads the contained pool from the
+  containing resource; STU3's and R4's `bdl-8` passes a Bundle entry with no `fullUrl`.
+
+**Newly accepted:**
+
+- Below `Full`, a choice-variant `dateTime` with loose timezone precision
+  (`effectiveDateTime = "2023-01-01T12:00:00"`) is accepted, as the same value on a plain
+  element always was (bug #210-4; see below). It was rejected before.
+
+**`Compatibility` depth** keeps accepting text-only required concepts, wrong reference
+targets, relative `Coding.system` and relative extension urls, and does not check extension
+contexts. It now validates extensions, complex choice variants, the insides of
+CodeableConcept, Coding and Reference, and Bundle and Parameters entries, and accepts loose
+choice dateTimes as above.
+
+**New non-failing issues in `$validate` output** (`Information`): `reference-target-unchecked`
+(a reference whose target type cannot be told, such as an unresolved `urn:uuid:` or an
+identifier only), and at `Full` `extension-definition-unchecked` (an extension whose
+definition is not loaded, or a sub-extension of a loaded complex extension) and
+`extension-context-unchecked` (an extension whose definition allows it only in FHIRPath
+contexts, which are not evaluated).
+
+**Issue paths:** `coding-1` and `coding-system-absolute` issues are rooted at the resource
+and indexed (`Observation.valueCodeableConcept.coding[0]`). Issues inside a Bundle entry
+are rooted at the entry (`Bundle.entry[3].resource.status`). An issue inside a contained
+resource of the container's own type is no longer rooted twice
+(`Observation.contained[0].status`, not `Observation.contained[0].contained[0].status`).
+
+**Installed packages:** snapshots projected from the core definitions name choice elements
+`value[x]` and carry every target profile, so a differential-only profile constraining a
+choice element now takes effect.
+:::
 
 Logical IDs must contain 1–64 ASCII letters, digits, hyphens, or periods. Narrative
 `text.div` must be a well-formed XHTML `div` in the XHTML namespace, using FHIR's
@@ -215,12 +298,15 @@ is preserved, not rewritten or sanitized. Narrative validation is not a
 replacement for the [FHIR rendering security guidance](https://hl7.org/fhir/R4/security.html#narrative).
 
 Validation depth is not a claim that every possible FHIR constraint is checked.
-In particular, existing non-choice `dateTime` validation accepts loose timezone
-precision at `Spec` (for example, `Period.start = "2021-10-13+02:00"`), but rejects
-it at `Full`. Choice-valued dateTimes such as `Observation.effectiveDateTime` use
-strict primitive syntax, including at `Spec`. The loose form is **not conformant
-FHIR dateTime**; this is a compatibility policy, not a change to the FHIR grammar.
-Use `Full` when strict non-choice dateTime syntax is required.
+In particular, `dateTime` validation accepts loose timezone precision below `Full`
+(for example, `Period.start = "2021-10-13+02:00"` or
+`Observation.effectiveDateTime = "2023-01-01T12:00:00"`), and rejects it at `Full`.
+The rule is the same for a plain element and a choice variant. The loose form is
+**not conformant R4 dateTime**; this is a compatibility policy (bug #210-4: real-world
+data carries it, and the R5 regular expression admits it, although R5's prose still
+requires a timezone whenever a time is present), not a change to the FHIR grammar. Every other
+dateTime rule (component ranges, calendar validity) applies at every depth. Use `Full`
+when strict dateTime syntax is required.
 
 Installed FHIR packages and their StructureDefinitions supply profile rules.
 The write pipeline resolves schemas and typed elements for the current request

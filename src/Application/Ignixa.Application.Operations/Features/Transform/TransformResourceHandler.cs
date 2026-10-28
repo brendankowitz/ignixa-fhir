@@ -153,7 +153,7 @@ public class TransformResourceHandler(
 
         try
         {
-            evaluator.Execute(map, context);
+            evaluator.Execute(map, context, cancellationToken);
 
             logger.LogInformation(
                 "Successfully transformed {SourceType}/{SourceId} to {TargetType}",
@@ -162,6 +162,13 @@ public class TransformResourceHandler(
                 targetType);
 
             return target;
+        }
+        catch (MappingExecutionException ex) when (ex.Code == "TRANSFORM_TIMEOUT")
+        {
+            // A timeout is the request being too costly (too-costly outcome), not an unexpected failure.
+            logger.LogWarning(ex, "Transformation exceeded the transform timeout (Location: {Location})", ex.Location);
+
+            throw new Domain.Exceptions.RequestTooCostlyException(ex.Message, ex);
         }
         catch (MappingExecutionException ex)
         {
