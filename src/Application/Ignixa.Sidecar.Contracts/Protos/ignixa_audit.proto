@@ -81,6 +81,18 @@ message AuditEventRequest {
   // Extensibility: Custom properties for additional audit context
   // Example: {"smart_scope": "patient/*.read", "consent_id": "xyz"}
   map<string, string> custom_properties = 12;
+
+  // Caller-supplied custom audit headers (Azure Health Data Services compatible),
+  // keyed by header name as received, e.g. {"X-IGNIXA-AUDIT-OPERATIONID": "abc"}.
+  // Only headers with the "X-IGNIXA-AUDIT-" prefix, or the Azure Health Data Services compatible
+  // "X-MS-AZUREFHIR-AUDIT-" prefix; at most 10 across both, values at most 2048 chars.
+  // For bundle entries these are the outer bundle request's headers; for background job
+  // completion events they are the headers of the kick-off request. Empty on 431 rejection records.
+  //
+  // Background job completion events (custom_properties["event"] = "background-job-completed") carry
+  // no HTTP status (http_status_code = 0, operation = UNSPECIFIED); success is true only for a
+  // Completed job, and details are in custom_properties: jobType, jobId, status, outcome, durationMs.
+  map<string, string> custom_headers = 13;
 }
 
 // Response message for audit logging operations.

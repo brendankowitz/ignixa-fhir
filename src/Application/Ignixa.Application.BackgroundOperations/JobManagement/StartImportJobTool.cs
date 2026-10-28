@@ -9,10 +9,14 @@ using Ignixa.Application.Features.Experimental.Mcp.Authorization;
 using Ignixa.Application.Features.Experimental.Mcp.Dtos;
 using Ignixa.Application.Features.Experimental.Mcp.Tools;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Application.Infrastructure.Audit;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Medino;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
+using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
 namespace Ignixa.Application.BackgroundOperations.JobManagement;
@@ -26,17 +30,20 @@ namespace Ignixa.Application.BackgroundOperations.JobManagement;
 public class StartImportJobTool : TenantAwareMcpTool
 {
     private readonly IMediator _mediator;
+    private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IConfiguration _configuration;
 
     public StartImportJobTool(
         IFhirRequestContextAccessor fhirRequestContextAccessor,
         ITenantConfigurationStore tenantStore,
         IMediator mediator,
+        IHttpContextAccessor httpContextAccessor,
         IConfiguration configuration,
         IMcpAuthorizationService? mcpAuthorizationService = null)
         : base(fhirRequestContextAccessor, tenantStore, mcpAuthorizationService)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
+        _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
     }
 
@@ -79,7 +86,8 @@ Example: inputFiles=[{type='Patient', url='https://...'}], mode='IncrementalLoad
             Mode = mode,
             BatchSize = effectiveBatchSize,
             ChannelCapacity = channelCapacity,
-            StorageDetail = null // MCP tools don't support storage detail parameters
+            StorageDetail = null, // MCP tools don't support storage detail parameters
+            AuditContext = CaptureAuditContext()
         };
 
         var result = await _mediator.SendAsync(command, cancellationToken);
@@ -96,5 +104,24 @@ Example: inputFiles=[{type='Patient', url='https://...'}], mode='IncrementalLoad
             EndDate = null,
             ErrorMessage = null
         };
+    }
+
+    // MCP routes are outside FhirAuditFilter, so header-limit violations surface here; McpException carries the
+    // non-echoing limit message to the caller instead of the SDK's generic tool error.
+    private BackgroundJobAuditContext? CaptureAuditContext()
+    {
+        if (_httpContextAccessor.HttpContext is not { } httpContext)
+        {
+            return null;
+        }
+
+        try
+        {
+            return AuditAttribution.CreateJobAuditContext(httpContext);
+        }
+        catch (AuditHeaderException ex)
+        {
+            throw new McpException(ex.Message, ex);
+        }
     }
 }

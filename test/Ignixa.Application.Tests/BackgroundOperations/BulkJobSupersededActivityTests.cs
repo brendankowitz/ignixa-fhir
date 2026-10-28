@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Import.Models;
+using Ignixa.Application.BackgroundOperations.Jobs;
 using Ignixa.DataLayer.BlobStorage.Features.BackgroundJobs;
 using Ignixa.DataLayer.BlobStorage.Infrastructure;
 using Ignixa.Domain.Abstractions;
@@ -26,6 +27,7 @@ public class BulkJobSupersededActivityTests : IAsyncLifetime
     private readonly InMemoryBackgroundJobRepository<ExportJobDefinition> _exports;
     private readonly LocalFileBlobClient _blobs;
     private readonly TaskContext _context = new(new OrchestrationInstance { InstanceId = "job" });
+    private readonly IAuditLogger _auditLogger = Substitute.For<IAuditLogger>();
 
     public BulkJobSupersededActivityTests()
     {
@@ -116,12 +118,13 @@ public class BulkJobSupersededActivityTests : IAsyncLifetime
                 await _exports.UpdateAsync(winner, 1, CancellationToken.None);
                 await _exports.UpdateAsync(call.Arg<BackgroundJob<ExportJobDefinition>>(), 1, CancellationToken.None);
             });
-        var activity = new ExportCompletion(repository, NullLogger<ExportCompletion>.Instance);
+        var activity = new ExportCompletion(repository, new BackgroundJobCompletionAuditor(_auditLogger, NullLogger<BackgroundJobCompletionAuditor>.Instance), NullLogger<ExportCompletion>.Instance);
 
         var output = await RunAsync<bool>(activity,
             new ExportCompletionInput("job", 1, true, new Dictionary<string, string> { ["Patient"] = "stale.ndjson" }, 99, null));
 
         output.ShouldBe(succeeded);
+        _auditLogger.DidNotReceive().LogBackgroundJobCompleted(Arg.Any<BackgroundJobAuditEvent>());
         var stored = (await _exports.GetAsync("job", 1, CancellationToken.None))!;
         stored.Status.ShouldBe(terminalStatus);
         stored.Result!["TotalResources"]!.GetValue<int>().ShouldBe(7);
@@ -140,6 +143,7 @@ public class BulkJobSupersededActivityTests : IAsyncLifetime
         replay.Result!.TotalResources.ShouldBe(7);
         replay.ErrorFileUrl.ShouldBe(winner.ErrorFileUrl);
         (await ReadBlobAsync(winner.ErrorFileUrl!)).ShouldBe(original);
+        _auditLogger.Received(1).LogBackgroundJobCompleted(Arg.Any<BackgroundJobAuditEvent>());
     }
 
     [Theory]
@@ -159,6 +163,7 @@ public class BulkJobSupersededActivityTests : IAsyncLifetime
         var output = JsonNode.Parse(json)!;
 
         output["Status"]!.GetValue<string>().ShouldBe(status);
+        _auditLogger.DidNotReceive().LogBackgroundJobCompleted(Arg.Any<BackgroundJobAuditEvent>());
         if (status == "Cancelled")
         {
             output["Result"].ShouldBeNull();
@@ -196,6 +201,8 @@ public class BulkJobSupersededActivityTests : IAsyncLifetime
         Directory.GetFiles(_directory, "*", SearchOption.AllDirectories).Length.ShouldBe(1);
         var stored = (await _imports.GetAsync("job", 1, CancellationToken.None))!;
         stored.Result!["TotalResources"]!.GetValue<int>().ShouldBe(7);
+        _auditLogger.Received(1).LogBackgroundJobCompleted(Arg.Is<BackgroundJobAuditEvent>(e =>
+            e.JobType == "Import" && e.Status == "Completed" && e.Outcome == "0"));
     }
 
     [Fact]
@@ -209,6 +216,7 @@ public class BulkJobSupersededActivityTests : IAsyncLifetime
             RunAsync<CompleteJobOutput>(CreateImportCompletion(repository), Completion("error", 1)));
 
         failure.ToString().ShouldContain("completion storage outage");
+        _auditLogger.DidNotReceive().LogBackgroundJobCompleted(Arg.Any<BackgroundJobAuditEvent>());
     }
 
     [Theory]
@@ -255,6 +263,7 @@ public class BulkJobSupersededActivityTests : IAsyncLifetime
             .AddSingleton(repository)
             .AddSingleton<IBlobStorageClient>(storage ?? _blobs)
             .AddSingleton<ILogger<ImportCompletion>>(NullLogger<ImportCompletion>.Instance)
+            .AddSingleton(new BackgroundJobCompletionAuditor(_auditLogger, NullLogger<BackgroundJobCompletionAuditor>.Instance))
             .BuildServiceProvider();
         return ActivatorUtilities.CreateInstance<ImportCompletion>(services);
     }
