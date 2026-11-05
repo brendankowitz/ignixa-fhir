@@ -11,7 +11,7 @@ public abstract record ResultShape
     }
 
     // A record synthesizes a protected copy constructor, which an external assembly can chain to in order to
-    // derive a fourth case: `record Rogue(ResultShape Seed) : ResultShape(Seed)`. That case would match the
+    // derive a case of its own: `record Rogue(ResultShape Seed) : ResultShape(Seed)`. That case would match the
     // abstract type but none of the concrete ones, reaching the same silent fall-through this union exists to
     // prevent. An abstract private protected member cannot be implemented outside this assembly, so it makes
     // the hierarchy closed in fact and not merely by convention. "Outside this assembly" is exact: private
@@ -24,11 +24,10 @@ public abstract record ResultShape
 
     /// <summary>
     /// The match page, plus the rows of every include stage the plan defines. The ordinary search shape, and
-    /// the only one that pages its own result — which is why <see cref="Paging"/> hangs off it rather than
-    /// sitting beside the shape. A count reads the whole match set, and an includes page carries its own resume
-    /// boundary in <see cref="IncludesPage.Resume"/> (plus, optionally, the match page it replays in
-    /// <see cref="IncludesPage.MatchReplay"/>), so neither has a second result-paging coordinate to be
-    /// inconsistent with.
+    /// the only one whose result is a page of matches — which is why <see cref="Paging"/> hangs off it rather
+    /// than sitting beside the shape. A count reads the whole set it counts, and an includes page pages its
+    /// include rows by <see cref="IncludesPage.Resume"/> and names any match page it seeds from in
+    /// <see cref="IncludesPage.MatchReplay"/>, so none has a separate paging setting to contradict its shape.
     /// </summary>
     /// <param name="Paging">
     /// How the match page is bounded and positioned. Null means no row cap, no offset and no keyset boundary.
@@ -89,9 +88,10 @@ public abstract record ResultShape
     /// <param name="Resume">The last include row of the previous page, or null to start at the first.</param>
     /// <param name="MatchReplay">
     /// Re-selects the exact match page the includes belong to, in the requested sort order, so the stages seed
-    /// from the same matches the original search returned. Null seeds from the whole match set (optionally
-    /// bounded by <c>SearchPlanOptions.SurrogateRange</c>). It bounds the seed only: include rows still page by
-    /// <paramref name="Resume"/> over <c>(T1, Sid1)</c>.
+    /// from the same matches the original search returned. It replaces <c>SearchPlanOptions.SurrogateRange</c>,
+    /// which cannot be combined with it. Null seeds from every match in the current sort phase, optionally
+    /// bounded by that window. It bounds the seed only: include rows still page by <paramref name="Resume"/>
+    /// over <c>(T1, Sid1)</c>.
     /// </param>
     public sealed record IncludesPage(IncludeBoundary? Resume = null, MatchPageReplay? MatchReplay = null) : ResultShape
     {
@@ -104,10 +104,16 @@ public abstract record ResultShape
     /// A single <c>COUNT_BIG(*)</c> over the distinct included resources, keyed by <c>(T1, Sid1)</c>, that
     /// the whole search reaches: the <c>$includes</c> operation under <c>_summary=count</c>. Every include
     /// stage is counted, <c>:iterate</c> and wildcard stages included, through the same access-controlled
-    /// stage bodies an <see cref="IncludesPage"/> reads; a resource that is itself a match is never counted.
-    /// Seeded from the unpaged match set: sort, sort phase, surrogate-id window, include limits and resume
-    /// boundary do not bound it, so the plan carries none of them.
+    /// stage bodies an <see cref="IncludesPage"/> reads. A resource that is a match anywhere in the search is
+    /// never counted, even if a replayed <see cref="IncludesPage"/> would return it as an include of another
+    /// page.
     /// </summary>
+    /// <remarks>
+    /// Seeded from the unpaged, unsorted match set. Stage limits are not emitted, and <c>Lower</c> validates and
+    /// then drops the sort, <c>SearchPlanOptions.SortPhase</c> and the surrogate-id window, so compiling once
+    /// per sort phase and summing double-counts. A hand-built plan carrying a Top, Page, OffsetPage,
+    /// SurrogateRange or Sort is rejected.
+    /// </remarks>
     public sealed record IncludesCount : ResultShape
     {
         private protected override void ThisUnionIsClosed()

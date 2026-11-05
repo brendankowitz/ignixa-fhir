@@ -1,4 +1,6 @@
-﻿namespace Ignixa.Search.Sql.Ast;
+using System.Globalization;
+
+namespace Ignixa.Search.Sql.Ast;
 
 /// <summary>
 /// Rejects the plan shapes that have no coherent SQL rendering. Complements <see cref="QueryPlanValidator"/>,
@@ -46,9 +48,9 @@ internal static class PlanShapeValidator
         // are out of range would otherwise be told to make them agree, which leaves the plan invalid.
         // Guarded independently of Lower.Run because QueryPlan is a public construction surface. Every stage
         // is checked because a stage Limit reaches a TOP (Limit + 1) on the ordinary includes path, where
-        // int.MaxValue overflows it to a negative row count. The includes page budgets globally from stage 0
-        // instead, so its later stages carry a limit that is never emitted — still rejected, so a plan means
-        // the same thing under either shape.
+        // int.MaxValue overflows it to a negative row count. The includes page budgets globally from stage 0 and the
+        // includes count emits no limit at all, so those stage limits never reach SQL — still rejected, so a plan
+        // means the same thing under every shape.
         if (plan.Includes is { Count: > 0 } stages)
         {
             for (var i = 0; i < stages.Count; i++)
@@ -192,9 +194,10 @@ internal static class PlanShapeValidator
     }
 
     /// <summary>
-    /// Rejects every bound on the match set an <see cref="ResultShape.IncludesPage"/> seeds from except the one
-    /// it can name: a <see cref="MatchPageReplay"/>. Top and a keyset Page are legal only as that replay's page
-    /// size and boundary, so a plan cannot bound its seed by accident; an OffsetPage or a probe row never is.
+    /// Rejects every paging bound on an <see cref="ResultShape.IncludesPage"/>'s seed except a
+    /// <see cref="MatchPageReplay"/>. Top and a keyset Page are legal only as that replay's page size and
+    /// boundary, so a plan cannot bound its seed by accident; an OffsetPage or probe row is never legal. Without
+    /// a replay, SurrogateRange and the sort phase remain legal filters; with one, the replay replaces the window.
     /// </summary>
     private static void RejectUnsupportedIncludesPageSeedPaging(QueryPlan plan)
     {
@@ -215,42 +218,61 @@ internal static class PlanShapeValidator
                 "row would seed include stages from a resource that was never on it. Clear TopIncludesProbeRow.");
         }
 
-        if (plan.MatchSpec.MatchReplay is not { } replay)
+        if (plan.MatchSpec.MatchReplay is { } replay)
         {
-            if (plan.Page is not null)
+            // Top and Page are what the emitter reads; MatchReplay is what the caller asked for. Requiring them to
+            // agree means a plan rewritten with `with { Top = … }` cannot quietly seed from a different page.
+            if (plan.Top != replay.PageSize || !SameBoundary(plan.Page, replay.Boundary))
             {
-                // A Sort is still allowed here: its phase filters the seed match set rather than ordering it.
                 throw new NotSupportedException(
-                    "ResultShape.IncludesPage cannot be combined with a keyset Page unless it replays a match " +
-                    "page. Without ResultShape.IncludesPage.MatchReplay the seek has no page size to stop at, " +
-                    "silently changing which resources are included. Set MatchReplay to the page size and " +
-                    "boundary of the match page the includes belong to, or clear Page.");
+                    "ResultShape.IncludesPage.MatchReplay disagrees with the plan's MatchPageSpec: Top must equal " +
+                    $"MatchReplay.PageSize ({replay.PageSize}; got " +
+                    $"{plan.Top?.ToString(CultureInfo.InvariantCulture) ?? "none"}) and Page must carry the same " +
+                    "values as MatchReplay.Boundary. The emitter reads Top and Page, so a disagreement would seed " +
+                    "the include stages from a different page than the one the shape names.");
             }
 
-            if (plan.Top is not null)
+            if (plan.SurrogateRange is not null)
             {
                 throw new NotSupportedException(
-                    "ResultShape.IncludesPage cannot be combined with a Top cap unless it replays a match page. " +
-                    "A bare cap bounds the match set that seeds the include stages in whatever order the plan " +
-                    "happens to sort, dropping include rows with no indication that they are missing. Set " +
-                    "ResultShape.IncludesPage.MatchReplay, or bound the match set with SurrogateRange.");
+                    "ResultShape.IncludesPage.MatchReplay cannot be combined with a SurrogateRange. TOP (PageSize) " +
+                    "inside a surrogate-id window is a different page from the one the replay names unless the " +
+                    "original search used the same window. The replay replaces the window: clear SurrogateRange.");
             }
 
             return;
         }
 
-        // Top and Page are what the emitter reads; MatchReplay is what the caller asked for. Requiring them to
-        // agree means a plan rewritten with `with { Top = … }` cannot quietly seed from a different page.
-        if (plan.Top != replay.PageSize || !Equals(plan.Page, replay.Boundary))
+        if (plan.Page is not null)
+        {
+            // Without a replay a Sort is still allowed: its phase filters the seed match set rather than ordering it.
+            throw new NotSupportedException(
+                "ResultShape.IncludesPage cannot be combined with a keyset Page unless it replays a match " +
+                "page. A seek with no ResultShape.IncludesPage.MatchReplay names no page to stop at, silently " +
+                "changing which resources are included. Set MatchReplay to the page size and boundary of the " +
+                "match page the includes belong to, or clear Page.");
+        }
+
+        if (plan.Top is not null)
         {
             throw new NotSupportedException(
-                "ResultShape.IncludesPage.MatchReplay disagrees with the plan's MatchPageSpec: Top must equal " +
-                $"MatchReplay.PageSize ({replay.PageSize}; got " +
-                $"{plan.Top?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none"}) and Page must " +
-                "equal MatchReplay.Boundary. The emitter reads Top and Page, so a disagreement would seed the " +
-                "include stages from a different page than the one the shape names.");
+                "ResultShape.IncludesPage cannot be combined with a Top cap unless it replays a match page. " +
+                "A bare cap bounds the match set that seeds the include stages in whatever order the plan " +
+                "happens to sort, dropping include rows with no indication that they are missing. Set " +
+                "ResultShape.IncludesPage.MatchReplay, or bound the match set with SurrogateRange.");
         }
     }
+
+    /// <summary>
+    /// Whether two keyset boundaries carry the same values. <see cref="PageSpec"/>'s record equality compares its
+    /// <see cref="PageSpec.Boundary"/> list by reference, which would reject a boundary decoded twice.
+    /// </summary>
+    private static bool SameBoundary(PageSpec? left, PageSpec? right)
+        => ReferenceEquals(left, right)
+           || (left is not null && right is not null
+               && Equals(left.BoundaryResourceTypeId, right.BoundaryResourceTypeId)
+               && Equals(left.BoundarySurrogateId, right.BoundarySurrogateId)
+               && left.Boundary.SequenceEqual(right.Boundary));
 
     /// <summary>
     /// Rejects any bound on the match set an <see cref="ResultShape.IncludesCount"/> seeds from. The count is

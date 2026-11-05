@@ -1,4 +1,4 @@
-﻿namespace Ignixa.Search.Sql.Ast;
+namespace Ignixa.Search.Sql.Ast;
 
 /// <summary>
 /// Immutable configuration for the match page and its optional include-seed wrappers.
@@ -23,7 +23,10 @@ public sealed record MatchPageSpec(
     /// <summary>The result shape, defaulting to <see cref="ResultShape.Matches"/>.</summary>
     public ResultShape EffectiveShape => Shape ?? ResultShape.Default;
 
-    /// <summary>True when the statement returns a count rather than rows.</summary>
+    /// <summary>
+    /// True when the statement returns a count of the matches (<see cref="ResultShape.Count"/>) rather than rows.
+    /// See <see cref="IncludesCountOnly"/> for the other scalar shape, a count of included resources.
+    /// </summary>
     public bool CountOnly => EffectiveShape is ResultShape.Count;
 
     /// <summary>True when the statement omits match rows from its final result and returns include-stage rows only.</summary>
@@ -34,7 +37,7 @@ public sealed record MatchPageSpec(
 
     /// <summary>
     /// The match page an <see cref="ResultShape.IncludesPage"/> replays to seed its include stages, or null
-    /// when it seeds from the whole match set or the shape is not an includes page. When set,
+    /// when it seeds from every match in the current sort phase or the shape is not an includes page. When set,
     /// <see cref="Top"/> and <see cref="Page"/> must carry its page size and boundary.
     /// </summary>
     public MatchPageReplay? MatchReplay => (EffectiveShape as ResultShape.IncludesPage)?.MatchReplay;

@@ -20,7 +20,8 @@ public sealed record SearchPlanOptions
     /// result into the resources carrying the primary key and the resources missing it, because a keyset seek
     /// has to be sargable against the search-parameter index, which rules out ordering one statement by a
     /// nullable key. The segment filters the match set, so it applies under either paging mechanism and with
-    /// no paging at all — which is why it sits here rather than on <see cref="SearchPaging"/>. It cannot be
+    /// no paging at all — which is why it sits here rather than on <see cref="SearchPaging"/> — except under
+    /// <see cref="ResultShape.IncludesCount"/>, which counts the includes of every phase and ignores it. It cannot be
     /// inferred: the first page of either segment has no boundary to infer it from. Requesting
     /// <see cref="Ast.SortPhase.MissingPrimary"/> without a <c>_sort</c> is rejected.
     /// </summary>

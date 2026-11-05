@@ -1,10 +1,11 @@
 using Ignixa.Search.Sql.Ast;
+using SearchSortOrder = Ignixa.Search.Expressions.SortOrder;
 
 namespace Ignixa.Search.Sql.Tests.TestSupport;
 
 /// <summary>
-/// Hand-built plans for the two <c>$includes</c> shapes that seed from a match set the include page does not
-/// return: <see cref="ResultShape.IncludesCount"/> and an <see cref="ResultShape.IncludesPage"/> carrying a
+/// Hand-built plans for the two <c>$includes</c> shapes that seed from a match set they do not return:
+/// <see cref="ResultShape.IncludesCount"/> and an <see cref="ResultShape.IncludesPage"/> carrying a
 /// <see cref="MatchPageReplay"/>. Shared by the emission, explain and grammar tests so they pin one plan each.
 /// </summary>
 internal static class IncludesShapePlans
@@ -12,6 +13,12 @@ internal static class IncludesShapePlans
     public const short PatientTypeId = 103;
     public const short OrganizationTypeId = 105;
     public const short ObservationTypeId = 107;
+
+    /// <summary><c>_sort=-date</c>, Valued phase.</summary>
+    public static readonly SortSpec DateDescending = new([new SortKey(203, SortKeyKind.Date, SearchSortOrder.Descending)], SortPhase.Valued);
+
+    /// <summary>A later-page boundary for <see cref="DateDescending"/>: typeless, as a custom sort requires.</summary>
+    public static readonly PageSpec TypelessDateBoundary = new([new SqlParameterRef("2024-03-01")], BoundaryResourceTypeId: null, new SqlParameterRef(4200L));
 
     /// <summary>Patient:organization — the ordinary forward include.</summary>
     public static IncludeStage ForwardStage(int? limit = 10)
@@ -35,9 +42,10 @@ internal static class IncludesShapePlans
 
     /// <summary>An includes count over every resource of the match type.</summary>
     public static QueryPlan IncludesCount(params IncludeStage[] stages)
-        => IncludesCount(new MatchPageSpec(new CteRef(0), Shape: new ResultShape.IncludesCount()), stages);
+        => PatientPlan(new MatchPageSpec(new CteRef(0), Shape: new ResultShape.IncludesCount()), stages);
 
-    public static QueryPlan IncludesCount(MatchPageSpec spec, params IncludeStage[] stages)
+    /// <summary>An include plan whose match set is every Patient, shaped and bounded by <paramref name="spec"/>.</summary>
+    public static QueryPlan PatientPlan(MatchPageSpec spec, params IncludeStage[] stages)
         => IncludePlanFactory.Create([new CteDefinition.ResourceSource(PatientTypeId)], spec, stages);
 
     /// <summary>
@@ -49,18 +57,14 @@ internal static class IncludesShapePlans
 
     /// <summary>An includes page replaying <paramref name="replay"/> under <paramref name="sort"/>.</summary>
     public static QueryPlan Replay(MatchPageReplay replay, SortSpec? sort, IncludeBoundary? resume = null, params IncludeStage[] stages)
-        => IncludePlanFactory.Create(
-            [new CteDefinition.ResourceSource(PatientTypeId)],
-            ReplaySpec(replay, sort, resume),
-            stages.Length == 0 ? [ForwardStage()] : stages);
+        => PatientPlan(ReplaySpec(replay, sort, resume), stages.Length == 0 ? [ForwardStage()] : stages);
 
     /// <summary>
     /// The ordinary search page the replay re-reads: the same sort and boundary, capped at the page size plus a
     /// has-more probe row, with the same include stage. Its match page is what the replay must reproduce.
     /// </summary>
     public static QueryPlan OriginalMatchesPage(MatchPageReplay replay, SortSpec? sort)
-        => IncludePlanFactory.Create(
-            [new CteDefinition.ResourceSource(PatientTypeId)],
+        => PatientPlan(
             new MatchPageSpec(new CteRef(0), Top: replay.PageSize + 1, Sort: sort, Page: replay.Boundary, TopIncludesProbeRow: true),
-            [ForwardStage()]);
+            ForwardStage());
 }

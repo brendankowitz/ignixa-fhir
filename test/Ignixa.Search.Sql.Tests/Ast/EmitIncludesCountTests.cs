@@ -3,7 +3,9 @@ using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Builders;
 using Shouldly;
 using Xunit;
+using static Ignixa.Search.Sql.Tests.TestSupport.EmittedSqlSlices;
 using static Ignixa.Search.Sql.Tests.TestSupport.IncludesShapePlans;
+using SearchSortOrder = Ignixa.Search.Expressions.SortOrder;
 
 namespace Ignixa.Search.Sql.Tests.Ast;
 
@@ -64,7 +66,7 @@ public class EmitIncludesCountTests
 
         var sql = SqlBuilder.Run(plan).Sql;
 
-        var count = sql[sql.IndexOf("SELECT COUNT_BIG(*) FROM (", StringComparison.Ordinal)..];
+        var count = IncludesCountSelect(sql);
         count.Split("\nUNION\n").Length.ShouldBe(4);
         count.ShouldNotContain("UNION ALL");
         for (var i = 0; i < 4; i++)
@@ -116,29 +118,29 @@ public class EmitIncludesCountTests
         var outer = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("abc"));
         var spec = new MatchPageSpec(new CteRef(0), OuterPredicate: outer, Shape: new ResultShape.IncludesCount(), SearchParameterHash: new SqlParameterRef("hash"));
 
-        var sql = SqlBuilder.Run(IncludesCount(spec, ForwardStage())).Sql;
+        var sql = SqlBuilder.Run(PatientPlan(spec, ForwardStage())).Sql;
 
         MatchPageBody(sql).ShouldContain("INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1");
         MatchPageBody(sql).ShouldContain("WHERE r.ResourceId = @p1 AND (r.SearchParamHash IS NULL OR r.SearchParamHash <> @p2)");
     }
 
     [Fact]
-    public void GivenAProjection_WhenCounted_ThenItIsIgnored()
+    public void GivenAProjection_WhenCounted_ThenTheStatementIsTheUnprojectedCount()
     {
-        var plan = IncludePlanFactory.Create(
+        var projected = IncludePlanFactory.Create(
             [new CteDefinition.ResourceSource(PatientTypeId)],
             new MatchPageSpec(new CteRef(0), Shape: new ResultShape.IncludesCount()),
             [ForwardStage()],
             projection: new ProjectionSpec(["RawResource"]));
 
-        SqlBuilder.Run(plan).Sql.ShouldNotContain("RawResource");
+        SqlBuilder.Run(projected).Sql.ShouldBe(SqlBuilder.Run(IncludesCount(ForwardStage())).Sql);
     }
 
     public static TheoryData<string, MatchPageSpec> BoundedSeeds()
     {
         var root = new CteRef(0);
         var shape = new ResultShape.IncludesCount();
-        var sort = new SortSpec([new SortKey(203, SortKeyKind.Date, Ignixa.Search.Expressions.SortOrder.Ascending)], SortPhase.Valued);
+        var sort = new SortSpec([new SortKey(203, SortKeyKind.Date, SearchSortOrder.Ascending)], SortPhase.Valued);
         return new TheoryData<string, MatchPageSpec>
         {
             { "a Top cap", new MatchPageSpec(root, Top: 10, Shape: shape) },
@@ -153,7 +155,7 @@ public class EmitIncludesCountTests
     [MemberData(nameof(BoundedSeeds))]
     public void GivenAHandBuiltIncludesCountWithABoundedSeed_WhenEmitted_ThenItIsRejectedRatherThanCountingPartOfTheIncludes(string bound, MatchPageSpec spec)
     {
-        var plan = IncludesCount(spec, ForwardStage());
+        var plan = PatientPlan(spec, ForwardStage());
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan))
             .Message.ShouldContain($"ResultShape.IncludesCount cannot be combined with {bound}");
@@ -179,15 +181,21 @@ public class EmitIncludesCountTests
     }
 
     [Fact]
-    public void GivenAnIncludesCount_WhenExplained_ThenItNamesTheShapeAndConsumesEveryParameter()
+    public void GivenAnIncludesCount_WhenExplained_ThenItNamesTheShapeConsumesEveryParameterAndShowsNoStageBudget()
     {
+        // Describe re-emits the plan and fails if any bound parameter is left unnamed or named out of order, so
+        // binding the outer predicate and the hash proves the count's ordinals line up with its explain rows.
         var outer = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("abc"));
-        var plan = IncludesCount(new MatchPageSpec(new CteRef(0), OuterPredicate: outer, Shape: new ResultShape.IncludesCount()), ForwardStage());
+        var spec = new MatchPageSpec(new CteRef(0), OuterPredicate: outer, Shape: new ResultShape.IncludesCount(), SearchParameterHash: new SqlParameterRef("hash"));
+        var plan = PatientPlan(spec, ForwardStage(limit: 10));
 
         var rows = PlanExplainer.Describe(plan);
 
         rows.ShouldContain(row => row.Kind == PlanRowKind.IncludesCount && row.Body == "true");
         rows.ShouldNotContain(row => row.Kind == PlanRowKind.CountOnly);
+        var stage = rows.Where(row => row.Kind == PlanRowKind.IncludeStage).ShouldHaveSingleItem();
+        stage.Body.ShouldContain("limit=ignored");
+        PlanExplainer.Print(rows).ShouldContain("SearchParameterHash(hash=@p2)");
     }
 
     [Fact]
@@ -198,19 +206,5 @@ public class EmitIncludesCountTests
         var range = emitted.TextRanges!.Where(r => r.Kind == SqlRangeKind.IncludeCount).ShouldHaveSingleItem();
         range.Label.ShouldBe(SqlLabels.IncludeCount);
         emitted.Sql.Substring(range.Start, range.Length).ShouldStartWith("SELECT COUNT_BIG(*) FROM (");
-    }
-
-    private static string MatchPageBody(string sql)
-    {
-        var start = sql.IndexOf("cteMatchPage AS (", StringComparison.Ordinal);
-        start.ShouldBeGreaterThanOrEqualTo(0);
-        return sql[start..sql.IndexOf("\n)", start, StringComparison.Ordinal)];
-    }
-
-    private static string IncludeStageBody(string sql, int index)
-    {
-        var start = sql.IndexOf($"inc{index} AS (", StringComparison.Ordinal);
-        start.ShouldBeGreaterThanOrEqualTo(0);
-        return sql[start..sql.IndexOf("\n)", start, StringComparison.Ordinal)];
     }
 }

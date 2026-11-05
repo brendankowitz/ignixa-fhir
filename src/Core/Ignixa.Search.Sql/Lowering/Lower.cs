@@ -39,7 +39,7 @@ internal static class Lower
         // Paging hangs off Matches, so a count cannot carry one at all — the combinations it rejects are
         // unrepresentable here rather than guarded. Paging is itself one closed choice, so the T-SQL restriction
         // that TOP cannot combine with OFFSET/FETCH (error 10741) needs no guard either: only one of these locals
-        // can be non-null. An includes page's only match-set bound is the page it replays, which is keyset by
+        // can be non-null. An includes page's only paging bound is the match page it replays, which is keyset by
         // construction and carries no probe row.
         var paging = (shape as ResultShape.Matches)?.Paging;
         var keyset = paging as SearchPaging.Keyset;
@@ -49,6 +49,8 @@ internal static class Lower
 
         var offsetPage = paging is SearchPaging.Offset offset ? RequireOffsetSpec(offset) : null;
 
+        // RejectUnsupportedOptions' negative-Top guard would catch this too, since the page size becomes Top;
+        // checked first only so the message names the replay rather than a Top the caller never set.
         if (replay is { PageSize: < 0 })
         {
             throw new NotSupportedException(
@@ -82,8 +84,9 @@ internal static class Lower
         {
             throw new NotSupportedException(
                 $"{(includesOnly ? "IncludesPage" : "IncludesCount")} was requested with no _include or " +
-                "_revinclude stages, which can only ever return an empty result. This is a caller error rather " +
-                "than a query that legitimately matches nothing, so it is reported rather than silently emitted.");
+                $"_revinclude stages, which can only ever {(includesOnly ? "return an empty result" : "count zero")}. " +
+                "This is a caller error rather than a query that legitimately matches nothing, so it is reported " +
+                "rather than silently emitted.");
         }
 
         // A _sort is still allowed here: its ordering role drops (include rows page by (T1, Sid1), not the sort
@@ -94,15 +97,15 @@ internal static class Lower
 
         // BuildSortSpec validates the sort -- key count, key types, and MissingPrimary against a resource-column
         // primary key -- so it runs for every shape. A count reads it only when it asked to be restricted to the
-        // phase; otherwise SqlBuilder ignores it and counts the whole match set.
+        // phase; otherwise SqlBuilder ignores it and counts the whole match set. An includes count never reads
+        // it: it is dropped below.
         var sortSpec = BuildSortSpec(sort, sortPhase, symbols);
 
         RejectUnsoundKeysetPage(page, sortSpec, sortPhase);
 
-        // An includes count is of the whole search: the sort, its phase and the surrogate-id window a caller
-        // carries over from the includes page it is counting are deliberately ignored, after the sort has been
-        // validated above, so the match seed is the unpaged match set. PlanShapeValidator rejects a hand-built
-        // plan that carries either.
+        // An includes count is of the whole search, so the sort (validated above), its phase and the surrogate-id
+        // window a caller carries over from the includes page are dropped from its match seed. PlanShapeValidator
+        // rejects a hand-built plan that carries a Sort or SurrogateRange.
         var matchSpec = new MatchPageSpec(
             match,
             Top: top,

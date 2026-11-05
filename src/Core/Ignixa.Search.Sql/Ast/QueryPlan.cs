@@ -58,7 +58,10 @@ public sealed record QueryPlan(
     /// <summary>The plan's result shape, defaulting to <see cref="ResultShape.Matches"/>.</summary>
     public ResultShape EffectiveShape => MatchSpec.EffectiveShape;
 
-    /// <summary>True when the statement returns a count rather than rows.</summary>
+    /// <summary>
+    /// True when the statement returns a count of the matches (<see cref="ResultShape.Count"/>) rather than rows.
+    /// See <see cref="IncludesCountOnly"/> for the other scalar shape, a count of included resources.
+    /// </summary>
     public bool CountOnly => MatchSpec.CountOnly;
 
     /// <summary>True when the statement omits match rows from its final result and returns include-stage rows only.</summary>

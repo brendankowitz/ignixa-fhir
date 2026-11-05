@@ -51,7 +51,10 @@ public static class SqlRangeKind
     /// </summary>
     public const string IncludeLimit = "includeLimit";
 
-    /// <summary>The final UNION ALL stitching the match page to every include stage. No row is named for it.</summary>
+    /// <summary>
+    /// The union of a shape's arms: the match page and include stages (<c>UNION ALL</c>), or only the include
+    /// stages (<c>UNION</c>) for an includes page or includes count. No row is named for it.
+    /// </summary>
     public const string Assembly = "assembly";
 
     /// <summary>

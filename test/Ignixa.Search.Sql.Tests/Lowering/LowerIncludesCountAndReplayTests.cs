@@ -6,6 +6,7 @@ using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Symbols;
 using Ignixa.Specification.ValueSets.Normative;
+using static Ignixa.Search.Sql.Tests.TestSupport.EmittedSqlSlices;
 using Shouldly;
 using Xunit;
 
@@ -50,6 +51,8 @@ public class LowerIncludesCountAndReplayTests
     private static readonly IncludeExpression RevIncludeWildcard = new(["*"], referenceSearchParameter: null, "*", "Patient", referencedTypes: ["Observation"], wildCard: true, reversed: true, iterate: false);
 
     private static readonly SortExpression BirthDateDescending = new(BirthDateParam, SortOrder.Descending);
+
+    private static readonly PageSpec TypelessBirthDateBoundary = new([new SqlParameterRef("2024-03-01")], BoundaryResourceTypeId: null, new SqlParameterRef(4200L));
 
     private static readonly SymbolTable Symbols = new(
         new Dictionary<string, short>
@@ -109,7 +112,7 @@ public class LowerIncludesCountAndReplayTests
             sort: [new SortExpression(new SearchParameterInfo("_lastUpdated", "_lastUpdated", SearchParamType.Date, new Uri("http://hl7.org/fhir/SearchParameter/Resource-lastUpdated")), SortOrder.Ascending)],
             options: new SearchPlanOptions { Shape = new ResultShape.IncludesCount(), SortPhase = SortPhase.MissingPrimary });
 
-        Should.Throw<NotSupportedException>(() => Lower.Run(context, Symbols));
+        Should.Throw<NotSupportedException>(() => Lower.Run(context, Symbols)).Message.ShouldContain("resource-column sort keys");
     }
 
     [Fact]
@@ -134,11 +137,41 @@ public class LowerIncludesCountAndReplayTests
         var plan = Lower.Run(context, Symbols).Plan;
         var sql = SqlBuilder.Run(plan).Sql;
 
-        plan.Includes.ShouldNotBeNull();
-        plan.Includes!.ShouldContain(stage => stage.Iterate);
-        plan.Includes!.ShouldContain(stage => stage.ReferenceSearchParamId == null);
-        var count = sql[sql.IndexOf("SELECT COUNT_BIG(*) FROM (", StringComparison.Ordinal)..];
-        count.Split("\nUNION\n").Length.ShouldBe(plan.Includes!.Count);
+        var includes = plan.Includes.ShouldNotBeNull();
+        includes.ShouldContain(stage => stage.Iterate);
+        includes.ShouldContain(stage => stage.ReferenceSearchParamId == null);
+        IncludesCountSelect(sql).Split("\nUNION\n").Length.ShouldBe(includes.Count);
+    }
+
+    [Fact]
+    public void GivenAnAccessConstraintAndAWildcardRevInclude_WhenCountingIncludes_ThenTheCountedWildcardStageIsConstrainedLikeThePage()
+    {
+        // A wildcard stage's output types are unknown, so the constraint binds conservatively. Skipping that for
+        // the count would let it reveal how many hidden resources a _revinclude=* reaches.
+        var count = LowerAndEmit(new ResultShape.IncludesCount(), accessConstraints: [ObservationFinalOnly], revIncludes: [RevIncludeWildcard]);
+        var page = LowerAndEmit(new ResultShape.IncludesPage(), accessConstraints: [ObservationFinalOnly], revIncludes: [RevIncludeWildcard]);
+
+        var stage = count.Plan.Includes.ShouldNotBeNull().ShouldHaveSingleItem();
+        stage.OutputTypeIds.ShouldBeNull();
+        stage.Constraints.ShouldNotBeNull().ShouldHaveSingleItem().ConstraintTypeId.ShouldBe(ObservationTypeId);
+        IncludeStageBody(count.Sql, 0).ShouldBe(IncludeStageBody(page.Sql, 0));
+    }
+
+    [Fact]
+    public void GivenAnAccessConstraintOnAnIteratedType_WhenCountingIncludes_ThenTheCountedIterateStageIsConstrainedLikeThePage()
+    {
+        var organizationConstraint = new AccessConstraint("Organization", ObservationFinalOnly.Predicate);
+        var count = LowerAndEmit(new ResultShape.IncludesCount(), accessConstraints: [organizationConstraint], includes: [IncludeOrganization, IterateOrganizationPartOf], revIncludes: []);
+        var page = LowerAndEmit(new ResultShape.IncludesPage(), accessConstraints: [organizationConstraint], includes: [IncludeOrganization, IterateOrganizationPartOf], revIncludes: []);
+
+        var stages = count.Plan.Includes.ShouldNotBeNull();
+        stages.Count.ShouldBe(2);
+        stages.ShouldAllBe(stage => stage.Constraints != null && stage.Constraints.Count == 1);
+        stages.ShouldContain(stage => stage.Iterate);
+        for (var i = 0; i < stages.Count; i++)
+        {
+            IncludeStageBody(count.Sql, i).ShouldBe(IncludeStageBody(page.Sql, i));
+        }
     }
 
     [Fact]
@@ -155,7 +188,7 @@ public class LowerIncludesCountAndReplayTests
         count.Sql.ShouldContain(
             $"(rsp.ResourceTypeId <> {ObservationTypeId} OR EXISTS (SELECT 1 FROM {SqlLabels.CteLabel(binding.ConstraintCteIndex)} ac " +
             "WHERE ac.T1 = rsp.ResourceTypeId AND ac.Sid1 = rsp.ResourceSurrogateId))");
-        StageBody(count.Sql, 0).ShouldBe(StageBody(page.Sql, 0));
+        IncludeStageBody(count.Sql, 0).ShouldBe(IncludeStageBody(page.Sql, 0));
     }
 
     [Fact]
@@ -165,8 +198,8 @@ public class LowerIncludesCountAndReplayTests
         var page = LowerAndEmit(new ResultShape.IncludesPage(), allowedResourceTypes: ["Patient"], revIncludes: [RevIncludeObservationSubject]);
 
         count.Plan.Includes!.ShouldHaveSingleItem().OutputTypeIds.ShouldBe([(short)-1]);
-        StageBody(count.Sql, 0).ShouldContain("rsp.ResourceTypeId = -1");
-        StageBody(count.Sql, 0).ShouldBe(StageBody(page.Sql, 0));
+        IncludeStageBody(count.Sql, 0).ShouldContain("rsp.ResourceTypeId = -1");
+        IncludeStageBody(count.Sql, 0).ShouldBe(IncludeStageBody(page.Sql, 0));
     }
 
     [Fact]
@@ -202,7 +235,7 @@ public class LowerIncludesCountAndReplayTests
     [Fact]
     public void GivenAnIncludesPageReplayingASortedMatchPage_WhenLowered_ThenTheSeedIsTheReplayedPageWithNoProbeRow()
     {
-        var boundary = new PageSpec([new SqlParameterRef("2024-03-01")], BoundaryResourceTypeId: null, new SqlParameterRef(4200L));
+        var boundary = TypelessBirthDateBoundary;
         var replay = new MatchPageReplay(10, boundary);
         var context = CompilationContextFactory.For(
             expression: null,
@@ -227,7 +260,7 @@ public class LowerIncludesCountAndReplayTests
     [Fact]
     public void GivenAReplayAndTheOriginalSearchPage_WhenLowered_ThenBothSeekTheSameBoundaryUnderTheSameSort()
     {
-        var boundary = new PageSpec([new SqlParameterRef("2024-03-01")], BoundaryResourceTypeId: null, new SqlParameterRef(4200L));
+        var boundary = TypelessBirthDateBoundary;
         var original = Lower.Run(
             CompilationContextFactory.For(
                 expression: null, "Patient", includes: [IncludeOrganization], sort: [BirthDateDescending],
@@ -270,7 +303,7 @@ public class LowerIncludesCountAndReplayTests
     public void GivenAReplayBoundaryDecodedForTheOtherPhase_WhenLowered_ThenItIsRejected()
     {
         // A Valued-phase boundary carries the primary key's value; the MissingPrimary phase has none.
-        var valuedBoundary = new PageSpec([new SqlParameterRef("2024-03-01")], BoundaryResourceTypeId: null, new SqlParameterRef(4200L));
+        var valuedBoundary = TypelessBirthDateBoundary;
         var context = CompilationContextFactory.For(
             expression: null, "Patient", includes: [IncludeOrganization], sort: [BirthDateDescending],
             options: new SearchPlanOptions
@@ -280,6 +313,52 @@ public class LowerIncludesCountAndReplayTests
             });
 
         Should.Throw<NotSupportedException>(() => Lower.Run(context, Symbols)).Message.ShouldContain("active sort key");
+    }
+
+    [Fact]
+    public void GivenAMissingValuePhaseReplay_WhenLowered_ThenItReadsTheSameSegmentAndSeekAsTheOriginalPage()
+    {
+        // The MissingPrimary phase has no primary-key value, so its boundary carries only the surrogate id and the
+        // seed filters to resources missing the sort value -- exactly the page the original search returned.
+        var missingBoundary = new PageSpec([], BoundaryResourceTypeId: null, new SqlParameterRef(4200L));
+        var original = LowerSortedPage(new ResultShape.Matches(new SearchPaging.Keyset(11, missingBoundary, TopIncludesProbeRow: true)), SortPhase.MissingPrimary, BirthDateDescending);
+        var replay = LowerSortedPage(new ResultShape.IncludesPage(MatchReplay: new MatchPageReplay(10, missingBoundary)), SortPhase.MissingPrimary, BirthDateDescending);
+
+        replay.Plan.Sort!.Phase.ShouldBe(SortPhase.MissingPrimary);
+        var replayed = MatchPageBody(replay.Sql);
+        replayed.ShouldContain("SELECT TOP (10) m.T1, m.Sid1");
+        replayed.ShouldContain("NOT EXISTS (SELECT 1 FROM dbo.DateTimeSearchParam s");
+        FromOnward(replayed).ShouldBe(FromOnward(MatchPageBody(original.Sql)));
+    }
+
+    [Fact]
+    public void GivenADescendingLastUpdatedReplay_WhenLowered_ThenItSeeksDownwardFromATypedBoundary()
+    {
+        var lastUpdated = new SearchParameterInfo("_lastUpdated", "_lastUpdated", SearchParamType.Date, new Uri("http://hl7.org/fhir/SearchParameter/Resource-lastUpdated"));
+        var typedBoundary = new PageSpec([new SqlParameterRef(4200L)], new SqlParameterRef(PatientTypeId), new SqlParameterRef(4200L));
+
+        var replay = LowerSortedPage(
+            new ResultShape.IncludesPage(MatchReplay: new MatchPageReplay(10, typedBoundary)),
+            SortPhase.Valued,
+            new SortExpression(lastUpdated, SortOrder.Descending));
+
+        var body = MatchPageBody(replay.Sql);
+        body.ShouldContain("SELECT TOP (10) m.T1, m.Sid1");
+        body.ShouldContain("m.Sid1 < @p1");
+        body.ShouldContain("ORDER BY m.Sid1 DESC");
+    }
+
+    [Fact]
+    public void GivenAReplayAndASurrogateWindow_WhenCompiled_ThenItIsRejectedRatherThanReplayingADifferentPage()
+    {
+        var context = CompilationContextFactory.For(
+            expression: null, "Patient", includes: [IncludeOrganization], sort: [BirthDateDescending],
+            surrogateRange: new SurrogateIdRange(new SqlParameterRef(1000L), new SqlParameterRef(2000L)),
+            options: new SearchPlanOptions { Shape = new ResultShape.IncludesPage(MatchReplay: new MatchPageReplay(10, TypelessBirthDateBoundary)) });
+
+        var plan = Lower.Run(context, Symbols).Plan;
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan)).Message.ShouldContain("cannot be combined with a SurrogateRange");
     }
 
     [Fact]
@@ -310,11 +389,13 @@ public class LowerIncludesCountAndReplayTests
         ResultShape shape,
         IReadOnlyList<AccessConstraint>? accessConstraints = null,
         IReadOnlyList<string>? allowedResourceTypes = null,
-        IReadOnlyList<IncludeExpression>? revIncludes = null)
+        IReadOnlyList<IncludeExpression>? revIncludes = null,
+        IReadOnlyList<IncludeExpression>? includes = null)
     {
         var context = CompilationContextFactory.For(
             expression: null,
             "Patient",
+            includes: includes ?? [],
             revIncludes: revIncludes ?? [RevIncludeObservationSubject],
             accessConstraints: accessConstraints,
             allowedResourceTypes: allowedResourceTypes,
@@ -324,10 +405,17 @@ public class LowerIncludesCountAndReplayTests
         return (plan, SqlBuilder.Run(plan).Sql);
     }
 
-    private static string StageBody(string sql, int index)
+    private static (QueryPlan Plan, string Sql) LowerSortedPage(ResultShape shape, SortPhase phase, SortExpression sort)
     {
-        var start = sql.IndexOf($"inc{index} AS (", StringComparison.Ordinal);
-        start.ShouldBeGreaterThanOrEqualTo(0);
-        return sql[start..sql.IndexOf("\n)", start, StringComparison.Ordinal)];
+        var context = CompilationContextFactory.For(
+            expression: null, "Patient", includes: [IncludeOrganization], sort: [sort],
+            options: new SearchPlanOptions { Shape = shape, SortPhase = phase });
+
+        var plan = Lower.Run(context, Symbols).Plan;
+        return (plan, SqlBuilder.Run(plan).Sql);
     }
+
+    /// <summary>A match-page CTE from its FROM clause on: everything but the select list.</summary>
+    private static string FromOnward(string matchPageBody)
+        => matchPageBody[matchPageBody.IndexOf("\n    FROM ", StringComparison.Ordinal)..];
 }

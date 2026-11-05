@@ -2,6 +2,7 @@ using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Builders;
 using Shouldly;
 using Xunit;
+using static Ignixa.Search.Sql.Tests.TestSupport.EmittedSqlSlices;
 using static Ignixa.Search.Sql.Tests.TestSupport.IncludesShapePlans;
 using SearchSortOrder = Ignixa.Search.Expressions.SortOrder;
 
@@ -15,10 +16,6 @@ namespace Ignixa.Search.Sql.Tests.Ast;
 /// </summary>
 public class EmitIncludesMatchReplayTests
 {
-    private static readonly SortSpec DateDescending = new([new SortKey(203, SortKeyKind.Date, SearchSortOrder.Descending)], SortPhase.Valued);
-
-    private static readonly PageSpec TypelessDateBoundary = new([new SqlParameterRef("2024-03-01")], BoundaryResourceTypeId: null, new SqlParameterRef(4200L));
-
     [Fact]
     public void GivenAReplayedCustomSortPage_WhenEmitted_ThenTheMatchSeedIsTheTopPageSizeRowsAfterTheBoundaryInSortOrder()
     {
@@ -158,10 +155,7 @@ public class EmitIncludesMatchReplayTests
     public void GivenAReplayWithAProbeRow_WhenEmitted_ThenItIsRejected()
     {
         var replay = new MatchPageReplay(10, TypelessDateBoundary);
-        var plan = IncludePlanFactory.Create(
-            [new CteDefinition.ResourceSource(PatientTypeId)],
-            ReplaySpec(replay, DateDescending) with { TopIncludesProbeRow = true },
-            [ForwardStage()]);
+        var plan = PatientPlan(ReplaySpec(replay, DateDescending) with { TopIncludesProbeRow = true }, ForwardStage());
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan)).Message.ShouldContain("probe row");
     }
@@ -171,7 +165,7 @@ public class EmitIncludesMatchReplayTests
     {
         var replay = new MatchPageReplay(10);
         var spec = ReplaySpec(replay, sort: null) with { Top = null, OffsetPage = new OffsetSpec(0, 10) };
-        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(PatientTypeId)], spec, [ForwardStage()]);
+        var plan = PatientPlan(spec, ForwardStage());
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan)).Message.ShouldContain("OffsetPage");
     }
@@ -190,9 +184,45 @@ public class EmitIncludesMatchReplayTests
     {
         _ = disagreement;
         var spec = rewrite(ReplaySpec(new MatchPageReplay(10, TypelessDateBoundary), DateDescending));
-        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(PatientTypeId)], spec, [ForwardStage()]);
+        var plan = PatientPlan(spec, ForwardStage());
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan)).Message.ShouldContain("MatchReplay disagrees");
+    }
+
+    [Fact]
+    public void GivenAReplayWhosePageIsAnEqualButSeparatelyDecodedBoundary_WhenEmitted_ThenItIsAccepted()
+    {
+        // A caller decoding the continuation token once for MatchPageSpec.Page and again for the replay holds two
+        // PageSpec instances with equal values. PageSpec's record equality compares its Boundary list by
+        // reference, so the agreement check must compare the boundaries by value instead.
+        var decodedTwice = new PageSpec([new SqlParameterRef("2024-03-01")], BoundaryResourceTypeId: null, new SqlParameterRef(4200L));
+        var spec = ReplaySpec(new MatchPageReplay(10, TypelessDateBoundary), DateDescending) with { Page = decodedTwice };
+
+        var sql = SqlBuilder.Run(PatientPlan(spec, ForwardStage())).Sql;
+
+        MatchPageBody(sql).ShouldContain("SELECT TOP (10) m.T1, m.Sid1");
+    }
+
+    [Fact]
+    public void GivenAReplayAndASurrogateRange_WhenEmitted_ThenItIsRejectedRatherThanReplayingADifferentPage()
+    {
+        // TOP (PageSize) inside a window is a different page from the one the replay names unless the original
+        // search used the same window, which an ordinary search never does. The replay replaces the window.
+        var spec = ReplaySpec(new MatchPageReplay(10, TypelessDateBoundary), DateDescending)
+            with { SurrogateRange = new SurrogateIdRange(new SqlParameterRef(1000L), new SqlParameterRef(2000L)) };
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(PatientPlan(spec, ForwardStage())))
+            .Message.ShouldContain("cannot be combined with a SurrogateRange");
+    }
+
+    [Fact]
+    public void GivenAnEmptyReplayedPage_WhenEmitted_ThenItSelectsNoMatchesButStillEmitsTheIncludeStages()
+    {
+        var sql = SqlBuilder.Run(Replay(new MatchPageReplay(0, TypelessDateBoundary), DateDescending)).Sql;
+
+        MatchPageBody(sql).ShouldContain("SELECT TOP (0) m.T1, m.Sid1");
+        sql.ShouldContain("inc0 AS (");
+        sql.ShouldNotContain(SqlLabels.MatchSeed);
     }
 
     [Fact]
@@ -205,15 +235,16 @@ public class EmitIncludesMatchReplayTests
     }
 
     [Fact]
-    public void GivenAnIncludesPageWithoutAReplay_WhenEmitted_ThenItsSqlIsUnchanged()
+    public void GivenAnIncludesPageWithoutAReplay_WhenEmitted_ThenItsMatchPageHasNoTopSeekOrOrderBy()
     {
-        // The replay is opt-in: an includes page that names none still seeds from the whole (windowed) match
-        // set, so the statements fhir-server's custom procedures are keyed on keep their hashes.
-        var plain = IncludePlanFactory.Create([new CteDefinition.ResourceSource(PatientTypeId)], new MatchPageSpec(new CteRef(0), Sort: DateDescending, Shape: new ResultShape.IncludesPage(new IncludeBoundary(105, 900))), [ForwardStage()]);
+        // The replay is opt-in: an includes page that names none still seeds from every match in the current
+        // sort phase, with no TOP, seek or ORDER BY in its match page.
+        var plain = PatientPlan(new MatchPageSpec(new CteRef(0), Sort: DateDescending, Shape: new ResultShape.IncludesPage(new IncludeBoundary(105, 900))), ForwardStage());
 
         var body = MatchPageBody(SqlBuilder.Run(plain).Sql);
 
         body.ShouldNotContain("TOP");
+        body.ShouldNotContain("WHERE");
         body.ShouldNotContain("ORDER BY");
     }
 
@@ -222,12 +253,5 @@ public class EmitIncludesMatchReplayTests
     {
         var body = MatchPageBody(sql);
         return body[body.IndexOf("\n    FROM ", StringComparison.Ordinal)..];
-    }
-
-    private static string MatchPageBody(string sql)
-    {
-        var start = sql.IndexOf("cteMatchPage AS (", StringComparison.Ordinal);
-        start.ShouldBeGreaterThanOrEqualTo(0);
-        return sql[start..sql.IndexOf("\n)", start, StringComparison.Ordinal)];
     }
 }

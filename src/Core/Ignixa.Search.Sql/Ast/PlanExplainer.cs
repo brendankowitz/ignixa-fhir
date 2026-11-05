@@ -130,9 +130,8 @@ public static class PlanExplainer
         // stage loop. Rendering this row any earlier (it used to sit right after the CTE graph) claimed
         // ordinals that page/surrogateRange/searchParameterHash/offsetPage hadn't consumed yet in the real
         // SQL, so every row from here on named the wrong bound value whenever IncludesPage's Resume combined
-        // with SurrogateRange or SearchParameterHash -- exactly the combination PlanShapeValidator's own
-        // RejectUnsupportedCombinations guard message recommends ("bound the match set with SurrogateRange
-        // and page the include rows with ResultShape.IncludesPage.Resume").
+        // with a MatchReplay boundary, SurrogateRange or SearchParameterHash -- combinations PlanShapeValidator
+        // explicitly allows.
         if (plan.MatchSpec.IncludeBoundary is { } includeBoundary)
         {
             rows.Add(new PlanExplainRow(
@@ -148,7 +147,7 @@ public static class PlanExplainer
             for (var i = 0; i < includes.Count; i++)
             {
                 rows.Add(new PlanExplainRow(
-                    IncludeLabel(i), IncludeLabel(i), PlanRowKind.IncludeStage, PrintIncludeStage(includes[i]), []));
+                    IncludeLabel(i), IncludeLabel(i), PlanRowKind.IncludeStage, PrintIncludeStage(includes[i], plan.IncludesCountOnly), []));
             }
         }
 
@@ -326,7 +325,8 @@ public static class PlanExplainer
         return $"IncludeBoundary(type={typeParam}, sid={sidParam})";
     }
 
-    private static string PrintIncludeStage(IncludeStage stage)
+    /// <summary>Prints one include stage; <paramref name="limitIgnored"/> is set under an includes count, which emits no budget.</summary>
+    private static string PrintIncludeStage(IncludeStage stage, bool limitIgnored)
     {
         var refParam = stage.ReferenceSearchParamId is { } id ? $"{id}" : "*";
         var seedTypes = stage.SeedTypeIds is null ? "*" : $"[{string.Join(",", stage.SeedTypeIds)}]";
@@ -334,7 +334,7 @@ public static class PlanExplainer
         var seedStageLabels = stage.SeedStages.Select(IncludeLabel);
         var seeds = stage.SeedFromMatch ? seedStageLabels.Prepend("match") : seedStageLabels;
         var iterate = stage.Iterate ? " iterate" : string.Empty;
-        var limit = stage.Limit?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unbounded";
+        var limit = limitIgnored ? "ignored" : stage.Limit?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unbounded";
         return $"IncludeStage(ref={refParam}, seedTypes={seedTypes}, outputTypes={outputTypes}, seeds=[{string.Join(",", seeds)}], limit={limit}{iterate}, {stage.Direction})";
     }
 

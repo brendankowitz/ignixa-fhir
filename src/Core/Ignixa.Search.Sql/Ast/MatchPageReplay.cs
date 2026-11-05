@@ -7,9 +7,18 @@ namespace Ignixa.Search.Sql.Ast;
 /// stand in for this under a custom sort, because sort order is unrelated to surrogate id.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Carries no has-more probe row by construction: a replay re-reads a page whose extent is already known, so
-/// <paramref name="PageSize"/> is the number of matches genuinely on that page — the original compile's
-/// <c>Top</c> minus its probe row, not the over-fetched cap.
+/// <paramref name="PageSize"/> is the number of matches genuinely on that page — the original page's
+/// <c>Top</c> minus any probe row, not the over-fetched cap.
+/// </para>
+/// <para>
+/// The replay is defined relative to the plan's sort: the caller must compile it under the same <c>_sort</c> and
+/// <c>SortPhase</c> that produced <paramref name="Boundary"/>. Only the boundary's value count is checked against
+/// the phase, so a first-page replay under the wrong phase silently replays the other segment. One replay reads
+/// one phase; a match page that straddled the hand-off between the two phases of a missing-value sort needs one
+/// replay per phase.
+/// </para>
 /// </remarks>
 /// <param name="PageSize">How many matches were on the page. Rejected when negative.</param>
 /// <param name="Boundary">

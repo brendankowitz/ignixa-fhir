@@ -31,12 +31,15 @@ public static class SqlLabels
     /// <summary>The range label for an ORDER BY clause body.</summary>
     public const string OrderBy = "orderBy";
 
-    /// <summary>The range label for the final UNION ALL that stitches the result together.</summary>
+    /// <summary>
+    /// The range label for the union of a shape's arms: the match page and include stages (<c>UNION ALL</c>),
+    /// or only the include stages (<c>UNION</c>) for an includes page or includes count.
+    /// </summary>
     public const string Assembly = "assembly";
 
     /// <summary>
     /// The range label for the outer global-page SELECT of an includes-only page: the single
-    /// <c>TOP (@limit + 1)</c> over the union of every include stage, applying the row budget once across
+    /// <c>TOP (Limit + 1)</c> over the union of every include stage, applying the row budget once across
     /// all stages rather than once per stage.
     /// </summary>
     public const string IncludePage = "includePage";
@@ -52,9 +55,10 @@ public static class SqlLabels
 
     /// <summary>
     /// The identifier for the limit-applying companion of the include stage at <paramref name="index"/>.
-    /// Every include stage emits this second CTE, which downstream SQL actually reads; the unlimited
-    /// <see cref="IncludeLabel"/> body feeds it and nothing else. A stage has one plan row (labelled
-    /// <see cref="IncludeLabel"/>) but two SQL ranges, so tooling takes both labels for the index.
+    /// Emitted only under <see cref="Ast.ResultShape.Matches"/>, where downstream SQL reads it; the includes
+    /// page and includes count read the unlimited <see cref="IncludeLabel"/> body directly. Where emitted, a
+    /// stage has one plan row (labelled <see cref="IncludeLabel"/>) but two SQL ranges, so tooling takes both
+    /// labels for the index.
     /// </summary>
     public static string IncludeLimitLabel(int index) => $"{IncludeLabel(index)}lim";
 }
