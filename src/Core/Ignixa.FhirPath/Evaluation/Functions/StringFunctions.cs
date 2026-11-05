@@ -335,15 +335,25 @@ internal static class StringFunctions
         if (regexResult?.Value is not string pattern)
             return [];
 
+        // FHIRPath uses single-line mode where '.' matches any character including newlines
+        var regex = CreateRegex(pattern, RegexOptions.Singleline, "matches");
+        return FunctionHelpers.ReturnBoolean(regex.IsMatch(str));
+    }
+
+    /// <summary>
+    /// Compiles a regex, signalling an invalid pattern as a <see cref="FhirPathEvaluationException"/>
+    /// rather than an empty result so callers can tell a bad pattern from a non-match.
+    /// </summary>
+    private static Regex CreateRegex(string pattern, RegexOptions options, string functionName)
+    {
         try
         {
-            // FHIRPath uses single-line mode where '.' matches any character including newlines
-            var regex = new Regex(pattern, RegexOptions.Singleline);
-            return FunctionHelpers.ReturnBoolean(regex.IsMatch(str));
+            return new Regex(pattern, options);
         }
-        catch
+        catch (ArgumentException ex)
         {
-            return [];
+            throw new FhirPathEvaluationException(
+                $"Invalid regular expression pattern '{pattern}' in {functionName}(): {ex.Message}", ex);
         }
     }
 
@@ -385,16 +395,24 @@ internal static class StringFunctions
             }
         }
 
+        // Validate the user's raw pattern first: wrapping can turn an invalid pattern (e.g. "a)|(b") into a valid one,
+        // and the error should quote the text the caller wrote.
+        CreateRegex(pattern, options, "matchesFull");
+
+        // The raw pattern is valid, so the only way wrapping it can fail is a trailing '#' comment (x flag or inline
+        // "(?x)") running to end of line and swallowing the closing. Retry once with a newline, which ends the comment
+        // and is ignorable whitespace in comment mode. A failure on the retry propagates.
+        Regex regex;
         try
         {
-            var anchoredPattern = "^(?:" + pattern + ")$";
-            var regex = new Regex(anchoredPattern, options);
-            return FunctionHelpers.ReturnBoolean(regex.IsMatch(str));
+            regex = CreateRegex("^(?:" + pattern + ")$", options, "matchesFull");
         }
-        catch
+        catch (FhirPathEvaluationException)
         {
-            return [];
+            regex = CreateRegex("^(?:" + pattern + "\n)$", options, "matchesFull");
         }
+
+        return FunctionHelpers.ReturnBoolean(regex.IsMatch(str));
     }
 
     private static RegexOptions ParseRegexFlags(string flags)
@@ -447,16 +465,9 @@ internal static class StringFunctions
         if (string.IsNullOrEmpty(pattern))
             return [FunctionHelpers.CreateString(str)];
 
-        try
-        {
-            var regex = new Regex(pattern);
-            var result = regex.Replace(str, substitution);
-            return [FunctionHelpers.CreateString(result)];
-        }
-        catch
-        {
-            return [];
-        }
+        var regex = CreateRegex(pattern, RegexOptions.None, "replaceMatches");
+        var result = regex.Replace(str, substitution);
+        return [FunctionHelpers.CreateString(result)];
     }
 
     /// <summary>
