@@ -43,7 +43,8 @@ public sealed record SearchPlanOptions
     /// An inclusive surrogate-id bound. When set it wins over <c>SearchOptions.StartSurrogateId</c>/
     /// <c>EndSurrogateId</c>. Named to match <c>QueryPlan.SurrogateRange</c>, but typed as raw longs so a
     /// caller never has to construct the AST's <c>SurrogateIdRange</c> node. Ignored, from either source, under
-    /// <see cref="ResultShape.IncludesCount"/>, which counts the includes of the whole search.
+    /// <see cref="ResultShape.IncludesCount"/>, which counts the includes of the whole search; rejected, from
+    /// either source, alongside <see cref="ResultShape.IncludesPage.MatchReplay"/>, which replaces the window.
     /// </summary>
     public (long Start, long End)? SurrogateRange { get; init; }
 

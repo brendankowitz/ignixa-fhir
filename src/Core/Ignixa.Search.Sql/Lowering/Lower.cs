@@ -38,9 +38,9 @@ internal static class Lower
 
         // Paging hangs off Matches, so a count cannot carry one at all — the combinations it rejects are
         // unrepresentable here rather than guarded. Paging is itself one closed choice, so the T-SQL restriction
-        // that TOP cannot combine with OFFSET/FETCH (error 10741) needs no guard either: only one of these locals
-        // can be non-null. An includes page's only paging bound is the match page it replays, which is keyset by
-        // construction and carries no probe row.
+        // that TOP cannot combine with OFFSET/FETCH (error 10741) needs no guard either: top and offsetPage can
+        // never both be non-null. An includes page's only paging bound is the match page it replays, which is
+        // keyset by construction and carries no probe row.
         var paging = (shape as ResultShape.Matches)?.Paging;
         var keyset = paging as SearchPaging.Keyset;
         var replay = (shape as ResultShape.IncludesPage)?.MatchReplay;

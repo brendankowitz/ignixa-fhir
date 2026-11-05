@@ -113,9 +113,9 @@ public class EmitIncludesMatchReplayTests
     [Fact]
     public void GivenADescendingLastUpdatedReplay_WhenEmitted_ThenItSeeksDownwardFromTheBoundaryWithNoSurrogateWindow()
     {
-        // The case the surrogate-id window could not express without first > last: under -_lastUpdated the page
-        // walks surrogate ids downward. The replay needs no window at all -- it seeks below the boundary in the
-        // sort's own direction.
+        // Under -_lastUpdated the page walks surrogate ids downward, so a window taken in page order would be
+        // inverted (first > last). The replay needs no window: it seeks below the boundary in the sort's own
+        // direction.
         var sort = new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SearchSortOrder.Descending)], SortPhase.Valued);
         var boundary = new PageSpec([new SqlParameterRef(4200L)], new SqlParameterRef((short)103), new SqlParameterRef(4200L));
 
@@ -152,6 +152,18 @@ public class EmitIncludesMatchReplayTests
     }
 
     [Fact]
+    public void GivenAReplayWithASearchParameterHashAndAResume_WhenExplained_ThenTheHashIsNamedBetweenTheSeekAndTheResume()
+    {
+        var spec = ReplaySpec(new MatchPageReplay(10, TypelessDateBoundary), DateDescending, new IncludeBoundary(105, 900))
+            with { SearchParameterHash = new SqlParameterRef("hash") };
+
+        var text = PlanExplainer.Print(PlanExplainer.Describe(PatientPlan(spec, ForwardStage())));
+
+        text.ShouldContain("PageSpec(boundary=[@p1], type=none, sid=@p2) SearchParameterHash(hash=@p3)");
+        text.ShouldContain("includeBoundary = IncludeBoundary(type=@p4, sid=@p5)");
+    }
+
+    [Fact]
     public void GivenAReplayWithAProbeRow_WhenEmitted_ThenItIsRejected()
     {
         var replay = new MatchPageReplay(10, TypelessDateBoundary);
@@ -174,7 +186,9 @@ public class EmitIncludesMatchReplayTests
     {
         { "a different Top", spec => spec with { Top = 11 } },
         { "no Top", spec => spec with { Top = null } },
-        { "a different boundary", spec => spec with { Page = new PageSpec([new SqlParameterRef("2023-01-01")], null, new SqlParameterRef(1L)) } },
+        { "different boundary values", spec => spec with { Page = new PageSpec([new SqlParameterRef("2023-01-01")], null, new SqlParameterRef(4200L)) } },
+        { "a different boundary surrogate id", spec => spec with { Page = new PageSpec([new SqlParameterRef("2024-03-01")], null, new SqlParameterRef(9999L)) } },
+        { "a different boundary type id", spec => spec with { Page = new PageSpec([new SqlParameterRef("2024-03-01")], new SqlParameterRef((short)103), new SqlParameterRef(4200L)) } },
         { "no boundary", spec => spec with { Page = null } },
     };
 

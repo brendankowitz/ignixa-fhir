@@ -48,9 +48,9 @@ internal static class PlanShapeValidator
         // are out of range would otherwise be told to make them agree, which leaves the plan invalid.
         // Guarded independently of Lower.Run because QueryPlan is a public construction surface. Every stage
         // is checked because a stage Limit reaches a TOP (Limit + 1) on the ordinary includes path, where
-        // int.MaxValue overflows it to a negative row count. The includes page budgets globally from stage 0 and the
-        // includes count emits no limit at all, so those stage limits never reach SQL — still rejected, so a plan
-        // means the same thing under every shape.
+        // int.MaxValue overflows it to a negative row count. The includes page emits only stage 0's limit, as one
+        // global budget, and the includes count emits none, so the remaining limits never reach SQL — still
+        // rejected, so a plan means the same thing under every shape.
         if (plan.Includes is { Count: > 0 } stages)
         {
             for (var i = 0; i < stages.Count; i++)
@@ -197,7 +197,7 @@ internal static class PlanShapeValidator
     /// Rejects every paging bound on an <see cref="ResultShape.IncludesPage"/>'s seed except a
     /// <see cref="MatchPageReplay"/>. Top and a keyset Page are legal only as that replay's page size and
     /// boundary, so a plan cannot bound its seed by accident; an OffsetPage or probe row is never legal. Without
-    /// a replay, SurrogateRange and the sort phase remain legal filters; with one, the replay replaces the window.
+    /// a replay, SurrogateRange and the sort phase remain legal filters; with one, a SurrogateRange is rejected.
     /// </summary>
     private static void RejectUnsupportedIncludesPageSeedPaging(QueryPlan plan)
     {
@@ -213,9 +213,9 @@ internal static class PlanShapeValidator
         if (plan.MatchSpec.TopIncludesProbeRow)
         {
             throw new NotSupportedException(
-                "ResultShape.IncludesPage cannot carry a has-more probe row. A MatchPageReplay re-reads a page " +
-                "whose extent is already known, so its PageSize is the matches genuinely on that page; a probe " +
-                "row would seed include stages from a resource that was never on it. Clear TopIncludesProbeRow.");
+                "ResultShape.IncludesPage cannot carry a has-more probe row. Its seed is either every match in " +
+                "the phase or a MatchPageReplay of a page whose extent is already known, so a probe row would " +
+                "seed include stages from a resource that was never on the page. Clear TopIncludesProbeRow.");
         }
 
         if (plan.MatchSpec.MatchReplay is { } replay)
@@ -237,7 +237,8 @@ internal static class PlanShapeValidator
                 throw new NotSupportedException(
                     "ResultShape.IncludesPage.MatchReplay cannot be combined with a SurrogateRange. TOP (PageSize) " +
                     "inside a surrogate-id window is a different page from the one the replay names unless the " +
-                    "original search used the same window. The replay replaces the window: clear SurrogateRange.");
+                    "original search used the same window. The replay replaces the window: clear " +
+                    "SearchPlanOptions.SurrogateRange, or SearchOptions.StartSurrogateId/EndSurrogateId.");
             }
 
             return;

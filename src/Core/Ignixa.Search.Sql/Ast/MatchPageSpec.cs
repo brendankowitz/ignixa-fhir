@@ -37,7 +37,8 @@ public sealed record MatchPageSpec(
 
     /// <summary>
     /// The match page an <see cref="ResultShape.IncludesPage"/> replays to seed its include stages, or null
-    /// when it seeds from every match in the current sort phase or the shape is not an includes page. When set,
+    /// when it seeds from every match in the current sort phase (optionally within <see cref="SurrogateRange"/>) or the
+    /// shape is not an includes page. When set,
     /// <see cref="Top"/> and <see cref="Page"/> must carry its page size and boundary.
     /// </summary>
     public MatchPageReplay? MatchReplay => (EffectiveShape as ResultShape.IncludesPage)?.MatchReplay;

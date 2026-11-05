@@ -58,7 +58,7 @@ public static class SqlRangeKind
     public const string Assembly = "assembly";
 
     /// <summary>
-    /// The outer global-page SELECT of an includes-only page: one <c>TOP (Limit + 1)</c> over the union of
+    /// The outer global-page SELECT of an includes-only page: one <c>TOP (Limit + 1)</c> (none when the budget is null) over the union of
     /// every include stage, applying the row budget once. No row is named for it; the includes-only
     /// counterpart of the per-stage <see cref="IncludeLimit"/>.
     /// </summary>

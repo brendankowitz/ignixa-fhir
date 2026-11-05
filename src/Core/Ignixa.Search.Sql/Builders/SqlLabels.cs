@@ -39,7 +39,7 @@ public static class SqlLabels
 
     /// <summary>
     /// The range label for the outer global-page SELECT of an includes-only page: the single
-    /// <c>TOP (Limit + 1)</c> over the union of every include stage, applying the row budget once across
+    /// <c>TOP (Limit + 1)</c> (none when the budget is null) over the union of every include stage, applying the row budget once across
     /// all stages rather than once per stage.
     /// </summary>
     public const string IncludePage = "includePage";

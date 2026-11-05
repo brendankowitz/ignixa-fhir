@@ -780,18 +780,16 @@ public class EmitSqlGrammarTests
     [Fact]
     public void GivenAnIncludesOnlyPlanWithAKeysetPage_WhenEmitted_ThenItIsRefusedRatherThanSeekingTheMatchRowsBySortKey()
     {
-        // A sort is now allowed on an includes-only page (its phase filters the match set that seeds the
-        // includes), but a keyset Page is not: EmitSeekPredicate would seek the match rows by the sort-key
-        // boundary, a second paging mechanism the includes-only page does not use -- its match window is the
-        // surrogate range and its include rows page from a cursor. Grammatically valid either way, so the
-        // grammar check cannot catch it; the combination is guarded in SqlBuilder.Run the same way
-        // IncludesOnly + CountOnly and IncludesOnly + no-stages already are.
+        // A sort is allowed on an includes-only page (its phase filters the match set that seeds the includes),
+        // but a bare keyset Page is not: without a MatchReplay naming the page, EmitSeekPredicate would seek the
+        // match rows by the sort-key boundary with no page size to stop at. Grammatically valid either way, so
+        // the grammar check cannot catch it; PlanShapeValidator guards the combination.
         var stage = new IncludeStage(
             IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
             SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
         var sort = new SortSpec([new SortKey(203, SortKeyKind.Date, SearchSortOrder.Ascending)], SortPhase.Valued);
         var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Sort: sort, Page: new PageSpec([new SqlParameterRef("2000-01-01")], BoundaryResourceTypeId: null, BoundarySurrogateId: new SqlParameterRef(4200L)), Shape: new ResultShape.IncludesPage()), [stage]);
 
-        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan)).Message.ShouldContain("keyset Page unless it replays a match page");
     }
 }

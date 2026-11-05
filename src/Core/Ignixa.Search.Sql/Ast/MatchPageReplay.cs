@@ -14,10 +14,15 @@ namespace Ignixa.Search.Sql.Ast;
 /// </para>
 /// <para>
 /// The replay is defined relative to the plan's sort: the caller must compile it under the same <c>_sort</c> and
-/// <c>SortPhase</c> that produced <paramref name="Boundary"/>. Only the boundary's value count is checked against
-/// the phase, so a first-page replay under the wrong phase silently replays the other segment. One replay reads
-/// one phase; a match page that straddled the hand-off between the two phases of a missing-value sort needs one
-/// replay per phase.
+/// <c>SortPhase</c> that produced <paramref name="Boundary"/>. Neither is carried here, and only the boundary's
+/// value count is checked against the phase, so a replay under a different sort with the same key count, or a
+/// first-page replay under the wrong phase, silently replays a different page.
+/// </para>
+/// <para>
+/// One replay reads one phase. A match page that straddled the hand-off between the two phases of a
+/// missing-value sort needs one replay per phase, and each replay excludes only its own matches: merge their
+/// rows by <c>(T1, Sid1)</c>, drop any resource that was a match anywhere on the original page, and page each
+/// replay by its own <see cref="ResultShape.IncludesPage.Resume"/>.
 /// </para>
 /// </remarks>
 /// <param name="PageSize">How many matches were on the page. Rejected when negative.</param>

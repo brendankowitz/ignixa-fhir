@@ -88,7 +88,8 @@ public abstract record ResultShape
     /// <param name="Resume">The last include row of the previous page, or null to start at the first.</param>
     /// <param name="MatchReplay">
     /// Re-selects the exact match page the includes belong to, in the requested sort order, so the stages seed
-    /// from the same matches the original search returned. It replaces <c>SearchPlanOptions.SurrogateRange</c>,
+    /// from the same matches the original search returned. It replaces the surrogate-id window
+    /// (<c>SearchPlanOptions.SurrogateRange</c> or <c>SearchOptions.StartSurrogateId</c>/<c>EndSurrogateId</c>),
     /// which cannot be combined with it. Null seeds from every match in the current sort phase, optionally
     /// bounded by that window. It bounds the seed only: include rows still page by <paramref name="Resume"/>
     /// over <c>(T1, Sid1)</c>.
@@ -109,8 +110,8 @@ public abstract record ResultShape
     /// page.
     /// </summary>
     /// <remarks>
-    /// Seeded from the unpaged, unsorted match set. Stage limits are not emitted, and <c>Lower</c> validates and
-    /// then drops the sort, <c>SearchPlanOptions.SortPhase</c> and the surrogate-id window, so compiling once
+    /// Seeded from the unpaged, unsorted match set. Stage limits are not emitted; <c>Lower</c> validates and then
+    /// drops the sort and <c>SearchPlanOptions.SortPhase</c>, and drops the surrogate-id window, so compiling once
     /// per sort phase and summing double-counts. A hand-built plan carrying a Top, Page, OffsetPage,
     /// SurrogateRange or Sort is rejected.
     /// </remarks>

@@ -124,14 +124,10 @@ public static class PlanExplainer
             }
         }
 
-        // Bound last among the ordinal-consuming rows: EmitIncludesShape calls EmitMatchPage -- which
-        // binds everything above (OuterPredicate through OffsetPage) via BuildMatchWhereClauses plus its own
-        // ORDER BY/OFFSET-FETCH -- to completion BEFORE binding the resume boundary, and only then starts the
-        // stage loop. Rendering this row any earlier (it used to sit right after the CTE graph) claimed
-        // ordinals that page/surrogateRange/searchParameterHash/offsetPage hadn't consumed yet in the real
-        // SQL, so every row from here on named the wrong bound value whenever IncludesPage's Resume combined
-        // with a MatchReplay boundary, SurrogateRange or SearchParameterHash -- combinations PlanShapeValidator
-        // explicitly allows.
+        // Bound last among the ordinal-consuming rows: SqlBuilder.Run binds the whole CTE graph -- including the
+        // match-page CTE's predicate, seek, surrogate range, hash and offset -- before EmitIncludesShape binds
+        // the resume boundary. Rendering this row any earlier would mis-name every later ordinal whenever Resume
+        // is combined with a MatchReplay boundary, a SurrogateRange or a SearchParameterHash.
         if (plan.MatchSpec.IncludeBoundary is { } includeBoundary)
         {
             rows.Add(new PlanExplainRow(

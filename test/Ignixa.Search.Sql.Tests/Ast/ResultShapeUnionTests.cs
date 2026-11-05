@@ -91,8 +91,9 @@ public class ResultShapeUnionTests
     public void GivenAnIncludesPage_WhenInspected_ThenItsPagingCoordinatesAreItsResumeBoundaryAndTheMatchPageItReplays()
     {
         // An includes page pages its own rows by Resume and may bound its seed by replaying a match page. The
-        // replay carries only a page size and a keyset boundary -- no probe flag and no offset -- so the
-        // shapes PlanShapeValidator rejects for an includes page cannot be written down through the options.
+        // replay carries only a page size and a keyset boundary, so an offset page or a probe row cannot be
+        // written down through the options. A replay combined with a surrogate window can be, and
+        // PlanShapeValidator rejects it.
         typeof(ResultShape.IncludesPage)
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Select(p => p.Name)

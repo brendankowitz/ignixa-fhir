@@ -239,7 +239,7 @@ Setting an ordinary numeric budget remains supported; the default is still zero.
 
 Counting is the same: `_summary=count` and `_total=accurate` are Bundle metadata that the compiler does not
 read. Set `Shape = new ResultShape.Count.AllMatches()` yourself when you want the `COUNT_BIG`, or
-`ResultShape.IncludesCount()` for `$includes` under `_summary=count`.
+`new ResultShape.IncludesCount()` for `$includes` under `_summary=count`.
 `CompilationContextMapping.NotApplicable` lists every `SearchOptions` property in this category with the
 reason, and `SearchCompilationDiagnostics` reports the resolved values at `Full` diagnostics.
 
@@ -273,17 +273,21 @@ match in the current sort phase, optionally bounded by `SearchPlanOptions.Surrog
 `_sort` a surrogate-id window cannot describe a page of matches — sort order is unrelated to surrogate id — so
 `IncludesPage.MatchReplay` re-selects the exact page instead of a window: `TOP (PageSize)` matches in the
 requested sort order and `SortPhase`, seeking past `Boundary` (decoded from the match continuation token,
-exactly as for `SearchPaging.Keyset.Boundary`). A replay cannot be combined with `SurrogateRange`. Compile it
-under the same `_sort` and `SortPhase` that produced the boundary; a page that straddled the hand-off between
-the two phases of a missing-value sort needs one replay per phase. `PageSize` is the number of matches
-genuinely on that page, not the over-fetched cap: a replay never carries a has-more probe row. The include
-rows still page by `Resume` over `(T1, Sid1)`. Without `MatchReplay` the match-page CTE carries no `TOP`, seek
-or `ORDER BY`.
+exactly as for `SearchPaging.Keyset.Boundary`). A replay cannot be combined with a surrogate-id window from
+either source (`SurrogateRange` or `SearchOptions.StartSurrogateId`/`EndSurrogateId`). Compile it under the
+same `_sort` and `SortPhase` that produced the boundary — neither is carried by the replay or checked beyond
+the boundary's value count. A page that straddled the hand-off between the two phases of a missing-value sort
+needs one replay per phase: each excludes only its own matches, so merge their rows by `(T1, Sid1)`, drop any
+resource that was a match anywhere on the original page, and page each replay by its own `Resume`. `PageSize`
+is the number of matches genuinely on that page, not the over-fetched cap: a replay never carries a has-more
+probe row. The include rows still page by `Resume` over `(T1, Sid1)`. Without `MatchReplay` the match-page CTE
+carries no `TOP`, seek or `ORDER BY`.
 
 `ResultShape.IncludesCount` emits one `COUNT_BIG(*)` over the deduplicated `UNION` of every include stage —
 `:iterate` and wildcard stages included — keyed by `(T1, Sid1)`. A resource that is a match anywhere in the
-search is never counted. The count is of the whole search: the sort, `SortPhase`, `SurrogateRange` and
-`IncludeLimit` are validated and then ignored, so do not compile it once per sort phase and sum the results.
+search is never counted. The count is of the whole search: the sort, `SortPhase` and `IncludeLimit` are
+validated and then ignored, as is the surrogate-id window, so do not compile it once per sort phase and sum
+the results.
 A hand-built plan carrying a `Top`, `Page`, `OffsetPage`, `SurrogateRange` or `Sort` is rejected. Access
 constraints and the allowed-type list apply to each counted stage exactly as they do to an includes page.
 
