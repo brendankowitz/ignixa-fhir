@@ -640,10 +640,24 @@ catch (InvalidOperationException ex)
     // "Cannot construct 'Coding': no instance creator is configured on the evaluation context..."
     Console.WriteLine($"Not configured: {ex.Message}");
 }
+
+try
+{
+    // An invalid regular expression in matches(), matchesFull() or replaceMatches()
+    // throws FhirPathEvaluationException (namespace Ignixa.FhirPath.Evaluation).
+    // Select() may be lazy, so the throw can surface on enumeration.
+    var result = element.Select("name.family.matches('abc[')").ToList();
+}
+catch (FhirPathEvaluationException ex)
+{
+    // "Invalid regular expression pattern 'abc[' in matches(): ..."
+    // ex.InnerException is the ArgumentException raised by the regex parser.
+    Console.WriteLine($"Invalid pattern: {ex.Message}");
+}
 ```
 
 :::note
-FHIRPath follows propagation semantics for empty collections - operations on empty values typically return empty rather than throwing exceptions. Only constraint violations (like `single()` on multiple items) throw. An instance selector is one of these: it also throws `InvalidOperationException` ("Instance selector requires a single input item or empty collection") when the input collection it is evaluated against holds more than one item.
+FHIRPath follows propagation semantics for empty collections - operations on empty values typically return empty rather than throwing exceptions. Only constraint violations (like `single()` on multiple items) and invalid arguments throw. An instance selector is one of these: it also throws `InvalidOperationException` ("Instance selector requires a single input item or empty collection") when the input collection it is evaluated against holds more than one item. An invalid regular expression pattern in `matches()`, `matchesFull()` or `replaceMatches()` throws `FhirPathEvaluationException` (a subclass of `InvalidOperationException`) rather than returning empty. Empty propagation still applies first: if the input is empty, the pattern is never compiled and no exception is thrown.
 :::
 
 ## Architecture

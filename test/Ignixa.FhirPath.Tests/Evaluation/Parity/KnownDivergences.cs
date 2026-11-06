@@ -75,7 +75,7 @@ internal static class KnownDivergences
     /// </summary>
     /// <remarks>
     /// <para>
-    /// 19 of these evaluations are mutual throws - the construct corpus deliberately probes
+    /// 22 of these evaluations are mutual throws (19 before #519, see below) - the construct corpus deliberately probes
     /// operations one engine or the other does not implement - and every one of them was uncounted
     /// until this pin existed, since a mutual throw satisfies <see cref="ParityOutcome.Matches"/> and
     /// never becomes a divergence.
@@ -95,13 +95,23 @@ internal static class KnownDivergences
     /// either engine reaches its type check, so they land in <see cref="ExpectedBothEmpty"/> - which is
     /// why that figure moved by eight at the same time.
     /// </para>
+    /// <para>
+    /// 3 more mutual throws (19 to 22) are the invalid-regex rows: <c>matches('abc[')</c>,
+    /// <c>name.where(family.matches('Sm['))</c> and <c>replaceMatches('[', 'x')</c>. Firely throws on
+    /// an unparseable pattern; Ignixa used to return empty (#519) and now throws too. Only the Patient
+    /// reaches the pattern - on the other four subjects the operand (<c>identifier.value</c>,
+    /// <c>name.family</c>) is empty, so empty propagation short-circuits before either engine compiles
+    /// the regex. All five new rows evaluate to empty on those four subjects, so 5 x 4 = 20 evaluations
+    /// land in <see cref="ExpectedBothEmpty"/> (174 to 194), and the two valid-pattern rows add 2
+    /// agreements on values on the Patient (174 to 176).
+    /// </para>
     /// </remarks>
     public static ExpressionCorpusExpectations ConstructPopulation { get; } =
         new(
-            MinimumEvaluationsPerEngine: 425,
-            ExpectedBothThrew: 19,
-            ExpectedBothEmpty: 174,
-            MinimumAgreementsOnValues: 174);
+            MinimumEvaluationsPerEngine: 450,
+            ExpectedBothThrew: 22,
+            ExpectedBothEmpty: 194,
+            MinimumAgreementsOnValues: 176);
 
     /// <summary>
     /// Divergences in the language constructs this branch changed. None of these is reachable from a
