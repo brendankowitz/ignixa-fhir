@@ -153,7 +153,8 @@ public class CreateExportJobHandler : IRequestHandler<CreateExportJobCommand, Cr
                 OutputFormat = request.OutputFormat,
                 OutputPath = $"partition/{request.TenantId}/export/{jobId}",
                 GroupId = request.GroupId,
-                RequestUrl = request.RequestUrl
+                RequestUrl = request.RequestUrl,
+                AuditContext = request.AuditContext
             },
             CreateDate = DateTimeOffset.UtcNow,
             HeartbeatDate = DateTimeOffset.UtcNow

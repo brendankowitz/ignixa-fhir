@@ -40,6 +40,8 @@ public sealed class BulkOperationJobStatusEndpointTests : IAsyncLifetime
     private readonly WebApplication _app;
     private readonly LocalFileBlobClient _blobs;
     private readonly ITenantConfigurationStore _tenants;
+    private readonly IAuditLogger _auditLogger = Substitute.For<IAuditLogger>();
+    private readonly BackgroundJobCompletionAuditor _completionAuditor;
 
     public BulkOperationJobStatusEndpointTests()
     {
@@ -50,7 +52,8 @@ public sealed class BulkOperationJobStatusEndpointTests : IAsyncLifetime
         _imports = new(tenants, NullLogger<InMemoryBackgroundJobRepository<ImportJobDefinition>>.Instance);
         _blobs = new(Options.Create(new LocalFileBlobStorageOptions { RootDirectory = _blobDirectory }), NullLogger<LocalFileBlobClient>.Instance);
         var client = new TaskHubClient(_orchestrations);
-        var statusHandler = new GetJobStatusHandler(client, _imports, _exports);
+        _completionAuditor = new BackgroundJobCompletionAuditor(_auditLogger, NullLogger<BackgroundJobCompletionAuditor>.Instance);
+        var statusHandler = new GetJobStatusHandler(client, _imports, _exports, _completionAuditor);
         var importHandler = new CreateImportJobHandler(client, _imports);
         tenants.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>())
             .Returns(new TenantConfiguration { TenantId = 1, DisplayName = "Export test", FhirVersion = "4.0" });
@@ -71,6 +74,8 @@ public sealed class BulkOperationJobStatusEndpointTests : IAsyncLifetime
         builder.Services.AddSingleton(client);
         builder.Services.AddSingleton<IBackgroundJobRepository<ExportJobDefinition>>(_exports);
         builder.Services.AddSingleton<IBackgroundJobRepository<ImportJobDefinition>>(_imports);
+        builder.Services.AddSingleton(_auditLogger);
+        builder.Services.AddSingleton(_completionAuditor);
         _app = builder.Build();
         _app.MapExportEndpoints();
         _app.MapImportEndpoints();
@@ -84,7 +89,7 @@ public sealed class BulkOperationJobStatusEndpointTests : IAsyncLifetime
         const string second = "partition/1/export/job/Patient-10-19.ndjson";
         await _blobs.WriteBlobAsync(first, new MemoryStream(Encoding.UTF8.GetBytes("{\"resourceType\":\"Patient\",\"id\":\"p1\"}\n")));
         await _blobs.WriteBlobAsync(second, new MemoryStream(Encoding.UTF8.GetBytes("{\"resourceType\":\"Patient\",\"id\":\"p2\"}\n")));
-        var activity = new CompleteJobActivity(_exports, NullLogger<CompleteJobActivity>.Instance);
+        var activity = new CompleteJobActivity(_exports, _completionAuditor, NullLogger<CompleteJobActivity>.Instance);
         var completion = JsonSerializer.SerializeToNode(new CompleteJobInput("job", 1, true,
             new Dictionary<string, string> { ["Patient-1-9"] = first, ["Patient-10-19"] = second }, 2, null))!;
         completion["ExportedFileCounts"] = JsonNode.Parse("""{"Patient-1-9":1,"Patient-10-19":1}""");
@@ -94,6 +99,8 @@ public sealed class BulkOperationJobStatusEndpointTests : IAsyncLifetime
         var response = await SendAsync("GetExportStatus");
 
         response.StatusCode.ShouldBe(200);
+        _auditLogger.Received(1).LogBackgroundJobCompleted(Arg.Is<BackgroundJobAuditEvent>(e =>
+            e.JobType == "Export" && e.Status == "Completed" && e.Outcome == "0"));
         var output = response.Body["output"]!.AsArray();
         output.Count.ShouldBe(2);
         foreach (var entry in output)
@@ -128,7 +135,7 @@ public sealed class BulkOperationJobStatusEndpointTests : IAsyncLifetime
             await writer.FlushAsync();
             return new ExportWorkerOutput("Patient", input.StartSurrogateId, input.EndSurrogateId, count, writer.BytesWritten);
         });
-        var complete = new CompleteJobActivity(_exports, NullLogger<CompleteJobActivity>.Instance);
+        var complete = new CompleteJobActivity(_exports, _completionAuditor, NullLogger<CompleteJobActivity>.Instance);
         context.ScheduleTask<bool>(Arg.Any<Type>(), Arg.Any<object[]>()).Returns(async call =>
             JsonSerializer.Deserialize<bool>(await complete.RunAsync(
                 new TaskContext(new OrchestrationInstance { InstanceId = "job" }),
@@ -452,6 +459,7 @@ public sealed class BulkOperationJobStatusEndpointTests : IAsyncLifetime
         var response = await SendAsync($"Cancel{jobType}");
 
         response.StatusCode.ShouldBe(expectedStatus);
+        _auditLogger.DidNotReceive().LogBackgroundJobCompleted(Arg.Any<BackgroundJobAuditEvent>());
         if (expectedStatus == 409)
         {
             response.Body["issue"]![0]!["code"]!.GetValue<string>().ShouldBe("conflict");
@@ -478,6 +486,7 @@ public sealed class BulkOperationJobStatusEndpointTests : IAsyncLifetime
         var response = await SendAsync($"Cancel{jobType}");
 
         response.StatusCode.ShouldBe(expectedStatus);
+        _auditLogger.DidNotReceive().LogBackgroundJobCompleted(Arg.Any<BackgroundJobAuditEvent>());
         await AssertTerminalJobAsync(jobType, status);
     }
 
@@ -489,7 +498,10 @@ public sealed class BulkOperationJobStatusEndpointTests : IAsyncLifetime
         await AddActiveJobAsync(jobType);
         var services = new ServiceCollection()
             .AddSingleton(_app.Services.GetRequiredService<TaskHubClient>())
-            .AddSingleton(_app.Services.GetRequiredService<ILoggerFactory>());
+            .AddSingleton(_app.Services.GetRequiredService<ILoggerFactory>())
+            .AddLogging()
+            .AddSingleton(_auditLogger)
+            .AddSingleton(_completionAuditor);
         if (jobType == "Export")
         {
             services.AddSingleton(DeleteAfterConflict(_exports, jobType));
@@ -526,6 +538,187 @@ public sealed class BulkOperationJobStatusEndpointTests : IAsyncLifetime
         });
         return forwarding;
     }
+
+    private static readonly IReadOnlyDictionary<string, string> AuditHeaders = new Dictionary<string, string>
+    {
+        ["X-IGNIXA-AUDIT-OPERATIONID"] = "op-1",
+        ["X-IGNIXA-AUDIT-BUNDLEID"] = "bundle-1"
+    };
+
+    [Theory]
+    [InlineData("Export")]
+    [InlineData("Import")]
+    public async Task GivenCustomAuditHeaders_WhenStartingJob_ThenKickoffIsAuditedAndAttributionIsPersisted(string jobType)
+    {
+        var captured = new List<HttpRequestAuditEvent>();
+        _auditLogger.LogHttpRequest(Arg.Do<HttpRequestAuditEvent>(captured.Add));
+
+        var response = await SendAsync($"Start{jobType}", body: StartBody(jobType), headers: AuditHeaders);
+
+        response.StatusCode.ShouldBe(202);
+        var kickoff = captured.ShouldHaveSingleItem();
+        kickoff.StatusCode.ShouldBe(202);
+        kickoff.CustomHeaders["X-IGNIXA-AUDIT-OPERATIONID"].ShouldBe("op-1");
+        var jobId = response.Body["jobId"]!.GetValue<string>();
+        var auditContext = jobType == "Export"
+            ? (await _exports.GetAsync(jobId, 1, CancellationToken.None))!.Definition.AuditContext
+            : (await _imports.GetAsync(jobId, 1, CancellationToken.None))!.Definition.AuditContext;
+        auditContext.ShouldNotBeNull();
+        auditContext.UserId.ShouldBe("anonymous");
+        auditContext.CustomHeaders.ShouldBe(AuditHeaders, ignoreOrder: true);
+    }
+
+    [Fact]
+    public async Task GivenTooManyCustomAuditHeaders_WhenStartingExport_ThenRequestIsRejectedBeforeAJobIsCreated()
+    {
+        var headers = Enumerable.Range(0, 11).ToDictionary(i => $"X-IGNIXA-AUDIT-H{i}", i => "v");
+
+        var exception = await Should.ThrowAsync<AuditHeaderCountExceededException>(
+            () => SendAsync("StartExport", body: "", headers: headers));
+
+        exception.StatusCode.ShouldBe(431);
+        await _orchestrations.DidNotReceive()
+            .CreateTaskOrchestrationAsync(Arg.Any<TaskMessage>(), Arg.Any<OrchestrationStatus[]>());
+        _auditLogger.Received(1).LogHttpRequest(Arg.Is<HttpRequestAuditEvent>(e => e.StatusCode == 431));
+    }
+
+    [Fact]
+    public async Task GivenRunningExportAndCompletedRuntime_WhenPollingTwice_ThenCompletionIsAuditedOnceWithKickoffHeaders()
+    {
+        await AddExportAsync("Running", auditContext: new BackgroundJobAuditContext
+        {
+            UserId = "user-1",
+            CorrelationId = "kickoff",
+            CustomHeaders = AuditHeaders
+        });
+        _orchestrations.GetOrchestrationStateAsync("job", false).Returns(
+            new List<OrchestrationState> { new() { OrchestrationStatus = OrchestrationStatus.Completed } });
+        var completed = new List<BackgroundJobAuditEvent>();
+        _auditLogger.LogBackgroundJobCompleted(Arg.Do<BackgroundJobAuditEvent>(completed.Add));
+
+        await SendAsync("GetExportStatus");
+        await SendAsync("GetExportStatus");
+
+        var auditEvent = completed.ShouldHaveSingleItem();
+        auditEvent.JobType.ShouldBe("Export");
+        auditEvent.Status.ShouldBe("Completed");
+        auditEvent.Outcome.ShouldBe("0");
+        auditEvent.UserId.ShouldBe("user-1");
+        auditEvent.CorrelationId.ShouldBe("kickoff");
+        auditEvent.CustomHeaders.ShouldBe(AuditHeaders, ignoreOrder: true);
+    }
+
+    [Theory]
+    [InlineData("Export")]
+    [InlineData("Import")]
+    public async Task GivenActiveJobWithAttribution_WhenCancelled_ThenCancellationIsAuditedWithKickoffHeaders(string jobType)
+    {
+        var auditContext = new BackgroundJobAuditContext { UserId = "user-1", CustomHeaders = AuditHeaders };
+        if (jobType == "Export")
+        {
+            await AddExportAsync("Running", auditContext: auditContext);
+        }
+        else
+        {
+            await AddImportAsync(auditContext);
+        }
+
+        var completed = new List<BackgroundJobAuditEvent>();
+        _auditLogger.LogBackgroundJobCompleted(Arg.Do<BackgroundJobAuditEvent>(completed.Add));
+
+        var response = await SendAsync($"Cancel{jobType}");
+
+        response.StatusCode.ShouldBe(204);
+        var auditEvent = completed.ShouldHaveSingleItem();
+        auditEvent.JobType.ShouldBe(jobType);
+        auditEvent.Status.ShouldBe("Cancelled");
+        auditEvent.Outcome.ShouldBe("4");
+        auditEvent.UserId.ShouldBe("user-1");
+        auditEvent.CustomHeaders["X-IGNIXA-AUDIT-BUNDLEID"].ShouldBe("bundle-1");
+    }
+
+    [Theory]
+    [InlineData("Export", OrchestrationStatus.Failed, "Failed", "8")]
+    [InlineData("Export", OrchestrationStatus.Terminated, "Cancelled", "4")]
+    [InlineData("Import", OrchestrationStatus.Failed, "Failed", "8")]
+    [InlineData("Import", OrchestrationStatus.Terminated, "Cancelled", "4")]
+    public async Task GivenUnsuccessfulRuntimeOutcome_WhenPolling_ThenCompletionIsAuditedOnceWithItsOutcome(
+        string jobType, OrchestrationStatus runtimeStatus, string expectedStatus, string expectedOutcome)
+    {
+        await AddActiveJobAsync(jobType);
+        _orchestrations.GetOrchestrationStateAsync("job", false).Returns(
+            new List<OrchestrationState> { new() { OrchestrationStatus = runtimeStatus } });
+        var completed = new List<BackgroundJobAuditEvent>();
+        _auditLogger.LogBackgroundJobCompleted(Arg.Do<BackgroundJobAuditEvent>(completed.Add));
+
+        await SendAsync($"Get{jobType}Status");
+        await SendAsync($"Get{jobType}Status");
+
+        var auditEvent = completed.ShouldHaveSingleItem();
+        auditEvent.JobType.ShouldBe(jobType);
+        auditEvent.Status.ShouldBe(expectedStatus);
+        auditEvent.Outcome.ShouldBe(expectedOutcome);
+    }
+
+    [Theory]
+    [InlineData("Export", "Completed")]
+    [InlineData("Export", "Cancelled")]
+    [InlineData("Import", "Failed")]
+    [InlineData("Import", "Cancelled")]
+    public async Task GivenAnotherWriterFinalizesDuringPoll_WhenThePollSavesItsTerminalStatus_ThenOnlyTheWinnerIsAudited(
+        string jobType, string winnerStatus)
+    {
+        await AddActiveJobAsync(jobType);
+        _orchestrations.GetOrchestrationStateAsync("job", false).Returns(async _ =>
+        {
+            await FinalizeJobAsync(jobType, winnerStatus);
+            return (IList<OrchestrationState>)new List<OrchestrationState> { new() { OrchestrationStatus = OrchestrationStatus.Failed } };
+        });
+
+        await SendAsync($"Get{jobType}Status");
+
+        _auditLogger.DidNotReceive().LogBackgroundJobCompleted(Arg.Any<BackgroundJobAuditEvent>());
+        await AssertTerminalJobAsync(jobType, winnerStatus);
+    }
+
+    [Theory]
+    [InlineData("Export")]
+    [InlineData("Import")]
+    public async Task GivenAuditLoggerThrows_WhenCancelling_ThenCommittedCancellationStillSucceeds(string jobType)
+    {
+        await AddActiveJobAsync(jobType);
+        _auditLogger.When(logger => logger.LogBackgroundJobCompleted(Arg.Any<BackgroundJobAuditEvent>()))
+            .Do(_ => throw new InvalidOperationException("audit sink failure"));
+
+        var response = await SendAsync($"Cancel{jobType}");
+
+        response.StatusCode.ShouldBe(204);
+        var status = jobType == "Export"
+            ? (await _exports.GetAsync("job", 1, CancellationToken.None))!.Status
+            : (await _imports.GetAsync("job", 1, CancellationToken.None))!.Status;
+        status.ShouldBe("Cancelled");
+    }
+
+    [Fact]
+    public async Task GivenJobCreatedBeforeAuditCapture_WhenCancelled_ThenAuditIsUnattributedWithoutHeaders()
+    {
+        await AddExportAsync("Running");
+        var completed = new List<BackgroundJobAuditEvent>();
+        _auditLogger.LogBackgroundJobCompleted(Arg.Do<BackgroundJobAuditEvent>(completed.Add));
+
+        await SendAsync("CancelExport");
+
+        var auditEvent = completed.ShouldHaveSingleItem();
+        auditEvent.UserId.ShouldBe("unknown");
+        auditEvent.CustomHeaders.ShouldBeEmpty();
+    }
+
+    private static string StartBody(string jobType) => jobType == "Export" ? "" : """
+        {"resourceType":"Parameters","parameter":[
+          {"name":"inputFormat","valueCode":"application/fhir+ndjson"},
+          {"name":"input","part":[{"name":"type","valueCode":"Patient"},{"name":"url","valueUri":"input.ndjson"}]}
+        ]}
+        """;
 
     private async Task AddActiveJobAsync(string jobType)
     {
@@ -581,7 +774,7 @@ public sealed class BulkOperationJobStatusEndpointTests : IAsyncLifetime
         }
     }
 
-    private async Task AddExportAsync(string status, string? result = null)
+    private async Task AddExportAsync(string status, string? result = null, BackgroundJobAuditContext? auditContext = null)
     {
         await _exports.CreateAsync(new BackgroundJob<ExportJobDefinition>
         {
@@ -591,12 +784,13 @@ public sealed class BulkOperationJobStatusEndpointTests : IAsyncLifetime
             Definition = new ExportJobDefinition
             {
                 TenantId = 1, ResourceTypes = ["Patient"], TypeFilters = new Dictionary<string, string>(),
-                OutputFormat = "application/fhir+ndjson", OutputPath = "partition/1/export/job"
+                OutputFormat = "application/fhir+ndjson", OutputPath = "partition/1/export/job",
+                AuditContext = auditContext
             }
         }, CancellationToken.None);
     }
 
-    private async Task<BackgroundJob<ImportJobDefinition>> AddImportAsync()
+    private async Task<BackgroundJob<ImportJobDefinition>> AddImportAsync(BackgroundJobAuditContext? auditContext = null)
     {
         var job = new BackgroundJob<ImportJobDefinition>
         {
@@ -604,7 +798,8 @@ public sealed class BulkOperationJobStatusEndpointTests : IAsyncLifetime
             Definition = new ImportJobDefinition
             {
                 TenantId = 1, InputFormat = "application/fhir+ndjson", InputSource = "Patient", Mode = "IncrementalLoad",
-                InputFiles = [new InputFileInfo { Type = "Patient", Url = "input/Patient.ndjson" }]
+                InputFiles = [new InputFileInfo { Type = "Patient", Url = "input/Patient.ndjson" }],
+                AuditContext = auditContext
             }
         };
         await _imports.CreateAsync(job, CancellationToken.None);
@@ -613,12 +808,16 @@ public sealed class BulkOperationJobStatusEndpointTests : IAsyncLifetime
 
     private async Task<(int StatusCode, JsonNode Body)> SendAsync(
         string endpointName, int tenantId = 1, string jobId = "job", string? body = null, string? query = null,
-        IServiceProvider? requestServices = null)
+        IServiceProvider? requestServices = null, IReadOnlyDictionary<string, string>? headers = null)
     {
         var endpoint = ((IEndpointRouteBuilder)_app).DataSources.SelectMany(source => source.Endpoints)
             .Single(candidate => candidate.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == endpointName);
         await using var scope = _app.Services.CreateAsyncScope();
         var context = new DefaultHttpContext { RequestServices = requestServices ?? scope.ServiceProvider };
+        foreach (var (name, value) in headers ?? new Dictionary<string, string>())
+        {
+            context.Request.Headers[name] = value;
+        }
         context.Request.RouteValues["tenantId"] = tenantId.ToString(System.Globalization.CultureInfo.InvariantCulture);
         context.Request.RouteValues["jobId"] = jobId;
         context.Request.Scheme = "http";

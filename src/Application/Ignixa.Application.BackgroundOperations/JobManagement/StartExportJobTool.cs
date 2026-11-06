@@ -9,9 +9,14 @@ using Ignixa.Application.Features.Experimental.Mcp.Authorization;
 using Ignixa.Application.Features.Experimental.Mcp.Dtos;
 using Ignixa.Application.Features.Experimental.Mcp.Tools;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Application.Infrastructure.Audit;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Exceptions;
+using Ignixa.Domain.Models;
 using Ignixa.Domain.Constants;
 using Medino;
+using Microsoft.AspNetCore.Http;
+using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
 namespace Ignixa.Application.BackgroundOperations.JobManagement;
@@ -25,15 +30,18 @@ namespace Ignixa.Application.BackgroundOperations.JobManagement;
 public class StartExportJobTool : TenantAwareMcpTool
 {
     private readonly IMediator _mediator;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
     public StartExportJobTool(
         IFhirRequestContextAccessor fhirRequestContextAccessor,
         ITenantConfigurationStore tenantStore,
         IMediator mediator,
+        IHttpContextAccessor httpContextAccessor,
         IMcpAuthorizationService? mcpAuthorizationService = null)
         : base(fhirRequestContextAccessor, tenantStore, mcpAuthorizationService)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
+        _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
     }
 
     [McpServerTool(Name = "start_export_job")]
@@ -74,7 +82,8 @@ Example: resourceTypes=['Patient', 'Observation'], since='2024-01-01T00:00:00Z'"
             ResourceTypes = types,
             Since = since,
             TypeFilters = filters,
-            OutputFormat = ExportConstants.MediaTypeNdjson
+            OutputFormat = ExportConstants.MediaTypeNdjson,
+            AuditContext = CaptureAuditContext()
         };
 
         var result = await _mediator.SendAsync(command, cancellationToken);
@@ -93,5 +102,24 @@ Example: resourceTypes=['Patient', 'Observation'], since='2024-01-01T00:00:00Z'"
             EndDate = null,
             ErrorMessage = null
         };
+    }
+
+    // MCP routes are outside FhirAuditFilter, so header-limit violations surface here; McpException carries the
+    // non-echoing limit message to the caller instead of the SDK's generic tool error.
+    private BackgroundJobAuditContext? CaptureAuditContext()
+    {
+        if (_httpContextAccessor.HttpContext is not { } httpContext)
+        {
+            return null;
+        }
+
+        try
+        {
+            return AuditAttribution.CreateJobAuditContext(httpContext);
+        }
+        catch (AuditHeaderException ex)
+        {
+            throw new McpException(ex.Message, ex);
+        }
     }
 }

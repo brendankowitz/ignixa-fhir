@@ -48,8 +48,14 @@ message AuditEventRequest {
   bool success = 9;
   string ip_address = 10;
   string correlation_id = 11;
+  map<string, string> custom_properties = 12;
+  map<string, string> custom_headers = 13;  // X-IGNIXA-AUDIT-* (and AHDS-compatible X-MS-AZUREFHIR-AUDIT-*) headers
 }
 ```
+
+`custom_headers` carries caller-supplied `X-IGNIXA-AUDIT-*` headers, plus `X-MS-AZUREFHIR-AUDIT-*` headers accepted for Azure Health Data Services compatibility (max 10 across both, values ≤ 2048 chars).
+Bundle entry events carry the outer bundle request's headers; background job completion events
+(`custom_properties["event"] = "background-job-completed"`) carry the kick-off request's headers.
 
 ---
 

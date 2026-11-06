@@ -1,6 +1,7 @@
 using System.Text.Json;
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Export.Activities;
+using Ignixa.Application.BackgroundOperations.Jobs;
 using Ignixa.Application.BackgroundOperations.Export.Models;
 using Ignixa.Application.BackgroundOperations.Export.Orchestrations;
 using Ignixa.DataLayer.BlobStorage.Features.BackgroundJobs;
@@ -45,7 +46,7 @@ public class ExportPartitionManifestTests
                 return new ExportWorkerOutput(input.ResourceType, input.StartSurrogateId, input.EndSurrogateId,
                     input.StartSurrogateId == 1 ? firstCount : secondCount, 100);
             });
-        var completion = new CompleteJobActivity(repository, NullLogger<CompleteJobActivity>.Instance);
+        var completion = new CompleteJobActivity(repository, new BackgroundJobCompletionAuditor(Substitute.For<IAuditLogger>(), NullLogger<BackgroundJobCompletionAuditor>.Instance), NullLogger<CompleteJobActivity>.Instance);
         context.ScheduleTask<bool>(Arg.Any<Type>(), Arg.Any<object[]>())
             .Returns(async call =>
             {

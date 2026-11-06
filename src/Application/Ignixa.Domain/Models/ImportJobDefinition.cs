@@ -12,7 +12,7 @@ namespace Ignixa.Domain.Models;
 /// Represents the configuration of a FHIR bulk import operation.
 /// TenantId is stored here (in the payload), not as a BackgroundJob property.
 /// </summary>
-public class ImportJobDefinition : IJobDefinition
+public class ImportJobDefinition : IAuditedJobDefinition
 {
     /// <summary>
     /// Tenant ID for multi-tenancy isolation (stored in definition payload, not schema).
@@ -38,4 +38,7 @@ public class ImportJobDefinition : IJobDefinition
     /// List of input files to import.
     /// </summary>
     public required IReadOnlyList<InputFileInfo> InputFiles { get; init; }
+
+    /// <inheritdoc />
+    public BackgroundJobAuditContext? AuditContext { get; init; }
 }
