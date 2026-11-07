@@ -57,6 +57,12 @@ public class EmitSqlGrammarTests
         yield return ["includes-only, :iterate page with boundary", IncludesOnlyIteratePageWithBoundaryPlan()];
         yield return ["includes-only, custom sort (missing-value phase)", IncludesOnlyWithMissingPrimarySortPlan()];
         yield return ["includes-only, custom sort (valued phase)", IncludesOnlyWithValuedSortPlan()];
+        yield return ["includes-only, replayed -date match page with resume", IncludesShapePlans.Replay(new MatchPageReplay(10, IncludesShapePlans.TypelessDateBoundary), IncludesShapePlans.DateDescending, new IncludeBoundary(105, 900))];
+        yield return ["includes-only, replayed -_lastUpdated match page", IncludesShapePlans.Replay(new MatchPageReplay(10, new PageSpec([new SqlParameterRef(4200L)], new SqlParameterRef((short)103), new SqlParameterRef(4200L))), new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SearchSortOrder.Descending)], SortPhase.Valued))];
+        yield return ["includes-only, replayed first match page, :iterate", IncludesShapePlans.Replay(new MatchPageReplay(10), sort: null, resume: null, IncludesShapePlans.ForwardStage(), IncludesShapePlans.IterateStage(seedStage: 0))];
+        yield return ["includes count, single stage", IncludesShapePlans.IncludesCount(IncludesShapePlans.ForwardStage())];
+        yield return ["includes count, forward + reverse + :iterate + wildcard", IncludesShapePlans.IncludesCount(IncludesShapePlans.ForwardStage(), IncludesShapePlans.ReverseStage(), IncludesShapePlans.IterateStage(seedStage: 0), IncludesShapePlans.WildcardReverseStage())];
+        yield return ["includes count, outer predicate + hash", IncludesShapePlans.PatientPlan(new MatchPageSpec(new CteRef(0), OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("abc")), Shape: new ResultShape.IncludesCount(), SearchParameterHash: StandardHash()), IncludesShapePlans.ForwardStage())];
         yield return ["patient $everything alone", EverythingAlonePlan()];
         yield return ["patient $everything with _since", EverythingWithSincePlan()];
         yield return ["patient $everything with _type", EverythingWithTypePlan()];
@@ -774,18 +780,16 @@ public class EmitSqlGrammarTests
     [Fact]
     public void GivenAnIncludesOnlyPlanWithAKeysetPage_WhenEmitted_ThenItIsRefusedRatherThanSeekingTheMatchRowsBySortKey()
     {
-        // A sort is now allowed on an includes-only page (its phase filters the match set that seeds the
-        // includes), but a keyset Page is not: EmitSeekPredicate would seek the match rows by the sort-key
-        // boundary, a second paging mechanism the includes-only page does not use -- its match window is the
-        // surrogate range and its include rows page from a cursor. Grammatically valid either way, so the
-        // grammar check cannot catch it; the combination is guarded in SqlBuilder.Run the same way
-        // IncludesOnly + CountOnly and IncludesOnly + no-stages already are.
+        // A sort is allowed on an includes-only page (its phase filters the match set that seeds the includes),
+        // but a bare keyset Page is not: without a MatchReplay naming the page, EmitSeekPredicate would seek the
+        // match rows by the sort-key boundary with no page size to stop at. Grammatically valid either way, so
+        // the grammar check cannot catch it; PlanShapeValidator guards the combination.
         var stage = new IncludeStage(
             IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
             SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
         var sort = new SortSpec([new SortKey(203, SortKeyKind.Date, SearchSortOrder.Ascending)], SortPhase.Valued);
         var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Sort: sort, Page: new PageSpec([new SqlParameterRef("2000-01-01")], BoundaryResourceTypeId: null, BoundarySurrogateId: new SqlParameterRef(4200L)), Shape: new ResultShape.IncludesPage()), [stage]);
 
-        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan)).Message.ShouldContain("keyset Page unless it replays a match page");
     }
 }

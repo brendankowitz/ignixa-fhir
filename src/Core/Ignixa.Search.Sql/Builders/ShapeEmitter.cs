@@ -10,7 +10,10 @@ using static Ignixa.Search.Sql.Builders.SqlLabels;
 
 namespace Ignixa.Search.Sql.Builders;
 
-/// <summary>Emits the three terminal shapes — count, match-only and includes — and their assembly SELECTs.</summary>
+/// <summary>
+/// Emits the terminal shapes — count, match-only, includes, includes page and includes count — and their
+/// assembly SELECTs.
+/// </summary>
 internal static class ShapeEmitter
 {
     /// <summary>
@@ -107,9 +110,10 @@ internal static class ShapeEmitter
 
     /// <summary>
     /// Emits the includes shape: match-page CTE, include-stage CTEs, and the assembly stitching them into one
-    /// (T1, Sid1, IsMatch, IsPartial) result. Two assemblies: the ordinary path unions each stage's limit
-    /// companion and orders matches-first; the IncludesOnly path budgets once over the unlimited stage bodies
-    /// and orders by (T1, Sid1) to resume from a boundary.
+    /// result. Three assemblies: the ordinary path unions each stage's limit companion into (T1, Sid1, IsMatch,
+    /// IsPartial) rows ordered matches-first; the IncludesOnly path budgets once over the unlimited stage
+    /// bodies and orders by (T1, Sid1) to resume from a boundary; the IncludesCount path counts the distinct
+    /// rows of the unlimited stage bodies.
     /// </summary>
     internal static void EmitIncludesShape(
         QueryPlan plan,
@@ -130,12 +134,22 @@ internal static class ShapeEmitter
 
         var matchSeedLabel = CteName(plan, plan.IncludeSeed!.Value.Index);
 
+        // Neither the includes page nor the includes count reads a per-stage limit companion: the page budgets
+        // once over the union and the count ignores the budget entirely.
+        var bodiesOnly = plan.IncludesOnly || plan.IncludesCountOnly;
+
         for (var i = 0; i < includes.Count; i++)
         {
-            WriteIncludeStageCtes(writer, plan, includes[i], i, visibility, plan.IncludesOnly, matchSeedLabel);
+            WriteIncludeStageCtes(writer, plan, includes[i], i, visibility, bodiesOnly, matchSeedLabel);
         }
 
         writer.Append("\n");
+
+        if (plan.IncludesCountOnly)
+        {
+            EmitIncludesCount(includes, writer);
+            return;
+        }
 
         if (plan.IncludesOnly)
         {
@@ -160,8 +174,9 @@ internal static class ShapeEmitter
 
     /// <summary>
     /// The clause every include arm carries to drop rows the match page already returns, so a resource that is
-    /// both a match and an include target appears once, as a match. Stated once because all four arms — the two
-    /// assemblies, each in its projected and unprojected form — must exclude on exactly the same key.
+    /// both a match and an include target appears once, as a match — or, under an includes count, is not
+    /// counted at all. Stated once because every arm — the two assemblies, each in its projected and
+    /// unprojected form, and the count — must exclude on exactly the same key.
     /// </summary>
     private const string ExcludeMatchPageRows =
         $"WHERE NOT EXISTS (SELECT 1 FROM {MatchPage} m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)";
@@ -216,6 +231,30 @@ internal static class ShapeEmitter
     }
 
     /// <summary>
+    /// Emits the outer SELECT of an <see cref="ResultShape.IncludesCount"/>: <c>COUNT_BIG(*)</c> over the
+    /// plain <c>UNION</c> of every include stage body, each arm excluding the match set exactly as the includes
+    /// page does. The UNION deduplicates on <c>(T1, Sid1)</c>, so a resource reachable through two stages is
+    /// counted once. No TOP, no resume boundary and no ORDER BY: the count is of the whole include set.
+    /// </summary>
+    private static void EmitIncludesCount(IReadOnlyList<IncludeStage> includes, SqlTextWriter writer)
+    {
+        var arms = Enumerable.Range(0, includes.Count)
+            .Select(i => $"SELECT i.T1, i.Sid1 FROM {IncludeLabel(i)} i\n{ExcludeMatchPageRows}");
+
+        using (writer.Section(IncludeCount, SqlRangeKind.IncludeCount))
+        {
+            writer.Append("SELECT COUNT_BIG(*) FROM (\n");
+
+            using (writer.Section(Assembly, SqlRangeKind.Assembly))
+            {
+                writer.Append(string.Join("\nUNION\n", arms));
+            }
+
+            writer.Append($"\n) {IncludeUnionAlias}");
+        }
+    }
+
+    /// <summary>
     /// Builds the inner arms of the global includes page: one arm per include stage, each selecting its
     /// unlimited body, tagging it <c>CAST(0 AS bit)</c> as a non-match, and excluding rows already on the
     /// match page. Joined with plain <c>UNION</c> by the caller so cross-stage duplicates are deduped before
@@ -255,9 +294,9 @@ internal static class ShapeEmitter
 
     /// <summary>
     /// Writes an include stage's CTEs. The ordinary path writes two — the unlimited body and its
-    /// limit-applying companion. The IncludesOnly path writes only the body: its budget is applied once,
-    /// globally, by <see cref="EmitGlobalIncludesPage"/>, so a per-stage limit companion would apply the
-    /// budget twice.
+    /// limit-applying companion. The IncludesOnly and IncludesCount paths write only the body: the page applies
+    /// its budget once, globally, in <see cref="EmitGlobalIncludesPage"/>, and the count applies none, so a
+    /// per-stage limit companion would be wrong for both.
     /// </summary>
     private static void WriteIncludeStageCtes(
         SqlTextWriter writer,
@@ -265,7 +304,7 @@ internal static class ShapeEmitter
         IncludeStage stage,
         int index,
         ResourceVisibility visibility,
-        bool includesOnly,
+        bool bodiesOnly,
         string matchSeedLabel)
     {
         writer.Append(",\n");
@@ -274,7 +313,7 @@ internal static class ShapeEmitter
             writer.Append($"{IncludeLabel(index)} AS (\n{EmitIncludeStage(plan, stage, visibility, matchSeedLabel)}\n)");
         }
 
-        if (includesOnly)
+        if (bodiesOnly)
         {
             return;
         }

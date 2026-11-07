@@ -176,7 +176,7 @@ a built `SearchOptions` and so skip query-string parsing entirely; that overload
 
 `compiled.Sql` returns `(ResourceTypeId, ResourceSurrogateId)` rows — or
 `(…, IsMatch, IsPartial)` when the plan includes `_include`/`_revinclude`, or a single
-`COUNT_BIG` when the plan is count-only. You bind `compiled.Parameters` and execute against your database
+`COUNT_BIG` under `ResultShape.Count` or `ResultShape.IncludesCount`. You bind `compiled.Parameters` and execute against your database
 (e.g. `SqlCommand`, Dapper, or EF Core raw SQL).
 
 ### Two defaults that will surprise you
@@ -238,7 +238,8 @@ bounded budget and would silently change unbounded traversal into truncation.
 Setting an ordinary numeric budget remains supported; the default is still zero.
 
 Counting is the same: `_summary=count` and `_total=accurate` are Bundle metadata that the compiler does not
-read. Set `Shape = new ResultShape.Count.AllMatches()` yourself when you want the `COUNT_BIG`.
+read. Set `Shape = new ResultShape.Count.AllMatches()` yourself when you want the `COUNT_BIG`, or
+`new ResultShape.IncludesCount()` for `$includes` under `_summary=count`.
 `CompilationContextMapping.NotApplicable` lists every `SearchOptions` property in this category with the
 reason, and `SearchCompilationDiagnostics` reports the resolved values at `Full` diagnostics.
 
@@ -255,14 +256,44 @@ new ResultShape.Matches(new SearchPaging.Offset(new OffsetSpec(100, 50))); // OF
 new ResultShape.Count.AllMatches();                 // one COUNT_BIG, no ORDER BY, no TOP
 new ResultShape.Count.CurrentSortPhase();           // ...restricted to the segment the sort names
 new ResultShape.IncludesPage(Resume: null);         // $includes: the include stages only, as one stream
+new ResultShape.IncludesPage(Resume: boundary, MatchReplay: new MatchPageReplay(PageSize: 50, Boundary: seek));
+                                                    // ...seeded from exactly one replayed, sorted match page
+new ResultShape.IncludesCount();                    // $includes&_summary=count: distinct included resources
 ```
 
-Paging hangs off `Matches` because that is the only shape that pages. A count reads the whole match set, and
-an includes page carries its own boundary in `IncludesPage.Resume` — so neither has a second paging
-coordinate that could contradict it.
+Paging hangs off `Matches` because it is the only shape whose result is a page of matches. A count reads the
+whole set it counts, and an includes page pages its include rows by `IncludesPage.Resume` and names any match
+page it seeds from in `IncludesPage.MatchReplay` — so none of them has a separate paging setting that could
+contradict its shape.
+
+### `$includes` shapes
+
+An includes page seeds its include stages from a match set it does not return. By default that is every
+match in the current sort phase, optionally bounded by `SearchPlanOptions.SurrogateRange`. Under a custom
+`_sort` a surrogate-id window cannot describe a page of matches — sort order is unrelated to surrogate id — so
+`IncludesPage.MatchReplay` re-selects the exact page instead of a window: `TOP (PageSize)` matches in the
+requested sort order and `SortPhase`, seeking past `Boundary` (decoded from the match continuation token,
+exactly as for `SearchPaging.Keyset.Boundary`). A replay cannot be combined with a surrogate-id window from
+either source (`SurrogateRange` or `SearchOptions.StartSurrogateId`/`EndSurrogateId`). Compile it under the
+same `_sort` and `SortPhase` that produced the boundary — neither is carried by the replay or checked beyond
+the boundary's value count. A page that straddled the hand-off between the two phases of a missing-value sort
+needs one replay per phase: each excludes only its own matches, so merge their rows by `(T1, Sid1)`, drop any
+resource that was a match anywhere on the original page, and page each replay by its own `Resume`. `PageSize`
+is the number of matches genuinely on that page, not the over-fetched cap: a replay never carries a has-more
+probe row. The include rows still page by `Resume` over `(T1, Sid1)`. Without `MatchReplay` the match-page CTE
+carries no `TOP`, seek or `ORDER BY`.
+
+`ResultShape.IncludesCount` emits one `COUNT_BIG(*)` over the deduplicated `UNION` of every include stage —
+`:iterate` and wildcard stages included — keyed by `(T1, Sid1)`. A resource that is a match anywhere in the
+search is never counted. The count is of the whole search: the sort, `SortPhase` and `IncludeLimit` are
+validated and then ignored, as is the surrogate-id window, so do not compile it once per sort phase and sum
+the results.
+A hand-built plan carrying a `Top`, `Page`, `OffsetPage`, `SurrogateRange` or `Sort` is rejected. Access
+constraints and the allowed-type list apply to each counted stage exactly as they do to an includes page.
 
 Which segment of a two-phase sort you read is `SearchPlanOptions.SortPhase`, not a paging property: it
-filters the match set, so it applies under either paging mechanism and with no paging at all.
+filters the match set, so it applies under either paging mechanism and with no paging at all — except under
+`ResultShape.IncludesCount`, which counts every phase.
 `Keyset.Boundary` is the seek boundary, and it only means anything within the phase that produced it, so the
 two are set together.
 
@@ -308,7 +339,7 @@ is what a caller totalling the two phases separately needs.
 | **Includes** | `_include`, `_revinclude`, `:iterate` | topologically ordered; budget is `IncludeLimit`, default 0 |
 | **Compartment search** | membership over the reference table | grouped by membership parameter |
 | **Sort & paging** | `_sort` (up to 3 keys), keyset pagination, [two-phase missing-value sort](#two-phase-missing-value-sort) | caller drives the phases |
-| **Counting** | `ResultShape.Count` | `COUNT_BIG(DISTINCT …)`; the caller sets the shape — `_summary=count` / `_total` are not read |
+| **Counting** | `ResultShape.Count`, `ResultShape.IncludesCount` | `COUNT_BIG(DISTINCT …)` over matches, or `COUNT_BIG(*)` over distinct included resources; the caller sets the shape — `_summary=count` / `_total` are not read |
 | **Missing** | `:missing` for leaf and composite parameters | |
 
 ## Comparator semantics
@@ -541,7 +572,7 @@ consumer reaches, grouped by namespace.
 |-----------|----------------|
 | `Ignixa.Search.Sql` | `SearchSqlCompiler` / `ISearchSqlCompiler`, `SearchPlan`, `CompiledSearch`, `SearchPlanOptions`, `SearchPlanResult` / `SearchCompilationResult`, `SearchCompilationFailure` / `SearchCompilationException`, and the diagnostics types (`SearchCompilationDiagnostics`, `QueryPlanTrace`, `CteProvenance`, `ImplicitParameter`, `CompilationStage`, `SearchDiagnosticsLevel`) |
 | `Ignixa.Search.Sql.Symbols` | `ISymbolResolver` — the one seam your data layer implements |
-| `Ignixa.Search.Sql.Ast` | `QueryPlan` and the plan data model — `CteDefinition`, `Predicate`, `PageSpec`, `SortSpec`, `SortPhase`, `ResultShape`, `SearchPaging`, `KeysetContinuationToken`, `KeysetPosition`, `PlanExplainer`, and the SQL value types |
+| `Ignixa.Search.Sql.Ast` | `QueryPlan` and the plan data model — `CteDefinition`, `Predicate`, `PageSpec`, `SortSpec`, `SortPhase`, `ResultShape`, `SearchPaging`, `MatchPageReplay`, `KeysetContinuationToken`, `KeysetPosition`, `PlanExplainer`, and the SQL value types |
 | `Ignixa.Search.Sql.Builders` | `EmittedSqlParameter` (the bound `@pN` values on `CompiledSearch`) and `SqlTextRange` |
 | `Ignixa.Search.Sql.Catalog` | `SqlCatalog` and its `TableDescriptor` / `ColumnDescriptor` (data generated from DDL) |
 

@@ -27,7 +27,7 @@ public abstract record SearchPaging
     /// <see cref="SearchPlanOptions.SortPhase"/>. Its value count must match that phase's active key count —
     /// every key when <see cref="Ast.SortPhase.Valued"/>, all but the primary when
     /// <see cref="Ast.SortPhase.MissingPrimary"/> — so a boundary is never carried across the segment handoff.
-    /// A boundary is representable only here, which is what keeps it out of <see cref="Offset"/>: a seek
+    /// Among the paging modes only Keyset carries a boundary, which is what keeps it out of <see cref="Offset"/>: a seek
     /// predicate and <c>OFFSET … FETCH</c> are two independent paging mechanisms.
     /// </param>
     /// <param name="TopIncludesProbeRow">

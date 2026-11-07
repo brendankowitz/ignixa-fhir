@@ -51,13 +51,23 @@ public static class SqlRangeKind
     /// </summary>
     public const string IncludeLimit = "includeLimit";
 
-    /// <summary>The final UNION ALL stitching the match page to every include stage. No row is named for it.</summary>
+    /// <summary>
+    /// The union of a shape's arms: the match page and include stages (<c>UNION ALL</c>), or only the include
+    /// stages (<c>UNION</c>) for an includes page or includes count. No row is named for it.
+    /// </summary>
     public const string Assembly = "assembly";
 
     /// <summary>
-    /// The outer global-page SELECT of an includes-only page: one <c>TOP (Limit + 1)</c> over the union of
+    /// The outer global-page SELECT of an includes-only page: one <c>TOP (Limit + 1)</c> (none when the budget is null) over the union of
     /// every include stage, applying the row budget once. No row is named for it; the includes-only
     /// counterpart of the per-stage <see cref="IncludeLimit"/>.
     /// </summary>
     public const string IncludePage = "includePage";
+
+    /// <summary>
+    /// The outer SELECT of an includes count: one <c>COUNT_BIG(*)</c> over the deduplicated union of every
+    /// include stage body, with no budget and no resume boundary. No row is named for it; the plan's
+    /// <see cref="Ast.PlanRowKind.IncludesCount"/> row describes the shape.
+    /// </summary>
+    public const string IncludeCount = "includeCount";
 }
