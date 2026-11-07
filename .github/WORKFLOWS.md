@@ -36,7 +36,7 @@ After the first 10 reviewed PRs, inspect material misses, useful findings, false
 
 The current workflows have limits that reviewers must account for:
 
-- PR Build is path-filtered. Instruction-only or other unmatched changes may not start it; a required check can remain pending. Do not bypass required checks to work around this. Trigger coverage and a strict rollup are separate workflow improvements.
+- PR Build runs for every changed path on PRs targeting `main` or `fhir-v2`, including documentation and instructions. This intentionally runs full CI for documentation-only changes so required checks are not left pending by path filtering.
 - `PR Validation Complete` currently checks that no prerequisite reported `failure`, rather than proving every prerequisite succeeded. Inspect the five underlying jobs until the rollup is hardened.
 - The FHIR TestScript conformance report can record behavioral failures while its harness test passes. Read per-case outcomes; green E2E is not proof of complete FHIR conformance.
 - The PR schema DeployReport targets an empty database. It proves report generation, not safe upgrade of existing data.
@@ -102,7 +102,7 @@ Triggered on pull requests targeting `main` or `fhir-v2` branches.
 ### Triggers
 
 - Pull request created/updated
-- Paths include source, tests, benchmarks, tools, the documentation site, and selected build files. The exact allowlist is in `pr-build.yml`; it does not include every workflow or instruction file.
+- All changed paths, including documentation, instructions, and build configuration (no workflow-level path filter)
 
 ### Features
 
@@ -186,7 +186,7 @@ The composite action installs .NET 9 and 10 explicitly. Changing its input or th
 
 ## Skipping Workflows
 
-Commit directives such as `[skip ci]` or `[ci skip]` can prevent PR checks from running. Do not use them to bypass merge evidence; required checks may remain pending. Workflow path filters can have the same effect.
+Commit directives such as `[skip ci]` or `[ci skip]` can prevent PR checks from running. Do not use them to bypass merge evidence; required checks may remain pending. PR Build has no path filter, but commit skip directives still apply.
 
 ## Modifying Workflows
 
@@ -221,7 +221,7 @@ Edit `.github/workflows/pr-build.yml` or `.github/workflows/ci.yml`:
 ### Workflow Not Triggering
 
 1. Check branch protection rules (may require specific status checks)
-2. Verify path filters match your changes
+2. Verify the PR targets `main` or `fhir-v2`; PR Build runs regardless of changed paths
 3. Check if commit message includes `[skip ci]`
 
 ### Build Failure
