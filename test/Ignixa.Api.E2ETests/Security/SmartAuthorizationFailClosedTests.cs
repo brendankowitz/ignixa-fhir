@@ -125,6 +125,25 @@ public class SmartAuthorizationFailClosedTests(IgnixaApiFixture fixture)
         readBack.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
+    // The mutation guard leaves a document it cannot parse to the executor, which reports the syntax error itself.
+    [Theory]
+    [InlineData("/tenant/1/$graphql")]
+    [InlineData("/tenant/1/Patient/{0}/$graphql")]
+    public async Task GivenAMalformedGraphQlDocument_WhenPosted_ThenAGraphQlSyntaxErrorIsReturned(string pathFormat)
+    {
+        await using var application = CreateAuthorizedApplication();
+        var id = await PutPatientAsync();
+        using var client = CreateScopedClient(application, "system/*.s");
+
+        using var response = await PostGraphQlAsync(client, string.Format(pathFormat, id), "mutation { PatientDelete(");
+
+        var body = await response.Content.ReadAsStringAsync();
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, body);
+        (JsonNode.Parse(body)?["errors"]?.AsArray().Count ?? 0).ShouldBeGreaterThan(0, body);
+        using var readBack = await fixture.Client.GetAsync($"/tenant/1/Patient/{id}");
+        readBack.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
     [Fact]
     public async Task GivenASearchOnlyWildcardScope_WhenPostingAGraphQlQuery_ThenItSucceeds()
     {
