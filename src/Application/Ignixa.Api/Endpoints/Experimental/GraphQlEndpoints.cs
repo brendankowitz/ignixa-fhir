@@ -5,7 +5,9 @@
 
 using System.Text.Json;
 using HotChocolate.Execution.Serialization;
+using HotChocolate.Language;
 using Ignixa.Abstractions;
+using Ignixa.Application.Features.Authorization;
 using Ignixa.Application.Features.Experimental.Configuration;
 using Ignixa.Application.Features.Experimental.GraphQl.Contracts;
 using Ignixa.Application.Features.Experimental.GraphQl.Models;
@@ -108,12 +110,14 @@ public static class GraphQlEndpoints
         HttpContext context,
         [FromServices] IGraphQlExecutionService executionService,
         [FromServices] IFhirRequestContextAccessor contextAccessor,
+        [FromServices] IOptions<AuthorizationOptions> authorization,
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
         var (body, error) = await ReadBodyAsync(context, cancellationToken);
-        if (error is not null)
-            return error;
+        var refusal = error ?? RefuseMutation(body!, authorization);
+        if (refusal is not null)
+            return refusal;
 
         var version = ResolveVersion(contextAccessor, loggerFactory);
         var result = await executionService.ExecuteAsync(body!, version, cancellationToken);
@@ -125,6 +129,7 @@ public static class GraphQlEndpoints
         [FromServices] IGraphQlExecutionService executionService,
         [FromServices] IFhirRequestContextAccessor contextAccessor,
         [FromServices] IOptions<ExperimentalOptions> options,
+        [FromServices] IOptions<AuthorizationOptions> authorization,
         [FromServices] ILoggerFactory loggerFactory,
         [FromQuery] string? query,
         [FromQuery] string? operationName,
@@ -132,8 +137,9 @@ public static class GraphQlEndpoints
         CancellationToken cancellationToken)
     {
         var (body, error) = BuildGetBody(options, query, operationName, variables);
-        if (error is not null)
-            return error;
+        var refusal = error ?? RefuseMutation(body!, authorization);
+        if (refusal is not null)
+            return refusal;
 
         var version = ResolveVersion(contextAccessor, loggerFactory);
         var result = await executionService.ExecuteAsync(body!, version, cancellationToken);
@@ -146,12 +152,14 @@ public static class GraphQlEndpoints
         string id,
         [FromServices] IGraphQlExecutionService executionService,
         [FromServices] IFhirRequestContextAccessor contextAccessor,
+        [FromServices] IOptions<AuthorizationOptions> authorization,
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
         var (body, error) = await ReadBodyAsync(context, cancellationToken);
-        if (error is not null)
-            return error;
+        var refusal = error ?? RefuseMutation(body!, authorization);
+        if (refusal is not null)
+            return refusal;
 
         var version = ResolveVersion(contextAccessor, loggerFactory);
         var result = await executionService.ExecuteInstanceAsync(body!, version, resourceType, id, cancellationToken);
@@ -165,6 +173,7 @@ public static class GraphQlEndpoints
         [FromServices] IGraphQlExecutionService executionService,
         [FromServices] IFhirRequestContextAccessor contextAccessor,
         [FromServices] IOptions<ExperimentalOptions> options,
+        [FromServices] IOptions<AuthorizationOptions> authorization,
         [FromServices] ILoggerFactory loggerFactory,
         [FromQuery] string? query,
         [FromQuery] string? operationName,
@@ -172,8 +181,9 @@ public static class GraphQlEndpoints
         CancellationToken cancellationToken)
     {
         var (body, error) = BuildGetBody(options, query, operationName, variables);
-        if (error is not null)
-            return error;
+        var refusal = error ?? RefuseMutation(body!, authorization);
+        if (refusal is not null)
+            return refusal;
 
         var version = ResolveVersion(contextAccessor, loggerFactory);
         var result = await executionService.ExecuteInstanceAsync(body!, version, resourceType, id, cancellationToken);
@@ -225,6 +235,28 @@ public static class GraphQlEndpoints
         catch (JsonException ex)
         {
             return (null, Results.BadRequest($"Invalid JSON in 'variables' query parameter: {ex.Message}"));
+        }
+    }
+
+    // Mutations dispatch writes with no per-resource permission check, so they are refused while authorization is on.
+    private static IResult? RefuseMutation(GraphQlRequestBody body, IOptions<AuthorizationOptions> authorization) =>
+        authorization.Value.Enabled && ContainsMutation(body.Query!)
+            ? FhirAuthorizationFilter.CreateForbiddenResponse(
+                "GraphQL mutations are not available while authorization is enabled; use the REST create, update and delete interactions.")
+            : null;
+
+    private static bool ContainsMutation(string query)
+    {
+        try
+        {
+            return Utf8GraphQLParser.Parse(query).Definitions
+                .OfType<OperationDefinitionNode>()
+                .Any(operation => operation.Operation == OperationType.Mutation);
+        }
+        catch (SyntaxException)
+        {
+            // Execution parses the same document and reports the syntax error, so nothing can run.
+            return false;
         }
     }
 

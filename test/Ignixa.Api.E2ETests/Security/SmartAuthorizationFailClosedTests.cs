@@ -93,6 +93,34 @@ public class SmartAuthorizationFailClosedTests(IgnixaApiFixture fixture)
     }
 
     [Theory]
+    [InlineData("/tenant/1/$graphql")]
+    [InlineData("/$graphql")]
+    public async Task GivenASearchOnlyWildcardScope_WhenPostingAGraphQlMutation_ThenItIsForbiddenAndNothingIsDeleted(string path)
+    {
+        await using var application = CreateAuthorizedApplication();
+        var id = await PutPatientAsync();
+        using var client = CreateScopedClient(application, "system/*.s");
+
+        using var response = await PostGraphQlAsync(client, path, $$"""mutation { PatientDelete(id: "{{id}}") }""");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden, await response.Content.ReadAsStringAsync());
+        using var readBack = await fixture.Client.GetAsync($"/tenant/1/Patient/{id}");
+        readBack.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task GivenASearchOnlyWildcardScope_WhenPostingAGraphQlQuery_ThenItSucceeds()
+    {
+        await using var application = CreateAuthorizedApplication();
+        var id = await PutPatientAsync();
+        using var client = CreateScopedClient(application, "system/*.s");
+
+        using var response = await PostGraphQlAsync(client, "/tenant/1/$graphql", $$"""{ Patient(id: "{{id}}") { id } }""");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+    }
+
+    [Theory]
     [InlineData("GET", "/tenant/1/_history")]
     [InlineData("GET", "/_history")]
     [InlineData("POST", "/tenant/1/$export")]
@@ -129,6 +157,11 @@ public class SmartAuthorizationFailClosedTests(IgnixaApiFixture fixture)
             "/tenant/1",
             new StringContent(bundle.ToJsonString(), Encoding.UTF8, "application/fhir+json"));
     }
+
+    private static Task<HttpResponseMessage> PostGraphQlAsync(HttpClient client, string path, string query) =>
+        client.PostAsync(
+            path,
+            new StringContent(new JsonObject { ["query"] = query }.ToJsonString(), Encoding.UTF8, "application/json"));
 
     private async Task<string> PutPatientAsync()
     {

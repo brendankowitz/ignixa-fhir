@@ -76,6 +76,8 @@ depends on one is refused with `403 Forbidden` rather than answered with unrestr
 
 Use a `user/` or `system/` scope without search parameters until compartment enforcement is available.
 
+When a token holds both, the scope without restrictions is used, whatever their order in the token.
+
 ## Operations and Bundles
 
 SMART has no permission for operations, so each operation route declares the interaction it is authorized as. A
@@ -93,6 +95,10 @@ route that declares none is refused.
 | `ValueSet/$expand`, `ConceptMap/$translate`, `CodeSystem/$subsumes`, `StructureMap/$transform` | Read on `ValueSet`, `ConceptMap`, `CodeSystem` or `StructureMap` |
 | `/tenant/{id}/admin/packages` (list) | Read on `*` |
 | `/tenant/{id}/admin/packages` (load, unload) | Update on `*` |
+
+GraphQL mutations (`PatientCreate`, `PatientUpdate`, `PatientDelete` and so on) are refused with `403 Forbidden`
+while authorization is enabled, because they write without a per-resource permission check. Use the REST create,
+update and delete interactions instead.
 
 Package load and unload change search behaviour for every tenant. While more than one tenant is active they also
 require the `SystemAdmin` role.
