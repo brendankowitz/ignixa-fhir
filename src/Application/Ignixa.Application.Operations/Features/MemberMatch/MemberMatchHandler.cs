@@ -9,6 +9,7 @@ using Ignixa.Models;
 using Ignixa.Serialization.Models;
 using Medino;
 using Microsoft.Extensions.Logging;
+using Ignixa.Domain.Exceptions;
 using ConformanceStaleException = Ignixa.Application.Features.Conformance.ConformanceStaleException;
 
 namespace Ignixa.Application.Operations.Features.MemberMatch;
@@ -74,7 +75,8 @@ public class MemberMatchHandler : IRequestHandler<MemberMatchCommand, MemberMatc
 
             return result;
         }
-        catch (ConformanceStaleException)
+        // Conformance failures are retryable 503s, not malformed input.
+        catch (Exception ex) when (ex is ConformanceStaleException or SearchDeadlineExceededException)
         {
             throw;
         }
