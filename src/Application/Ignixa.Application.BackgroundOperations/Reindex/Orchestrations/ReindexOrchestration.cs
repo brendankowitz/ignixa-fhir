@@ -22,11 +22,12 @@ public sealed class ReindexOrchestration
         OrchestrationContext context,
         ReindexOrchestrationInput input)
     {
-        var state = input.State ?? ReindexOrchestrationState.Create(input.TenantIds);
         var scheduledActivities = 0;
-
-        if (!state.Started)
+        var state = input.State;
+        if (state is null)
         {
+            // Only the first execution starts the job; ContinueAsNew always carries state from the loop below.
+            state = ReindexOrchestrationState.Create(input.TenantIds);
             StartReindexOutput started;
             try
             {
@@ -46,32 +47,11 @@ public sealed class ReindexOrchestration
                 return Stopped(state);
             }
 
-            state = state with
-            {
-                Started = true,
-                IgnoredLifecycleEvents = started.IgnoredLifecycleEvents
-            };
-            if (ContinueIfNeeded(context, input, state, scheduledActivities))
-            {
-                return default!;
-            }
-        }
+            state = state with { IgnoredLifecycleEvents = started.IgnoredLifecycleEvents };
 
-        if (state.Phase == ReindexPhase.BarrierDelay)
-        {
             // One durable wait; stale-job detection adds the barrier delay to its allowance while a job is in it.
+            // The first wave raises the barriers and persists the move to Draining.
             await context.CreateTimer(context.CurrentUtcDateTime.Add(input.BarrierDelay), true);
-            state = state with { Phase = ReindexPhase.Draining };
-            if (await PersistProgressAsync(context, input, state) is { } closed)
-            {
-                return closed;
-            }
-
-            scheduledActivities++;
-            if (ContinueIfNeeded(context, input, state, scheduledActivities))
-            {
-                return default!;
-            }
         }
 
         while (!state.AllTenantsCompleted)

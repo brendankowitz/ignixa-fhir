@@ -341,7 +341,7 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         var searchIndices = BuildSearchIndicesWithExtensions("reindex-target");
         await PutAsync(Patient("conflicted-input") with { SearchIndices = searchIndices }, Patient("updated-input") with { SearchIndices = searchIndices });
         var (_, cutoff) = await _store.RaiseBarrierAsync(65, CancellationToken.None);
-        var stale = (await _store.ReadRangeAsync("Patient", 0, cutoff, 10, null, CancellationToken.None))
+        var stale = (await _store.ReadRangeAsync("Patient", -1, cutoff, 10, CancellationToken.None))
             .Select(resource => resource with { Resource = resource.Resource with { SearchIndices = searchIndices } })
             .ToArray();
         var conflicted = stale.Single(resource => resource.Resource.ResourceId == "conflicted-input").ResourceSurrogateId;
@@ -469,7 +469,7 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
     {
         await PutAsync(resource);
         var (_, cutoff) = await _store.RaiseBarrierAsync(BarrierEventId, CancellationToken.None);
-        return (await _store.ReadRangeAsync("Patient", 0, cutoff, 10, null, CancellationToken.None))
+        return (await _store.ReadRangeAsync("Patient", -1, cutoff, 10, CancellationToken.None))
             .Single(read => read.Resource.ResourceId == resource.ResourceId);
     }
 
@@ -480,9 +480,9 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         var (ranges, _) = await store.GetSurrogateIdRangesAsync(resourceType, -1, cutoff, 1, 10, CancellationToken.None);
         foreach (var (start, end, _) in ranges)
         {
-            for (var page = await store.ReadRangeAsync(resourceType, start, end, 1, null, CancellationToken.None);
+            for (var page = await store.ReadRangeAsync(resourceType, start - 1, end, 1, CancellationToken.None);
                  page.Count > 0;
-                 page = await store.ReadRangeAsync(resourceType, start, end, 1, page[^1].ResourceSurrogateId, CancellationToken.None))
+                 page = await store.ReadRangeAsync(resourceType, page[^1].ResourceSurrogateId, end, 1, CancellationToken.None))
             {
                 resources.AddRange(page);
             }

@@ -26,12 +26,15 @@ public interface IReindexStore
         int maxRanges,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Reads up to <paramref name="maxCount"/> current resources with surrogate IDs above
+    /// <paramref name="afterSurrogateId"/> and at most <paramref name="endSurrogateId"/>, in surrogate-ID order.
+    /// </summary>
     Task<IReadOnlyList<ReindexResource>> ReadRangeAsync(
         string resourceType,
-        long start,
+        long afterSurrogateId,
         long endSurrogateId,
         int maxCount,
-        long? afterSurrogateId,
         CancellationToken cancellationToken);
 
     Task<SearchIndexUpdateResult> UpdateSearchIndicesAsync(

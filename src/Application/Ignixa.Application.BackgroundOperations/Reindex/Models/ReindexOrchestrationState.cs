@@ -1,7 +1,6 @@
 namespace Ignixa.Application.BackgroundOperations.Reindex.Models;
 
 public sealed record ReindexOrchestrationState(
-    bool Started,
     ReindexPhase Phase,
     IReadOnlyList<string> IgnoredLifecycleEvents,
     IReadOnlyList<ReindexTenantState> Tenants)
@@ -11,7 +10,6 @@ public sealed record ReindexOrchestrationState(
 
     public static ReindexOrchestrationState Create(IReadOnlyList<int> tenantIds) =>
         new(
-            false,
             ReindexPhase.BarrierDelay,
             [],
             tenantIds.Select(ReindexTenantState.Create).ToArray());

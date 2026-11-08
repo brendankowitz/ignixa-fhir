@@ -54,7 +54,7 @@ public sealed class ReindexRangeProcessor(
 
             long resourcesReindexed = 0;
             long conflicts = 0;
-            long? afterSurrogateId = null;
+            var afterSurrogateId = input.StartSurrogateId - 1;
             var writeBatchSize = input.MaximumNumberOfResourcesPerWrite;
             var failures = new List<ReindexFailedResource>();
             long failedResourceCount = 0;
@@ -62,10 +62,9 @@ public sealed class ReindexRangeProcessor(
             {
                 var page = await store.ReadRangeAsync(
                     input.ResourceType,
-                    input.StartSurrogateId,
+                    afterSurrogateId,
                     input.EndSurrogateId,
                     writeBatchSize,
-                    afterSurrogateId,
                     cancellationToken);
                 if (page.Count == 0)
                 {

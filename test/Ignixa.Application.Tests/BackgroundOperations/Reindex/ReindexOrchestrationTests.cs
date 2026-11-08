@@ -142,23 +142,19 @@ public class ReindexOrchestrationTests
 
     // §8.2 (B1): ContinueAsNew carries typed state, with enums as strings, and schedules nothing more.
     [Fact]
-    public async Task GivenContinuationsAtEveryPhaseBoundary_WhenSerializedAndResumed_ThenTheTypedStateIsCarried()
+    public async Task GivenAContinuationAfterTheFirstWave_WhenSerializedAndResumed_ThenTheTypedStateIsCarried()
     {
         var context = new FakeContext();
         await new ReindexOrchestration().RunTask(context, CreateOrchestrationInput() with { ContinueAsNewThreshold = 1 });
-        var afterStart = context.Continuations.ShouldHaveSingleItem();
+        var continuation = context.Continuations.ShouldHaveSingleItem();
         var scheduledBeforeContinuing = context.Scheduled.ToArray();
-        await new ReindexOrchestration().RunTask(context, afterStart);
-        await new ReindexOrchestration().RunTask(context, context.Continuations[^1]);
-        var continuation = context.Continuations[^1];
 
         var serialized = JsonDataConverter.Default.Serialize(continuation);
         var roundTripped = JsonDataConverter.Default.Deserialize<ReindexOrchestrationInput>(serialized)!;
-        // The chain ran at threshold 1; resume at 3 so this execution plans and drains once before continuing again.
+        // The first execution ran at threshold 1; resume at 3 so this execution plans and drains once before continuing again.
         await new ReindexOrchestration().RunTask(context, roundTripped with { ContinueAsNewThreshold = 3 });
 
-        afterStart.State!.Started.ShouldBeTrue();
-        scheduledBeforeContinuing.ShouldBe([nameof(StartReindexInput)]);
+        scheduledBeforeContinuing.ShouldBe([nameof(StartReindexInput), nameof(RaiseBarrierInput), nameof(PersistReindexProgressInput)]);
         serialized.ShouldContain("\"Draining\"");
         serialized.ShouldNotContain("\"Status\":1");
         JsonDataConverter.Default.Serialize(roundTripped.State).ShouldBe(JsonDataConverter.Default.Serialize(continuation.State));

@@ -59,7 +59,7 @@ public class ReindexRangeProcessorTests
         crossed.StaleDefinitionsEventId.ShouldBe(41);
         _ = eventStore.Received(1).ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
         versions.Received(2).GetDefinitionsHandle(FhirVersion.R4, 1);
-        await store.DidNotReceiveWithAnyArgs().ReadRangeAsync(default!, default, default, default, default, default);
+        await store.DidNotReceiveWithAnyArgs().ReadRangeAsync(default!, default, default, default, default);
     }
 
     // M5, §8.4 steps 3 and 6 (M10, F11): refreshed definitions, background context, failures counted. p1, p103 extract.
@@ -107,7 +107,7 @@ public class ReindexRangeProcessorTests
         var caller = accessor.RequestContext;
         var extractions = 0;
         var store = PageStore(1);
-        store.ReadRangeAsync(default!, default, default, default, default, default)
+        store.ReadRangeAsync(default!, default, default, default, default)
             .ReturnsForAnyArgs<IReadOnlyList<ReindexResource>>(_ => throw new InvalidOperationException("read failed"));
 
         await Should.ThrowAsync<InvalidOperationException>(() =>
@@ -134,7 +134,7 @@ public class ReindexRangeProcessorTests
         await Should.ThrowAsync<OperationCanceledException>(() => CreateProcessor(store)
             .ProcessAsync(Range with { QueryDelayIntervalInMilliseconds = int.MaxValue }, cancellation.Token));
 
-        await store.ReceivedWithAnyArgs(1).ReadRangeAsync(default!, default, default, default, default, default);
+        await store.ReceivedWithAnyArgs(1).ReadRangeAsync(default!, default, default, default, default);
     }
 
     /// <summary>An indexer that runs <paramref name="onExtract"/> for each resource and extracts nothing.</summary>
@@ -188,8 +188,8 @@ public class ReindexRangeProcessorTests
                     ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"p{{index}}"}"""), new ResourceRequest("PUT", $"Patient/p{index}")),
                 index))
             .ToArray();
-        store.ReadRangeAsync("Patient", 1, 20, Arg.Any<int>(), Arg.Any<long?>(), Arg.Any<CancellationToken>())
-            .Returns(call => call.ArgAt<long?>(4).HasValue ? [] : resources);
+        store.ReadRangeAsync("Patient", Arg.Any<long>(), 20, Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(call => call.ArgAt<long>(1) == 0 ? resources : []);
         store.UpdateSearchIndicesAsync(Arg.Any<IReadOnlyList<ReindexResource>>(), Arg.Any<CancellationToken>())
             .Returns(call => new SearchIndexUpdateResult(call.Arg<IReadOnlyList<ReindexResource>>().Count, 0));
         return store;

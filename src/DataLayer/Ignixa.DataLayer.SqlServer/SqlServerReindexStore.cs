@@ -135,101 +135,57 @@ public sealed class SqlServerReindexStore(
             return new SurrogateIdRangePage([], null);
         }
 
-        // Each seek reads at most targetRangeSize rows from the clustered resource key. The resulting
-        // ranges deliberately cover ID gaps. Pages continue from the preceding range end, so the
+        // One ordered read of at most maxRanges full ranges plus one row: numbering the rows groups them into
+        // ranges of targetRangeSize, and the extra row, if present, forms group maxRanges and means another page
+        // follows. Ranges deliberately cover ID gaps and each starts right after the previous one ends, so the
         // caller can discard each page without losing the contiguous cutoff partition.
-        var ranges = new List<SurrogateIdRange>();
-        var cursor = startAfterSurrogateId;
-        while (true)
-        {
-            using var nextRangeCommand = new SqlCommand(
-                """
-                SELECT MIN(ResourceSurrogateId), MAX(ResourceSurrogateId), COUNT_BIG(*)
-                FROM (
-                    SELECT TOP (@TargetRangeSize) ResourceSurrogateId
-                    FROM dbo.Resource
-                    WHERE ResourceTypeId = @ResourceTypeId
-                      AND IsHistory = 0
-                      AND IsDeleted = 0
-                      AND ResourceSurrogateId > @Cursor
-                      AND ResourceSurrogateId <= @UpperBoundSurrogateId
-                    ORDER BY ResourceSurrogateId
-                ) AS CurrentRange;
-                """);
-            nextRangeCommand.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId.Value;
-            nextRangeCommand.Parameters.Add("@UpperBoundSurrogateId", SqlDbType.BigInt).Value = upperBoundSurrogateId;
-            nextRangeCommand.Parameters.Add("@TargetRangeSize", SqlDbType.Int).Value = targetRangeSize;
-            nextRangeCommand.Parameters.Add("@Cursor", SqlDbType.BigInt).Value = cursor;
-            var rangeEnds = await sqlExecutionService.ExecuteReaderAsync(
-                tenantId,
-                nextRangeCommand,
-                static reader => (
-                    Start: reader.IsDBNull(0) ? (long?)null : reader.GetInt64(0),
-                    End: reader.IsDBNull(1) ? (long?)null : reader.GetInt64(1),
-                    Count: reader.GetInt64(2)),
-                cancellationToken);
-            var (first, end, count) = rangeEnds.Single();
-            if (!end.HasValue)
-            {
-                if (ranges.Count > 0)
-                {
-                    ranges[^1] = ranges[^1] with { End = upperBoundSurrogateId };
-                }
+        using var command = new SqlCommand(
+            """
+            WITH Candidates AS (
+                SELECT TOP (@MaxRows)
+                       ResourceSurrogateId,
+                       (ROW_NUMBER() OVER (ORDER BY ResourceSurrogateId) - 1) / @TargetRangeSize AS RangeIndex
+                FROM dbo.Resource
+                WHERE ResourceTypeId = @ResourceTypeId
+                  AND IsHistory = 0
+                  AND IsDeleted = 0
+                  AND ResourceSurrogateId > @StartAfterSurrogateId
+                  AND ResourceSurrogateId <= @UpperBoundSurrogateId
+                ORDER BY ResourceSurrogateId
+            )
+            SELECT MIN(ResourceSurrogateId), MAX(ResourceSurrogateId), COUNT_BIG(*)
+            FROM Candidates
+            GROUP BY RangeIndex
+            ORDER BY RangeIndex;
+            """);
+        command.Parameters.Add("@MaxRows", SqlDbType.BigInt).Value = (long)targetRangeSize * maxRanges + 1;
+        command.Parameters.Add("@TargetRangeSize", SqlDbType.BigInt).Value = targetRangeSize;
+        command.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId.Value;
+        command.Parameters.Add("@StartAfterSurrogateId", SqlDbType.BigInt).Value = startAfterSurrogateId;
+        command.Parameters.Add("@UpperBoundSurrogateId", SqlDbType.BigInt).Value = upperBoundSurrogateId;
+        var groups = await sqlExecutionService.ExecuteReaderAsync(
+            tenantId,
+            command,
+            static reader => (First: reader.GetInt64(0), Last: reader.GetInt64(1), Count: reader.GetInt64(2)),
+            cancellationToken);
 
-                return new SurrogateIdRangePage(ranges, null);
-            }
+        var hasMore = groups.Count > maxRanges;
+        var kept = hasMore ? groups.Take(maxRanges).ToArray() : groups.ToArray();
+        var ranges = kept.Select((group, index) => new SurrogateIdRange(
+                index > 0 ? kept[index - 1].Last + 1 : startAfterSurrogateId == -1 ? group.First : startAfterSurrogateId + 1,
+                // The final page's last range reaches the upper bound, so the pages partition the whole cutoff set.
+                !hasMore && index == kept.Length - 1 ? upperBoundSurrogateId : group.Last,
+                group.Count))
+            .ToArray();
 
-            var rangeStart = cursor == startAfterSurrogateId && startAfterSurrogateId == -1
-                ? first!.Value
-                : checked(cursor + 1);
-            if (count < targetRangeSize || end.Value == upperBoundSurrogateId)
-            {
-                ranges.Add(new SurrogateIdRange(rangeStart, upperBoundSurrogateId, count));
-                return new SurrogateIdRangePage(ranges, null);
-            }
-
-            ranges.Add(new SurrogateIdRange(rangeStart, end.Value, count));
-            if (ranges.Count == maxRanges)
-            {
-                using var continuationCommand = new SqlCommand(
-                    """
-                    SELECT CASE WHEN EXISTS (
-                        SELECT 1
-                        FROM dbo.Resource
-                        WHERE ResourceTypeId = @ResourceTypeId
-                          AND IsHistory = 0
-                          AND IsDeleted = 0
-                          AND ResourceSurrogateId > @Cursor
-                          AND ResourceSurrogateId <= @UpperBoundSurrogateId)
-                        THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END;
-                    """);
-                continuationCommand.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId.Value;
-                continuationCommand.Parameters.Add("@UpperBoundSurrogateId", SqlDbType.BigInt).Value = upperBoundSurrogateId;
-                continuationCommand.Parameters.Add("@Cursor", SqlDbType.BigInt).Value = end.Value;
-                var hasMore = await sqlExecutionService.ExecuteReaderAsync(
-                    tenantId,
-                    continuationCommand,
-                    static reader => reader.GetBoolean(0),
-                    cancellationToken);
-                if (!hasMore.Single())
-                {
-                    ranges[^1] = ranges[^1] with { End = upperBoundSurrogateId };
-                    return new SurrogateIdRangePage(ranges, null);
-                }
-
-                return new SurrogateIdRangePage(ranges, end.Value);
-            }
-
-            cursor = end.Value;
-        }
+        return new SurrogateIdRangePage(ranges, hasMore ? kept[^1].Last : null);
     }
 
     public async Task<IReadOnlyList<ReindexResource>> ReadRangeAsync(
         string resourceType,
-        long start,
+        long afterSurrogateId,
         long endSurrogateId,
         int maxCount,
-        long? afterSurrogateId,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrEmpty(resourceType);
@@ -252,17 +208,14 @@ public sealed class SqlServerReindexStore(
             WHERE r.ResourceTypeId = @ResourceTypeId
               AND r.IsHistory = 0
               AND r.IsDeleted = 0
-              AND r.ResourceSurrogateId >= @Start
+              AND r.ResourceSurrogateId > @AfterSurrogateId
               AND r.ResourceSurrogateId <= @End
-              AND (@AfterSurrogateId IS NULL OR r.ResourceSurrogateId > @AfterSurrogateId)
             ORDER BY r.ResourceSurrogateId;
             """);
         command.Parameters.Add("@MaxCount", SqlDbType.Int).Value = maxCount;
         command.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId.Value;
-        command.Parameters.Add("@Start", SqlDbType.BigInt).Value = start;
+        command.Parameters.Add("@AfterSurrogateId", SqlDbType.BigInt).Value = afterSurrogateId;
         command.Parameters.Add("@End", SqlDbType.BigInt).Value = endSurrogateId;
-        command.Parameters.Add("@AfterSurrogateId", SqlDbType.BigInt).Value =
-            afterSurrogateId ?? (object)DBNull.Value;
 
         // The write path reads only the identity, version and surrogate ID; the surrogate ID is also the
         // version's lastUpdated, as on every merge path.
