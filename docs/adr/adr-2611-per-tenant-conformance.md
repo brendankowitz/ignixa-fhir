@@ -64,10 +64,18 @@ mode (see Decision).
   with today's definitions. An activation recorded for a different FHIR version is excluded; unversioned
   activations apply to every tenant. The copy is idempotent (keyed by source event id, with a per-tenant completion
   marker) and runs before the tenant serves requests; tenant 1 keeps its events.
-- A parameter `Enabled` today stays `Enabled` in each tenant whose FHIR version it applies to: the job that enabled
-  it reindexed exactly those tenants (#469 targets a versioned parameter only on its version's tenants). A
-  parameter still `Pending` or `Reindexing` becomes `Pending` in each such tenant and completes with that tenant's
-  next job.
+- Copied events keep their source event ids, and the tenant's stream continues after the highest copied id.
+  Lifecycle events, transition commits and job rows refer to activations by event id, so ids are never renumbered;
+  an excluded event leaves a gap, which the projection already tolerates.
+- Watermarks are not reset. The tenant's conformance barrier, its consumer position and any job's
+  `TargetEventId` stay valid because they are in the same id space as the copied events. A tenant whose barrier is
+  ahead of the copied stream fails migration rather than lowering the barrier.
+- Enablement is copied only where indexing is proven. A parameter `Enabled` today stays `Enabled` in a tenant only
+  if the job that completed it listed that tenant in its `TenantIds`. That holds for every tenant active when the
+  job ran (#469 targets a versioned parameter only on its version's tenants). A tenant that was inactive then, or
+  added later, gets the parameter as `Pending`, as does a parameter still `Pending` or `Reindexing`. It completes
+  with that tenant's next job. If the job row is gone, the parameter is `Pending`.
+- An inactive tenant migrates when it is reactivated, before it serves requests, by the same rules.
 - Package resources and package terminology are copied from the shared stores (tenant 1 and the system
   partition), or reloaded by package id and version, into each tenant that lacks them.
 
