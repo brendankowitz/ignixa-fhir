@@ -105,5 +105,5 @@ public sealed class StartReindexActivityTests : IAsyncLifetime, IDisposable
     private Task<string> StartAsync() =>
         new StartReindexActivity(_lifecycle, _jobs, _jobLock, TimeProvider.System).RunAsync(
             ActivityContext(),
-            JsonSerializer.Serialize(new[] { new StartReindexInput("job", 1, [Target()], [1]) }));
+            JsonSerializer.Serialize(new[] { new StartReindexInput("job", [Target()], [1]) }));
 }

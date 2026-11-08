@@ -7,6 +7,7 @@ using Ignixa.Application.Features.Search;
 using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Events;
 using Ignixa.DataLayer.BlobStorage.Features.BackgroundJobs;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Definition;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -75,13 +76,13 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
         (await _jobs.ListAsync()).ShouldHaveSingleItem().JobId.ShouldBe("failed-during-race");
     }
 
-    // §6.1: an out-of-range parameter is a typed 400 result, rejected before the job lock.
+    // §6.1: an out-of-range parameter is a 400, rejected before the job lock.
     [Fact]
-    public async Task GivenInvalidConcurrency_WhenJobIsCreated_ThenTypedValidationResultIsReturned()
+    public async Task GivenInvalidConcurrency_WhenJobIsCreated_ThenBadRequestIsThrown()
     {
-        var result = await CreateHandler().HandleAsync(new CreateReindexJobCommand { MaximumConcurrency = 17 }, CancellationToken.None);
+        await Should.ThrowAsync<BadRequestException>(() =>
+            CreateHandler().HandleAsync(new CreateReindexJobCommand { MaximumConcurrency = 17 }, CancellationToken.None));
 
-        result.ShouldBeOfType<InvalidReindexRequestResult>();
         (await _jobs.ListAsync()).ShouldBeEmpty();
         _jobLock.Acquisitions.ShouldBe(0);
     }

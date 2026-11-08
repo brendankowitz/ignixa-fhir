@@ -27,7 +27,7 @@ public class ReindexOrchestrationTests
         var input = CreateOrchestrationInput(barrierDelay: TimeSpan.FromSeconds(30)) with
         {
             ResourceTypes = ["Patient", "Observation"],
-            Parameters = ReindexJobParameters.Create(maximumConcurrency: 1)
+            Parameters = new ReindexJobParameters(10_000, 100, 1, 0)
         };
 
         var result = await new ReindexOrchestration().RunTask(context, input);
@@ -281,7 +281,7 @@ public class ReindexOrchestrationTests
                 ReindexRangeInput range => Range(range),
                 PersistReindexProgressInput progress => Progress(progress),
                 CompleteReindexInput complete => new CompleteReindexOutput(
-                    complete.FailureMessage is null && complete.Tenants.All(tenant => tenant.Success), []),
+                    complete.FailureMessage is null && complete.Tenants.All(tenant => tenant.Success)),
                 _ => throw new InvalidOperationException($"Unexpected activity {input.GetType().Name}.")
             };
         }

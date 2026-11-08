@@ -47,7 +47,7 @@ public sealed class CompleteReindexActivity(
                 "Reindex: completion of job {JobId} is superseded by {Status}",
                 job.JobId,
                 job.Status);
-            return new CompleteReindexOutput(job.GetStatus() == ReindexJobStatus.Completed, []);
+            return new CompleteReindexOutput(job.GetStatus() == ReindexJobStatus.Completed);
         }
 
         var missingTenantIds = await GetTenantsAddedSinceStartAsync(job, cancellationToken);
@@ -90,7 +90,7 @@ public sealed class CompleteReindexActivity(
             ReindexMetrics.RecordJobDuration(duration);
         }
 
-        return new CompleteReindexOutput(success, ignored);
+        return new CompleteReindexOutput(success);
     }
 
     // The outcome of every planned target is derived from the orchestration's input, so a retried activity

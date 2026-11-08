@@ -33,7 +33,7 @@ public sealed class ReindexOrchestration
                 started = await context.ScheduleWithRetry<StartReindexOutput>(
                     typeof(StartReindexActivity),
                     CreateRetryOptions(),
-                    new StartReindexInput(input.JobId, input.TargetEventId, input.Targets, input.TenantIds));
+                    new StartReindexInput(input.JobId, input.Targets, input.TenantIds));
             }
             catch (Exception ex)
             {
@@ -123,28 +123,18 @@ public sealed class ReindexOrchestration
             CreateRetryOptions(),
             new CompleteReindexInput(
                 input.JobId,
-                input.TargetEventId,
                 input.Targets,
                 tenants,
                 state.IgnoredLifecycleEvents)
             {
                 FailureMessage = error is null ? null : $"Reindex orchestration failed: {error.Message}"
             });
-        return new ReindexOrchestrationOutput(
-            completed.Success,
-            tenants,
-            state.IgnoredLifecycleEvents
-                .Concat(completed.IgnoredLifecycleEvents)
-                .Distinct(StringComparer.Ordinal)
-                .ToArray());
+        return new ReindexOrchestrationOutput(completed.Success, tenants);
     }
 
     /// <summary>The job row was finished or removed by someone else; its terminal state is authoritative.</summary>
     private static ReindexOrchestrationOutput Stopped(ReindexOrchestrationState state) =>
-        new(
-            false,
-            state.Tenants.Select(tenant => tenant.Progress).ToArray(),
-            state.IgnoredLifecycleEvents);
+        new(false, state.Tenants.Select(tenant => tenant.Progress).ToArray());
 
     private static RetryOptions CreateRetryOptions(int maxNumberOfAttempts = 5) =>
         new(TimeSpan.FromSeconds(1), maxNumberOfAttempts)

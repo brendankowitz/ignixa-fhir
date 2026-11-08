@@ -1,3 +1,5 @@
+using Ignixa.Domain.Exceptions;
+
 namespace Ignixa.Application.BackgroundOperations.Reindex;
 
 /// <summary>
@@ -15,10 +17,10 @@ public sealed record ReindexJobParameters(
     public const int MaxQueryDelayInMilliseconds = 60_000;
 
     public static ReindexJobParameters Create(
-        int maximumNumberOfResourcesPerQuery = MaxResourcesPerBatch,
-        int maximumNumberOfResourcesPerWrite = 100,
-        int maximumConcurrency = 4,
-        int queryDelayIntervalInMilliseconds = 0)
+        int maximumNumberOfResourcesPerQuery,
+        int maximumNumberOfResourcesPerWrite,
+        int maximumConcurrency,
+        int queryDelayIntervalInMilliseconds)
     {
         ValidateRange(maximumNumberOfResourcesPerQuery, 1, MaxResourcesPerBatch, nameof(maximumNumberOfResourcesPerQuery));
         ValidateRange(maximumNumberOfResourcesPerWrite, 1, MaxResourcesPerBatch, nameof(maximumNumberOfResourcesPerWrite));
@@ -36,7 +38,7 @@ public sealed record ReindexJobParameters(
     {
         if (value < minimum || value > maximum)
         {
-            throw new ReindexValidationException(name, minimum, maximum);
+            throw new BadRequestException($"{name} must be between {minimum} and {maximum}.");
         }
     }
 }

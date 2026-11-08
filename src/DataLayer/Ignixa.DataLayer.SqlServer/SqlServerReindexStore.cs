@@ -266,11 +266,8 @@ public sealed class SqlServerReindexStore(
                    r.ResourceId,
                    r.Version,
                    r.RawResource,
-                   r.ResourceSurrogateId,
-                   r.RequestMethod,
-                   t.CreateDate
+                   r.ResourceSurrogateId
             FROM dbo.Resource r
-            LEFT JOIN dbo.Transactions t ON t.SurrogateIdRangeFirstValue = r.TransactionId
             WHERE r.ResourceTypeId = @ResourceTypeId
               AND r.IsHistory = 0
               AND r.IsDeleted = 0
@@ -286,29 +283,26 @@ public sealed class SqlServerReindexStore(
         command.Parameters.Add("@AfterSurrogateId", SqlDbType.BigInt).Value =
             afterSurrogateId ?? (object)DBNull.Value;
 
-        var rows = await sqlExecutionService.ExecuteReaderAsync(
+        // The write path reads only the identity, version and surrogate ID; the surrogate ID is also the
+        // version's lastUpdated, as on every merge path.
+        return await sqlExecutionService.ExecuteReaderAsync(
             tenantId,
             command,
-            static reader => new ReindexResourceRow(
-                reader.GetString(0),
-                reader.GetInt32(1),
-                reader.GetFieldValue<byte[]>(2),
-                reader.GetInt64(3),
-                reader.IsDBNull(4) ? "PUT" : reader.GetString(4),
-                reader.IsDBNull(5)
-                    ? DateTimeOffset.UtcNow
-                    : new DateTimeOffset(DateTime.SpecifyKind(reader.GetDateTime(5), DateTimeKind.Utc))),
+            reader =>
+            {
+                var resourceId = reader.GetString(0);
+                var surrogateId = reader.GetInt64(3);
+                return new ReindexResource(
+                    new ResourceWrapper(
+                        resourceType,
+                        resourceId,
+                        reader.GetInt32(1).ToString(CultureInfo.InvariantCulture),
+                        surrogateId.ToDate(),
+                        ResourceJsonNode.Parse(Encoding.UTF8.GetString(compressor.DecompressBytes(reader.GetFieldValue<byte[]>(2)).Span)),
+                        new ResourceRequest("PUT", $"{resourceType}/{resourceId}")),
+                    surrogateId);
+            },
             cancellationToken);
-
-        return rows.Select(row => new ReindexResource(
-            new ResourceWrapper(
-                resourceType,
-                row.ResourceId,
-                row.Version.ToString(CultureInfo.InvariantCulture),
-                row.LastModified,
-                ResourceJsonNode.Parse(Encoding.UTF8.GetString(compressor.DecompressBytes(row.RawResource).Span)),
-                new ResourceRequest(row.RequestMethod, $"{resourceType}/{row.ResourceId}")),
-            row.ResourceSurrogateId)).ToArray();
     }
 
     public async Task<SearchIndexUpdateResult> UpdateSearchIndicesAsync(

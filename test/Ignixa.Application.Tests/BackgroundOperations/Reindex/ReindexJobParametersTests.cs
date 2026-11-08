@@ -1,4 +1,5 @@
 using Ignixa.Application.BackgroundOperations.Reindex;
+using Ignixa.Domain.Exceptions;
 using Shouldly;
 
 namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
@@ -21,7 +22,7 @@ public class ReindexJobParametersTests
         int maximumConcurrency,
         int queryDelayIntervalInMilliseconds)
     {
-        Should.Throw<ReindexValidationException>(() => ReindexJobParameters.Create(
+        Should.Throw<BadRequestException>(() => ReindexJobParameters.Create(
             maximumNumberOfResourcesPerQuery,
             maximumNumberOfResourcesPerWrite,
             maximumConcurrency,

@@ -13,4 +13,4 @@ public sealed record ReindexStatusResult(
     bool IsStale,
     string? ErrorMessage,
     ReindexProgress? Progress,
-    ReindexJobDefinition? Definition = null);
+    ReindexJobDefinition Definition);

@@ -19,8 +19,6 @@ namespace Ignixa.Api.Endpoints;
 
 public static class ReindexEndpoints
 {
-    private const int RecentTerminalJobLimit = 10;
-
     public static IEndpointRouteBuilder MapReindexEndpoints(this IEndpointRouteBuilder endpoints)
     {
         MapRoutes(endpoints.MapGroup("/tenant/{tenantId:int}"), "ForTenant");
@@ -83,8 +81,6 @@ public static class ReindexEndpoints
             case ActiveReindexJobResult active:
                 context.Response.Headers["Content-Location"] = GetStatusUrl(context, active.ActiveJobId);
                 return Error(StatusCodes.Status409Conflict, "A reindex job is already active.");
-            case InvalidReindexRequestResult invalid:
-                return Error(StatusCodes.Status400BadRequest, invalid.ErrorMessage);
             case NoReindexWorkResult noWork:
                 return Error(StatusCodes.Status400BadRequest, noWork.ErrorMessage);
             default:
@@ -98,7 +94,7 @@ public static class ReindexEndpoints
         CancellationToken cancellationToken)
     {
         var jobs = await mediator.SendAsync(
-            new GetReindexJobsQuery(RecentTerminalJobLimit),
+            new GetReindexJobsQuery(),
             cancellationToken);
         var parameters = new JsonObject
         {
@@ -209,22 +205,20 @@ public static class ReindexEndpoints
 
         AddValue(values, "failureDetails", "valueString", status.ErrorMessage);
 
-        if (status.Definition is { } definition)
+        var definition = status.Definition;
+        AddValue(values, "maximumNumberOfResourcesPerQuery", "valueInteger", definition.MaximumNumberOfResourcesPerQuery);
+        AddValue(values, "maximumNumberOfResourcesPerWrite", "valueInteger", definition.MaximumNumberOfResourcesPerWrite);
+        AddValue(values, "maximumConcurrency", "valueInteger", definition.MaximumConcurrency);
+        AddValue(values, "queryDelayIntervalInMilliseconds", "valueInteger", definition.QueryDelayIntervalInMilliseconds);
+        AddValue(values, "trigger", "valueString", definition.Trigger);
+        AddIdentifierValue(values, "targetEventId", definition.TargetEventId, fhirVersion);
+        foreach (var resourceType in definition.ResourceTypes)
         {
-            AddValue(values, "maximumNumberOfResourcesPerQuery", "valueInteger", definition.MaximumNumberOfResourcesPerQuery);
-            AddValue(values, "maximumNumberOfResourcesPerWrite", "valueInteger", definition.MaximumNumberOfResourcesPerWrite);
-            AddValue(values, "maximumConcurrency", "valueInteger", definition.MaximumConcurrency);
-            AddValue(values, "queryDelayIntervalInMilliseconds", "valueInteger", definition.QueryDelayIntervalInMilliseconds);
-            AddValue(values, "trigger", "valueString", definition.Trigger);
-            AddIdentifierValue(values, "targetEventId", definition.TargetEventId, fhirVersion);
-            foreach (var resourceType in definition.ResourceTypes)
-            {
-                AddValue(values, "resources", "valueString", resourceType);
-            }
-            foreach (var searchParameter in definition.SearchParameters)
-            {
-                AddValue(values, "searchParams", "valueString", searchParameter.Canonical);
-            }
+            AddValue(values, "resources", "valueString", resourceType);
+        }
+        foreach (var searchParameter in definition.SearchParameters)
+        {
+            AddValue(values, "searchParams", "valueString", searchParameter.Canonical);
         }
 
         foreach (var ignored in status.Progress?.IgnoredLifecycleEvents ?? [])

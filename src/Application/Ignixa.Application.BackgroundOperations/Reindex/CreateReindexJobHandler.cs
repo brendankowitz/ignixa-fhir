@@ -27,22 +27,11 @@ public sealed class CreateReindexJobHandler(
         CreateReindexJobCommand request,
         CancellationToken cancellationToken)
     {
-        ReindexJobParameters parameters;
-        try
-        {
-            parameters = ReindexJobParameters.Create(
-                request.MaximumNumberOfResourcesPerQuery
-                    ?? options.Value.DefaultMaximumNumberOfResourcesPerQuery,
-                request.MaximumNumberOfResourcesPerWrite
-                    ?? options.Value.DefaultMaximumNumberOfResourcesPerWrite,
-                request.MaximumConcurrency
-                    ?? options.Value.DefaultMaximumConcurrency,
-                request.QueryDelayIntervalInMilliseconds ?? 0);
-        }
-        catch (ReindexValidationException ex)
-        {
-            return new InvalidReindexRequestResult(ex.Message);
-        }
+        var parameters = ReindexJobParameters.Create(
+            request.MaximumNumberOfResourcesPerQuery ?? options.Value.DefaultMaximumNumberOfResourcesPerQuery,
+            request.MaximumNumberOfResourcesPerWrite ?? options.Value.DefaultMaximumNumberOfResourcesPerWrite,
+            request.MaximumConcurrency ?? options.Value.DefaultMaximumConcurrency,
+            request.QueryDelayIntervalInMilliseconds ?? 0);
 
         return await jobLock.ExecuteAsync(
             ct => StartUnderLockAsync(request, parameters, ct),

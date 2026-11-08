@@ -209,7 +209,6 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
     [Theory]
     [InlineData("CreateReindexForTenant", "active", 409, "OperationOutcome", "/tenant/1/$reindex/active-job", "A reindex job is already active.")]
     [InlineData("CreateReindexForTenant", "no-work", 400, "OperationOutcome", null, "No resources need reindexing.")]
-    [InlineData("CreateReindexForTenant", "invalid", 400, "OperationOutcome", null, "maximumConcurrency must be between 1 and 16.")]
     [InlineData("GetReindexForTenant", "missing", 404, "OperationOutcome", null, "Reindex job 'job' was not found.")]
     [InlineData("CancelReindexForTenant", "missing", 404, "OperationOutcome", null, "Reindex job 'job' was not found.")]
     [InlineData("CancelReindexForTenant", "cancelled", 202, "Parameters", null, "status[valueString]=\"Cancelled\"")]
@@ -226,7 +225,6 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         {
             "active" => new ActiveReindexJobResult("active-job"),
             "no-work" => new NoReindexWorkResult("No resources need reindexing."),
-            "invalid" => new InvalidReindexRequestResult("maximumConcurrency must be between 1 and 16."),
             _ => _createResult
         };
         _status = outcome == "missing" ? null! : _status;

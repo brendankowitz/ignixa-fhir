@@ -91,7 +91,7 @@ internal static class ReindexTestHelper
 
     public static ReindexOrchestrationInput CreateOrchestrationInput(
         TimeSpan? barrierDelay = null, IReadOnlyList<int>? tenantIds = null) =>
-        new("job", 42, barrierDelay ?? TimeSpan.Zero, tenantIds ?? [1], ["Patient"], [], ReindexJobParameters.Create(),
+        new("job", 42, barrierDelay ?? TimeSpan.Zero, tenantIds ?? [1], ["Patient"], [], new ReindexJobParameters(10_000, 100, 4, 0),
             DrainWarningAfter: TimeSpan.FromMinutes(5), StaleJobTimeout: TimeSpan.FromMinutes(30), ContinueAsNewThreshold: 2_000);
 
     /// <summary>A repository factory over <paramref name="tenants"/>; by default one SQL Server tenant, so reindex is available.</summary>

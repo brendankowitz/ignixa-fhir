@@ -72,19 +72,19 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
     /// Initializes the manager by loading search parameters from ConformanceState.
     /// ConformanceState already has the resolved winners from event replay - no conflict resolution needed.
     /// </summary>
-    public async Task InitializeAsync(CancellationToken cancellationToken = default)
+    public Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         if (!_options.EagerLoadPackageSearchParameters)
         {
             _logger.LogDebug("Eager loading disabled - skipping initialization");
             _isInitialized = true;
-            return;
+            return Task.CompletedTask;
         }
 
         if (_isInitialized)
         {
             _logger.LogDebug("Already initialized - skipping");
-            return;
+            return Task.CompletedTask;
         }
 
         var startTime = DateTime.UtcNow;
@@ -94,7 +94,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
 
         try
         {
-            await WaitForConformanceStateInitializationAsync(cancellationToken);
+            EnsureConformanceStateInitialized();
 
             LoadFromConformanceState();
             _isInitialized = true;
@@ -119,26 +119,17 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
             _isInitialized = true;
             _logger.LogWarning("Falling back to base search parameters only due to ConformanceState load error");
         }
+
+        return Task.CompletedTask;
     }
 
-    private async Task WaitForConformanceStateInitializationAsync(CancellationToken cancellationToken)
+    // The snapshot's initialization is fixed when it is built, so there is nothing to wait for.
+    private void EnsureConformanceStateInitialized()
     {
-        const int maxRetries = 50;
-        const int retryDelayMs = 100;
-
-        for (int i = 0; i < maxRetries && !_conformanceState.IsInitialized; i++)
-        {
-            _logger.LogDebug(
-                "Waiting for ConformanceState initialization (attempt {Attempt}/{MaxRetries})",
-                i + 1,
-                maxRetries);
-            await Task.Delay(retryDelayMs, cancellationToken);
-        }
-
         if (!_conformanceState.IsInitialized)
         {
             throw new InvalidOperationException(
-                $"ConformanceState was not initialized after waiting {maxRetries * retryDelayMs}ms");
+                "ConformanceState snapshot was built before the conformance projection was initialized.");
         }
     }
 

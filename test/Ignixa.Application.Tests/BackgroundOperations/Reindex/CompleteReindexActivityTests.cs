@@ -169,7 +169,7 @@ public class CompleteReindexActivityTests
         ReindexParameterDefinition[] targets, string? failureMessage = null, params ReindexTenantProgress[] tenants) =>
         JsonSerializer.Serialize(new[]
         {
-            new CompleteReindexInput("job", 1, targets, tenants.Length == 0 ? [Completed(1)] : tenants, []) { FailureMessage = failureMessage }
+            new CompleteReindexInput("job", targets, tenants.Length == 0 ? [Completed(1)] : tenants, []) { FailureMessage = failureMessage }
         });
 
     private static IReindexStoreFactory StoreFactoryWithCatalog(params string[] storageCanonicals)

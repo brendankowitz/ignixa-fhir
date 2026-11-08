@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Data.Common;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -225,13 +226,12 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                                     "Consumer {ConsumerId} executing batch of {Count} resources",
                                     consumerId, validOperations.Count);
 
-                                var writtenCount = await ImportBatchWriter.WriteAsync(
+                                var writtenCount = await WriteBatchAsync(
                                     consumerRepository,
                                     validOperations,
                                     definitionsHandle,
-                                    () => _fhirVersionContext.GetDefinitionsHandle(fhirVersion, input.TenantId),
-                                    _barrierRetryPolicy,
-                                    CancellationToken.None);
+                                    fhirVersion,
+                                    input.TenantId);
                                 localSuccessCount += writtenCount;
                                 _logger.LogDebug(
                                     "Consumer {ConsumerId} completed batch: {Count} resources written",
@@ -354,6 +354,52 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                 lineNumber,
                 fileUrl);
         }
+    }
+
+    /// <summary>
+    /// Writes one batch under the conformance barrier. The first attempt uses the indexes extracted with
+    /// <paramref name="definitionsHandle"/>; a barrier rejection re-extracts every resource against the
+    /// current definitions and retries once on a fresh transaction.
+    /// </summary>
+    private Task<int> WriteBatchAsync(
+        IFhirRepository repository,
+        IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)> operations,
+        DefinitionsHandle definitionsHandle,
+        FhirVersion fhirVersion,
+        int tenantId)
+    {
+        var attempt = 0;
+        return _barrierRetryPolicy.ExecuteAsync(
+            async ct =>
+            {
+                attempt++;
+                var attemptHandle = attempt == 1 ? definitionsHandle : _fhirVersionContext.GetDefinitionsHandle(fhirVersion, tenantId);
+                var attemptOperations = attempt == 1
+                    ? operations
+                    : operations.Select(operation =>
+                    {
+                        IReadOnlyList<object> indexes = attemptHandle.Indexer.Extract(
+                            (IElement)operation.resource.ToElement(attemptHandle.SchemaProvider)).ToArray();
+                        return (operation.resourceType, operation.resourceId, operation.resource, searchIndexes: indexes, operation.httpMethod, operation.entryIndex);
+                    }).ToList();
+
+                // A file can outgrow a reserved range, and blank lines are not resource offsets.
+                var transactionId = await repository.GetNextTransactionIdAsync(attemptHandle.DefinitionsEventId, ct);
+                var keys = await repository.BatchWriteAsync(transactionId, attemptOperations, ct);
+                try
+                {
+                    await repository.CommitTransactionAsync(transactionId, CancellationToken.None);
+                }
+                catch (Exception ex) when (ex is IOException or DbException or TimeoutException or InvalidOperationException or OperationCanceledException)
+                {
+                    throw new InvalidOperationException(
+                        $"Import commit outcome is indeterminate for transaction {transactionId.Value} ({attemptOperations.Count} resources). {ex.Message}",
+                        ex);
+                }
+
+                return keys.Count;
+            },
+            CancellationToken.None);
     }
 
     /// <summary>
