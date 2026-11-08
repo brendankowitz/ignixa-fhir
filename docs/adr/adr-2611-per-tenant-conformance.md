@@ -8,9 +8,11 @@ package-controlled resources. The rest of ADR-2512 (event sourcing, lifecycle st
 - ADR-2512 made package-controlled conformance (SearchParameter, StructureDefinition, CompartmentDefinition,
   CodeSystem, ValueSet) global: one `SourceEvents` table, read and written in tenant 1's database
   (`ConformanceServicesRegistration`), projected into one process-wide `ConformanceState`.
-- The package API is tenant-shaped: `/tenant/{id}/admin/packages/load` stores the package in tenant `{id}`, but
-  activation changes search and validation for every tenant. Isolated mode promises each tenant its own store
-  ([ADR-2510](adr-2510-multi-tenancy.md)); a shared catalog breaks that promise.
+- Package storage is shared as well. On SQL Server, `IPackageResourceRepository` is bound to tenant 1's database
+  (`DataLayerRegistration`; `dbo.PackageResource` has no tenant column), and package terminology lives in the system
+  partition's database. Only the route is tenant-shaped: `/tenant/{id}/admin/packages/load` stores and activates
+  for every tenant. Isolated mode promises each tenant its own store ([ADR-2510](adr-2510-multi-tenancy.md)); shared
+  package storage and activation break that promise.
 - The reindex feature ([PR #469](https://github.com/brendankowitz/ignixa-fhir/pull/469)) absorbs the mismatch:
   - a job spans every active tenant, and a parameter becomes `Enabled` only after all of them are reindexed;
   - a tenant activated while a job runs fails that job;
@@ -37,24 +39,34 @@ package-controlled resources. The rest of ADR-2512 (event sourcing, lifecycle st
 
 - A tenant's event stream holds only its own activations. Event ids, the activation lock, the conformance barrier
   and the staleness lease are per tenant; the barrier and lease already live in each tenant's database (PR #469).
-- Package load, activation and unload are tenant operations: `/tenant/{id}/admin/packages` affects tenant `{id}`
-  alone. Base FHIR definitions stay in process, per FHIR version, and are not stored per tenant.
-- A reindex job belongs to one tenant: its job row, lock and orchestration live in that tenant, and a parameter's
-  transitions follow that tenant's job alone. `/tenant/{id}/$reindex` is authorized like any tenant-wide write
-  (update on `*`, unrestricted grant); the `SystemAdmin` requirement is removed.
+- In Isolated mode, package storage, load, activation and unload are tenant operations:
+  `/tenant/{id}/admin/packages` stores and activates in tenant `{id}` alone. Base FHIR definitions stay in process,
+  per FHIR version, and are not stored per tenant.
+- In Isolated mode, a reindex job belongs to one tenant: its job row, lock and orchestration live in that tenant,
+  and a parameter's transitions follow that tenant's job alone. `/tenant/{id}/$reindex` is authorized like any
+  tenant-wide write (update on `*`, unrestricted grant); the `SystemAdmin` requirement is removed.
+- Distributed mode is deferred to its own decision, which must define completion across every partition the shared
+  projection serves and authorization against that shared authority. Until then, the bullets above apply to
+  Isolated mode only, and Distributed mode keeps today's server-wide rules.
 - Consumers (search definitions, validation, capability statement, compartments) resolve the projection for the
   request's tenant instead of a singleton. A projection loads on first use, the sync service keeps each loaded
   projection current, and an idle projection may be evicted.
 - Tenant 0 stays reserved and unexposed in Isolated mode.
 
 ## Migration
-- On upgrade, each active tenant other than 0 receives a copy of tenant 1's events, so it starts with today's
-  definitions. The copy is idempotent (keyed by source event id, with a per-tenant completion marker) and runs
-  before the tenant serves requests; tenant 1 keeps its events.
-- Parameters already `Enabled` stay `Enabled`: the global jobs that enabled them covered every tenant. A parameter
-  still `Pending` or `Reindexing` becomes `Pending` in each tenant and completes with that tenant's next job.
-- Package resources and package terminology are copied, or reloaded by package id and version, into each tenant
-  that lacks them.
+These steps apply to Isolated mode. Migration into tenant 0 for Distributed mode is deferred with the rest of that
+mode (see Decision).
+
+- On upgrade, each active tenant other than 0 receives a copy of tenant 1's events that apply to it, so it starts
+  with today's definitions. An activation recorded for a different FHIR version is excluded; unversioned
+  activations apply to every tenant. The copy is idempotent (keyed by source event id, with a per-tenant completion
+  marker) and runs before the tenant serves requests; tenant 1 keeps its events.
+- A parameter `Enabled` today stays `Enabled` in each tenant whose FHIR version it applies to: the job that enabled
+  it reindexed exactly those tenants (#469 targets a versioned parameter only on its version's tenants). A
+  parameter still `Pending` or `Reindexing` becomes `Pending` in each such tenant and completes with that tenant's
+  next job.
+- Package resources and package terminology are copied from the shared stores (tenant 1 and the system
+  partition), or reloaded by package id and version, into each tenant that lacks them.
 
 ## Consequences
 
