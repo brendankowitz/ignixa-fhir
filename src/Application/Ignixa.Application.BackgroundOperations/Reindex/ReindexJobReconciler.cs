@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using DurableTask.Core;
+using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
@@ -25,6 +26,8 @@ public sealed class ReindexJobReconciler(
     TimeProvider timeProvider,
     ILogger<ReindexJobReconciler> logger)
 {
+    private static readonly EventId StaleJob = new(4203, "ReindexStaleJob");
+
     /// <summary>
     /// Recovers <paramref name="active"/> once it has gone unobserved for <see cref="ReindexOptions.OrphanGrace"/>.
     /// Re-reads the job under the singleton lock, so a completion that lands first wins and nothing is applied twice.
@@ -63,6 +66,7 @@ public sealed class ReindexJobReconciler(
         var state = await taskHubClient.GetOrchestrationStateAsync(instanceId);
         if (IsActive(state))
         {
+            ReportIfStale(job);
             return;
         }
 
@@ -84,6 +88,20 @@ public sealed class ReindexJobReconciler(
         }
 
         await FinalizeAsync(job, state, cancellationToken);
+    }
+
+    // A running orchestration that stopped heartbeating is hung, not orphaned: report it for an operator.
+    private void ReportIfStale(BackgroundJob<ReindexJobDefinition> job)
+    {
+        if (job.IsStale(ReindexProgress.FromJson(job.Progress), options.Value, timeProvider.GetUtcNow()))
+        {
+            ReindexMetrics.StaleJobObserved();
+            logger.LogError(
+                StaleJob,
+                "Reindex: job {JobId} is running but has not heartbeated since {HeartbeatDate}",
+                job.JobId,
+                job.HeartbeatDate);
+        }
     }
 
     private async Task FinalizeAsync(

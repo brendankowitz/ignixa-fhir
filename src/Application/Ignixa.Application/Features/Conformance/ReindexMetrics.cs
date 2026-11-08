@@ -25,8 +25,12 @@ public static class ReindexMetrics
         Meter.CreateCounter<long>("reindex.reconciliation.failures");
     private static readonly Counter<long> TriggerFailures =
         Meter.CreateCounter<long>("reindex.trigger.failures");
+    private static readonly Counter<long> StaleJobs =
+        Meter.CreateCounter<long>("reindex.jobs.stale");
 
     public static void ProgressPersistenceFailed() => ProgressFailures.Add(1);
+
+    public static void StaleJobObserved() => StaleJobs.Add(1);
 
     public static void TriggerStarted(string trigger) =>
         Triggers.Add(1, new KeyValuePair<string, object?>("trigger", trigger));

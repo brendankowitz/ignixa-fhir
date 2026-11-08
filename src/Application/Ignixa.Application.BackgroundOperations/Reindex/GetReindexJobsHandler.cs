@@ -38,9 +38,6 @@ public sealed class GetReindexJobsHandler(
         TimeProvider timeProvider)
     {
         var progress = ReindexProgress.FromJson(job.Progress);
-        // The barrier delay is one durable wait with no activity to heartbeat, so it does not count as silence.
-        var allowedSilence = options.StaleJobTimeout +
-            (progress?.Phase == ReindexPhase.BarrierDelay ? options.BarrierDelay : TimeSpan.Zero);
         return new(
             job.JobId,
             job.GetStatus(),
@@ -48,7 +45,7 @@ public sealed class GetReindexJobsHandler(
             job.StartDate,
             job.EndDate,
             job.HeartbeatDate,
-            IsActive(job) && timeProvider.GetUtcNow() - job.HeartbeatDate > allowedSilence,
+            job.IsStale(progress, options, timeProvider.GetUtcNow()),
             job.ErrorMessage,
             progress,
             job.Definition);

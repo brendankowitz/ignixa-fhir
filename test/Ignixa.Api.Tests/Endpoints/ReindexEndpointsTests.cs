@@ -205,6 +205,27 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
             """.ReplaceLineEndings("\n"));
     }
 
+    // A range that failed after its retries names no resource; FHIR forbids an empty valueString.
+    [Fact]
+    public async Task GivenARangeFailure_WhenGettingStatus_ThenItsFailedResourceHasNoId()
+    {
+        _status = CreateStatus() with
+        {
+            Progress = new ReindexProgress(ReindexPhase.Reindexing)
+            {
+                Tenants = [ReindexTenantProgress.Create(1).AddRangeFailure("Patient", "range timed out")]
+            }
+        };
+
+        var response = await SendAsync("GetReindexForTenant", jobId: "complete-fields");
+
+        Describe(response.Body).Where(line => line.StartsWith("failedResource.", StringComparison.Ordinal)).ShouldBe(
+        [
+            "failedResource.resourceType[valueString]=\"Patient\"",
+            "failedResource.reason[valueString]=\"range timed out\""
+        ]);
+    }
+
     // §6.1, §6.2, §6.4: each handler outcome maps to its status code.
     [Theory]
     [InlineData("CreateReindexForTenant", "active", 409, "OperationOutcome", "/tenant/1/$reindex/active-job", "A reindex job is already active.")]

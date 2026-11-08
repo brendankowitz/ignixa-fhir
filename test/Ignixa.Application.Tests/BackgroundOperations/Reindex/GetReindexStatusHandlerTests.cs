@@ -58,6 +58,6 @@ public class GetReindexStatusHandlerTests
     }
 
     private Task<ReindexStatusResult?> StatusAsync(string jobId) =>
-        new GetReindexStatusHandler(_jobs, JobOptions, new FakeTimeProvider(Now), NullLogger<GetReindexStatusHandler>.Instance)
+        new GetReindexStatusHandler(_jobs, JobOptions, new FakeTimeProvider(Now))
             .HandleAsync(new GetReindexStatusQuery(jobId), CancellationToken.None);
 }

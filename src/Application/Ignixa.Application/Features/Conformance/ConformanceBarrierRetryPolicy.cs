@@ -33,15 +33,6 @@ public sealed class ConformanceBarrierRetryPolicy(
         try
         {
             await conformanceRefresher.SynchronizeAsync(cancellationToken);
-        }
-        catch
-        {
-            ConformanceMetrics.RecordBarrierRejection("failed");
-            throw;
-        }
-
-        try
-        {
             var result = await operation(cancellationToken);
             ConformanceMetrics.RecordBarrierRejection("retried_ok");
             return result;

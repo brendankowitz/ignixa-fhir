@@ -3,7 +3,6 @@ using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
 using Medino;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Ignixa.Application.BackgroundOperations.Reindex;
@@ -11,8 +10,7 @@ namespace Ignixa.Application.BackgroundOperations.Reindex;
 public sealed class GetReindexStatusHandler(
     IBackgroundJobRepository<ReindexJobDefinition> repository,
     IOptions<ReindexOptions> options,
-    TimeProvider timeProvider,
-    ILogger<GetReindexStatusHandler> logger)
+    TimeProvider timeProvider)
     : IRequestHandler<GetReindexStatusQuery, ReindexStatusResult?>
 {
     public async Task<ReindexStatusResult?> HandleAsync(
@@ -25,20 +23,6 @@ public sealed class GetReindexStatusHandler(
             SystemConstants.GlobalTenantId,
             (int)BackgroundJobType.Reindex,
             cancellationToken);
-        if (job is null)
-        {
-            return null;
-        }
-
-        var result = GetReindexJobsHandler.ToResult(job, options.Value, timeProvider);
-        if (result.IsStale)
-        {
-            logger.LogError(
-                "Reindex: job {JobId} is stale; last heartbeat {HeartbeatDate}",
-                job.JobId,
-                job.HeartbeatDate);
-        }
-
-        return result;
+        return job is null ? null : GetReindexJobsHandler.ToResult(job, options.Value, timeProvider);
     }
 }

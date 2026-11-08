@@ -55,7 +55,7 @@ public sealed record ReindexTenantProgress(
     public ReindexTenantProgress AddRangeFailure(string resourceType, string reason) =>
         this with
         {
-            FailedResources = Sample(FailedResources.Append(new ReindexFailedResource(resourceType, string.Empty, reason))),
+            FailedResources = Sample(FailedResources.Append(new ReindexFailedResource(resourceType, null, reason))),
             FailedResourceTypes = Union(FailedResourceTypes, [resourceType])
         };
 
