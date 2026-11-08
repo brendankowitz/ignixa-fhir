@@ -62,6 +62,28 @@ public class ParameterOutcomeTests
             "Search results may be incomplete because search parameter 'pending-reference' is pending reindex.");
     }
 
+    // §4.2: an iterative wildcard follows references of every type, so a pending reference on another type warns too.
+    [Theory]
+    [InlineData("_include:iterate")]
+    [InlineData("_include:recurse")]
+    public void GivenAnIterativeWildcardAndAPendingReferenceOnAnotherType_WhenBuilt_ThenItWarnsOfIncompleteResults(
+        string parameterName)
+    {
+        var context = new SearchParserTestContext();
+        var pending = new SearchParameterInfo("pending-reference", "pending-reference", SearchParamType.Reference, targetResourceTypes: ["Organization"],
+            baseResourceTypes: ["Observation"], url: new Uri("http://ignixa.test/SearchParameter/pending-reference")) { IsSearchable = false };
+        context.DefinitionManager.GetSearchParameters("Observation").Returns([pending]);
+        context.DefinitionManager.AllSearchParameters.Returns([pending]);
+        context.DefinitionManager.GetAllKnownSearchParameters().Returns([pending]);
+        context.DefinitionManager.GetAllKnownSearchParameters("Observation").Returns([pending]);
+        context.DefinitionManager.GetAllKnownSearchParameters("Patient").Returns([]);
+
+        var options = Build(context, false, "Patient", [new QueryParameter(parameterName, "*")]);
+
+        options.BundleIssues.ShouldContain(issue => issue.Diagnostics ==
+            "Search results may be incomplete because search parameter 'pending-reference' is pending reindex.");
+    }
+
     // §4.2: _sort follows the same hidden and partial-index rules.
     [Theory]
     [InlineData(false)]

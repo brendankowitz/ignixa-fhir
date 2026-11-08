@@ -653,7 +653,8 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
 
     private IEnumerable<SearchParameterInfo> GetKnownWildcardReferenceSearchParameters(IncludeExpression includeExpression)
     {
-        if (includeExpression.Reversed && includeExpression.SourceResourceType == "*")
+        // Matches WildcardIncludeParameters: a reverse or iterative wildcard is seeded by resources of any type.
+        if (includeExpression.SourceResourceType == "*" && (includeExpression.Reversed || includeExpression.Iterate))
         {
             return _searchParameterDefinitionManager.GetAllKnownSearchParameters();
         }
