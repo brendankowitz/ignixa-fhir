@@ -88,7 +88,7 @@ MergeResources -> commit core data -> PostMergeExtensionUpdater
 - Do not use `FrozenSet` or `FrozenDictionary` inside EF Core queries.
 - Do not use `#region`.
 
-Write focused, self-documenting methods. Avoid deep nesting, high cyclomatic complexity, and nested loops. Add comments only for non-obvious invariants or business reasons.
+Write focused, self-documenting methods. Avoid deep nesting, high cyclomatic complexity, and nested loops. Keep code comments concise and reserve them for non-obvious invariants or business reasons. Keep API documentation concise and focused on behavior and essential contracts; omit stories, irrelevant history, and obvious implementation details.
 
 ## Error Handling and Security
 
@@ -177,5 +177,5 @@ The only repository-local agents are:
 - Do not commit without explicit user approval.
 - Keep commits focused with short imperative subjects.
 - Before requesting a commit, show the diff and repository status.
-- PR descriptions should state purpose, scope, risks, and tests run; link relevant issues and ADRs.
+- PR descriptions follow `.github/pull_request_template.md`: state intent, include acceptance criteria with evidence for each (copy a linked issue's criteria when present), and record invariants, affected seams, trusted assumptions, risks, and tests run; link relevant issues and ADRs.
 - Attach screenshots for user-interface changes.
