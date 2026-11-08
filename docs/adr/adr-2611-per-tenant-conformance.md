@@ -38,7 +38,10 @@ package-controlled resources. The rest of ADR-2512 (event sourcing, lifecycle st
   | Distributed (future) | the system partition (tenant 0) | one, shared by the partitions it serves |
 
 - A tenant's event stream holds only its own activations. Event ids, the activation lock, the conformance barrier
-  and the staleness lease are per tenant; the barrier and lease already live in each tenant's database (PR #469).
+  and the staleness lease are per tenant. The barrier already lives in each tenant's database (PR #469). The lease
+  does not: `ConformanceLease` is one process-local singleton, so it becomes one lease per tenant projection. Only
+  a successful synchronization of that tenant's projection renews it, and a search checks the lease of the tenant
+  it serves, so a current tenant cannot keep a stale tenant's searches open.
 - In Isolated mode, package storage, load, activation and unload are tenant operations:
   `/tenant/{id}/admin/packages` stores and activates in tenant `{id}` alone. Base FHIR definitions stay in process,
   per FHIR version, and are not stored per tenant.
