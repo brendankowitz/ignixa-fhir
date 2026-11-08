@@ -110,6 +110,13 @@ public sealed class ReindexRangeProcessor(
                     try
                     {
                         var updated = await store.UpdateSearchIndicesAsync(batch, cancellationToken);
+                        if (updated.RefusingBarrier is not null)
+                        {
+                            // A newer job raised the barrier past these definitions; the range is retried with fresh ones.
+                            await conformanceRefresher.SynchronizeAsync(cancellationToken);
+                            return ReindexRangeOutput.DefinitionsNotReady(handle.DefinitionsEventId);
+                        }
+
                         resourcesReindexed += updated.Updated;
                         conflicts += updated.Conflicts;
                         offset += count;

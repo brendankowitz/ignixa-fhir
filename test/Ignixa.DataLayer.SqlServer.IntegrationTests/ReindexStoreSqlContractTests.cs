@@ -288,6 +288,23 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
             .ShouldBe("1=alpha,2=beta");
     }
 
+    // A write extracted below a raised barrier (work a cancelled job left running) changes nothing.
+    [Fact]
+    public async Task GivenDefinitionsBelowTheBarrier_WhenSearchIndicesAreUpdated_ThenTheWriteIsRefusedAndNothingChanges()
+    {
+        var resource = await PutAndReadAsync(Patient("fenced"));
+        var surrogateId = resource.ResourceSurrogateId;
+        await _database.ExecuteNonQueryAsync(
+            $"INSERT dbo.ResourceWriteClaim (ResourceSurrogateId, ClaimTypeId, ClaimValue) VALUES ({surrogateId}, 1, N'kept');");
+        await _store.RaiseBarrierAsync(BarrierEventId + 1, CancellationToken.None);
+
+        var result = await _store.UpdateSearchIndicesAsync([resource], CancellationToken.None);
+
+        result.ShouldBe(SearchIndexUpdateResult.Refused(BarrierEventId + 1));
+        (await _database.ExecuteScalarAsync<int>(
+            $"SELECT COUNT(*) FROM dbo.ResourceWriteClaim WHERE ResourceSurrogateId = {surrogateId}")).ShouldBe(1);
+    }
+
     // §5.3 ordering proof: every racing allocation is inside the cutoff or rejected, with and without RCSI.
     [Theory]
     [InlineData(false)]
@@ -342,7 +359,7 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         await PutAsync(Patient("conflicted-input") with { SearchIndices = searchIndices }, Patient("updated-input") with { SearchIndices = searchIndices });
         var (_, cutoff) = await _store.RaiseBarrierAsync(65, CancellationToken.None);
         var stale = (await _store.ReadRangeAsync("Patient", -1, cutoff, 10, CancellationToken.None))
-            .Select(resource => resource with { Resource = resource.Resource with { SearchIndices = searchIndices } })
+            .Select(resource => resource with { Resource = resource.Resource with { SearchIndices = searchIndices, DefinitionsEventId = 65 } })
             .ToArray();
         var conflicted = stale.Single(resource => resource.Resource.ResourceId == "conflicted-input").ResourceSurrogateId;
         var updated = stale.Single(resource => resource.Resource.ResourceId == "updated-input").ResourceSurrogateId;
@@ -464,13 +481,17 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         }
     }
 
-    /// <summary>Writes <paramref name="resource"/>, raises the barrier and reads it back as a reindex worker would.</summary>
+    /// <summary>
+    /// Writes <paramref name="resource"/>, raises the barrier and reads it back as a reindex worker would, stamped
+    /// with the barrier's definitions as the worker stamps what it extracts.
+    /// </summary>
     private async Task<ReindexResource> PutAndReadAsync(ResourceWrapper resource)
     {
         await PutAsync(resource);
         var (_, cutoff) = await _store.RaiseBarrierAsync(BarrierEventId, CancellationToken.None);
-        return (await _store.ReadRangeAsync("Patient", -1, cutoff, 10, CancellationToken.None))
+        var read = (await _store.ReadRangeAsync("Patient", -1, cutoff, 10, CancellationToken.None))
             .Single(read => read.Resource.ResourceId == resource.ResourceId);
+        return read with { Resource = read.Resource with { DefinitionsEventId = BarrierEventId } };
     }
 
     /// <summary>Plans every range of <paramref name="resourceType"/> up to <paramref name="cutoff"/> and reads each in pages of one.</summary>

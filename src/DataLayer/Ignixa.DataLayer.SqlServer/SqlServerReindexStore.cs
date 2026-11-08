@@ -266,8 +266,19 @@ public sealed class SqlServerReindexStore(
         {
             Direction = ParameterDirection.Output,
         };
+        var barrier = new SqlParameter("@Barrier", SqlDbType.BigInt)
+        {
+            Direction = ParameterDirection.Output,
+        };
+
+        // The shared lock on the barrier row is held until commit, so RaiseBarrierAsync's update waits for this
+        // write, and a write extracted from definitions below a raised barrier is skipped.
         using var command = new SqlCommand(
             """
+            SET XACT_ABORT ON;
+            BEGIN TRANSACTION;
+            SET @Barrier = ISNULL((SELECT Bigint FROM dbo.Parameters WITH (HOLDLOCK) WHERE Id = @BarrierId), 0);
+            IF @Barrier <= @DefinitionsEventId
             EXEC dbo.UpdateResourceSearchParams
                 @FailedResources OUTPUT,
                 @Resources,
@@ -286,8 +297,13 @@ public sealed class SqlServerReindexStore(
                 @TokenQuantityCompositeSearchParams,
                 @TokenStringCompositeSearchParams,
                 @TokenNumberNumberCompositeSearchParams;
+            COMMIT TRANSACTION;
             """);
         command.Parameters.Add(failedResources);
+        command.Parameters.Add(barrier);
+        command.Parameters.Add("@BarrierId", SqlDbType.VarChar, 100).Value = BarrierParameterId;
+        var definitionsEventId = DefinitionsEventIdSelector.GetMinimum(resourceWrappers);
+        command.Parameters.Add("@DefinitionsEventId", SqlDbType.BigInt).Value = definitionsEventId;
         SearchIndexRowSets.AddTableValuedParameter(command, "@Resources", "dbo.ResourceList", resourceRecords);
         SearchIndexRowSets.AddTableValuedParameter(command, "@ResourceWriteClaims", "dbo.ResourceWriteClaimList", resourceWriteClaims);
         searchIndexRowSets.AddTableValuedParameters(command);
@@ -300,6 +316,10 @@ public sealed class SqlServerReindexStore(
                 static reader => reader.GetInt64(0),
                 cancellationToken,
                 SqlCommandIdempotency.Idempotent);
+            if ((long)barrier.Value > definitionsEventId)
+            {
+                return SearchIndexUpdateResult.Refused((long)barrier.Value);
+            }
 
             // Only resources the procedure actually updated; a conflicted (superseded) resource keeps its rows.
             var updatedResourceSurrogateIdSet = updatedResourceSurrogateIds.ToHashSet();

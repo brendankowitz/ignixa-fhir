@@ -37,6 +37,12 @@ public interface IReindexStore
         int maxCount,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Replaces the batch's indexes, or writes nothing and returns <see cref="SearchIndexUpdateResult.Refused"/>
+    /// when the tenant's conformance barrier is above the batch's definitions. The check and the write are atomic
+    /// with respect to raising the barrier, so work a cancelled job left running cannot overwrite indexes a job
+    /// with newer definitions wrote.
+    /// </summary>
     Task<SearchIndexUpdateResult> UpdateSearchIndicesAsync(
         IReadOnlyList<ReindexResource> resources,
         CancellationToken cancellationToken);

@@ -62,6 +62,22 @@ public class ReindexRangeProcessorTests
         await store.DidNotReceiveWithAnyArgs().ReadRangeAsync(default!, default, default, default, default);
     }
 
+    // A write refused by a raised barrier stops the range and hands it back for a retry with fresh definitions.
+    [Fact]
+    public async Task GivenAWriteRefusedByTheBarrier_WhenRangeIsProcessed_ThenItSynchronizesAndReturnsNotReady()
+    {
+        var store = PageStore(1);
+        store.UpdateSearchIndicesAsync(Arg.Any<IReadOnlyList<ReindexResource>>(), Arg.Any<CancellationToken>())
+            .Returns(SearchIndexUpdateResult.Refused(50));
+        var eventStore = TestConformanceRefresher.EmptyEventStore();
+
+        var result = await CreateProcessor(store, eventStore: eventStore).ProcessAsync(Range, CancellationToken.None);
+
+        result.StaleDefinitionsEventId.ShouldBe(42);
+        result.ResourcesReindexed.ShouldBe(0);
+        _ = eventStore.Received(1).ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
+    }
+
     // M5, §8.4 steps 3 and 6 (M10, F11): refreshed definitions, background context, failures counted. p1, p103 extract.
     [Fact]
     public async Task GivenACallerContextAndMoreFailuresThanTheSample_WhenRangeIsProcessed_ThenItExtractsInTheBackgroundAndCountsEveryFailure()
