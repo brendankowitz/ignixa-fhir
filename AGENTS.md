@@ -88,7 +88,7 @@ MergeResources -> commit core data -> PostMergeExtensionUpdater
 - Do not use `FrozenSet` or `FrozenDictionary` inside EF Core queries.
 - Do not use `#region`.
 
-Write focused, self-documenting methods. Avoid deep nesting, high cyclomatic complexity, and nested loops. Add comments only for non-obvious invariants or business reasons.
+Write focused, self-documenting methods. Avoid deep nesting, high cyclomatic complexity, and nested loops. Keep code comments concise and reserve them for non-obvious invariants or business reasons. Keep API documentation concise and focused on behavior and essential contracts; omit stories, irrelevant history, and obvious implementation details.
 
 ## Error Handling and Security
 
