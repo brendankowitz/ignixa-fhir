@@ -13,6 +13,7 @@ using Ignixa.Application.BackgroundOperations.Import.Activities;
 using Ignixa.Application.BackgroundOperations.Import.Models;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Application.Tests.Features;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
@@ -55,12 +56,10 @@ public class BulkImportElementOrderingTests
         var tenants = Substitute.For<ITenantConfigurationStore>();
         tenants.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>()).Returns(
             new TenantConfiguration { TenantId = 1, DisplayName = "Bulk import test tenant", FhirVersion = "4.0" });
-        var versions = Substitute.For<IFhirVersionContext>();
-        versions.GetSchemaProvider(FhirVersion.R4, 1).Returns(new R4CoreSchemaProvider());
-        versions.GetSearchIndexer(FhirVersion.R4, 1).Returns(Substitute.For<ISearchIndexer>());
+        var versions = TestWritePath.Versions(definitionsEventId: 0);
         ResourceJsonNode? written = null;
         var repository = Substitute.For<IFhirRepository>();
-        repository.GetNextTransactionIdAsync(Arg.Any<CancellationToken>()).Returns(new TransactionId(1));
+        repository.GetNextTransactionIdAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(new TransactionId(1));
         repository.BatchWriteAsync(
                 Arg.Any<TransactionId>(),
                 Arg.Do<IReadOnlyList<(string, string, ResourceJsonNode resource, IReadOnlyList<object>, string, int)>>(operations => written = operations[0].resource),
@@ -74,7 +73,7 @@ public class BulkImportElementOrderingTests
         var activity = new StreamingImportFileActivity(factory, versions, tenants, blobs,
             new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Import:ConsumerCount"] = "1" }).Build(),
             new FhirRequestContextAccessor(), new ResourceElementOrdering(new SerializationOptions { OrderElementsOnWrite = true }),
-            NullLogger<StreamingImportFileActivity>.Instance);
+            TestConformanceBarrierRetryPolicy.Create(), NullLogger<StreamingImportFileActivity>.Instance);
         var input = new StreamingImportFileInput
         {
             JobId = "job", TenantId = 1, FileUrl = "input.ndjson", ResourceType = "Patient",

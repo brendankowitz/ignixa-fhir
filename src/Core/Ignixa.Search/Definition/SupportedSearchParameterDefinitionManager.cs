@@ -26,6 +26,11 @@ public class SupportedSearchParameterDefinitionManager : ISupportedSearchParamet
 
     public IEnumerable<SearchParameterInfo> AllSearchParameters => _inner.AllSearchParameters.Where(x => x.IsSupported);
 
+    public IEnumerable<SearchParameterInfo> GetAllKnownSearchParameters() => _inner.GetAllKnownSearchParameters();
+
+    public IEnumerable<SearchParameterInfo> GetAllKnownSearchParameters(string resourceType) =>
+        _inner.GetAllKnownSearchParameters(resourceType);
+
     public IReadOnlyDictionary<string, string> SearchParameterHashMap => _inner.SearchParameterHashMap;
 
     public IEnumerable<SearchParameterInfo> GetSearchParameters(string resourceType)

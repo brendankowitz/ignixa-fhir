@@ -6,11 +6,13 @@
 using Medino;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Application.Features.Compartment;
 
@@ -31,17 +33,20 @@ public class SearchCompartmentHandler : IRequestHandler<SearchCompartmentQuery, 
     private readonly IPartitionStrategy _partitionStrategy;
     private readonly IQueryExecutionStrategy _executionStrategy;
     private readonly IFhirRequestContextAccessor _contextAccessor;
+    private readonly IFhirVersionContext _versionContext;
     private readonly ILogger<SearchCompartmentHandler> _logger;
 
     public SearchCompartmentHandler(
         IPartitionStrategy partitionStrategy,
         IQueryExecutionStrategy executionStrategy,
         IFhirRequestContextAccessor contextAccessor,
+        IFhirVersionContext versionContext,
         ILogger<SearchCompartmentHandler> logger)
     {
         _partitionStrategy = partitionStrategy ?? throw new ArgumentNullException(nameof(partitionStrategy));
         _executionStrategy = executionStrategy ?? throw new ArgumentNullException(nameof(executionStrategy));
         _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
+        _versionContext = versionContext ?? throw new ArgumentNullException(nameof(versionContext));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -62,7 +67,7 @@ public class SearchCompartmentHandler : IRequestHandler<SearchCompartmentQuery, 
         // Create CompartmentSearchExpression with optional resource type filtering
         // If ResourceType is "*", we search all types in the compartment (empty FilteredResourceTypes)
         // If ResourceType is specific (e.g., "Observation"), we only search that type
-        ISet<string>? filteredResourceTypes = null;
+        HashSet<string>? filteredResourceTypes = null;
         if (request.ResourceType != "*" && !string.IsNullOrEmpty(request.ResourceType))
         {
             filteredResourceTypes = new HashSet<string> { request.ResourceType };
@@ -92,10 +97,20 @@ public class SearchCompartmentHandler : IRequestHandler<SearchCompartmentQuery, 
             var other => Expression.And(compartmentExpression, other),
         };
 
-        // Copied rather than mutated: the caller still holds request.SearchOptions.
+        // Copied rather than mutated: the caller still holds request.SearchOptions. A membership parameter the
+        // searchable definitions drop makes the results incomplete, so it is reported on the executed options.
         var compartmentSearchOptions = new SearchOptions(request.SearchOptions)
         {
             Expression = finalExpression,
+            BundleIssues =
+            [
+                .. request.SearchOptions.BundleIssues,
+                .. HiddenCompartmentMembership.Describe(
+                    _versionContext,
+                    context,
+                    Enum.Parse<CompartmentType>(request.CompartmentType, ignoreCase: true),
+                    filteredResourceTypes),
+            ],
         };
 
         // 4. Determine partition(s) using IPartitionStrategy
@@ -152,7 +167,8 @@ public class SearchCompartmentHandler : IRequestHandler<SearchCompartmentQuery, 
         var result = new SearchResourcesResult(
             Resources: resourceStream,
             Total: total,
-            ContinuationToken: null); // TODO: Implement paging in Phase 1.2a
+            ContinuationToken: null, // TODO: Implement paging in Phase 1.2a
+            SearchOptions: compartmentSearchOptions);
 
         return Task.FromResult(result);
     }

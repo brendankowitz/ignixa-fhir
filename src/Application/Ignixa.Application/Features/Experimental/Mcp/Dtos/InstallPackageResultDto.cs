@@ -13,7 +13,7 @@ namespace Ignixa.Application.Features.Experimental.Mcp.Dtos;
 public record InstallPackageResultDto
 {
     /// <summary>
-    /// Whether the installation was successful.
+    /// Whether the package was activated. False when it was stored but activation was rejected.
     /// </summary>
     public required bool Success { get; init; }
 
@@ -66,4 +66,16 @@ public record InstallPackageResultDto
     /// Human-readable message summarizing the installation.
     /// </summary>
     public required string Message { get; init; }
+
+    /// <summary>
+    /// Activation issues as "severity CODE: message". Errors mean the package was stored but not activated;
+    /// warnings describe a durable activation whose definitions are not searchable yet or whose follow-up is deferred.
+    /// </summary>
+    public required IReadOnlyList<string> Issues { get; init; }
+
+    public required IReadOnlyList<string> PendingReindex { get; init; }
+
+    public string? ReindexJobId { get; init; }
+
+    public string? ReindexStatusUrl { get; init; }
 }

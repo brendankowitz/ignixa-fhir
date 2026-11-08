@@ -1,0 +1,464 @@
+using DurableTask.Core;
+using Ignixa.Application.BackgroundOperations.Reindex.Activities;
+using Ignixa.Application.BackgroundOperations.Reindex.Models;
+using Ignixa.Domain.Models;
+
+namespace Ignixa.Application.BackgroundOperations.Reindex.Orchestrations;
+
+/// <summary>
+/// Coordinates one reindex job: start, barrier delay, then per tenant the barrier, the drain and the range
+/// waves, and finally completion. Progress is persisted at every phase boundary and every
+/// <see cref="WavesPerProgressSnapshot"/> range waves; a persist that finds the job closed stops the
+/// orchestration without completing it. Tenants that wait on a polled condition (the drain, or range workers
+/// whose definitions are behind the target) do so on one durable timer, bounded by the stale-job timeout,
+/// while the others keep working.
+/// </summary>
+public sealed class ReindexOrchestration
+    : TaskOrchestration<ReindexOrchestrationOutput, ReindexOrchestrationInput>
+{
+    private const int WavesPerProgressSnapshot = 5;
+
+    public override async Task<ReindexOrchestrationOutput> RunTask(
+        OrchestrationContext context,
+        ReindexOrchestrationInput input)
+    {
+        var state = input.State ?? ReindexOrchestrationState.Create(input.TenantIds);
+        var scheduledActivities = 0;
+
+        if (!state.Started)
+        {
+            StartReindexOutput started;
+            try
+            {
+                started = await context.ScheduleWithRetry<StartReindexOutput>(
+                    typeof(StartReindexActivity),
+                    CreateRetryOptions(),
+                    new StartReindexInput(input.JobId, input.TargetEventId, input.Targets, input.TenantIds));
+            }
+            catch (Exception ex)
+            {
+                return await CompleteAsync(context, input, state, ex);
+            }
+
+            scheduledActivities++;
+            if (!started.ShouldContinue)
+            {
+                return Stopped(state);
+            }
+
+            state = state with
+            {
+                Started = true,
+                IgnoredLifecycleEvents = started.IgnoredLifecycleEvents
+            };
+            if (ContinueIfNeeded(context, input, state, scheduledActivities))
+            {
+                return default!;
+            }
+        }
+
+        if (state.Phase == ReindexPhase.BarrierDelay)
+        {
+            // One durable wait; stale-job detection adds the barrier delay to its allowance while a job is in it.
+            await context.CreateTimer(context.CurrentUtcDateTime.Add(input.BarrierDelay), true);
+            state = state with { Phase = ReindexPhase.Draining };
+            if (await PersistProgressAsync(context, input, state) is { } closed)
+            {
+                return closed;
+            }
+
+            scheduledActivities++;
+            if (ContinueIfNeeded(context, input, state, scheduledActivities))
+            {
+                return default!;
+            }
+        }
+
+        while (!state.AllTenantsCompleted)
+        {
+            var now = context.CurrentUtcDateTime;
+            var advances = await Task.WhenAll(state.Tenants.Select(
+                tenant => AdvanceTenantAsync(context, input, tenant, now)));
+            scheduledActivities += advances.Sum(advance => advance.ScheduledActivities);
+            var previousPhase = state.Phase;
+            state = state with
+            {
+                Tenants = advances.Select(advance => advance.State).ToArray(),
+                WavesSinceSnapshot = state.WavesSinceSnapshot + (advances.Any(advance => advance.IsWave) ? 1 : 0)
+            };
+            state = state with { Phase = DerivePhase(state) };
+            if (state.Phase != previousPhase || state.WavesSinceSnapshot >= WavesPerProgressSnapshot)
+            {
+                // Persist outside the tenant/range failure boundary: retrying this activity never repeats range work.
+                if (await PersistProgressAsync(context, input, state) is { } closed)
+                {
+                    return closed;
+                }
+
+                scheduledActivities++;
+                state = state with { WavesSinceSnapshot = 0 };
+            }
+
+            if (ContinueIfNeeded(context, input, state, scheduledActivities))
+            {
+                return default!;
+            }
+
+            await WaitForNextPollAsync(context, state);
+        }
+
+        return await CompleteAsync(context, input, state, error: null);
+    }
+
+    /// <summary>Finalizes the job; an orchestration-level <paramref name="error"/> fails it with that message.</summary>
+    private static async Task<ReindexOrchestrationOutput> CompleteAsync(
+        OrchestrationContext context,
+        ReindexOrchestrationInput input,
+        ReindexOrchestrationState state,
+        Exception? error)
+    {
+        var tenants = state.Tenants.Select(tenant => tenant.Progress).ToArray();
+        var completed = await context.ScheduleWithRetry<CompleteReindexOutput>(
+            typeof(CompleteReindexActivity),
+            CreateRetryOptions(),
+            new CompleteReindexInput(
+                input.JobId,
+                input.TargetEventId,
+                input.Targets,
+                tenants,
+                state.IgnoredLifecycleEvents)
+            {
+                FailureMessage = error is null ? null : $"Reindex orchestration failed: {error.Message}"
+            });
+        return new ReindexOrchestrationOutput(
+            completed.Success,
+            tenants,
+            state.IgnoredLifecycleEvents
+                .Concat(completed.IgnoredLifecycleEvents)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray());
+    }
+
+    /// <summary>The job row was finished or removed by someone else; its terminal state is authoritative.</summary>
+    private static ReindexOrchestrationOutput Stopped(ReindexOrchestrationState state) =>
+        new(
+            false,
+            state.Tenants.Select(tenant => tenant.Progress).ToArray(),
+            state.IgnoredLifecycleEvents);
+
+    private static RetryOptions CreateRetryOptions(int maxNumberOfAttempts = 5) =>
+        new(TimeSpan.FromSeconds(1), maxNumberOfAttempts)
+        {
+            BackoffCoefficient = 2,
+            MaxRetryInterval = TimeSpan.FromSeconds(30)
+        };
+
+    /// <summary>
+    /// Persists a progress snapshot. Returns null while the job row is open; otherwise the output the
+    /// orchestration ends with: stopped when someone else closed the job, failed when the snapshot could not
+    /// be written.
+    /// </summary>
+    private static async Task<ReindexOrchestrationOutput?> PersistProgressAsync(
+        OrchestrationContext context,
+        ReindexOrchestrationInput input,
+        ReindexOrchestrationState state)
+    {
+        bool open;
+        try
+        {
+            // Progress storage gets a longer, still bounded, window than range work: a snapshot that cannot
+            // be written after this fails the job visibly instead of retrying forever.
+            open = await context.ScheduleWithRetry<bool>(
+                typeof(PersistReindexProgressActivity),
+                CreateRetryOptions(maxNumberOfAttempts: 8),
+                new PersistReindexProgressInput(input.JobId, state.ToProgress()));
+        }
+        catch (Exception ex)
+        {
+            return await CompleteAsync(context, input, state, ex);
+        }
+
+        return open ? null : Stopped(state);
+    }
+
+    private static ReindexPhase DerivePhase(ReindexOrchestrationState state)
+    {
+        var derived = state.AllTenantsCompleted
+            ? ReindexPhase.Completing
+            : state.Tenants.Any(tenant => tenant.Status == ReindexTenantStatus.Reindexing)
+                ? ReindexPhase.Reindexing
+                : ReindexPhase.Draining;
+        return derived > state.Phase ? derived : state.Phase;
+    }
+
+    /// <summary>
+    /// When every unfinished tenant is waiting on a poll that is not yet due, sleeps on one durable timer
+    /// until the earliest of them is.
+    /// </summary>
+    private static async Task WaitForNextPollAsync(OrchestrationContext context, ReindexOrchestrationState state)
+    {
+        var now = context.CurrentUtcDateTime;
+        var waiting = state.Tenants.Where(tenant => !tenant.IsCompleted).ToArray();
+        if (waiting.Length == 0 || waiting.Any(tenant => tenant.Wait is null || tenant.Wait.IsDue(now)))
+        {
+            return;
+        }
+
+        await context.CreateTimer(waiting.Min(tenant => tenant.Wait!.NextAttemptUtc), true);
+    }
+
+    private static async Task<TenantAdvance> AdvanceTenantAsync(
+        OrchestrationContext context,
+        ReindexOrchestrationInput input,
+        ReindexTenantState state,
+        DateTime now)
+    {
+        if (state.IsCompleted || state.Wait is { } wait && !wait.IsDue(now))
+        {
+            return new TenantAdvance(state, 0, false);
+        }
+
+        try
+        {
+            return state.Status switch
+            {
+                ReindexTenantStatus.BarrierDelay => await RaiseBarrierAsync(context, input, state),
+                ReindexTenantStatus.Draining => await PollDrainAsync(context, input, state, now),
+                ReindexTenantStatus.Reindexing => await ReindexAsync(context, input, state),
+                _ => throw new InvalidOperationException($"Tenant {state.TenantId} cannot advance from {state.Status}.")
+            };
+        }
+        catch (Exception ex)
+        {
+            return new TenantAdvance(Fail(state, input, ex.Message), 1, false);
+        }
+    }
+
+    private static async Task<TenantAdvance> RaiseBarrierAsync(
+        OrchestrationContext context,
+        ReindexOrchestrationInput input,
+        ReindexTenantState state)
+    {
+        var cutoff = await context.ScheduleWithRetry<BarrierCutoff>(
+            typeof(RaiseBarrierActivity),
+            CreateRetryOptions(),
+            new RaiseBarrierInput(input.JobId, state.TenantId, input.TargetEventId));
+        return new TenantAdvance(
+            state with
+            {
+                Progress = state.Progress with
+                {
+                    Status = ReindexTenantStatus.Draining,
+                    CutoffTransactionId = cutoff.TransactionId,
+                    CutoffSurrogateId = cutoff.SurrogateId
+                },
+                Wait = ReindexWait.Begin(context.CurrentUtcDateTime)
+            },
+            1,
+            false);
+    }
+
+    private static async Task<TenantAdvance> PollDrainAsync(
+        OrchestrationContext context,
+        ReindexOrchestrationInput input,
+        ReindexTenantState state,
+        DateTime now)
+    {
+        var wait = state.Wait ?? ReindexWait.Begin(now);
+        var drainElapsed = wait.Elapsed(now);
+        var drained = await context.ScheduleWithRetry<bool>(
+            typeof(AwaitDrainActivity),
+            CreateRetryOptions(),
+            new AwaitDrainInput(
+                input.JobId,
+                state.TenantId,
+                state.RequireCutoff().TransactionId,
+                wait.StartedUtc,
+                input.DrainWarningAfter));
+        if (drained)
+        {
+            return new TenantAdvance(
+                state with
+                {
+                    Progress = state.Progress with { Status = ReindexTenantStatus.Reindexing },
+                    Wait = null
+                },
+                1,
+                false);
+        }
+
+        if (drainElapsed >= input.StaleJobTimeout)
+        {
+            throw new InvalidOperationException(
+                $"Reindex drain exceeded the stale job timeout of {input.StaleJobTimeout}.");
+        }
+
+        return new TenantAdvance(
+            state with { Wait = wait.Backoff(context.CurrentUtcDateTime) },
+            1,
+            false);
+    }
+
+    private static async Task<TenantAdvance> ReindexAsync(
+        OrchestrationContext context,
+        ReindexOrchestrationInput input,
+        ReindexTenantState state)
+    {
+        if (state.ResourceTypeIndex >= input.ResourceTypes.Count)
+        {
+            return new TenantAdvance(
+                state with { Progress = state.Progress with { Status = ReindexTenantStatus.Completed } },
+                0,
+                false);
+        }
+
+        var resourceType = input.ResourceTypes[state.ResourceTypeIndex];
+        if (state.PendingRanges.Count == 0)
+        {
+            var plan = await context.ScheduleWithRetry<SurrogateIdRangePage>(
+                typeof(PlanReindexActivity),
+                CreateRetryOptions(),
+                new PlanReindexInput(
+                    input.JobId,
+                    state.TenantId,
+                    resourceType,
+                    state.PlannerCursor,
+                    state.RequireCutoff().SurrogateId,
+                    input.Parameters.MaximumNumberOfResourcesPerQuery,
+                    input.Parameters.MaximumConcurrency));
+            var planned = state with
+            {
+                PendingRanges = plan.Ranges,
+                NextPlannerCursor = plan.NextStartAfter,
+                Progress = state.Progress with
+                {
+                    ResourcesToReindex = state.Progress.ResourcesToReindex +
+                        plan.Ranges.Sum(range => range.ResourceCount)
+                }
+            };
+            if (plan.Ranges.Count == 0)
+            {
+                planned = AdvancePlanner(planned);
+            }
+
+            return new TenantAdvance(planned, 1, false);
+        }
+
+        var wave = state.PendingRanges
+            .Take(input.Parameters.MaximumConcurrency)
+            .ToArray();
+        var attempts = await Task.WhenAll(wave.Select(range => RunRangeAsync(context, input, state, resourceType, range)));
+        var progress = state.Progress;
+        var notReady = new List<SurrogateIdRange>();
+        foreach (var (range, attempt) in wave.Zip(attempts))
+        {
+            if (attempt.Output is { IsDefinitionsNotReady: true })
+            {
+                notReady.Add(range);
+            }
+            else
+            {
+                progress = attempt.Output is not null
+                    ? progress.Add(resourceType, attempt.Output)
+                    : progress.AddRangeFailure(resourceType, attempt.Error!.Message);
+            }
+        }
+
+        var advanced = state with
+        {
+            PendingRanges = notReady.Concat(state.PendingRanges.Skip(wave.Length)).ToArray(),
+            Progress = progress
+        };
+        if (notReady.Count > 0)
+        {
+            // The workers' definitions are behind the target: keep those ranges and poll again after a wait.
+            var now = context.CurrentUtcDateTime;
+            var wait = state.Wait ?? ReindexWait.Begin(now);
+            if (wait.Elapsed(now) >= input.StaleJobTimeout)
+            {
+                throw new InvalidOperationException(
+                    $"Reindex definitions for tenant {state.TenantId} stayed behind target event {input.TargetEventId} for {input.StaleJobTimeout}.");
+            }
+
+            return new TenantAdvance(advanced with { Wait = wait.Backoff(now) }, wave.Length, notReady.Count < wave.Length);
+        }
+
+        advanced = advanced with { Wait = null };
+        if (advanced.PendingRanges.Count == 0)
+        {
+            advanced = AdvancePlanner(advanced);
+        }
+
+        return new TenantAdvance(advanced, wave.Length, true);
+    }
+
+    private static async Task<RangeAttempt> RunRangeAsync(
+        OrchestrationContext context,
+        ReindexOrchestrationInput input,
+        ReindexTenantState state,
+        string resourceType,
+        SurrogateIdRange range)
+    {
+        try
+        {
+            var output = await context.ScheduleWithRetry<ReindexRangeOutput>(
+                typeof(ReindexRangeActivity),
+                CreateRetryOptions(),
+                new ReindexRangeInput(
+                    input.JobId,
+                    state.TenantId,
+                    resourceType,
+                    range.Start,
+                    range.End,
+                    input.TargetEventId,
+                    input.Parameters.MaximumNumberOfResourcesPerWrite,
+                    input.Parameters.QueryDelayIntervalInMilliseconds));
+            return new RangeAttempt(output, null);
+        }
+        catch (Exception ex)
+        {
+            return new RangeAttempt(null, ex);
+        }
+    }
+
+    private static ReindexTenantState Fail(ReindexTenantState state, ReindexOrchestrationInput input, string message) =>
+        state with
+        {
+            Progress = state.Progress.Fail(message, input.ResourceTypes.Skip(state.ResourceTypeIndex)),
+            Wait = null
+        };
+
+    private static ReindexTenantState AdvancePlanner(ReindexTenantState state) =>
+        state.NextPlannerCursor.HasValue
+            ? state with
+            {
+                PlannerCursor = state.NextPlannerCursor.Value,
+                NextPlannerCursor = null
+            }
+            : state with
+            {
+                ResourceTypeIndex = state.ResourceTypeIndex + 1,
+                PlannerCursor = null,
+                NextPlannerCursor = null
+            };
+
+    private static bool ContinueIfNeeded(
+        OrchestrationContext context,
+        ReindexOrchestrationInput input,
+        ReindexOrchestrationState state,
+        int scheduledActivities)
+    {
+        if (scheduledActivities < input.ContinueAsNewThreshold ||
+            state.AllTenantsCompleted)
+        {
+            return false;
+        }
+
+        context.ContinueAsNew(input with { State = state });
+        return true;
+    }
+
+    private sealed record TenantAdvance(ReindexTenantState State, int ScheduledActivities, bool IsWave);
+
+    private sealed record RangeAttempt(ReindexRangeOutput? Output, Exception? Error);
+}

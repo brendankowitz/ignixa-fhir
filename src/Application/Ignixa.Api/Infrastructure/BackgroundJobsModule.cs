@@ -7,6 +7,7 @@ using Autofac;
 using Autofac.Core;
 using Ignixa.DataLayer.SqlServer.Features.BackgroundJobs;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -29,11 +30,6 @@ namespace Ignixa.Api.Infrastructure;
 /// </summary>
 public class BackgroundJobsModule(IConfiguration configuration) : Module
 {
-    // Jobs carry their owning tenant in dbo.BackgroundJobs.TenantId and are listed across tenants, so the
-    // table lives in the shared database rather than any one tenant's. Tenant 1 is where the rest of the
-    // global state (conformance, packages) already lives.
-    private const int SharedJobsTenantId = 1;
-
     protected override void Load(ContainerBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -52,9 +48,11 @@ public class BackgroundJobsModule(IConfiguration configuration) : Module
 
         if (string.Equals(repository, "SqlServer", StringComparison.OrdinalIgnoreCase))
         {
+            // Jobs carry their owning tenant in dbo.BackgroundJobs.TenantId and are listed across tenants,
+            // so the table lives in the global tenant's database rather than any one tenant's.
             builder.RegisterGeneric(typeof(SqlServerBackgroundJobRepository<>))
                 .As(typeof(IBackgroundJobRepository<>))
-                .WithParameter("connectionTenantId", SharedJobsTenantId)
+                .WithParameter("connectionTenantId", SystemConstants.GlobalTenantId)
                 .SingleInstance()
                 .OnActivating((args) =>
                 {

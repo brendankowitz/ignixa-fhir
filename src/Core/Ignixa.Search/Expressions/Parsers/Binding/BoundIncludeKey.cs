@@ -16,4 +16,5 @@ internal sealed record BoundIncludeKey(
     string SourceResourceType,
     string? TargetResourceType,
     ImmutableArray<string> ReferencedTypes,
+    ImmutableArray<SearchParameterInfo> WildcardReferenceSearchParameters,
     bool Wildcard) : BoundSearchKey;

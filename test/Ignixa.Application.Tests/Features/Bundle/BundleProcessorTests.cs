@@ -40,6 +40,8 @@ public class BundleProcessorTests
             repositoryFactory,
             Substitute.For<IPartitionStrategy>(),
             requestContextAccessor,
+            Substitute.For<IFhirVersionContext>(),
+            TestConformanceBarrierRetryPolicy.Create(),
             NullLogger<DeferredWriteCoordinator>.Instance);
 
         var exception = Should.Throw<InvalidOperationException>(() => coordinator.IsCreated(42));
@@ -317,7 +319,8 @@ public class BundleProcessorTests
                 requestContextAccessor,
                 NullLoggerFactory.Instance,
                 NullLogger<BundleProcessor>.Instance,
-                versionContext);
+                versionContext,
+                TestConformanceBarrierRetryPolicy.Create());
         }
 
         public BundleProcessor Processor { get; }

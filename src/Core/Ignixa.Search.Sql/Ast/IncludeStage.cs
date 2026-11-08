@@ -16,7 +16,8 @@ public sealed record IncludeStage(
     bool SeedFromMatch,
     bool Iterate,
     int? Limit,
-    IReadOnlyList<IncludeConstraint>? Constraints = null);
+    IReadOnlyList<IncludeConstraint>? Constraints = null,
+    IReadOnlyList<short>? WildcardReferenceSearchParamIds = null);
 
 /// <summary>
 /// One access-constraint binding on an include stage, emitted as a type-guarded EXISTS so only rows of

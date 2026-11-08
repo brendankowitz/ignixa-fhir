@@ -58,7 +58,9 @@ public sealed class SearchOptions
         Summary = other.Summary;
         UnsupportedParams = other.UnsupportedParams;
         UnsupportedModifierParams = other.UnsupportedModifierParams;
+        HiddenSearchParameters = other.HiddenSearchParameters;
         BundleIssues = other.BundleIssues;
+        ResolvedSearchParameters = other.ResolvedSearchParameters;
         ResourceType = other.ResourceType;
         ResourceTypes = other.ResourceTypes;
         StartSurrogateId = other.StartSurrogateId;
@@ -158,11 +160,27 @@ public sealed class SearchOptions
     public IReadOnlyList<string> UnsupportedModifierParams { get; set; } = Array.Empty<string>();
 
     /// <summary>
+    /// Gets or sets the supported parameters this request could not see, keyed by their ignored entry in
+    /// <see cref="UnsupportedParams"/>: pending reindex without the partial-index opt-in, or being redefined.
+    /// </summary>
+    public IReadOnlyDictionary<string, SearchParameterInfo> HiddenSearchParameters { get; set; } =
+        new Dictionary<string, SearchParameterInfo>();
+
+    /// <summary>
     /// Gets or sets issues related to the search (e.g., unsupported parameters).
     /// These will be rendered as Bundle.issue entries in the search response.
     /// Each issue is an OperationOutcome.issue structure (severity, code, diagnostics, etc.).
     /// </summary>
     public IReadOnlyList<IssueComponent> BundleIssues { get; set; } = Array.Empty<IssueComponent>();
+
+    /// <summary>
+    /// Gets or sets the parameters resolved while binding this request's predicates, includes, and sort keys.
+    /// </summary>
+    /// <remarks>
+    /// This preserves the binding result rather than asking a later layer to infer a parameter from raw query
+    /// text, which is ambiguous for chains, reverse chains, includes, and system searches.
+    /// </remarks>
+    public IReadOnlyList<SearchParameterInfo> ResolvedSearchParameters { get; set; } = Array.Empty<SearchParameterInfo>();
 
     /// <summary>
     /// Gets or sets the resource type being searched.

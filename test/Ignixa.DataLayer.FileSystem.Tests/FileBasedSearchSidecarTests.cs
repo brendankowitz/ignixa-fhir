@@ -199,7 +199,7 @@ public sealed class FileBasedSearchSidecarTests : IDisposable
     public async Task GivenADeletedResourceWhoseSidecarsAreFromAnEarlierIndexFormat_WhenSearched_ThenNoReindexIsRequired()
     {
         await WriteIndexedAsync(WeightObservation);
-        await _repository.DeleteAsync(new ResourceKey("Observation", "o1"), new ResourceRequest("DELETE", "Observation/o1"));
+        await _repository.DeleteAsync(new ResourceKey("Observation", "o1"), new ResourceRequest("DELETE", "Observation/o1"), 0);
         MakeSidecarsLegacy("Observation", "o1").Length.ShouldBe(2);
 
         IReadOnlyList<SearchEntryResult> results = await _search.SearchAsync(Options("Observation", "status=final"), CancellationToken.None);

@@ -117,8 +117,17 @@ public class PopulatedTerminologySchemaUpgradeTests
 
             await deployer.UpgradeIfNeededAsync(1, CancellationToken.None);
 
-            (await resolver.GetCurrentVersionAsync(1, CancellationToken.None)).ShouldBe(3);
+            (await resolver.GetCurrentVersionAsync(1, CancellationToken.None)).ShouldBe(SchemaVersionConstants.CurrentVersion);
             (await SnapshotAsync(connectionString)).ShouldBe(before);
+            (await ScalarAsync<int>(connectionString, """
+                SELECT COUNT(*) FROM sys.objects
+                WHERE name IN ('AcquireReindexJobs', 'CheckActiveReindexJobs', 'CreateReindexJob',
+                    'GetReindexJobById', 'ReindexJob', 'UpdateReindexJob')
+                """)).ShouldBe(0);
+            (await ScalarAsync<int>(connectionString, """
+                SELECT COUNT(*) FROM sys.table_types
+                WHERE name = 'BulkReindexResourceTableType_1'
+                """)).ShouldBe(0);
             (await ScalarAsync<int>(connectionString,
                 "SELECT COUNT(*) FROM sys.columns WHERE object_id IN (OBJECT_ID('dbo.TermValueSet'), OBJECT_ID('dbo.TermConceptMap')) AND name = 'Name' AND is_nullable = 1")).ShouldBe(2);
             (await ScalarAsync<int>(connectionString, """

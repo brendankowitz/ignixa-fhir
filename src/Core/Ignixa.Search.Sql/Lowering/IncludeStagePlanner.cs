@@ -68,6 +68,12 @@ internal static class IncludeStagePlanner
             var referenceSearchParamId = entry.Expression.WildCard
                 ? (short?)null
                 : symbols.SearchParamId(entry.Expression.ReferenceSearchParameter);
+            IReadOnlyList<short>? wildcardReferenceSearchParamIds = entry.Expression.WildCard
+                ? entry.Expression.WildcardReferenceSearchParameters
+                    .Select(symbols.SearchParamId)
+                    .Distinct()
+                    .ToList()
+                : null;
 
             stages.Add(new IncludeStage(
                 entry.Direction,
@@ -77,7 +83,8 @@ internal static class IncludeStagePlanner
                 seedStages,
                 seedFromMatch,
                 entry.Expression.Iterate,
-                includeLimit));
+                includeLimit,
+                WildcardReferenceSearchParamIds: wildcardReferenceSearchParamIds));
             stageProduces.Add(entry.Produces);
         }
 

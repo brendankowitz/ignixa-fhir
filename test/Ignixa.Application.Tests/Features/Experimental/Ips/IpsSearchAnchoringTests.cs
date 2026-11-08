@@ -74,7 +74,7 @@ public class IpsSearchAnchoringTests
         var generator = new IpsGeneratorService(
             [new DefaultIpsGenerationStrategy()], execution, repositoryFactory,
             new IsolatedModePartitionStrategy(NullLogger<IsolatedModePartitionStrategy>.Instance),
-            accessor, narratives, schema, NullLogger<IpsGeneratorService>.Instance);
+            accessor, narratives, schema, TestConformanceLease.Held(), NullLogger<IpsGeneratorService>.Instance);
 
         var bundle = await generator.GenerateIpsAsync(PatientId, cancellationToken: CancellationToken.None);
 

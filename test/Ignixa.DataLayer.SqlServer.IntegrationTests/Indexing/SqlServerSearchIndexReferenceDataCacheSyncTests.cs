@@ -1,5 +1,6 @@
 using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
+using Ignixa.DataLayer.SqlServer.RowGenerators;
 using Ignixa.Search.Models;
 using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -99,7 +100,7 @@ public class SqlServerSearchIndexReferenceDataCacheSyncTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GivenAParameterThatOverridesAnExistingOne_WhenSyncSearchParametersToDatabase_ThenItIsCachedUnderTheOverriddenId()
+    public async Task GivenAParameterThatOverridesAnExistingOne_WhenSyncSearchParametersToDatabase_ThenBothPhysicalIdsAreCached()
     {
         // Arrange: an overriding parameter gets its own dbo.SearchParam row, but must index under the
         // overridden parameter's id -- that is what SearchParameterIdLookupHelper's fallback expects.
@@ -124,12 +125,11 @@ public class SqlServerSearchIndexReferenceDataCacheSyncTests : IAsyncLifetime
 
         // Assert
         syncedCount.ShouldBe(1);
-        _cache.TryGetSearchParamIdFromCache(overridingUrl).ShouldBe(
-            overriddenId,
-            "an overriding parameter must be cached under the overridden parameter's id, not its own");
         var ownId = await _database.ExecuteScalarAsync<short>(
             $"SELECT SearchParamId FROM dbo.SearchParam WHERE Uri = '{overridingUrl}'");
         ownId.ShouldNotBe(overriddenId, "the overriding parameter still gets its own row");
+        _cache.TryGetSearchParamIdFromCache(overridingUrl).ShouldBe(ownId);
+        _cache.TryGetSearchParamIdFromCache(overriddenUrl).ShouldBe(overriddenId);
     }
 
     [Fact]
@@ -155,9 +155,45 @@ public class SqlServerSearchIndexReferenceDataCacheSyncTests : IAsyncLifetime
             $"SELECT COUNT(*) FROM dbo.SearchParam WHERE Uri = '{rootUrl}'")).ShouldBe(1);
         var rootId = await _database.ExecuteScalarAsync<short>(
             $"SELECT SearchParamId FROM dbo.SearchParam WHERE Uri = '{rootUrl}'");
-        _cache.TryGetSearchParamIdFromCache(overridingUrl).ShouldBe(rootId);
+        _cache.TryGetSearchParamIdFromCache(overridingUrl).ShouldBe(ownId);
+        _cache.TryGetSearchParamIdFromCache(rootUrl).ShouldBe(rootId);
         rootId.ShouldNotBe(ownId);
     }
+
+    // Spec §5.4: a definitions generation still being prepared must not change how the published one resolves ids.
+    [Fact]
+    public async Task GivenFutureGenerationCatalogPreparationIsBlockedBeforePublication_WhenRowsResolveIds_ThenEachGenerationUsesItsOwnRoot()
+    {
+        const string overridingUrl = "http://example.org/SearchParameter/generation-override";
+        var generationOne = CreateOverride(overridingUrl, "http://example.org/SearchParameter/generation-one-root");
+        var generationTwo = CreateOverride(overridingUrl, "http://example.org/SearchParameter/generation-two-root");
+        await _cache.SyncSearchParametersToDatabaseAsync([overridingUrl], CreateManager(generationOne), CancellationToken.None);
+        var catalogPrepared = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var allowPublication = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var futureBuild = Task.Run(async () =>
+        {
+            await _cache.SyncSearchParametersToDatabaseAsync([overridingUrl], CreateManager(generationTwo), CancellationToken.None);
+            catalogPrepared.TrySetResult();
+            await allowPublication.Task;
+        });
+
+        await catalogPrepared.Task;
+
+        var generationOneRootId = await RootIdAsync(generationOne);
+        var generationTwoRootId = await RootIdAsync(generationTwo);
+        generationOneRootId.ShouldNotBe(generationTwoRootId);
+        Resolve(generationOne).ShouldBe(generationOneRootId);
+        allowPublication.TrySetResult();
+        await futureBuild;
+        Resolve(generationOne).ShouldBe(generationOneRootId);
+        Resolve(generationTwo).ShouldBe(generationTwoRootId);
+    }
+
+    private Task<short> RootIdAsync(SearchParameterInfo parameter) =>
+        _database.ExecuteScalarAsync<short>($"SELECT SearchParamId FROM dbo.SearchParam WHERE Uri = '{parameter.OverridesUrl}'");
+
+    private short? Resolve(SearchParameterInfo parameter) =>
+        SearchParameterIdLookupHelper.TryGetSearchParamId(parameter, _cache.SearchParameterMappings, out var id) ? id : null;
 
     [Theory]
     [InlineData(false)]
@@ -242,4 +278,16 @@ public class SqlServerSearchIndexReferenceDataCacheSyncTests : IAsyncLifetime
         var rowCount = await _database.ExecuteScalarAsync<int>($"SELECT COUNT(*) FROM dbo.SearchParam WHERE Uri = '{url}'");
         rowCount.ShouldBe(1);
     }
+
+    private static SearchParameterInfo CreateOverride(string url, string rootUrl) =>
+        new("generation-override", "generation-override", SearchParamType.Token, new Uri(url))
+        {
+            OverridesUrl = new Uri(rootUrl),
+        };
+
+    private static StubSearchParameterDefinitionManager CreateManager(SearchParameterInfo parameter) =>
+        new(new Dictionary<string, SearchParameterInfo>(StringComparer.Ordinal)
+        {
+            [parameter.Url!.ToString()] = parameter,
+        });
 }

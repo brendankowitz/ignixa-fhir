@@ -79,7 +79,7 @@ public sealed class SqlServerMergeRepositoryConcurrentColdCacheTests : IAsyncLif
             };
 
             var (transactionId, _) = await _database.MergeRepository.BeginTransactionAsync(
-                resourceCount: 1, CancellationToken.None);
+                resourceCount: 1, definitionsEventId: 0, CancellationToken.None);
             await _database.MergeRepository.MergeResourcesAsync(
                 transactionId, singleTransaction: true, [wrapper], [0], CancellationToken.None);
             await _database.MergeRepository.CommitTransactionAsync(

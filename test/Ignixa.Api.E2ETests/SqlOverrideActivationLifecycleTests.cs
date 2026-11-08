@@ -9,11 +9,14 @@ using Ignixa.Application.Events.Package;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure.Caching;
+using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
 using Ignixa.DataLayer.SqlServer.Indexing;
+using Ignixa.DataLayer.SqlServer.Search;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.Search.Definition;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.SqlClient;
@@ -37,24 +40,26 @@ public class SqlOverrideActivationLifecycleTests
     [InlineData(true)]
     public async Task GivenSuccessiveRealActivations_WhenUpgradedChainedAndReplayed_ThenEveryWriteKeepsTheRootIdentity(bool legacyEvents)
     {
-        var configured = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING")
-            ?? throw new InvalidOperationException("A SQL test connection is required.");
-        var database = $"IgnixaOverrideActivation_{Guid.NewGuid():N}";
-        var connectionString = new SqlConnectionStringBuilder(configured) { InitialCatalog = database }.ConnectionString;
-        var master = new SqlConnectionStringBuilder(configured) { InitialCatalog = "master" }.ConnectionString;
-        using var names = new SqlCommandBuilder();
-        var quotedDatabase = names.QuoteIdentifier(database);
-        await ExecuteDatabaseCommandAsync(master, $"CREATE DATABASE {quotedDatabase}");
-        try
-        {
-            await AssertLifecycleAsync(connectionString, legacyEvents);
-        }
-        finally
-        {
-            using var pool = new SqlConnection(connectionString);
-            SqlConnection.ClearPool(pool);
-            await ExecuteDatabaseCommandAsync(master, $"DROP DATABASE {quotedDatabase}");
-        }
+        await using var database = await TemporarySqlDatabase.CreateAsync("IgnixaOverrideActivation");
+        await AssertLifecycleAsync(database.ConnectionString, legacyEvents);
+    }
+
+    [SqlFact]
+    public async Task GivenStagedOverride_WhenTransitionGraceElapses_ThenItIsCommittedAutomatically()
+    {
+        await using var database = await TemporarySqlDatabase.CreateAsync("IgnixaAutomaticTransition");
+        await using var template = new IgnixaApiFixture();
+        await using var host = CreateHost(template, database.ConnectionString, shortTransitionGrace: true);
+
+        await ActivateAsync(host.Services, "hl7.fhir.r4.core", "automatic-base", BaseUrl, null);
+        await ActivateAsync(host.Services, PackageId, "automatic", PackageUrl, BaseUrl);
+
+        // Spec §4.4: the durable transition orchestration commits the staged override once the grace elapses.
+        var state = host.Services.GetRequiredService<ConformanceState>();
+        await SearchParameterLifecycleTestHelper.WaitForStatusAsync(
+            state, PackageUrl, Ignixa.Conformance.Events.Models.SearchParameterStatus.Pending, TimeSpan.FromSeconds(10));
+
+        state.FindByCanonical(BaseUrl)!.Status.ShouldBe(Ignixa.Conformance.Events.Models.SearchParameterStatus.Disabled);
     }
 
     private static async Task AssertLifecycleAsync(string connectionString, bool legacyEvents)
@@ -75,12 +80,19 @@ public class SqlOverrideActivationLifecycleTests
             await ActivateAsync(host.Services, "hl7.fhir.r4.core", "1", BaseUrl, null);
             await ActivateAsync(host.Services, "hl7.fhir.r4.core", "2", BaseUrl, null);
             await ActivateAsync(host.Services, PackageId, "1", PackageUrl, BaseUrl);
+            await CompleteOverrideAsync(host.Services, client, marker, PackageUrl);
             await WriteAndAssertAsync(client, marker, ids);
             await ActivateAsync(host.Services, PackageId, "2", PackageUrl, BaseUrl);
+            await CompleteOverrideAsync(host.Services, client, marker, PackageUrl);
             await WriteAndAssertAsync(client, marker, ids);
             await ActivateAsync(host.Services, "test.override.chain", "1", ChainedUrl, PackageUrl);
+            await CompleteOverrideAsync(host.Services, client, marker, ChainedUrl);
             await WriteAndAssertAsync(client, marker, ids);
-            await AssertAliasesAsync(cache, rootId);
+            await AssertCatalogAndResolutionAsync(
+                cache,
+                host.Services.GetRequiredService<IFhirVersionContext>()
+                    .GetSearchParameterDefinitionManager(FhirVersion.R4, 1),
+                rootId);
 
             var state = host.Services.GetRequiredService<ConformanceState>();
             state.GetSearchParameter("Patient", "identifier")!.OverridesCanonical.ShouldBe(BaseUrl);
@@ -104,12 +116,16 @@ public class SqlOverrideActivationLifecycleTests
 
         await using var restarted = CreateHost(template, connectionString);
         using var restartedClient = restarted.CreateClient();
-        await AssertPatientsAsync(restartedClient, marker, ids);
+        await AssertPatientAsync(restartedClient, marker, ids[^1]);
         var replayed = restarted.Services.GetRequiredService<ConformanceState>();
         replayed.GetSearchParameter("Patient", "identifier")!.OverridesCanonical.ShouldBe(BaseUrl);
         var freshCache = await restarted.Services.GetRequiredService<SqlServerSearchIndexCacheRegistry>()
             .GetOrCreateAsync(1, CancellationToken.None);
-        await AssertAliasesAsync(freshCache, rootId);
+        await AssertCatalogAndResolutionAsync(
+            freshCache,
+            restarted.Services.GetRequiredService<IFhirVersionContext>()
+                .GetSearchParameterDefinitionManager(FhirVersion.R4, 1),
+            rootId);
         await WriteAndAssertAsync(restartedClient, marker, ids);
 
         await using var connection = new SqlConnection(connectionString);
@@ -158,17 +174,25 @@ public class SqlOverrideActivationLifecycleTests
             services.GetRequiredService<IFhirVersionContext>(),
             services.GetRequiredService<SqlServerSearchIndexCacheRegistry>(),
             services.GetRequiredService<ITenantConfigurationStore>(),
-            services.GetRequiredService<ICapabilityCacheInvalidator>(),
             services.GetRequiredService<ILogger<PackageLoadedSearchParameterSyncHandler>>());
         await handler.HandleAsync(new PackageLoadedEvent(packageId, version, 1, DateTimeOffset.UtcNow), CancellationToken.None);
     }
 
-    private static async Task AssertAliasesAsync(SqlServerSearchIndexReferenceDataCache cache, short rootId)
+    private static async Task AssertCatalogAndResolutionAsync(
+        SqlServerSearchIndexReferenceDataCache cache,
+        ISearchParameterDefinitionManager definitions,
+        short rootId)
     {
-        foreach (var canonical in new[] { BaseUrl, PackageUrl, ChainedUrl })
+        (await cache.GetSearchParamIdAsync(BaseUrl, CancellationToken.None)).ShouldBe(rootId);
+        foreach (var canonical in new[] { PackageUrl, ChainedUrl })
         {
-            (await cache.GetSearchParamIdAsync(canonical, CancellationToken.None)).ShouldBe(rootId, canonical);
+            (await cache.GetSearchParamIdAsync(canonical, CancellationToken.None)).ShouldNotBe(rootId, canonical);
         }
+
+        var resolver = new SqlServerSymbolResolver(cache);
+        (await resolver.GetSearchParamIdAsync(
+            definitions.GetSearchParameter("Patient", "identifier"),
+            CancellationToken.None)).ShouldBe(rootId);
     }
 
     private static async Task MakeLegacyOverrideEventAsync(string connectionString, string streamId, string target)
@@ -186,8 +210,20 @@ public class SqlOverrideActivationLifecycleTests
         (await command.ExecuteNonQueryAsync()).ShouldBe(1);
     }
 
-    private static WebApplicationFactory<Program> CreateHost(IgnixaApiFixture template, string connectionString) =>
+    private static WebApplicationFactory<Program> CreateHost(
+        IgnixaApiFixture template,
+        string connectionString,
+        bool shortTransitionGrace = false) =>
         template.WithWebHostBuilder(builder =>
+        {
+            if (shortTransitionGrace)
+            {
+                builder.UseSetting("Conformance:MaxStaleness", "00:00:00.050");
+                builder.UseSetting("Conformance:TransitionGrace", "00:00:00.100");
+                builder.UseSetting("Conformance:TransitionSafetyMargin", "00:00:00.050");
+                builder.UseSetting("Reindex:BarrierDelay", "00:00:00.050");
+            }
+
             builder.ConfigureAppConfiguration((_, configuration) =>
                 configuration.AddInMemoryCollection(new Dictionary<string, string?>
                 {
@@ -195,16 +231,8 @@ public class SqlOverrideActivationLifecycleTests
                     ["Tenants:Configurations:1:Storage:Type"] = "SqlServer",
                     ["Tenants:Configurations:0:Storage:Type"] = "SqlServer",
                     ["Conformance:SyncIntervalSeconds"] = "3600"
-                })));
-
-    private static async Task ExecuteDatabaseCommandAsync(string connectionString, string statement)
-    {
-        await using var connection = new SqlConnection(connectionString);
-        await connection.OpenAsync();
-        using var command = new SqlCommand("EXEC sys.sp_executesql @statement", connection);
-        command.Parameters.Add("@statement", SqlDbType.NVarChar, -1).Value = statement;
-        await command.ExecuteNonQueryAsync();
-    }
+                }));
+        });
 
     private static async Task WriteAndAssertAsync(HttpClient client, string marker, List<string> ids)
     {
@@ -215,29 +243,20 @@ public class SqlOverrideActivationLifecycleTests
         using var response = await client.PutAsync($"/tenant/1/Patient/{id}", body);
         response.StatusCode.ShouldBe(HttpStatusCode.Created, await response.Content.ReadAsStringAsync());
         ids.Add(id);
-        await AssertPatientsAsync(client, marker, ids);
+        // Synthetic lifecycle completion is intentional here; this assertion isolates post-enable identity reuse.
+        await AssertPatientAsync(client, marker, id);
     }
 
-    private static async Task AssertPatientsAsync(HttpClient client, string marker, IReadOnlyList<string> ids)
+    // Spec §4.4: a staged override hides the code until it commits; the reindex is synthetic here, isolating identity.
+    private static async Task CompleteOverrideAsync(IServiceProvider services, HttpClient client, string marker, string canonical)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get,
-            $"/tenant/1/Patient?identifier={Uri.EscapeDataString($"{System}|{marker}")}");
-        request.Headers.Add("Prefer", "handling=strict");
-        using var response = await client.SendAsync(request);
-        var body = await response.Content.ReadAsStringAsync();
-        response.StatusCode.ShouldBe(HttpStatusCode.OK, body);
-        var entries = JsonNode.Parse(body)!["entry"]!.AsArray();
-        entries.Select(entry => entry!["resource"]!["id"]!.GetValue<string>()).Order().ShouldBe(ids.Order());
+        await SearchParameterLifecycleTestHelper.AssertHiddenAsync(client, Query(marker), "identifier", redefined: true);
+        await SearchParameterLifecycleTestHelper.CommitTransitionAsync(services, canonical);
+        await SearchParameterLifecycleTestHelper.CompleteReindexAsync(services, canonical);
     }
 
-    private sealed class SqlTheoryAttribute : TheoryAttribute
-    {
-        public SqlTheoryAttribute()
-        {
-            if (Environment.GetEnvironmentVariable("TEST_USE_FILESYSTEM")?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                Skip = "Requires SQL-backed package activation and persisted storage identities.";
-            }
-        }
-    }
+    private static async Task AssertPatientAsync(HttpClient client, string marker, string id) =>
+        (await SearchParameterLifecycleTestHelper.SearchIdsAsync(client, Query(marker))).ShouldContain(id);
+
+    private static string Query(string marker) => $"/tenant/1/Patient?identifier={Uri.EscapeDataString($"{System}|{marker}")}";
 }
