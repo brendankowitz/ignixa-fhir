@@ -69,6 +69,25 @@ public class FhirBaseUriProviderWiringTests
         exception.RetryAfter.ShouldBe(TimeSpan.FromSeconds(30));
     }
 
+    // Copilot review: only a search the lease admitted for a request carries the lease's execution deadline.
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public void GivenAHeldLease_WhenBuildingSearchOptions_ThenOnlyARequestSearchCarriesTheExecutionDeadline(
+        bool httpRequest,
+        bool expectDeadline)
+    {
+        var httpContextAccessor = Substitute.For<IHttpContextAccessor>();
+        httpContextAccessor.HttpContext.Returns(httpRequest ? new DefaultHttpContext() : null);
+        using var versions = new FhirVersionContext(NullLoggerFactory.Instance, new SearchParameterResolutionOptions(), NullFhirBaseUriProvider.Instance);
+        using var factory = new SearchOptionsBuilderFactory(
+            versions, NullFhirBaseUriProvider.Instance, httpContextAccessor, Substitute.For<IFhirRequestContextAccessor>(), TestConformanceLease.Held());
+
+        var options = factory.Create(FhirVersion.R4).Build("Patient", []);
+
+        options.ExecutionDeadline.HasValue.ShouldBe(expectDeadline);
+    }
+
     [Fact]
     public void GivenNoProvider_WhenConstructingTheVersionContext_ThenItThrows()
     {

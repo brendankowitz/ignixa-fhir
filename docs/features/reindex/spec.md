@@ -236,6 +236,11 @@ transition whose grace period has elapsed but which is still uncommitted (§7).
   `3 × SyncIntervalSeconds`.
 - `TransitionSafetyMargin` defaults to 2 minutes 30 seconds. It covers four 30-second SQL command attempts,
   the three exponential retry delays, and 15 seconds of clock skew, rounded up to the next 30-second boundary.
+- The margin is enforced, not assumed. A request-originated search the lease admits must finish by
+  `admission + TransitionSafetyMargin − 15 s` (`SearchOptions.ExecutionDeadline`). The SQL search service cancels
+  every connection open, retry and command of the search at that instant and returns a retryable `503`, so a
+  sorted search's several commands, or slow connection opens, cannot outlive the margin. Startup requires the
+  margin to exceed the 15-second clock-skew allowance.
 - **Without the lease**, every request that evaluates search parameters (F15) **fails closed**. It returns `503`
   with `Retry-After` and an `OperationOutcome` (*"Conformance state is stale; search is temporarily
   unavailable."*). Reads by id, history reads, and unconditional writes continue. Write extraction staleness is
@@ -244,8 +249,9 @@ transition whose grace period has elapsed but which is still uncommitted (§7).
   `conformance.lease.lost` and `conformance.lease.age`.
 - Startup validates `TransitionGrace ≥ MaxStaleness + TransitionSafetyMargin`, and also
   `BarrierDelay ≥ MaxStaleness` so barrier rejections stay rare, and fails fast if either does not hold.
-- The lease is checked once when `SearchOptionsBuilderFactory` creates search options for a request. This covers the
-  same builder path used by search, includes, compartments, `$everything`, and conditional matching.
+- The lease is checked once when `SearchOptionsBuilderFactory` creates search options for a request, and that
+  check sets the search's execution deadline. This covers the same builder path used by search, includes,
+  compartments, `$everything`, and conditional matching.
   `ConformanceLease.EnsureRequestCanSearch` bypasses the lease for background `FhirRequestContext`s, so background work decides
   for itself:
   - **`$export` is exempt (deliberate decision).** It is read-only: an export `_typeFilter` is not rejected merely

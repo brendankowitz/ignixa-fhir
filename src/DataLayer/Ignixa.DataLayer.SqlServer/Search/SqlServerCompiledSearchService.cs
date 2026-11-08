@@ -61,9 +61,11 @@ public sealed class SqlServerCompiledSearchService(
             throw new ArgumentException($"Search options must be of type {nameof(SearchOptions)}", nameof(searchOptions));
         }
 
-        await foreach (var result in SearchStreamWithPhaseHandlingAsync(options, cancellationToken))
+        using var deadline = StartDeadline(options, cancellationToken);
+        await using var results = SearchStreamWithPhaseHandlingAsync(options, deadline.Token).GetAsyncEnumerator(deadline.Token);
+        while (await WithinDeadlineAsync(() => results.MoveNextAsync(), deadline, cancellationToken))
         {
-            yield return result;
+            yield return results.Current;
         }
     }
 
@@ -77,6 +79,12 @@ public sealed class SqlServerCompiledSearchService(
             throw new ArgumentException($"Search options must be of type {nameof(SearchOptions)}", nameof(searchOptions));
         }
 
+        using var deadline = StartDeadline(options, cancellationToken);
+        return await WithinDeadlineAsync(() => CountWithinDeadlineAsync(options, deadline.Token), deadline, cancellationToken);
+    }
+
+    private async ValueTask<int> CountWithinDeadlineAsync(SearchOptions options, CancellationToken cancellationToken)
+    {
         var compiled = await CompileAsync(options, cancellationToken, countOnly: true);
 
         // CA2100 suppressed: compiled.Sql is Ignixa.Search.Sql's own compiler output -- every user-controlled
@@ -89,6 +97,36 @@ public sealed class SqlServerCompiledSearchService(
         var rows = await _sqlExecutionService.ExecuteReaderAsync(_tenantId, command, reader => reader.GetInt64(0), cancellationToken);
         var count = rows.Count > 0 ? rows[0] : 0L;
         return checked((int)count);
+    }
+
+    // Every connection open, retry and command of the search shares the one deadline the search was admitted with.
+    private static CancellationTokenSource StartDeadline(SearchOptions options, CancellationToken cancellationToken)
+    {
+        var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (options.ExecutionDeadline is { } executionDeadline)
+        {
+            var remaining = executionDeadline - DateTimeOffset.UtcNow;
+            deadline.CancelAfter(remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero);
+        }
+
+        return deadline;
+    }
+
+    // SqlClient can surface cancellation as a SqlException, so any failure after the deadline fired, while the
+    // caller is still waiting, is the deadline's.
+    private static async ValueTask<T> WithinDeadlineAsync<T>(
+        Func<ValueTask<T>> operation,
+        CancellationTokenSource deadline,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await operation();
+        }
+        catch (Exception ex) when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new SearchDeadlineExceededException(ex);
+        }
     }
 
     /// <summary>

@@ -23,10 +23,11 @@ public sealed class ConformanceTransitionOptionsValidator(IOptions<ReindexOption
             failures.Add($"{ConformanceTransitionOptions.SectionName}:MaxStaleness must be greater than zero.");
         }
 
-        if (options.TransitionSafetyMargin <= TimeSpan.Zero)
+        if (options.TransitionSafetyMargin <= ConformanceTransitionOptions.ClockSkewAllowance)
         {
             failures.Add(
-                $"{ConformanceTransitionOptions.SectionName}:TransitionSafetyMargin must be greater than zero.");
+                $"{ConformanceTransitionOptions.SectionName}:TransitionSafetyMargin must be greater than the " +
+                $"{ConformanceTransitionOptions.ClockSkewAllowance.TotalSeconds:0}-second clock-skew allowance.");
         }
 
         // With a positive MaxStaleness these two rules also make TransitionGrace and BarrierDelay positive.

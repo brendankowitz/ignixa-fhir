@@ -12,6 +12,7 @@ using Ignixa.Domain;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Indexing.SearchValues;
+using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Microsoft.AspNetCore.Http;
 
@@ -66,14 +67,25 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
     public ISearchOptionsBuilder Create(FhirVersion fhirVersion)
     {
         // Uses base search parameter definitions only (no tenant-specific IG parameters)
-        return CreateForTenant(TenantContext.Default, fhirVersion, tenantId: null);
+        return Admit(() => CreateForTenant(TenantContext.Default, fhirVersion, tenantId: null));
     }
 
     /// <inheritdoc/>
     public ISearchOptionsBuilder Create(FhirVersion fhirVersion, int? tenantId)
     {
         // Uses tenant-specific search parameter definitions including IG parameters
-        return CreateForTenant(TenantContext.Default, fhirVersion, tenantId);
+        return Admit(() => CreateForTenant(TenantContext.Default, fhirVersion, tenantId));
+    }
+
+    // The lease is checked before the builder is chosen, and every search built from it must finish by the
+    // deadline the lease grants.
+    private ISearchOptionsBuilder Admit(Func<ISearchOptionsBuilder> create)
+    {
+        var deadline = _conformanceLease.EnsureRequestCanSearch(
+            requestOriginated: _httpContextAccessor.HttpContext is not null,
+            isBackgroundTask: _fhirRequestContextAccessor.RequestContext?.IsBackgroundTask == true);
+        var builder = create();
+        return deadline is { } executionDeadline ? new DeadlineSearchOptionsBuilder(builder, executionDeadline) : builder;
     }
 
     /// <summary>
@@ -88,8 +100,6 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
         FhirVersion fhirVersion,
         int? tenantId)
     {
-        EnsureConformanceLease();
-
         var definitionsGeneration = tenantId.HasValue
             ? _versionContext.GetDefinitionsHandle(fhirVersion, tenantId).DefinitionsEventId
             : 0;
@@ -203,10 +213,17 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
         return string.Equals(header, "true", StringComparison.OrdinalIgnoreCase);
     }
 
-    private void EnsureConformanceLease()
+    private sealed class DeadlineSearchOptionsBuilder(ISearchOptionsBuilder inner, DateTimeOffset deadline) : ISearchOptionsBuilder
     {
-        _conformanceLease.EnsureRequestCanSearch(
-            requestOriginated: _httpContextAccessor.HttpContext is not null,
-            isBackgroundTask: _fhirRequestContextAccessor.RequestContext?.IsBackgroundTask == true);
+        public SearchOptions Build(
+            string? resourceType,
+            IReadOnlyList<QueryParameter> parameters,
+            Ignixa.Abstractions.ISchema? schemaProvider = null,
+            IList<ParameterTrace>? outcomes = null)
+        {
+            var options = inner.Build(resourceType, parameters, schemaProvider, outcomes);
+            options.ExecutionDeadline = deadline;
+            return options;
+        }
     }
 }

@@ -4,7 +4,8 @@ namespace Ignixa.Application.Features.Conformance;
 
 public sealed class ConformanceTransitionOptions
 {
-    private static readonly TimeSpan DefaultClockSkewAllowance = TimeSpan.FromSeconds(15);
+    /// <summary>The part of <see cref="TransitionSafetyMargin"/> reserved for clock skew between instances.</summary>
+    public static readonly TimeSpan ClockSkewAllowance = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan SafetyMarginRoundingInterval = TimeSpan.FromSeconds(30);
 
     public const string SectionName = "Conformance";
@@ -15,7 +16,7 @@ public sealed class ConformanceTransitionOptions
     /// </summary>
     private static readonly TimeSpan DefaultTransitionSafetyMargin =
         RoundUp(
-            SqlExecutionPolicyDefaults.MaximumExecutionBudget + DefaultClockSkewAllowance,
+            SqlExecutionPolicyDefaults.MaximumExecutionBudget + ClockSkewAllowance,
             SafetyMarginRoundingInterval);
 
     /// <summary>
@@ -37,6 +38,13 @@ public sealed class ConformanceTransitionOptions
     /// Gets or sets the execution allowance added above <see cref="MaxStaleness"/> before a transition may commit.
     /// </summary>
     public TimeSpan TransitionSafetyMargin { get; set; } = DefaultTransitionSafetyMargin;
+
+    /// <summary>
+    /// Gets how long a search admitted under the staleness lease may run: the safety margin less the clock-skew
+    /// allowance. Enforcing it end to end, across connection opens, retries and every command, is what lets
+    /// the margin cover every such search.
+    /// </summary>
+    public TimeSpan SearchExecutionBudget => TransitionSafetyMargin - ClockSkewAllowance;
 
     private static TimeSpan RoundUp(TimeSpan duration, TimeSpan interval)
     {

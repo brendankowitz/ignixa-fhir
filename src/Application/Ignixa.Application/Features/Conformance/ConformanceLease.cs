@@ -17,6 +17,7 @@ public sealed class ConformanceLease
 
     private readonly TimeProvider _timeProvider;
     private readonly TimeSpan _maxStaleness;
+    private readonly TimeSpan _searchExecutionBudget;
     private readonly ILogger<ConformanceLease> _logger;
     private readonly ObservableGauge<double> _ageGauge;
 
@@ -36,6 +37,7 @@ public sealed class ConformanceLease
 
         var configuredOptions = options.Value;
         _maxStaleness = configuredOptions.MaxStaleness;
+        _searchExecutionBudget = configuredOptions.SearchExecutionBudget;
         RetryAfter = TimeSpan.FromSeconds(configuredOptions.SyncIntervalSeconds);
         _ageGauge = ConformanceMetrics.CreateLeaseAgeGauge(
             () => Interlocked.Read(ref _start) == NeverRenewed ? 0d : Age.TotalSeconds);
@@ -81,15 +83,26 @@ public sealed class ConformanceLease
     }
 
     /// <summary>
-    /// Throws when a request-originated search would use stale conformance definitions.
+    /// Admits a search: throws when a request-originated search would use stale conformance definitions.
     /// </summary>
+    /// <returns>
+    /// The instant an admitted request-originated search must finish by, so it cannot outlive the transition
+    /// safety margin; <see langword="null"/> for a search the lease does not govern.
+    /// </returns>
     /// <exception cref="ConformanceStaleException">The lease is not held.</exception>
-    public void EnsureRequestCanSearch(bool requestOriginated, bool isBackgroundTask)
+    public DateTimeOffset? EnsureRequestCanSearch(bool requestOriginated, bool isBackgroundTask)
     {
-        if (requestOriginated && !isBackgroundTask && !IsHeld)
+        if (!requestOriginated || isBackgroundTask)
+        {
+            return null;
+        }
+
+        if (!IsHeld)
         {
             throw new ConformanceStaleException(RetryAfter);
         }
+
+        return _timeProvider.GetUtcNow() + _searchExecutionBudget;
     }
 
     /// <summary>

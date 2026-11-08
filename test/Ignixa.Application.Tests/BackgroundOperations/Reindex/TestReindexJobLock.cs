@@ -22,7 +22,8 @@ internal sealed class TestReindexJobLock : IReindexJobLock
         lock (_gate)
         {
             previous = _tail;
-            _tail = release.Task;
+            // A waiter cancelled before acquiring still releases, so the next one also waits on the holder before it.
+            _tail = Task.WhenAll(previous, release.Task);
         }
 
         try

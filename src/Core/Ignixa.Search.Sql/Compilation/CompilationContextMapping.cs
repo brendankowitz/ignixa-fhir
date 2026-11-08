@@ -30,6 +30,8 @@ internal static class CompilationContextMapping
     /// <summary>The properties that deliberately do not become compilation inputs, and why.</summary>
     public static FrozenDictionary<string, string> NotApplicable { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
     {
+        [nameof(SearchOptions.ExecutionDeadline)] =
+            "A bound on execution time, not on the SQL text: the SQL search service cancels every connection open, retry and command of the search once it passes, so the compiled query is the same with or without it.",
         [nameof(SearchOptions.MaxItemCount)] =
             "A page size, not a row cap: the adapter layer pairs it with ProbeExtraRow and a decoded continuation token to build either an OffsetSpec or a Top-capped Keyset on ResultShape.Matches. Forwarding it as a cap as well would apply the same number twice. Row capping is SearchPaging.Keyset.Top on ResultShape.Matches.",
         [nameof(SearchOptions.ProbeExtraRow)] =

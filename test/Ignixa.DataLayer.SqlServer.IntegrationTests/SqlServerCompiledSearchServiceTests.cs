@@ -181,6 +181,34 @@ public class SqlServerCompiledSearchServiceTests : IAsyncLifetime
         results.ShouldContain(r => r.ResourceId == resourceId);
     }
 
+    // Copilot review: a search admitted under the conformance lease must not run past its deadline, across every
+    // connection open and command, or it could evaluate outgoing definitions after a transition commits.
+    [Fact]
+    public async Task GivenASearchPastItsExecutionDeadline_WhenItRuns_ThenItFailsClosedWithAServiceUnavailable()
+    {
+        // Arrange
+        var resourceId = $"search-svc-deadline-{Guid.NewGuid():N}";
+        await CreatePatientAsync(resourceId);
+        var options = new SearchOptions
+        {
+            ResourceType = "Patient",
+            Expression = IdEquals(resourceId),
+            ExecutionDeadline = DateTimeOffset.UtcNow - TimeSpan.FromSeconds(1),
+        };
+
+        // Act
+        var stream = await Should.ThrowAsync<SearchDeadlineExceededException>(async () =>
+        {
+            await foreach (var _ in _service.SearchStreamAsync(options, CancellationToken.None))
+            {
+            }
+        });
+        var count = await Should.ThrowAsync<SearchDeadlineExceededException>(() => _service.CountAsync(options, CancellationToken.None).AsTask());
+
+        // Assert
+        (stream.StatusCode, count.StatusCode).ShouldBe((503, 503));
+    }
+
     [Fact]
     public async Task GivenTwoMatchingResources_WhenCountAsyncCalled_ThenReturnsTwo()
     {

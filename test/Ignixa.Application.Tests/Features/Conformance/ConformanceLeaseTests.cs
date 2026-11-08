@@ -13,6 +13,19 @@ public class ConformanceLeaseTests
     public ConformanceLeaseTests() =>
         _lease = TestConformanceLease.NotHeld(_clock, TimeSpan.FromSeconds(10), syncIntervalSeconds: 7);
 
+    // Copilot review: a search admitted under the lease must finish within the safety margin less the clock-skew
+    // allowance, so the margin bounds every such search end to end; searches the lease does not govern get none.
+    [Fact]
+    public void GivenAHeldLease_WhenSearchesAreAdmitted_ThenOnlyRequestSearchesGetADeadlineWithinTheSafetyMargin()
+    {
+        _lease.Renew(_lease.CaptureStart());
+        var budget = new ConformanceTransitionOptions().TransitionSafetyMargin - ConformanceTransitionOptions.ClockSkewAllowance;
+
+        _lease.EnsureRequestCanSearch(requestOriginated: true, isBackgroundTask: false).ShouldBe(_clock.GetUtcNow() + budget);
+        _lease.EnsureRequestCanSearch(requestOriginated: true, isBackgroundTask: true).ShouldBeNull();
+        _lease.EnsureRequestCanSearch(requestOriginated: false, isBackgroundTask: false).ShouldBeNull();
+    }
+
     [Fact]
     public void GivenTwoSyncsThatSucceedAfterWorkInReverseOrder_WhenTheLeaseIsRenewed_ThenItIsHeldOnlyWithinMaxStalenessOfTheNewerStart()
     {

@@ -22,6 +22,8 @@ public class ConformanceTransitionOptionsValidatorTests
         { "negative staleness and barrier delay", 30, TimeSpan.FromSeconds(-2), Thirty, Thirty, TimeSpan.FromSeconds(-1), false },
         { "zero safety margin", 30, Ten, TimeSpan.FromSeconds(11), TimeSpan.Zero, Ten, false },
         { "negative safety margin", 30, Ten, TimeSpan.FromSeconds(11), TimeSpan.FromSeconds(-1), Ten, false },
+        { "safety margin no larger than the clock-skew allowance", 30, Ten, TimeSpan.FromSeconds(25), TimeSpan.FromSeconds(15), Ten, false },
+        { "safety margin just above the clock-skew allowance", 30, Ten, TimeSpan.FromSeconds(26), TimeSpan.FromSeconds(16), Ten, true },
         { "durations at the maximum", 30, TimeSpan.MaxValue, TimeSpan.MaxValue, TimeSpan.FromSeconds(1), TimeSpan.MaxValue, false },
         { "negative staleness with maximum grace", 30, TimeSpan.MinValue, TimeSpan.MaxValue, Thirty, TimeSpan.MaxValue, false },
     };

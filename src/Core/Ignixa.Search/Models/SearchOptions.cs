@@ -70,6 +70,7 @@ public sealed class SearchOptions
         ResourceVersionTypes = other.ResourceVersionTypes;
         AccessConstraints = other.AccessConstraints;
         AllowedResourceTypes = other.AllowedResourceTypes;
+        ExecutionDeadline = other.ExecutionDeadline;
     }
 
     /// <summary>
@@ -264,6 +265,13 @@ public sealed class SearchOptions
     /// </para>
     /// </summary>
     public IReadOnlyList<string> AllowedResourceTypes { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Gets or sets the instant by which the search must finish evaluating search parameters, or
+    /// <see langword="null"/> for no deadline. A request-originated search admitted under the conformance
+    /// staleness lease carries one, so it cannot run on with outgoing definitions after a transition commits.
+    /// </summary>
+    public DateTimeOffset? ExecutionDeadline { get; set; }
 }
 
 /// <summary>
