@@ -98,7 +98,8 @@ route that declares none is refused.
 
 GraphQL mutations (`PatientCreate`, `PatientUpdate`, `PatientDelete` and so on) are refused with `403 Forbidden`
 while authorization is enabled, because they write without a per-resource permission check. Use the REST create,
-update and delete interactions instead.
+update and delete interactions instead. The GraphQL IDE (`Experimental:Features:GraphQl:EnableGraphQlIde`) is not mapped while
+authorization is enabled, because its executor bypasses these checks.
 
 Package load and unload change search behaviour for every tenant. While more than one tenant is active they also
 require the `SystemAdmin` role.

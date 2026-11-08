@@ -108,6 +108,23 @@ public class SmartAuthorizationFailClosedTests(IgnixaApiFixture fixture)
         readBack.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
+    // The IDE's native executor would run mutations outside the endpoint filters, so it is not mapped; the path
+    // then falls through to the generic create route, which refuses it.
+    [Fact]
+    public async Task GivenTheGraphQlIdeIsEnabled_WhenAuthorizationIsEnabled_ThenTheMutationDoesNotRunThere()
+    {
+        await using var application = CreateAuthorizedApplication(
+            ("Experimental:Features:GraphQl:EnableGraphQlIde", "true"));
+        var id = await PutPatientAsync();
+        using var client = CreateScopedClient(application, "system/*.rs");
+
+        using var response = await PostGraphQlAsync(client, "/graphql/", $$"""mutation { PatientDelete(id: "{{id}}") }""");
+
+        response.IsSuccessStatusCode.ShouldBeFalse(await response.Content.ReadAsStringAsync());
+        using var readBack = await fixture.Client.GetAsync($"/tenant/1/Patient/{id}");
+        readBack.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
     [Fact]
     public async Task GivenASearchOnlyWildcardScope_WhenPostingAGraphQlQuery_ThenItSucceeds()
     {
@@ -177,17 +194,25 @@ public class SmartAuthorizationFailClosedTests(IgnixaApiFixture fixture)
 
     // Authorization:Enabled is set through both UseSetting and ConfigureAppConfiguration; see
     // BulkDeleteAuthorizationTests.CreateAuthorizedApplication for why each alone is insufficient.
-    private WebApplicationFactory<Program> CreateAuthorizedApplication() =>
+    private WebApplicationFactory<Program> CreateAuthorizedApplication(params (string Key, string Value)[] extraSettings) =>
         fixture.WithWebHostBuilder(webHost =>
         {
-            webHost.UseSetting("Authorization:Enabled", "true");
-            webHost.UseSetting("Authentication:Authority", "https://smart-fail-closed-tests.invalid/");
-            webHost.ConfigureAppConfiguration((_, configuration) =>
-                configuration.AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    ["Authorization:Enabled"] = "true",
-                    ["Authentication:Authority"] = "https://smart-fail-closed-tests.invalid/",
-                }));
+            var settings = new Dictionary<string, string?>
+            {
+                ["Authorization:Enabled"] = "true",
+                ["Authentication:Authority"] = "https://smart-fail-closed-tests.invalid/",
+            };
+            foreach (var (key, value) in extraSettings)
+            {
+                settings[key] = value;
+            }
+
+            foreach (var (key, value) in settings)
+            {
+                webHost.UseSetting(key, value);
+            }
+
+            webHost.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(settings));
             webHost.ConfigureServices(services =>
                 services.AddAuthentication(BulkDeleteTestAuthenticationHandler.SchemeName)
                     .AddScheme<AuthenticationSchemeOptions, BulkDeleteTestAuthenticationHandler>(
