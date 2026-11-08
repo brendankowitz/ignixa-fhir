@@ -44,4 +44,9 @@ public record CreateImportJobCommand : IRequest<CreateImportJobResult>
     /// Optional storage detail parameters (for custom storage configurations).
     /// </summary>
     public Parameters? StorageDetail { get; init; }
+
+    /// <summary>
+    /// Audit attribution of the kick-off request, persisted for the job's completion audit event.
+    /// </summary>
+    public BackgroundJobAuditContext? AuditContext { get; init; }
 }

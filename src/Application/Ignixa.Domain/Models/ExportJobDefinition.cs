@@ -12,7 +12,7 @@ namespace Ignixa.Domain.Models;
 /// Represents the configuration of a FHIR bulk export operation.
 /// TenantId is stored here (in the payload), not as a BackgroundJob property.
 /// </summary>
-public class ExportJobDefinition : IJobDefinition
+public class ExportJobDefinition : IAuditedJobDefinition
 {
     /// <summary>
     /// Tenant ID for multi-tenancy isolation (stored in definition payload, not schema).
@@ -62,4 +62,7 @@ public class ExportJobDefinition : IJobDefinition
     /// Absent for older jobs and exports initiated outside HTTP.
     /// </summary>
     public string? RequestUrl { get; init; }
+
+    /// <inheritdoc />
+    public BackgroundJobAuditContext? AuditContext { get; init; }
 }

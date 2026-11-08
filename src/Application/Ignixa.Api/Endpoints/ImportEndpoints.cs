@@ -5,6 +5,8 @@
 
 using System.Text.Json;
 using DurableTask.Core;
+using Ignixa.Api.Filters;
+using Ignixa.Application.Infrastructure.Audit;
 using Ignixa.Application.BackgroundOperations.Import;
 using Ignixa.Application.BackgroundOperations.Jobs;
 using Medino;
@@ -30,17 +32,22 @@ public static class ImportEndpoints
     /// </summary>
     public static void MapImportEndpoints(this WebApplication app)
     {
+        // Audited like other FHIR interactions: kick-off, status, and cancel requests are
+        // recorded with their custom audit headers, which also enforces the header limits.
         // POST /tenant/{tenantId}/$import - Start a new import job
         app.MapPost("/tenant/{tenantId:int}/$import", StartImportAsync)
-            .WithName("StartImport");
+            .WithName("StartImport")
+            .AddEndpointFilter<FhirAuditFilter>();
 
         // GET /tenant/{tenantId}/_import/{jobId} - Poll import job status
         app.MapGet("/tenant/{tenantId:int}/_import/{jobId}", GetImportStatusAsync)
-            .WithName("GetImportStatus");
+            .WithName("GetImportStatus")
+            .AddEndpointFilter<FhirAuditFilter>();
 
         // DELETE /tenant/{tenantId}/_import/{jobId} - Cancel import job
         app.MapDelete("/tenant/{tenantId:int}/_import/{jobId}", CancelImportAsync)
-            .WithName("CancelImport");
+            .WithName("CancelImport")
+            .AddEndpointFilter<FhirAuditFilter>();
     }
 
     /// <summary>
@@ -156,7 +163,8 @@ public static class ImportEndpoints
                 Mode = mode,
                 BatchSize = batchSize,
                 ChannelCapacity = channelCapacity,
-                StorageDetail = storageDetail
+                StorageDetail = storageDetail,
+                AuditContext = AuditAttribution.CreateJobAuditContext(httpContext)
             };
 
             var result = await mediator.SendAsync(command, httpContext.RequestAborted);
@@ -277,6 +285,7 @@ public static class ImportEndpoints
         [FromRoute] string jobId,
         [FromServices] TaskHubClient taskHubClient,
         [FromServices] IBackgroundJobRepository<ImportJobDefinition> jobRepository,
+        [FromServices] BackgroundJobCompletionAuditor completionAuditor,
         [FromServices] ILoggerFactory loggerFactory,
         HttpContext httpContext,
         CancellationToken cancellationToken)
@@ -318,6 +327,7 @@ public static class ImportEndpoints
             return CancellationResult(authoritative.Status);
         }
 
+        completionAuditor.LogTerminalStatus(job);
         return Results.NoContent();
     }
 

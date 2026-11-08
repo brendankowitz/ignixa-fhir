@@ -87,7 +87,8 @@ public class CreateImportJobHandler : IRequestHandler<CreateImportJobCommand, Cr
                 InputFormat = "application/fhir+ndjson",
                 InputSource = string.Join(", ", request.InputFiles.Select(f => f.Type)),
                 Mode = request.Mode,
-                InputFiles = request.InputFiles
+                InputFiles = request.InputFiles,
+                AuditContext = request.AuditContext
             },
             CreateDate = DateTimeOffset.UtcNow,
             HeartbeatDate = DateTimeOffset.UtcNow

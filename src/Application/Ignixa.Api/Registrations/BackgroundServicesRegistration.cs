@@ -103,6 +103,10 @@ public static class BackgroundServicesRegistration
             .As<IRequestHandler<CancelBulkDeleteCommand, CancelBulkDeleteOutcome>>()
             .InstancePerDependency();
 
+        builder.RegisterType<BackgroundJobCompletionAuditor>()
+            .AsSelf()
+            .SingleInstance();
+
         return builder;
     }
 

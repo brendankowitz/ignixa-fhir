@@ -1,5 +1,7 @@
 using System.Text.Json;
 using DurableTask.Core;
+using Ignixa.Api.Filters;
+using Ignixa.Application.Infrastructure.Audit;
 using Ignixa.Application.BackgroundOperations.Export;
 using Ignixa.Application.BackgroundOperations.Jobs;
 using Medino;
@@ -25,28 +27,36 @@ public static class ExportEndpoints
     /// </summary>
     public static void MapExportEndpoints(this WebApplication app)
     {
+        // Audited like other FHIR interactions: kick-off, status, and cancel requests are
+        // recorded with their custom audit headers, which also enforces the header limits.
         // POST /$export - System-level export (single-tenant or auto-detected tenant)
         app.MapPost("/$export", StartExportSystemLevelAsync)
-            .WithName("StartExportSystemLevel");
+            .WithName("StartExportSystemLevel")
+            .AddEndpointFilter<FhirAuditFilter>();
 
         // POST /tenant/{tenantId}/$export - Start a new export job
         app.MapPost("/tenant/{tenantId:int}/$export", StartExportAsync)
-            .WithName("StartExport");
+            .WithName("StartExport")
+            .AddEndpointFilter<FhirAuditFilter>();
 
         // POST /Group/{groupId}/$export - Group-scoped export
         app.MapPost("/Group/{groupId}/$export", StartGroupExportAsync)
-            .WithName("StartGroupExport");
+            .WithName("StartGroupExport")
+            .AddEndpointFilter<FhirAuditFilter>();
 
         app.MapPost("/tenant/{tenantId:int}/Group/{groupId}/$export", StartGroupExportAsync)
-            .WithName("StartGroupExportForTenant");
+            .WithName("StartGroupExportForTenant")
+            .AddEndpointFilter<FhirAuditFilter>();
 
         // GET /tenant/{tenantId}/_export/{jobId} - Poll export job status
         app.MapGet("/tenant/{tenantId:int}/_export/{jobId}", GetExportStatusAsync)
-            .WithName("GetExportStatus");
+            .WithName("GetExportStatus")
+            .AddEndpointFilter<FhirAuditFilter>();
 
         // DELETE /tenant/{tenantId}/_export/{jobId} - Cancel export job
         app.MapDelete("/tenant/{tenantId:int}/_export/{jobId}", CancelExportAsync)
-            .WithName("CancelExport");
+            .WithName("CancelExport")
+            .AddEndpointFilter<FhirAuditFilter>();
     }
 
     /// <summary>
@@ -195,7 +205,8 @@ public static class ExportEndpoints
                 OutputFormat = outputFormat ?? ExportConstants.MediaTypeNdjson,
                 ViewDefinitionId = viewDefinition,
                 GroupId = groupId,
-                RequestUrl = httpContext.Request.GetDisplayUrl()
+                RequestUrl = httpContext.Request.GetDisplayUrl(),
+                AuditContext = AuditAttribution.CreateJobAuditContext(httpContext)
             };
 
             var result = await mediator.SendAsync(command, httpContext.RequestAborted);
@@ -316,7 +327,8 @@ public static class ExportEndpoints
                 TypeFilters = typeFilters,
                 OutputFormat = outputFormat ?? ExportConstants.MediaTypeNdjson,
                 ViewDefinitionId = viewDefinition,
-                RequestUrl = httpContext.Request.GetDisplayUrl()
+                RequestUrl = httpContext.Request.GetDisplayUrl(),
+                AuditContext = AuditAttribution.CreateJobAuditContext(httpContext)
             };
 
             var result = await mediator.SendAsync(command, httpContext.RequestAborted);
@@ -420,6 +432,7 @@ public static class ExportEndpoints
         [FromRoute] string jobId,
         [FromServices] TaskHubClient taskHubClient,
         [FromServices] IBackgroundJobRepository<ExportJobDefinition> jobRepository,
+        [FromServices] BackgroundJobCompletionAuditor completionAuditor,
         [FromServices] ILoggerFactory loggerFactory,
         HttpContext httpContext,
         CancellationToken cancellationToken)
@@ -461,6 +474,7 @@ public static class ExportEndpoints
             return CancellationResult(authoritative.Status);
         }
 
+        completionAuditor.LogTerminalStatus(job);
         return Results.NoContent();
     }
 

@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Jobs;
+using Ignixa.Application.Infrastructure;
 using Ignixa.DataLayer.FileSystem.DurableTask;
 using Ignixa.DataLayer.SqlServer.Features.BackgroundJobs;
 using Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
@@ -42,7 +43,8 @@ public class BulkExportSqlPersistenceTests
             });
             var handler = new GetJobStatusHandler(new TaskHubClient(runtime),
                 CreateRepository<ImportJobDefinition>(database, tenants),
-                CreateRepository<ExportJobDefinition>(database, tenants));
+                CreateRepository<ExportJobDefinition>(database, tenants),
+                new BackgroundJobCompletionAuditor(new AuditLogger(NullLogger<AuditLogger>.Instance), NullLogger<BackgroundJobCompletionAuditor>.Instance));
 
             var status = await handler.HandleAsync(
                 new GetJobStatusQuery { JobId = "export-race", JobType = "Export", TenantId = 1 },
@@ -130,7 +132,8 @@ public class BulkExportSqlPersistenceTests
     private static GetJobStatusHandler CreateHandler(TestTenantDatabase database, ITenantConfigurationStore tenants) =>
         new(new TaskHubClient(new InMemoryOrchestrationService(NullLogger<InMemoryOrchestrationService>.Instance)),
             CreateRepository<ImportJobDefinition>(database, tenants),
-            CreateRepository<ExportJobDefinition>(database, tenants));
+            CreateRepository<ExportJobDefinition>(database, tenants),
+            new BackgroundJobCompletionAuditor(new AuditLogger(NullLogger<AuditLogger>.Instance), NullLogger<BackgroundJobCompletionAuditor>.Instance));
 
     private static SqlServerBackgroundJobRepository<T> CreateRepository<T>(TestTenantDatabase database, ITenantConfigurationStore tenants)
         where T : class, IJobDefinition =>

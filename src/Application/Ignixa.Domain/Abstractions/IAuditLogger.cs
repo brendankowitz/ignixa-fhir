@@ -51,6 +51,13 @@ public interface IAuditLogger
         string resourceId,
         DateTimeOffset expiresAt,
         bool success);
+
+    /// <summary>
+    /// Logs the terminal status of a background job (e.g. $export, $import), attributed to the
+    /// request that started it, including that request's custom audit headers.
+    /// </summary>
+    /// <param name="auditEvent">The job audit event details</param>
+    void LogBackgroundJobCompleted(BackgroundJobAuditEvent auditEvent);
 }
 
 /// <summary>
@@ -117,4 +124,10 @@ public sealed record HttpRequestAuditEvent
     /// Correlation ID for request tracing.
     /// </summary>
     public string? CorrelationId { get; init; }
+
+    /// <summary>
+    /// Caller-supplied custom audit headers (<c>X-IGNIXA-AUDIT-*</c>, or <c>X-MS-AZUREFHIR-AUDIT-*</c> for compatibility), keyed by header name.
+    /// Values are audit data and must only be written to the audit channel.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> CustomHeaders { get; init; } = new Dictionary<string, string>();
 }

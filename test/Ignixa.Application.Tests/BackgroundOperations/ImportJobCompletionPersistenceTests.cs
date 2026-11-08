@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Import.Activities;
+using Ignixa.Application.BackgroundOperations.Jobs;
 using Ignixa.DataLayer.BlobStorage.Features.BackgroundJobs;
 using Ignixa.DataLayer.BlobStorage.Infrastructure;
 using Ignixa.Domain.Abstractions;
@@ -45,6 +46,7 @@ public class ImportJobCompletionPersistenceTests
                 .AddSingleton<IBackgroundJobRepository<ImportJobDefinition>>(repository)
                 .AddSingleton<IBlobStorageClient>(blobs)
                 .AddSingleton<ILogger<CompleteJobActivity>>(NullLogger<CompleteJobActivity>.Instance)
+                .AddSingleton(new BackgroundJobCompletionAuditor(Substitute.For<IAuditLogger>(), NullLogger<BackgroundJobCompletionAuditor>.Instance))
                 .BuildServiceProvider();
             var activity = ActivatorUtilities.CreateInstance<CompleteJobActivity>(services);
             var input = $$"""
