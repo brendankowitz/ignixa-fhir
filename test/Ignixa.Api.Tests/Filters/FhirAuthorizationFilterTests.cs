@@ -278,10 +278,12 @@ public class FhirAuthorizationFilterTests
     }
 
     [Fact]
-    public async Task InvokeAsync_Metadata_SetsCapabilitiesInteraction()
+    public async Task GivenAResourceWhoseIdIsMetadata_WhenDeleting_ThenItIsAuthorizedAsADeleteNotAsCapabilities()
     {
         // Arrange
-        var httpContext = CreateHttpContext("GET", "/tenant/1/metadata");
+        var httpContext = CreateHttpContext("DELETE", "/tenant/1/Patient/metadata");
+        httpContext.Request.RouteValues["resourceType"] = "Patient";
+        httpContext.Request.RouteValues["id"] = "metadata";
 
         var (context, next) = CreateFilterContext(httpContext);
         FhirAuthorizationContext? capturedContext = null;
@@ -300,7 +302,7 @@ public class FhirAuthorizationFilterTests
 
         // Assert
         capturedContext.ShouldNotBeNull();
-        capturedContext!.Interaction.ShouldBe(FhirInteraction.Capabilities);
+        (capturedContext!.Interaction, capturedContext.ResourceType).ShouldBe((FhirInteraction.Delete, "Patient"));
     }
 
     #endregion

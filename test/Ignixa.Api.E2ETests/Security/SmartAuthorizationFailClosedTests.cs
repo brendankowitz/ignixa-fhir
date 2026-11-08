@@ -132,9 +132,11 @@ public class SmartAuthorizationFailClosedTests(IgnixaApiFixture fixture)
         var id = await PutPatientAsync();
         using var client = CreateScopedClient(application, "system/*.s");
 
-        using var response = await PostGraphQlAsync(client, "/tenant/1/$graphql", $$"""{ Patient(id: "{{id}}") { id } }""");
+        using var response = await PostGraphQlAsync(client, "/tenant/1/$graphql", $$"""{ Patient(_id: "{{id}}") { id } }""");
 
-        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var body = await response.Content.ReadAsStringAsync();
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, body);
+        (JsonNode.Parse(body)?["data"]?["Patient"]?["id"]?.GetValue<string>()).ShouldBe(id, body);
     }
 
     [Theory]
@@ -143,6 +145,8 @@ public class SmartAuthorizationFailClosedTests(IgnixaApiFixture fixture)
     [InlineData("POST", "/tenant/1/$export")]
     [InlineData("POST", "/$de-identify")]
     [InlineData("GET", "/tenant/1/admin/packages")]
+    [InlineData("GET", "/tenant/1/Patient/metadata")]
+    [InlineData("DELETE", "/tenant/1/Patient/metadata")]
     public async Task GivenNoCredentials_WhenCallingAPreviouslyUnauthorizedRoute_ThenItIsForbidden(string method, string path)
     {
         await using var application = CreateAuthorizedApplication();

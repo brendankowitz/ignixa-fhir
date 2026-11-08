@@ -306,14 +306,9 @@ public class FhirAuthorizationFilter : IEndpointFilter
         var isSearchEndpoint = path.EndsWith("/_search", StringComparison.OrdinalIgnoreCase);
         var isHistoryEndpoint = path.Contains("/_history", StringComparison.OrdinalIgnoreCase);
         var isOperationEndpoint = path.Contains("/$", StringComparison.Ordinal);
-        var isMetadataEndpoint = path.EndsWith("/metadata", StringComparison.OrdinalIgnoreCase);
 
-        // Metadata always returns Capabilities
-        if (isMetadataEndpoint)
-        {
-            return (FhirInteraction.Capabilities, null, null);
-        }
-
+        // No metadata shortcut: the CapabilityStatement routes do not run this filter, and a path suffix would also
+        // match a resource whose id is "metadata".
         // Determine interaction from method + route pattern
         var interaction = (method.ToUpperInvariant(), resourceId != null, isSearchEndpoint, isHistoryEndpoint, isOperationEndpoint, isCompartmentSearch) switch
         {
