@@ -9,6 +9,14 @@ Use these criteria for pull request reviews. `AGENTS.md` remains authoritative f
 - Keep impact separate from confidence. A missing best practice is not itself a vulnerability. Explain the crossed boundary and unauthorized outcome for security findings; identify missing evidence when deployment or runtime behavior cannot be established.
 - Do not infer safety from no findings, a passing job, a high coverage percentage, or agreement between reviewers. Never claim tests were run or behavior reproduced without evidence. Consolidate duplicate findings.
 
+## Intent and acceptance criteria
+
+- Treat the PR's stated intent, acceptance criteria, invariants, and linked ADRs as the specification. Tests written alongside the change show what was built, not what was asked for; do not derive intent from the implementation.
+- Map each acceptance criterion and invariant to the code that implements it and to a test that would fail if it were broken. Report criteria without evidence, evidence that cannot fail, and changed behavior the stated intent does not cover.
+- Check both directions of permission and filtering rules: the permitted case succeeds and the refused case is refused. A deny-only test is also satisfied by code that refuses everyone; an allow-only test is satisfied by code that permits everyone.
+- Check the seams the PR lists, then look for unlisted ones: callers of changed contracts, every affected layer, FileSystem and SQL providers, applicable FHIR versions, and derived paths such as `_include`, chaining, `$everything`, export, and continuation.
+- When intent is missing, ambiguous, or contradicted by the code, state what cannot be verified and the question to resolve; do not fill the gap with a guess. Read assumptions declared as trusted or not promised: they are reviewable claims, not exemptions.
+
 ## Quality and architecture
 
 - **Correctness and compatibility:** trace changed contracts through endpoints, handlers, storage, and consumers. Check edge cases, version-specific FHIR behavior, serialization, public APIs, and configuration defaults. Respect the layer boundaries in `AGENTS.md`.

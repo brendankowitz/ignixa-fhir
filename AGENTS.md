@@ -177,5 +177,5 @@ The only repository-local agents are:
 - Do not commit without explicit user approval.
 - Keep commits focused with short imperative subjects.
 - Before requesting a commit, show the diff and repository status.
-- PR descriptions should state purpose, scope, risks, and tests run; link relevant issues and ADRs.
+- PR descriptions follow `.github/pull_request_template.md`: state intent, copy the linked issue's acceptance criteria with evidence for each, and record invariants, affected seams, trusted assumptions, risks, and tests run; link relevant issues and ADRs.
 - Attach screenshots for user-interface changes.
