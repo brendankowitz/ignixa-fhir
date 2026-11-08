@@ -58,12 +58,7 @@ public static class ReindexEndpoints
 
         using var reader = new StreamReader(context.Request.Body, leaveOpen: true);
         var requestBody = await reader.ReadToEndAsync(cancellationToken);
-        if (!ReindexRequestParser.TryParse(requestBody, out var command, out var error))
-        {
-            return Error(StatusCodes.Status400BadRequest, error);
-        }
-
-        var result = await mediator.SendAsync(command, cancellationToken);
+        var result = await mediator.SendAsync(ReindexRequestParser.Parse(requestBody), cancellationToken);
         switch (result)
         {
             case ReindexJobCreatedResult created:
@@ -177,14 +172,12 @@ public static class ReindexEndpoints
             ["documentation"] = documentation
         };
 
-    private static JsonObject BuildJobParameters(ReindexStatusResult status, FhirVersion fhirVersion)
+    private static JsonObject BuildJobParameters(ReindexStatusResult status, FhirVersion fhirVersion) =>
+        new() { ["resourceType"] = "Parameters", ["parameter"] = BuildJobValues(status, fhirVersion) };
+
+    private static JsonArray BuildJobValues(ReindexStatusResult status, FhirVersion fhirVersion)
     {
-        var parameters = new JsonObject
-        {
-            ["resourceType"] = "Parameters",
-            ["parameter"] = new JsonArray()
-        };
-        var values = parameters["parameter"]!.AsArray();
+        var values = new JsonArray();
         AddValue(values, "id", "valueString", status.JobId);
         AddValue(values, "status", "valueString", status.Status.ToString());
         AddValue(values, "queuedTime", "valueDateTime", status.QueuedTime);
@@ -228,7 +221,7 @@ public static class ReindexEndpoints
 
         AddTenantParts(values, status.Progress?.Tenants ?? [], fhirVersion);
         AddFailedResources(values, status.Progress?.FailedResources ?? []);
-        return parameters;
+        return values;
     }
 
     private static JsonObject BuildCancellationParameters(string jobId)
@@ -239,15 +232,8 @@ public static class ReindexEndpoints
         return new JsonObject { ["resourceType"] = "Parameters", ["parameter"] = values };
     }
 
-    private static JsonObject BuildJobPart(ReindexStatusResult status, FhirVersion fhirVersion)
-    {
-        var job = BuildJobParameters(status, fhirVersion);
-        return new JsonObject
-        {
-            ["name"] = "job",
-            ["part"] = job["parameter"]!.DeepClone()
-        };
-    }
+    private static JsonObject BuildJobPart(ReindexStatusResult status, FhirVersion fhirVersion) =>
+        new() { ["name"] = "job", ["part"] = BuildJobValues(status, fhirVersion) };
 
     private static void AddTenantParts(
         JsonArray parameters,

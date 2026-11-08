@@ -280,8 +280,8 @@ transition whose grace period has elapsed but which is still uncommitted (§7).
 2. **Raise the barrier.** Set `Barrier_t = max(Barrier_t, E)`, **then** read B_t and S_t.
 3. **Drain.** Wait until no `dbo.Transactions` row with `IsCompleted = 0` has
    `SurrogateIdRangeFirstValue ≤ B_t`, so every transaction allocated at or before B_t has completed or failed.
-   The visible watermark is read and reported for diagnostics only; it does not decide whether the drain is
-   complete. Both values come from the database; there is no wall-clock comparison. The wait is bounded by
+   The visible watermark plays no part in the drain. The cutoff and the incomplete rows both come from the
+   database; there is no wall-clock comparison. The wait is bounded by
    `Reindex:StaleJobTimeout`, after which the job fails. Startup rejects `Reindex:Enabled = true` when
    `TransactionWatcher:Enabled = false`, because the watcher completes or fails abandoned transactions.
    The poll seeks `IX_Transactions_SurrogateIdRangeFirstValue_Incomplete`, a covering filtered index
@@ -491,7 +491,7 @@ All components live in `src/Application/Ignixa.Application.BackgroundOperations/
 | `CreateReindexJobCommand` / `Handler` | Validates input. Runs `StartOrQueueReindex` (§7). Writes `BackgroundJob<ReindexJobDefinition>` (`BackgroundJobType.Reindex = 4`) to the tenant 1 job store. Starts the orchestration with `instanceId = jobId`. |
 | `ReindexOrchestration` | The coordinator (§8.2). |
 | `RaiseBarrierActivity` | For each tenant: raises Barrier_t to E, then returns B_t and S_t (§5.2 step 2). |
-| `AwaitDrainActivity` | For each tenant: waits until no incomplete transaction remains at or below B_t; the watermark is display-only (step 3). |
+| `AwaitDrainActivity` | For each tenant: waits until no incomplete transaction remains at or below B_t (step 3). |
 | `PlanReindexActivity` | For each tenant and affected type: surrogate ranges up to S_t (§8.3). |
 | `ReindexRangeActivity` | Processes one (tenant, type, range) (§8.4). |
 | `PersistReindexProgressActivity` | Persists the orchestration's typed `ReindexProgress` snapshot (phase and per-tenant progress) at phase boundaries and every few waves, independently of range retries, and reports whether the job row is still open. |
@@ -623,7 +623,7 @@ authoritative, so a delayed activity cannot reopen a finalized job or its parame
 
 | Change | Notes |
 |---|---|
-| `IReindexStore` (Domain) with a SQL implementation, reached through `IReindexStoreFactory` | `RaiseBarrierAsync(E) → BarrierCutoff(B, S)`, `GetVisibleWatermarkAsync`, `GetOldestIncompleteTransactionAsync → IncompleteTransaction?`, `GetSurrogateIdRangesAsync → SurrogateIdRangePage`, `ReadRangeAsync`, `UpdateSearchIndicesAsync → SearchIndexUpdateResult(Updated, Conflicts)` |
+| `IReindexStore` (Domain) with a SQL implementation, reached through `IReindexStoreFactory` | `RaiseBarrierAsync(E) → BarrierCutoff(B, S)`, `GetOldestIncompleteTransactionAsync → IncompleteTransaction?`, `GetSurrogateIdRangesAsync → SurrogateIdRangePage`, `ReadRangeAsync`, `UpdateSearchIndicesAsync → SearchIndexUpdateResult(Updated, Conflicts)` |
 | `dbo.Parameters` row `Conformance.MinAcceptedDefinitionsEventId` | Stored in the existing `Bigint` column, so no schema change is needed (`Tables/Parameters.sql`). Raised monotonically with an `UPDATE … SET Bigint = @E WHERE Id = … AND (Bigint IS NULL OR Bigint < @E)`, plus an insert if the row is missing. |
 | `BeginTransactionAsync(count, definitionsEventId)` | One command batch: the existing `EXEC` plus the barrier `SELECT` (§5.3). `IFhirRepository.GetNextTransactionIdAsync` and the batch-write APIs take the handle's event id. |
 | `StaleConformanceDefinitionsException` | Handled at the write boundary (refresh, re-extract, one retry, then 503) |

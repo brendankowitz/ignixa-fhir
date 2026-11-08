@@ -90,21 +90,6 @@ public sealed class SqlServerReindexStore(
         return rows.Single();
     }
 
-    public async Task<long> GetVisibleWatermarkAsync(CancellationToken cancellationToken)
-    {
-        using var command = new SqlCommand(
-            """
-            SELECT ISNULL((
-                SELECT TOP (1) SurrogateIdRangeFirstValue
-                FROM dbo.Transactions
-                WHERE IsVisible = 1
-                ORDER BY SurrogateIdRangeFirstValue DESC), -1);
-            """);
-        var values = await sqlExecutionService.ExecuteReaderAsync(
-            tenantId, command, static reader => reader.GetInt64(0), cancellationToken);
-        return values.Single();
-    }
-
     public async Task<IncompleteTransaction?> GetOldestIncompleteTransactionAsync(
         long cutoffTransactionId,
         CancellationToken cancellationToken)

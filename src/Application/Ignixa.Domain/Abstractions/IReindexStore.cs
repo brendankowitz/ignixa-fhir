@@ -14,8 +14,6 @@ public interface IReindexStore
         long targetEventId,
         CancellationToken cancellationToken);
 
-    Task<long> GetVisibleWatermarkAsync(CancellationToken cancellationToken);
-
     Task<IncompleteTransaction?> GetOldestIncompleteTransactionAsync(
         long cutoffTransactionId,
         CancellationToken cancellationToken);

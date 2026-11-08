@@ -22,7 +22,6 @@ public sealed class AwaitDrainActivityTests
         int waitedMinutes, int expectedWarnings)
     {
         var store = Substitute.For<IReindexStore>();
-        store.GetVisibleWatermarkAsync(Arg.Any<CancellationToken>()).Returns(100);
         store.GetOldestIncompleteTransactionAsync(50, Arg.Any<CancellationToken>())
             .Returns(new IncompleteTransaction(25, DateTime.UtcNow, DateTime.UtcNow));
         var stores = Substitute.For<IReindexStoreFactory>();
@@ -37,6 +36,6 @@ public sealed class AwaitDrainActivityTests
         JsonSerializer.Deserialize<bool>(json).ShouldBeFalse();
         var warnings = logs.Where(entry => entry.Level == LogLevel.Warning).Select(entry => entry.Message).ToArray();
         warnings.Length.ShouldBe(expectedWarnings);
-        warnings.ShouldAllBe(warning => warning.Contains("oldest incomplete transaction 25") && warning.Contains("visible watermark 100"));
+        warnings.ShouldAllBe(warning => warning.Contains("oldest incomplete transaction 25"));
     }
 }

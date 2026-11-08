@@ -14,6 +14,7 @@ using Ignixa.Application.Features.Authorization.Services;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Medino;
 using Microsoft.AspNetCore.Builder;
@@ -97,20 +98,25 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
             ["maximumNumberOfResourcesPerQuery", "maximumNumberOfResourcesPerWrite", "maximumConcurrency", "queryDelayIntervalInMilliseconds"]);
     }
 
-    // §6.1 (F12): a Prefer other than respond-async, or a rejected parameter, returns 400 before any job is created.
-    [Theory]
-    [InlineData("CreateReindexForTenant", "return=representation", null, "Only Prefer: respond-async is supported.")]
-    [InlineData("CreateReindex", null, "targetResourceTypes", "Parameter 'targetResourceTypes' is not supported.")]
-    public async Task GivenAnInvalidRequest_WhenCreating_ThenReturnsTheErrorWithoutDispatching(
-        string endpointName,
-        string? prefer,
-        string? parameter,
-        string expectedDiagnostics)
+    // §6.1 (F12): a Prefer other than respond-async returns 400 before any job is created.
+    [Fact]
+    public async Task GivenAPreferOtherThanRespondAsync_WhenCreating_ThenReturnsTheErrorWithoutDispatching()
     {
-        var response = await SendAsync(endpointName, body: parameter is null ? Parameters() : Parameters((parameter, "valueString", "Patient")), prefer: prefer);
+        var response = await SendAsync("CreateReindexForTenant", body: Parameters(), prefer: "return=representation");
 
         (response.StatusCode, response.ResourceType).ShouldBe((StatusCodes.Status400BadRequest, "OperationOutcome"));
-        response.Diagnostics.ShouldBe(expectedDiagnostics);
+        response.Diagnostics.ShouldBe("Only Prefer: respond-async is supported.");
+        _createCommands.ShouldBeEmpty();
+    }
+
+    // §6.1 (F12): a rejected parameter is a bad request (400 through the exception middleware) before any job is created.
+    [Fact]
+    public async Task GivenARejectedParameter_WhenCreating_ThenItIsABadRequestWithoutDispatching()
+    {
+        var exception = await Should.ThrowAsync<BadRequestException>(() =>
+            SendAsync("CreateReindex", body: Parameters(("targetResourceTypes", "valueString", "Patient"))));
+
+        exception.Message.ShouldBe("Parameter 'targetResourceTypes' is not supported.");
         _createCommands.ShouldBeEmpty();
     }
 

@@ -42,12 +42,9 @@ public sealed class AwaitDrainActivity(
 
         if (waited >= input.DrainWarningAfter)
         {
-            // The watermark is diagnostic only; the drain decision is the oldest incomplete transaction.
-            var watermark = await store.GetVisibleWatermarkAsync(cancellationToken);
             logger.LogWarning(
-                "Reindex: drain is still waiting for tenant {TenantId}; visible watermark {VisibleWatermark}, cutoff transaction {CutoffTransactionId}, oldest incomplete transaction {OldestTransactionId}, created {OldestCreateDate}, heartbeat {OldestHeartbeatDate}",
+                "Reindex: drain is still waiting for tenant {TenantId}; cutoff transaction {CutoffTransactionId}, oldest incomplete transaction {OldestTransactionId}, created {OldestCreateDate}, heartbeat {OldestHeartbeatDate}",
                 input.TenantId,
-                watermark,
                 input.CutoffTransactionId,
                 oldest.TransactionId,
                 oldest.CreateDate,

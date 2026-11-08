@@ -99,7 +99,7 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         // 200 completes and visibility advances past it; then 100 is allocated late, below the watermark (D1).
         // 300: completed but not yet visible. 400: still incomplete although marked visible.
         await InsertTransactionsAsync("(200, 200, 1, 0); EXEC dbo.MergeResourcesAdvanceTransactionVisibility;");
-        (await _store.GetVisibleWatermarkAsync(CancellationToken.None)).ShouldBe(200);
+        (await VisibleWatermarkAsync()).ShouldBe(200);
         await InsertTransactionsAsync("(100, 100, 0, 0), (300, 300, 1, 0), (400, 400, 0, 1)");
 
         foreach (var expected in new long?[] { 100, 400, null })
@@ -516,10 +516,14 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
             "SELECT CAST(is_read_committed_snapshot_on AS int) FROM sys.databases WHERE database_id = DB_ID()")).ShouldBe(enabled ? 1 : 0);
     }
 
+    private Task<long> VisibleWatermarkAsync() =>
+        _database.ExecuteScalarAsync<long>(
+            "SELECT ISNULL((SELECT TOP (1) SurrogateIdRangeFirstValue FROM dbo.Transactions WHERE IsVisible = 1 ORDER BY SurrogateIdRangeFirstValue DESC), -1)");
+
     private async Task WaitForVisibleWatermarkAsync(long transactionId)
     {
         var timeout = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
-        while (await _store.GetVisibleWatermarkAsync(CancellationToken.None) < transactionId)
+        while (await VisibleWatermarkAsync() < transactionId)
         {
             if (DateTimeOffset.UtcNow > timeout)
             {

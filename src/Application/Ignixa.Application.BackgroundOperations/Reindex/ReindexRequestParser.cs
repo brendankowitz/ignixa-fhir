@@ -1,6 +1,6 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Ignixa.Domain.Exceptions;
 
 namespace Ignixa.Application.BackgroundOperations.Reindex;
 
@@ -11,29 +11,16 @@ namespace Ignixa.Application.BackgroundOperations.Reindex;
 /// </summary>
 public static class ReindexRequestParser
 {
-    private static readonly Dictionary<string, Func<CreateReindexJobCommand, int, CreateReindexJobCommand>> IntegerParameters =
-        new(StringComparer.Ordinal)
-        {
-            ["maximumNumberOfResourcesPerQuery"] = (command, value) => command with { MaximumNumberOfResourcesPerQuery = value },
-            ["maximumNumberOfResourcesPerWrite"] = (command, value) => command with { MaximumNumberOfResourcesPerWrite = value },
-            ["maximumConcurrency"] = (command, value) => command with { MaximumConcurrency = value },
-            ["queryDelayIntervalInMilliseconds"] = (command, value) => command with { QueryDelayIntervalInMilliseconds = value }
-        };
-
     private static readonly HashSet<string> UnsupportedParameters =
         new(["targetResourceTypes", "targetSearchParameterTypes", "targetDataStoreUsagePercentage"], StringComparer.Ordinal);
 
-    public static bool TryParse(
-        string? requestBody,
-        [NotNullWhen(true)] out CreateReindexJobCommand? command,
-        [NotNullWhen(false)] out string? error)
+    /// <exception cref="BadRequestException">The body is not a Parameters resource of supported parameters.</exception>
+    public static CreateReindexJobCommand Parse(string? requestBody)
     {
-        command = null;
-        error = null;
+        var command = new CreateReindexJobCommand();
         if (string.IsNullOrWhiteSpace(requestBody))
         {
-            command = new CreateReindexJobCommand();
-            return true;
+            return command;
         }
 
         JsonNode? node;
@@ -43,8 +30,7 @@ public static class ReindexRequestParser
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
-            error = "Invalid request body. Expected a FHIR Parameters resource.";
-            return false;
+            throw new BadRequestException("Invalid request body. Expected a FHIR Parameters resource.", ex);
         }
 
         if (node is not JsonObject body ||
@@ -52,61 +38,54 @@ public static class ReindexRequestParser
             !resourceType.TryGetValue<string>(out var resourceTypeName) ||
             resourceTypeName != "Parameters")
         {
-            error = "Expected a FHIR Parameters resource.";
-            return false;
+            throw new BadRequestException("Expected a FHIR Parameters resource.");
         }
 
         if (body["parameter"] is not null and not JsonArray)
         {
-            error = "Parameters.parameter must be an array.";
-            return false;
+            throw new BadRequestException("Parameters.parameter must be an array.");
         }
 
-        var parsed = new CreateReindexJobCommand();
         var parameterNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var parameter in body["parameter"]?.AsArray() ?? [])
         {
-            error = TryApply(parameter, parameterNames, ref parsed);
-            if (error is not null)
-            {
-                return false;
-            }
+            command = Apply(command, parameter, parameterNames);
         }
 
-        command = parsed;
-        return true;
+        return command;
     }
 
-    private static string? TryApply(JsonNode? parameter, HashSet<string> parameterNames, ref CreateReindexJobCommand command)
+    private static CreateReindexJobCommand Apply(CreateReindexJobCommand command, JsonNode? parameter, HashSet<string> parameterNames)
     {
         if (parameter is not JsonObject value ||
             value["name"] is not JsonValue nameValue ||
             !nameValue.TryGetValue<string>(out var name))
         {
-            return "Each Parameters.parameter must have a name.";
+            throw new BadRequestException("Each Parameters.parameter must have a name.");
         }
 
         if (!parameterNames.Add(name))
         {
-            return $"Parameter '{name}' must not be repeated.";
+            throw new BadRequestException($"Parameter '{name}' must not be repeated.");
         }
 
         if (UnsupportedParameters.Contains(name))
         {
-            return $"Parameter '{name}' is not supported.";
+            throw new BadRequestException($"Parameter '{name}' is not supported.");
         }
 
-        if (!IntegerParameters.TryGetValue(name, out var apply))
+        return name switch
         {
-            return $"Unknown reindex parameter '{name}'.";
-        }
-
-        if (value["valueInteger"] is not JsonValue integer || !integer.TryGetValue<int>(out var parsed))
-        {
-            return $"{name} must be an integer.";
-        }
-
-        command = apply(command, parsed);
-        return null;
+            "maximumNumberOfResourcesPerQuery" => command with { MaximumNumberOfResourcesPerQuery = GetInteger(value, name) },
+            "maximumNumberOfResourcesPerWrite" => command with { MaximumNumberOfResourcesPerWrite = GetInteger(value, name) },
+            "maximumConcurrency" => command with { MaximumConcurrency = GetInteger(value, name) },
+            "queryDelayIntervalInMilliseconds" => command with { QueryDelayIntervalInMilliseconds = GetInteger(value, name) },
+            _ => throw new BadRequestException($"Unknown reindex parameter '{name}'.")
+        };
     }
+
+    private static int GetInteger(JsonObject parameter, string name) =>
+        parameter["valueInteger"] is JsonValue integer && integer.TryGetValue<int>(out var value)
+            ? value
+            : throw new BadRequestException($"{name} must be an integer.");
 }

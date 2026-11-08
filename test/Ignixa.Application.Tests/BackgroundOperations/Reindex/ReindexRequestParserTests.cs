@@ -1,4 +1,5 @@
 using Ignixa.Application.BackgroundOperations.Reindex;
+using Ignixa.Domain.Exceptions;
 using Shouldly;
 
 namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
@@ -21,10 +22,7 @@ public class ReindexRequestParserTests
             }
             """;
 
-        var parsed = ReindexRequestParser.TryParse(body, out var command, out var error);
-
-        parsed.ShouldBeTrue(error);
-        command.ShouldBe(new CreateReindexJobCommand
+        ReindexRequestParser.Parse(body).ShouldBe(new CreateReindexJobCommand
         {
             MaximumNumberOfResourcesPerQuery = 50,
             MaximumNumberOfResourcesPerWrite = 25,
@@ -41,15 +39,11 @@ public class ReindexRequestParserTests
     [InlineData("""{"name":"queryDelayIntervalInMilliseconds","valueDecimal":1.5}""", "queryDelayIntervalInMilliseconds must be an integer.")]
     [InlineData("""{"valueInteger":5}""", "Each Parameters.parameter must have a name.")]
     [InlineData("""{"name":"maximumConcurrency","valueInteger":2},{"name":"maximumConcurrency","valueInteger":2}""", "Parameter 'maximumConcurrency' must not be repeated.")]
-    public void GivenAnInvalidParameter_WhenParsing_ThenReturnsItsError(string parameters, string expectedError)
+    public void GivenAnInvalidParameter_WhenParsing_ThenItIsABadRequest(string parameters, string expectedError)
     {
         var body = $$"""{"resourceType":"Parameters","parameter":[{{parameters}}]}""";
 
-        var parsed = ReindexRequestParser.TryParse(body, out var command, out var error);
-
-        parsed.ShouldBeFalse();
-        command.ShouldBeNull();
-        error.ShouldBe(expectedError);
+        Should.Throw<BadRequestException>(() => ReindexRequestParser.Parse(body)).Message.ShouldBe(expectedError);
     }
 
     [Theory]
@@ -58,10 +52,8 @@ public class ReindexRequestParserTests
     [InlineData("[1]", "Expected a FHIR Parameters resource.")]
     [InlineData("""{"resourceType":"Patient"}""", "Expected a FHIR Parameters resource.")]
     [InlineData("""{"resourceType":"Parameters","parameter":{}}""", "Parameters.parameter must be an array.")]
-    public void GivenABodyThatIsNotParameters_WhenParsing_ThenReturnsItsError(string body, string expectedError)
+    public void GivenABodyThatIsNotParameters_WhenParsing_ThenItIsABadRequest(string body, string expectedError)
     {
-        ReindexRequestParser.TryParse(body, out _, out var error).ShouldBeFalse();
-
-        error.ShouldBe(expectedError);
+        Should.Throw<BadRequestException>(() => ReindexRequestParser.Parse(body)).Message.ShouldBe(expectedError);
     }
 }
