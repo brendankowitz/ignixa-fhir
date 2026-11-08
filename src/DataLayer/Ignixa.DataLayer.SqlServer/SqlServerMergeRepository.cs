@@ -87,7 +87,7 @@ public class SqlServerMergeRepository(
                 @HeartbeatDate;
             SELECT Bigint
             FROM dbo.Parameters
-            WHERE Id = 'Conformance.MinAcceptedDefinitionsEventId';
+            WHERE Id = @BarrierId;
             """)
         {
             CommandType = CommandType.Text
@@ -96,6 +96,7 @@ public class SqlServerMergeRepository(
         command.Parameters.Add(transactionIdParam);
         command.Parameters.Add(sequenceStartParam);
         command.Parameters.Add(new SqlParameter("@HeartbeatDate", SqlDbType.DateTime) { Value = DBNull.Value });
+        command.Parameters.Add(new SqlParameter("@BarrierId", SqlDbType.VarChar, 100) { Value = SqlServerReindexStore.BarrierParameterId });
 
         try
         {

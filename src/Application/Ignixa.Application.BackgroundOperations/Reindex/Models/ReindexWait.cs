@@ -7,8 +7,8 @@ namespace Ignixa.Application.BackgroundOperations.Reindex.Models;
 /// </summary>
 public sealed record ReindexWait(DateTime StartedUtc, DateTime NextAttemptUtc, TimeSpan Interval)
 {
-    public static readonly TimeSpan FirstInterval = TimeSpan.FromSeconds(1);
-    public static readonly TimeSpan MaxInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan FirstInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan MaxInterval = TimeSpan.FromSeconds(30);
 
     /// <summary>A wait that starts now; its first poll is due at once.</summary>
     public static ReindexWait Begin(DateTime now) => new(now, now, FirstInterval);

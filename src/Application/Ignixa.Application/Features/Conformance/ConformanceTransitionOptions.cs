@@ -13,7 +13,7 @@ public sealed class ConformanceTransitionOptions
     /// Covers the longest default SQL read: four 30-second command attempts, the three exponential
     /// retry delays, and 15 seconds of clock skew, rounded up to the next 30-second boundary.
     /// </summary>
-    public static readonly TimeSpan DefaultTransitionSafetyMargin =
+    private static readonly TimeSpan DefaultTransitionSafetyMargin =
         RoundUp(
             SqlExecutionPolicyDefaults.MaximumExecutionBudget + DefaultClockSkewAllowance,
             SafetyMarginRoundingInterval);

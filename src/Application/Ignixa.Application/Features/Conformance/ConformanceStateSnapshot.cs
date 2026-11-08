@@ -8,17 +8,15 @@ namespace Ignixa.Application.Features.Conformance;
 public sealed class ConformanceStateSnapshot
 {
     private readonly IReadOnlyDictionary<(string ResourceType, string Code), ActiveSearchParameter> _searchParameters;
-    private readonly IReadOnlyList<ActiveSearchParameter> _searchParameterActivations;
     private readonly IReadOnlyDictionary<string, string> _storageCanonicals;
 
     internal ConformanceStateSnapshot(
         IReadOnlyDictionary<(string ResourceType, string Code), ActiveSearchParameter> searchParameters,
-        IReadOnlyList<ActiveSearchParameter> searchParameterActivations,
         IReadOnlyDictionary<string, string> storageCanonicals,
         bool isInitialized)
     {
-        var clones = searchParameterActivations.ToDictionary(parameter => parameter, parameter => parameter.Clone());
-        _searchParameterActivations = searchParameterActivations.Select(parameter => clones[parameter]).ToArray();
+        // One clone per instance, so entries that share an activation still share it in the snapshot.
+        var clones = searchParameters.Values.Distinct().ToDictionary(parameter => parameter, parameter => parameter.Clone());
         _searchParameters = searchParameters.ToDictionary(pair => pair.Key, pair => clones[pair.Value]);
         _storageCanonicals = storageCanonicals.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         IsInitialized = isInitialized;

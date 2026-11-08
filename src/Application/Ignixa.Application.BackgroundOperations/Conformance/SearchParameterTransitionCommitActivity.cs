@@ -5,10 +5,11 @@ namespace Ignixa.Application.BackgroundOperations.Conformance;
 
 public sealed class SearchParameterTransitionCommitActivity(
     SearchParameterTransitionCommitter committer)
-    : AsyncTaskActivity<SearchParameterTransitionCommitActivityInput, TransitionCommitResult>
+    : AsyncTaskActivity<SearchParameterTransitionCommitActivityInput, bool>
 {
-    protected override async Task<TransitionCommitResult> ExecuteAsync(
+    /// <returns>Whether this run committed the transition.</returns>
+    protected override Task<bool> ExecuteAsync(
         TaskContext context,
         SearchParameterTransitionCommitActivityInput input) =>
-        new(await committer.CommitAsync(input.HideEventId, CancellationToken.None));
+        committer.CommitAsync(input.HideEventId, CancellationToken.None);
 }

@@ -70,7 +70,6 @@ public sealed class ReindexLifecycleEventWriter(
         IReadOnlyList<ReindexParameterDefinition> targets,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(targets);
         using (await conformanceState.AcquireActivationLockAsync(cancellationToken))
         {
             await conformanceState.CatchUpWhileActivationLockHeldAsync(

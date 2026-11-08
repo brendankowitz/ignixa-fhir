@@ -15,16 +15,12 @@ public sealed class ReindexProgressReporter(
     IBackgroundJobRepository<ReindexJobDefinition> repository,
     TimeProvider timeProvider)
 {
-    /// <summary>Refreshes <c>HeartbeatDate</c>, which is what stale-job detection reads.</summary>
-    public Task<bool> HeartbeatAsync(string jobId, CancellationToken cancellationToken) =>
-        UpdateAsync(jobId, _ => { }, cancellationToken);
-
     /// <summary>Replaces the job's reported progress with the orchestration's current snapshot.</summary>
     public Task<bool> ReportAsync(string jobId, ReindexProgress progress, CancellationToken cancellationToken) =>
         UpdateAsync(jobId, job => job.Progress = progress.ToJson(), cancellationToken);
 
     /// <summary>
-    /// Refreshes the heartbeat, then runs one activity's work. The job store must be reachable to start; the
+    /// Refreshes <c>HeartbeatDate</c>, which stale-job detection reads, then runs one activity's work. The job store must be reachable to start; the
     /// next activity or progress snapshot refreshes the heartbeat after the work.
     /// </summary>
     public async Task<T> RunWithHeartbeatAsync<T>(
@@ -32,7 +28,7 @@ public sealed class ReindexProgressReporter(
         Func<CancellationToken, Task<T>> work,
         CancellationToken cancellationToken)
     {
-        await HeartbeatAsync(jobId, cancellationToken);
+        await UpdateAsync(jobId, _ => { }, cancellationToken);
         return await work(cancellationToken);
     }
 

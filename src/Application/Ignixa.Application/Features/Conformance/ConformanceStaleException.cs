@@ -9,8 +9,8 @@ namespace Ignixa.Application.Features.Conformance;
 /// </summary>
 public sealed class ConformanceStaleException : FhirException
 {
-    public const string MessageText = "Conformance state is stale; search is temporarily unavailable.";
-    public const string DefinitionsChangedMessageText =
+    private const string MessageText = "Conformance state is stale; search is temporarily unavailable.";
+    private const string DefinitionsChangedMessageText =
         "Conformance definitions changed while the resource was being written; retry the request.";
 
     public ConformanceStaleException(TimeSpan retryAfter)

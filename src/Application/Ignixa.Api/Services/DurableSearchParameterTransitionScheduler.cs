@@ -41,5 +41,5 @@ public sealed class DurableSearchParameterTransitionScheduler(TaskHubClient task
         }
     }
 
-    public static string GetInstanceId(long hideEventId) => $"search-parameter-transition-{hideEventId}";
+    private static string GetInstanceId(long hideEventId) => $"search-parameter-transition-{hideEventId}";
 }

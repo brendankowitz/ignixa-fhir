@@ -10,7 +10,7 @@ public class ReindexOptionsValidatorTests
     [Fact]
     public void GivenEveryKeyOutOfRange_WhenValidated_ThenEachIsReportedWithItsRange()
     {
-        var result = ReindexOptionsValidator.Validate(new ReindexOptions
+        var result = new ReindexOptionsValidator().Validate(null, new ReindexOptions
         {
             DefaultMaximumNumberOfResourcesPerQuery = 10_001,
             DefaultMaximumNumberOfResourcesPerWrite = 0,

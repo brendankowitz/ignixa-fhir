@@ -30,22 +30,22 @@ internal sealed record SearchIndexRowSets(
     /// </summary>
     public void AddTableValuedParameters(SqlCommand command)
     {
-        Add(command, "@ReferenceSearchParams", "dbo.ReferenceSearchParamList", Reference);
-        Add(command, "@TokenSearchParams", "dbo.TokenSearchParamList", Token);
-        Add(command, "@TokenTexts", "dbo.TokenTextList", TokenText);
-        Add(command, "@StringSearchParams", "dbo.StringSearchParamList", String);
-        Add(command, "@UriSearchParams", "dbo.UriSearchParamList", Uri);
-        Add(command, "@NumberSearchParams", "dbo.NumberSearchParamList", Number);
-        Add(command, "@QuantitySearchParams", "dbo.QuantitySearchParamList", Quantity);
-        Add(command, "@DateTimeSearchParams", "dbo.DateTimeSearchParamList", DateTime);
-        Add(command, "@ReferenceTokenCompositeSearchParams", "dbo.ReferenceTokenCompositeSearchParamList", ReferenceTokenComposite);
-        Add(command, "@TokenTokenCompositeSearchParams", "dbo.TokenTokenCompositeSearchParamList", TokenTokenComposite);
-        Add(command, "@TokenDateTimeCompositeSearchParams", "dbo.TokenDateTimeCompositeSearchParamList", TokenDateTimeComposite);
-        Add(command, "@TokenQuantityCompositeSearchParams", "dbo.TokenQuantityCompositeSearchParamList", TokenQuantityComposite);
-        Add(command, "@TokenStringCompositeSearchParams", "dbo.TokenStringCompositeSearchParamList", TokenStringComposite);
-        Add(command, "@TokenNumberNumberCompositeSearchParams", "dbo.TokenNumberNumberCompositeSearchParamList", TokenNumberNumberComposite);
+        AddTableValuedParameter(command, "@ReferenceSearchParams", "dbo.ReferenceSearchParamList", Reference);
+        AddTableValuedParameter(command, "@TokenSearchParams", "dbo.TokenSearchParamList", Token);
+        AddTableValuedParameter(command, "@TokenTexts", "dbo.TokenTextList", TokenText);
+        AddTableValuedParameter(command, "@StringSearchParams", "dbo.StringSearchParamList", String);
+        AddTableValuedParameter(command, "@UriSearchParams", "dbo.UriSearchParamList", Uri);
+        AddTableValuedParameter(command, "@NumberSearchParams", "dbo.NumberSearchParamList", Number);
+        AddTableValuedParameter(command, "@QuantitySearchParams", "dbo.QuantitySearchParamList", Quantity);
+        AddTableValuedParameter(command, "@DateTimeSearchParams", "dbo.DateTimeSearchParamList", DateTime);
+        AddTableValuedParameter(command, "@ReferenceTokenCompositeSearchParams", "dbo.ReferenceTokenCompositeSearchParamList", ReferenceTokenComposite);
+        AddTableValuedParameter(command, "@TokenTokenCompositeSearchParams", "dbo.TokenTokenCompositeSearchParamList", TokenTokenComposite);
+        AddTableValuedParameter(command, "@TokenDateTimeCompositeSearchParams", "dbo.TokenDateTimeCompositeSearchParamList", TokenDateTimeComposite);
+        AddTableValuedParameter(command, "@TokenQuantityCompositeSearchParams", "dbo.TokenQuantityCompositeSearchParamList", TokenQuantityComposite);
+        AddTableValuedParameter(command, "@TokenStringCompositeSearchParams", "dbo.TokenStringCompositeSearchParamList", TokenStringComposite);
+        AddTableValuedParameter(command, "@TokenNumberNumberCompositeSearchParams", "dbo.TokenNumberNumberCompositeSearchParamList", TokenNumberNumberComposite);
     }
 
-    private static void Add(SqlCommand command, string name, string typeName, IList<SqlDataRecord>? records) =>
+    internal static void AddTableValuedParameter(SqlCommand command, string name, string typeName, IList<SqlDataRecord>? records) =>
         command.Parameters.Add(new SqlParameter(name, SqlDbType.Structured) { TypeName = typeName, Value = records });
 }

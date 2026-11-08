@@ -36,7 +36,6 @@ public sealed class ReindexJobReconciler(
         BackgroundJob<ReindexJobDefinition> active,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(active);
         var lastObserved = active.HeartbeatDate > active.CreateDate
             ? active.HeartbeatDate
             : active.CreateDate;

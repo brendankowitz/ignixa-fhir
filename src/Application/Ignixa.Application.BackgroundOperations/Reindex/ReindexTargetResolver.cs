@@ -72,10 +72,6 @@ public sealed class ReindexTargetResolver(
         IReadOnlyCollection<string> concreteResourceTypes,
         IReadOnlyDictionary<string, IReadOnlyCollection<string>> abstractResourceTypeExpansions)
     {
-        ArgumentNullException.ThrowIfNull(parameters);
-        ArgumentNullException.ThrowIfNull(concreteResourceTypes);
-        ArgumentNullException.ThrowIfNull(abstractResourceTypeExpansions);
-
         return parameters
             .Where(parameter => parameter.Status == SearchParameterStatus.Pending)
             .Select(parameter =>

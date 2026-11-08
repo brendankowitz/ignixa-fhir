@@ -5,11 +5,8 @@ namespace Ignixa.Application.BackgroundOperations.Reindex;
 
 public sealed class ReindexOptionsValidator : IValidateOptions<ReindexOptions>
 {
-    public ValidateOptionsResult Validate(string? name, ReindexOptions options) => Validate(options);
-
-    public static ValidateOptionsResult Validate(ReindexOptions options)
+    public ValidateOptionsResult Validate(string? name, ReindexOptions options)
     {
-        ArgumentNullException.ThrowIfNull(options);
         var failures = new List<string>();
 
         ValidateRange(

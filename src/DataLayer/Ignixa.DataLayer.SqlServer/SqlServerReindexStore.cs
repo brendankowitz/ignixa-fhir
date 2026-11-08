@@ -24,7 +24,8 @@ public sealed class SqlServerReindexStore(
     SqlServerPostMergeExtensionUpdater extensionUpdater,
     ILogger logger) : IReindexStore
 {
-    private const string BarrierParameterId = "Conformance.MinAcceptedDefinitionsEventId";
+    /// <summary>The <c>dbo.Parameters</c> row that holds the barrier; merges compare their definitions event id with it.</summary>
+    internal const string BarrierParameterId = "Conformance.MinAcceptedDefinitionsEventId";
 
     // A field, not the captured parameter: the row generators below are initialized from it too.
     private readonly SqlServerSearchIndexReferenceDataCache _referenceDataCache = referenceDataCache;
@@ -37,15 +38,10 @@ public sealed class SqlServerReindexStore(
     {
         ArgumentOutOfRangeException.ThrowIfNegative(targetEventId);
 
-        // IGNORE_DUP_KEY makes a concurrent insert a warning. The second monotonic update ensures a
-        // higher target still wins that race before the cutoff is read.
+        // IGNORE_DUP_KEY turns a racing insert into a no-op, so the monotonic update after it raises the
+        // barrier whether this insert or a concurrent one created the row; the barrier never moves backwards.
         using var command = new SqlCommand(
-            $"""
-            UPDATE dbo.Parameters
-            SET Bigint = @TargetEventId
-            WHERE Id = @BarrierId
-              AND (Bigint IS NULL OR Bigint < @TargetEventId);
-
+            """
             IF NOT EXISTS (SELECT 1 FROM dbo.Parameters WHERE Id = @BarrierId)
             BEGIN
                 INSERT INTO dbo.Parameters (Id, Bigint) VALUES (@BarrierId, @TargetEventId);
@@ -82,7 +78,7 @@ public sealed class SqlServerReindexStore(
                     ) AS CutoffCandidates), -1);
             """);
         command.Parameters.Add("@TargetEventId", SqlDbType.BigInt).Value = targetEventId;
-        command.Parameters.Add("@BarrierId", SqlDbType.VarChar, 128).Value = BarrierParameterId;
+        command.Parameters.Add("@BarrierId", SqlDbType.VarChar, 100).Value = BarrierParameterId;
 
         var rows = await sqlExecutionService.ExecuteReaderAsync(
             tenantId,
@@ -354,8 +350,8 @@ public sealed class SqlServerReindexStore(
                 @TokenNumberNumberCompositeSearchParams;
             """);
         command.Parameters.Add(failedResources);
-        AddTableValuedParameter(command, "@Resources", "dbo.ResourceList", resourceRecords);
-        AddTableValuedParameter(command, "@ResourceWriteClaims", "dbo.ResourceWriteClaimList", resourceWriteClaims);
+        SearchIndexRowSets.AddTableValuedParameter(command, "@Resources", "dbo.ResourceList", resourceRecords);
+        SearchIndexRowSets.AddTableValuedParameter(command, "@ResourceWriteClaims", "dbo.ResourceWriteClaimList", resourceWriteClaims);
         searchIndexRowSets.AddTableValuedParameters(command);
 
         try
@@ -458,17 +454,6 @@ public sealed class SqlServerReindexStore(
 
         return records;
     }
-
-    private static void AddTableValuedParameter(
-        SqlCommand command,
-        string name,
-        string typeName,
-        IList<SqlDataRecord>? records) =>
-        command.Parameters.Add(new SqlParameter(name, SqlDbType.Structured)
-        {
-            TypeName = typeName,
-            Value = records,
-        });
 
     private static IList<SqlDataRecord> CreateResourceRecords(
         IReadOnlyList<ReindexResource> resources,

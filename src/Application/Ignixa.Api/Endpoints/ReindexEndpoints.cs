@@ -233,14 +233,10 @@ public static class ReindexEndpoints
 
     private static JsonObject BuildCancellationParameters(string jobId)
     {
-        var parameters = new JsonObject
-        {
-            ["resourceType"] = "Parameters",
-            ["parameter"] = new JsonArray()
-        };
-        AddValue(parameters["parameter"]!.AsArray(), "id", "valueString", jobId);
-        AddValue(parameters["parameter"]!.AsArray(), "status", "valueString", ReindexJobStatus.Cancelled.ToString());
-        return parameters;
+        var values = new JsonArray();
+        AddValue(values, "id", "valueString", jobId);
+        AddValue(values, "status", "valueString", ReindexJobStatus.Cancelled.ToString());
+        return new JsonObject { ["resourceType"] = "Parameters", ["parameter"] = values };
     }
 
     private static JsonObject BuildJobPart(ReindexStatusResult status, FhirVersion fhirVersion)

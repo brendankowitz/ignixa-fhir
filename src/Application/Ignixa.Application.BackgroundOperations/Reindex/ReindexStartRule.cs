@@ -13,10 +13,7 @@ internal static class ReindexStartRule
 {
     public static bool RequiresJob(
         IEnumerable<long> pendingActivationEventIds,
-        long? latestFinishedTargetEventId)
-    {
-        ArgumentNullException.ThrowIfNull(pendingActivationEventIds);
-        return pendingActivationEventIds.Any(activationEventId =>
+        long? latestFinishedTargetEventId) =>
+        pendingActivationEventIds.Any(activationEventId =>
             latestFinishedTargetEventId is not { } target || activationEventId > target);
-    }
 }

@@ -201,7 +201,7 @@ public sealed class ConformanceState : IDisposable
     }
 
     internal ConformanceStateSnapshot CreateSnapshot() =>
-        new(_searchParameters, _searchParameterActivations, _storageCanonicals, _isInitialized);
+        new(_searchParameters, _storageCanonicals, _isInitialized);
 
     internal ValidationIssue? ApplyProposedEvent(NewSourceEvent proposed)
     {
