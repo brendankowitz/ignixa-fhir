@@ -484,9 +484,12 @@ separate decision superseding the scope section of ADR-2512.
 | **Periodic reconciliation** | Every `ConformanceStateSyncService.SyncAsync` tick calls `ReindexTrigger.ReconcileAsync`. With an active job it recovers it only once the job is past `OrphanGrace` (§8.6). Otherwise it applies the **start rule** below from two job-table reads and one projection read under the activation lock, and only then sends `CreateReindexJobCommand { Trigger = "Reconciliation" }`, which re-applies the rule under the singleton lock. An idle tick, and the steady state after a Failed or Cancelled job, never take the lock. |
 | **Startup reconciliation** | `EternalOrchestrationStarter` runs the transition reconciler and then the first `ReindexTrigger.ReconcileAsync` tick. |
 
-**Start rule** (replaces a durable follow-up queue): an automatic job starts when some `Pending` parameter has an
-`ActivationEventId` greater than the `TargetEventId` of the latest finished job (Completed, Failed or Cancelled),
-or when no job has finished yet. A finished job's own `Pending` parameters therefore never restart on their own,
+**Start rule** (replaces a durable follow-up queue): an automatic job starts when some `Pending` parameter became
+`Pending` after the `TargetEventId` of the latest finished job (Completed, Failed or Cancelled), or when no job has
+finished yet. A parameter becomes `Pending` at its activation event, or, for a `Staged` override, at the
+`SearchParameterTransitionCommitted` event that commits it (`PendingSinceEventId`); its `ActivationEventId` would
+date a late commit before a job that never saw it. A failed reindex returns a target to `Pending` without moving
+`PendingSinceEventId`. A finished job's own `Pending` parameters therefore never restart on their own,
 so a failing job cannot loop; a later activation restarts them together with the parameters it adds, at the cost
 of at most one sync interval of latency; and a manual `$reindex` ignores the rule. A job row whose orchestration
 could not be started is deleted so it cannot block the comparison.

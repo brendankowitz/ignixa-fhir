@@ -6,6 +6,7 @@ using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
 using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Events;
+using Ignixa.Conformance.Events.Models;
 using Ignixa.DataLayer.BlobStorage.Features.BackgroundJobs;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
@@ -74,6 +75,22 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
 
         result.ShouldBeOfType<NoReindexWorkResult>().ErrorMessage.ShouldContain("failed-during-race");
         (await _jobs.ListAsync()).ShouldHaveSingleItem().JobId.ShouldBe("failed-during-race");
+    }
+
+    // §7 start rule: an override committed from Staged after the finished job was planned was never its target.
+    [Fact]
+    public async Task GivenAnOverrideCommittedAfterTheFinishedJobWasPlanned_WhenATransitionRequestsAJob_ThenItIsCreated()
+    {
+        _state.ApplyAndTrack(Activation(
+            "http://example.org/SearchParameter/patient-custom-override",
+            eventId: 43,
+            overrides: new OverrideInfo(Canonical, 17)));
+        await _jobs.CreateAsync(Job("Completed", "older", CreateJobDefinition([], targetEventId: 44)), CancellationToken.None);
+        _state.ApplyAndTrack(RemoteEvent(45, new SearchParameterTransitionCommitted(17, [43], [43])));
+
+        var job = await CreatedJobAsync(await HandleAsync(ReindexTriggerKind.Activation));
+
+        job.Definition.SearchParameters.ShouldHaveSingleItem().ActivationEventId.ShouldBe(43);
     }
 
     // §6.1: an out-of-range parameter is a 400, rejected before the job lock.

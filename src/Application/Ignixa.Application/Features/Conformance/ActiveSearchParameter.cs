@@ -36,6 +36,13 @@ public class ActiveSearchParameter
     public string? ReindexJobId { get; set; }
 
     /// <summary>
+    /// The event that made this definition Pending: its activation, or the transition that committed it from
+    /// Staged. A failed reindex returns it to Pending without moving this, so automatic reindexing does not
+    /// retry a finished job's own targets.
+    /// </summary>
+    public long PendingSinceEventId { get; set; }
+
+    /// <summary>
     /// Whether this definition belongs in the projection of a tenant on <paramref name="fhirVersion"/>.
     /// </summary>
     public bool AppliesTo(FhirVersion fhirVersion) =>
@@ -92,6 +99,7 @@ public class ActiveSearchParameter
             PreviousActivationEventId = PreviousActivationEventId,
             IsAvailable = isAvailable,
             Status = status,
-            ReindexJobId = reindexJobId
+            ReindexJobId = reindexJobId,
+            PendingSinceEventId = PendingSinceEventId
         };
 }

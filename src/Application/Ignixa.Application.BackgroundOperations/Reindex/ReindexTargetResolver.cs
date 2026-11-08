@@ -43,18 +43,22 @@ public sealed class ReindexTargetResolver(
             await conformanceState.CatchUpWhileActivationLockHeldAsync(eventStore, cancellationToken);
             var parameters = conformanceState.AllSearchParameters.Values.ToArray();
             var targets = new List<ReindexParameterDefinition>();
+            var pendingSinceEventIds = new List<long>();
             foreach (var (version, schema) in schemas)
             {
-                targets.AddRange(Resolve(
-                    parameters.Where(parameter => parameter.FhirVersion is not null && parameter.AppliesTo(version)),
-                    schema.ConcreteResourceTypes,
-                    schema.Expansions));
+                var versioned = parameters
+                    .Where(parameter => parameter.FhirVersion is not null && parameter.AppliesTo(version))
+                    .ToArray();
+                targets.AddRange(Resolve(versioned, schema.ConcreteResourceTypes, schema.Expansions));
+                pendingSinceEventIds.AddRange(GetPendingSinceEventIds(versioned));
             }
 
+            var unversioned = parameters.Where(parameter => parameter.FhirVersion is null).ToArray();
             targets.AddRange(Resolve(
-                parameters.Where(parameter => parameter.FhirVersion is null),
+                unversioned,
                 schemas.Values.SelectMany(schema => schema.ConcreteResourceTypes).ToHashSet(StringComparer.OrdinalIgnoreCase),
                 Union(schemas.Values.Select(schema => schema.Expansions))));
+            pendingSinceEventIds.AddRange(GetPendingSinceEventIds(unversioned));
 
             var targetedTenants = targets.Count == 0
                 ? tenants
@@ -62,9 +66,16 @@ public sealed class ReindexTargetResolver(
             return new ReindexTargetPlan(
                 targetedTenants.Select(tenant => tenant.TenantId).ToArray(),
                 conformanceState.LastProcessedEventId,
-                targets);
+                targets,
+                pendingSinceEventIds);
         }
     }
+
+    // Resolve turns each Pending parameter into one target, so these line up with its targets.
+    private static IEnumerable<long> GetPendingSinceEventIds(IEnumerable<ActiveSearchParameter> parameters) =>
+        parameters
+            .Where(parameter => parameter.Status == SearchParameterStatus.Pending)
+            .Select(parameter => parameter.PendingSinceEventId);
 
     /// <summary>The Pending parameters among <paramref name="parameters"/>, with their affected concrete types.</summary>
     public static IReadOnlyList<ReindexParameterDefinition> Resolve(

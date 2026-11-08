@@ -435,6 +435,7 @@ public sealed class ConformanceState : IDisposable
             Name = sp.Name,
             Description = sp.Description,
             ActivationEventId = eventId,
+            PendingSinceEventId = eventId,
             PreviousActivationEventId = outgoing is not null ? latest?.ActivationEventId : null,
             IsAvailable = true,
             Status = outgoing is not null
@@ -635,6 +636,7 @@ public sealed class ConformanceState : IDisposable
         foreach (var parameter in staged)
         {
             parameter.Status = SearchParameterStatus.Pending;
+            parameter.PendingSinceEventId = eventId;
             _searchParameters[(parameter.ResourceType, parameter.Code)] = parameter;
         }
     }

@@ -9,7 +9,8 @@ namespace Ignixa.Application.BackgroundOperations.Reindex;
 public sealed record ReindexTargetPlan(
     IReadOnlyList<int> TenantIds,
     long TargetEventId,
-    IReadOnlyList<ReindexParameterDefinition> Targets)
+    IReadOnlyList<ReindexParameterDefinition> Targets,
+    IReadOnlyList<long> PendingSinceEventIds)
 {
     /// <summary>Every type a target affects, once each, in ordinal order.</summary>
     public IReadOnlyList<string> ResourceTypes { get; } = Targets.SelectMany(target => target.AffectedResourceTypes)

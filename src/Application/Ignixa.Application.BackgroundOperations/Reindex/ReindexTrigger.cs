@@ -107,7 +107,7 @@ public sealed class ReindexTrigger(
             var latestFinished = await jobRepository.GetLatestFinishedAsync(
                 (int)BackgroundJobType.Reindex,
                 cancellationToken);
-            if (!await HasPendingActivationAfterAsync(latestFinished?.Definition.TargetEventId, cancellationToken))
+            if (!await HasPendingParameterAfterAsync(latestFinished?.Definition.TargetEventId, cancellationToken))
             {
                 return;
             }
@@ -144,7 +144,7 @@ public sealed class ReindexTrigger(
         }
     }
 
-    private async Task<bool> HasPendingActivationAfterAsync(
+    private async Task<bool> HasPendingParameterAfterAsync(
         long? latestFinishedTargetEventId,
         CancellationToken cancellationToken)
     {
@@ -152,11 +152,11 @@ public sealed class ReindexTrigger(
         // otherwise invalidate the enumeration.
         using (await conformanceState.AcquireActivationLockAsync(cancellationToken))
         {
-            var pendingActivations = conformanceState.AllSearchParameters.Values
+            var pendingSince = conformanceState.AllSearchParameters.Values
                 .Where(parameter => parameter.Status == SearchParameterStatus.Pending)
-                .Select(parameter => parameter.ActivationEventId)
+                .Select(parameter => parameter.PendingSinceEventId)
                 .ToArray();
-            return ReindexStartRule.RequiresJob(pendingActivations, latestFinishedTargetEventId);
+            return ReindexStartRule.RequiresJob(pendingSince, latestFinishedTargetEventId);
         }
     }
 

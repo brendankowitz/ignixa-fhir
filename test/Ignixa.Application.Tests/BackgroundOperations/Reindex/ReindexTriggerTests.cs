@@ -1,6 +1,9 @@
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.Features.Conformance;
+using Ignixa.Conformance.Events;
+using Ignixa.Conformance.Events.Events;
+using Ignixa.Conformance.Events.Models;
 using Ignixa.DataLayer.BlobStorage.Features.BackgroundJobs;
 using Ignixa.Domain.Models;
 using Medino;
@@ -141,6 +144,20 @@ public sealed class ReindexTriggerTests : IDisposable
         await AssertNoJobRequestedAsync();
     }
 
+    // A failed job returns its targets to Pending after its target event; that must not count as newly Pending.
+    [Fact]
+    public async Task GivenTheLatestJobFailedItsTarget_WhenTickRuns_ThenNoJobIsRequested()
+    {
+        _state.ApplyAndTrack(Event(43, new SearchParameterReindexStarted(Canonical, "custom", "Patient", "job", ["Patient"], 42)));
+        _state.ApplyAndTrack(Event(44, new SearchParameterReindexFailed(Canonical, "custom", "Patient", "job", "Failure.", 42)));
+        await _jobs.CreateAsync(Job("Failed", definition: CreateJobDefinition(targetEventId: 42)), CancellationToken.None);
+
+        await CreateTrigger().ReconcileAsync(CancellationToken.None);
+
+        _state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Pending);
+        await AssertNoJobRequestedAsync();
+    }
+
     // Review 5 N1: an activation newer than the latest finished job's target is due once that job has finished.
     [Fact]
     public async Task GivenActivationArrivesWhileJobRuns_WhenJobFinishes_ThenFollowUpIsRequestedOnTheNextTick()
@@ -155,6 +172,24 @@ public sealed class ReindexTriggerTests : IDisposable
         await _jobs.UpdateAsync(running, 1, CancellationToken.None);
         await trigger.ReconcileAsync(CancellationToken.None);
 
+        await AssertJobRequestedAsync(ReindexTriggerKind.Reconciliation);
+    }
+
+    // An override staged before a job was planned becomes Pending only when its transition commits; a job that
+    // finished before that commit never targeted it, so the override must not wait for a newer activation.
+    [Fact]
+    public async Task GivenAnOverrideCommittedAfterTheLatestFinishedJobWasPlanned_WhenTickRuns_ThenAJobIsRequested()
+    {
+        _state.ApplyAndTrack(Activation(
+            "http://example.org/SearchParameter/patient-custom-override",
+            eventId: 43,
+            overrides: new OverrideInfo(Canonical, 17)));
+        await _jobs.CreateAsync(Job("Completed", definition: CreateJobDefinition(targetEventId: 44)), CancellationToken.None);
+        _state.ApplyAndTrack(Event(45, new SearchParameterTransitionCommitted(17, [43], [43])));
+
+        await CreateTrigger().ReconcileAsync(CancellationToken.None);
+
+        _state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Pending);
         await AssertJobRequestedAsync(ReindexTriggerKind.Reconciliation);
     }
 
@@ -196,6 +231,9 @@ public sealed class ReindexTriggerTests : IDisposable
         return new ReindexTrigger(
             _mediator, _jobs, _state, reconciler, CreateRepositoryFactory(tenants ?? []), options, NullLogger<ReindexTrigger>.Instance);
     }
+
+    private static SourceEvent Event(long eventId, object data) =>
+        new(eventId, "test", data.GetType().Name, data, DateTimeOffset.UtcNow);
 
     private void FailJobRequests(Type failure) =>
         _mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>())

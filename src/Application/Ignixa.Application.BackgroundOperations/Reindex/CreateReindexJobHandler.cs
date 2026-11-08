@@ -65,7 +65,7 @@ public sealed class CreateReindexJobHandler(
         if (request.IsAutomatic &&
             await GetLatestFinishedAsync(cancellationToken) is { } finished &&
             !ReindexStartRule.RequiresJob(
-                plan.Targets.Select(target => target.ActivationEventId),
+                plan.PendingSinceEventIds,
                 finished.Definition.TargetEventId))
         {
             return new NoReindexWorkResult(
