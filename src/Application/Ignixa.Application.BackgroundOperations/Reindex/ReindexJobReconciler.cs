@@ -1,4 +1,3 @@
-using System.Text.Json.Nodes;
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Application.Features.Conformance;
@@ -114,8 +113,7 @@ public sealed class ReindexJobReconciler(
         var now = timeProvider.GetUtcNow();
         if (await lifecycle.HasCompletedAsync(job.JobId, job.Definition.SearchParameters, cancellationToken))
         {
-            job.SetStatus(ReindexJobStatus.Completed);
-            job.Result = new JsonObject { ["success"] = true };
+            job.Close(ReindexJobStatus.Completed, null, now);
             logger.LogInformation(
                 "Reindex: finalized job {JobId} as Completed; its targets were already enabled. {Reason}",
                 job.JobId,
@@ -123,18 +121,14 @@ public sealed class ReindexJobReconciler(
         }
         else
         {
-            await lifecycle.FailOwnedAsync(job.JobId, reason, cancellationToken);
-            job.SetStatus(ReindexJobStatus.Failed);
-            job.ErrorMessage = reason;
-            job.Result = new JsonObject { ["success"] = false };
+            await lifecycle.FinishAsync(job.JobId, [], reason, TimeSpan.Zero, cancellationToken);
+            job.Close(ReindexJobStatus.Failed, reason, now);
             logger.LogError(
                 "Reindex: finalized orphaned job {JobId} as Failed: {Reason}",
                 job.JobId,
                 reason);
         }
 
-        job.EndDate = now;
-        job.HeartbeatDate = now;
         await repository.UpdateAsync(job, SystemConstants.GlobalTenantId, cancellationToken);
     }
 

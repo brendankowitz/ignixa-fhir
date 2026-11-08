@@ -58,14 +58,10 @@ public sealed class CancelReindexHandler(
         }
 
         var reason = $"Cancelled: {request.Reason}";
-        await lifecycle.FailOwnedAsync(job.JobId, reason, cancellationToken);
+        await lifecycle.FinishAsync(job.JobId, [], reason, TimeSpan.Zero, cancellationToken);
 
-        var now = timeProvider.GetUtcNow();
-        job.SetStatus(ReindexJobStatus.Cancelled);
+        job.Close(ReindexJobStatus.Cancelled, reason, timeProvider.GetUtcNow());
         job.CancelRequested = true;
-        job.EndDate = now;
-        job.HeartbeatDate = now;
-        job.ErrorMessage = reason;
         var progress = ReindexProgress.FromJson(job.Progress) ?? ReindexProgress.Create(job.Definition.TenantIds);
         job.Progress = (progress with { CancellationReason = request.Reason }).ToJson();
         await repository.UpdateAsync(job, SystemConstants.GlobalTenantId, cancellationToken);

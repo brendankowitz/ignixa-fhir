@@ -22,6 +22,19 @@ internal static class ReindexJobs
     public static bool IsTerminal(this BackgroundJob<ReindexJobDefinition> job) =>
         job.GetStatus().IsTerminal();
 
+    /// <summary>Writes a terminal status; the caller has already returned the job's parameters to Pending.</summary>
+    public static void Close(
+        this BackgroundJob<ReindexJobDefinition> job,
+        ReindexJobStatus status,
+        string? errorMessage,
+        DateTimeOffset now)
+    {
+        job.SetStatus(status);
+        job.EndDate = now;
+        job.HeartbeatDate = now;
+        job.ErrorMessage = errorMessage;
+    }
+
     /// <summary>An active job whose heartbeat is older than <see cref="ReindexOptions.StaleJobTimeout"/>.</summary>
     public static bool IsStale(
         this BackgroundJob<ReindexJobDefinition> job,

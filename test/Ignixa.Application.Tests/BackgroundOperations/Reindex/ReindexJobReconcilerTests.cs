@@ -99,7 +99,7 @@ public sealed class ReindexJobReconcilerTests : IDisposable
     {
         var job = await StartedJobAsync(PastGrace, OrchestrationStatus.Failed);
         var completion = new ReindexTargetCompletion(Target(), true, 12, null);
-        await _lifecycle.CompleteAsync("job", [completion], TimeSpan.Zero, CancellationToken.None);
+        await _lifecycle.FinishAsync("job", [completion], "unplanned", TimeSpan.Zero, CancellationToken.None);
         var appendedBefore = _events.Appended.Count;
 
         await _reconciler.ReconcileAsync(job, CancellationToken.None);
@@ -107,7 +107,6 @@ public sealed class ReindexJobReconcilerTests : IDisposable
 
         var reconciled = await GetJobAsync();
         reconciled.Status.ShouldBe("Completed");
-        reconciled.Result!["success"]!.GetValue<bool>().ShouldBeTrue();
         _events.Appended.Count.ShouldBe(appendedBefore);
         Status.ShouldBe(SearchParameterStatus.Enabled);
     }

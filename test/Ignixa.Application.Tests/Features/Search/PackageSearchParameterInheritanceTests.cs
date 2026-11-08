@@ -205,7 +205,7 @@ public class PackageSearchParameterInheritanceTests
             pending.Canonical, pending.Code, pending.ResourceType, pending.SearchParamId, pending.ActivationEventId, ["Patient"], pending.OverridesCanonical, pending.FhirVersion);
         var lifecycle = new ReindexLifecycleEventWriter(log, state);
         (await lifecycle.StartAsync("job", [target], CancellationToken.None)).ShouldBeEmpty();
-        (await lifecycle.CompleteAsync("job", [new ReindexTargetCompletion(target, true, 1, null)], TimeSpan.Zero, CancellationToken.None)).ShouldBeEmpty();
+        (await lifecycle.FinishAsync("job", [new ReindexTargetCompletion(target, true, 1, null)], "unplanned", TimeSpan.Zero, CancellationToken.None)).IgnoredLifecycleEvents.ShouldBeEmpty();
         state.FindByCanonical(overrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Enabled);
         return log.Events.ToArray();
     }

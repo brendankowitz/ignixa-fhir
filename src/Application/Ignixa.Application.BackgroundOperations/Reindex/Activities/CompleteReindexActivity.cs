@@ -62,27 +62,29 @@ public sealed class CompleteReindexActivity(
             }).ToArray();
         }
 
-        var success = input.FailureMessage is null &&
-            missingTenantIds.Length == 0 &&
-            input.Tenants.All(tenant => tenant.Success) &&
-            completions.All(completion => completion.Success);
         var completedAt = timeProvider.GetUtcNow();
         // A job that never started owns no targets, so its completion appends no event to carry a duration.
         var duration = job.StartDate is { } startDate ? completedAt - startDate : TimeSpan.Zero;
-        var ignored = await lifecycle.CompleteAsync(input.JobId, completions, duration, cancellationToken);
+        // An owned parameter the job did not plan cannot be judged, so it fails back to Pending.
+        const string unplannedReason = "Search parameter was not planned by this job.";
+        var finished = await lifecycle.FinishAsync(input.JobId, completions, unplannedReason, duration, cancellationToken);
 
-        job.SetStatus(success ? ReindexJobStatus.Completed : ReindexJobStatus.Failed);
-        job.EndDate = completedAt;
-        job.HeartbeatDate = completedAt;
-        job.ErrorMessage = success
-            ? null
-            : string.Join(
-                " ",
-                completions.Where(completion => !completion.Success)
-                    .Select(completion => completion.ErrorMessage)
-                    .Where(message => message is not null));
-        job.Progress = BuildProgress(input, ignored);
-        job.Result = new JsonObject { ["success"] = success };
+        var errors = completions
+            .Where(completion => !completion.Success)
+            .Select(completion => completion.ErrorMessage)
+            .OfType<string>()
+            .Concat(finished.UnplannedTargets.Select(target => $"{target}: {unplannedReason}"))
+            .ToArray();
+        var success = errors.Length == 0 &&
+            input.FailureMessage is null &&
+            missingTenantIds.Length == 0 &&
+            input.Tenants.All(tenant => tenant.Success) &&
+            completions.All(completion => completion.Success);
+        job.Close(
+            success ? ReindexJobStatus.Completed : ReindexJobStatus.Failed,
+            success ? null : string.Join(" ", errors),
+            completedAt);
+        job.Progress = BuildProgress(input, finished.IgnoredLifecycleEvents);
         await repository.UpdateAsync(job, SystemConstants.GlobalTenantId, cancellationToken);
 
         if (job.StartDate.HasValue)
@@ -94,22 +96,14 @@ public sealed class CompleteReindexActivity(
     }
 
     // The outcome of every planned target is derived from the orchestration's input, so a retried activity
-    // reaches the same decision. Every parameter the job still owns is completed as well, planned or not: an
-    // unplanned owner fails so it returns to Pending instead of staying Reindexing forever.
+    // reaches the same decision.
     private async Task<IReadOnlyList<ReindexTargetCompletion>> EvaluateTargetsAsync(CompleteReindexInput input)
     {
-        var unplannedOwners = (await lifecycle.GetOwnedTargetsAsync(input.JobId, CancellationToken.None))
-            .Where(owned => !input.Targets.Any(planned => ReindexLifecycleEventWriter.SameTarget(planned, owned)));
         var tenantVersions = await GetTenantVersionsAsync(CancellationToken.None);
         var completions = new List<ReindexTargetCompletion>(input.Targets.Count);
         foreach (var target in input.Targets)
         {
-            completions.Add(await EvaluateTargetAsync(input, target, tenantVersions, unplanned: false));
-        }
-
-        foreach (var target in unplannedOwners)
-        {
-            completions.Add(await EvaluateTargetAsync(input, target, tenantVersions, unplanned: true));
+            completions.Add(await EvaluateTargetAsync(input, target, tenantVersions));
         }
 
         return completions;
@@ -120,15 +114,9 @@ public sealed class CompleteReindexActivity(
     private async Task<ReindexTargetCompletion> EvaluateTargetAsync(
         CompleteReindexInput input,
         ReindexParameterDefinition target,
-        IReadOnlyDictionary<int, string> tenantVersions,
-        bool unplanned)
+        IReadOnlyDictionary<int, string> tenantVersions)
     {
         var errors = new List<string>();
-        if (unplanned)
-        {
-            errors.Add($"Search parameter {target.Canonical} was not planned by this job.");
-        }
-
         if (input.FailureMessage is not null)
         {
             errors.Add(input.FailureMessage);

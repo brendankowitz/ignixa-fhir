@@ -51,7 +51,6 @@ public class CompleteReindexActivityTests
         await activity.RunAsync(ActivityContext(), input);
 
         var job = await fixture.JobAsync();
-        job.Result!["success"]!.GetValue<bool>().ShouldBe(!orchestrationFailed);
         ReindexProgress.FromJson(job.Progress)!.Tenants.ShouldHaveSingleItem().FailedResourceCount.ShouldBe(153);
         if (orchestrationFailed)
         {

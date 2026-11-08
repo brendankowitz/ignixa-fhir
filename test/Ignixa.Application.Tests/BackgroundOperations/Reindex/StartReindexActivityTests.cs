@@ -56,7 +56,7 @@ public sealed class StartReindexActivityTests : IAsyncLifetime, IDisposable
     {
         await _lifecycle.StartAsync("job", [Target()], CancellationToken.None);
         var completion = new ReindexTargetCompletion(Target(), decision == "Completed", 0, "terminated");
-        await _lifecycle.CompleteAsync("job", [completion], TimeSpan.Zero, CancellationToken.None);
+        await _lifecycle.FinishAsync("job", [completion], "unplanned", TimeSpan.Zero, CancellationToken.None);
         var finished = (await _jobs.GetAsync("job", 1, CancellationToken.None))!;
         finished.Status = decision;
         await _jobs.UpdateAsync(finished, 1, CancellationToken.None);

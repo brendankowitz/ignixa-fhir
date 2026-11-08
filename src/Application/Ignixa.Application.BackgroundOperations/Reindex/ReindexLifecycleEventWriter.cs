@@ -8,58 +8,89 @@ using Ignixa.Domain.Models;
 
 namespace Ignixa.Application.BackgroundOperations.Reindex;
 
+/// <summary>
+/// Appends a job's guarded reindex lifecycle events under the activation lock. The projection applies each
+/// event only if its guard still holds (§4.3); the identities of events it would not apply are returned as
+/// the job's ignored lifecycle events.
+/// </summary>
 public sealed class ReindexLifecycleEventWriter(
     ISourceEventStore eventStore,
     ConformanceState conformanceState)
 {
-    public Task<IReadOnlyList<string>> StartAsync(
+    /// <returns>The targets the projection did not move to Reindexing for this job.</returns>
+    public async Task<IReadOnlyList<string>> StartAsync(
         string jobId,
         IReadOnlyList<ReindexParameterDefinition> targets,
-        CancellationToken cancellationToken) =>
-        AppendAsync(
-            targets,
-            target => new SearchParameterReindexStarted(
-                target.Canonical,
-                target.Code,
-                target.ResourceType,
-                jobId,
-                target.AffectedResourceTypes,
-                target.ActivationEventId),
-            jobId,
-            requireOwnership: false,
-            cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        using (await conformanceState.AcquireActivationLockAsync(cancellationToken))
+        {
+            await conformanceState.AppendWhileActivationLockHeldAsync(
+                eventStore,
+                () => targets
+                    .Select(target => ToEvent(target, new SearchParameterReindexStarted(
+                        target.Canonical,
+                        target.Code,
+                        target.ResourceType,
+                        jobId,
+                        target.AffectedResourceTypes,
+                        target.ActivationEventId)))
+                    .ToArray(),
+                cancellationToken);
 
+            return targets
+                .Where(target => !GetOwnedTargets(jobId).Any(owned => SameTarget(owned, target)))
+                .Select(TargetIdentity)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+        }
+    }
+
+    /// <summary>
+    /// Finishes every parameter the job still owns: Completed or Failed by its entry in
+    /// <paramref name="completions"/>, and Failed with <paramref name="fallbackReason"/> when it has none, so
+    /// no parameter stays Reindexing after its job ends.
+    /// </summary>
     /// <param name="duration">How long the job ran; recorded on every completed event.</param>
-    public Task<IReadOnlyList<string>> CompleteAsync(
+    public async Task<ReindexFinishResult> FinishAsync(
         string jobId,
         IReadOnlyList<ReindexTargetCompletion> completions,
+        string fallbackReason,
         TimeSpan duration,
-        CancellationToken cancellationToken) =>
-        AppendAsync(
-            completions.Select(completion => completion.Target).ToArray(),
-            target =>
-            {
-                var completion = completions.Single(item => SameTarget(item.Target, target));
-                return completion.Success
-                    ? new SearchParameterReindexCompleted(
-                        target.Canonical,
-                        target.Code,
-                        target.ResourceType,
-                        jobId,
-                        completion.ResourcesIndexed,
-                        duration,
-                        target.ActivationEventId)
-                    : new SearchParameterReindexFailed(
-                        target.Canonical,
-                        target.Code,
-                        target.ResourceType,
-                        jobId,
-                        completion.ErrorMessage ?? "Reindex failed.",
-                        target.ActivationEventId);
-            },
-            jobId,
-            requireOwnership: true,
-            cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        using (await conformanceState.AcquireActivationLockAsync(cancellationToken))
+        {
+            var result = new ReindexFinishResult([], []);
+            await conformanceState.AppendWhileActivationLockHeldAsync(
+                eventStore,
+                () =>
+                {
+                    // Built inside the callback: it runs against the caught-up projection the events are appended to.
+                    var owned = GetOwnedTargets(jobId).ToArray();
+                    result = new ReindexFinishResult(
+                        completions
+                            .Where(completion => !owned.Any(target => SameTarget(target, completion.Target)))
+                            .Select(completion => TargetIdentity(completion.Target))
+                            .Distinct(StringComparer.Ordinal)
+                            .ToArray(),
+                        owned
+                            .Where(target => !completions.Any(completion => SameTarget(completion.Target, target)))
+                            .Select(TargetIdentity)
+                            .ToArray());
+                    return owned
+                        .Select(target => ToEvent(target, CreateFinishedEvent(
+                            target,
+                            completions.FirstOrDefault(completion => SameTarget(completion.Target, target)),
+                            jobId,
+                            fallbackReason,
+                            duration)))
+                        .ToArray();
+                },
+                cancellationToken);
+            return result;
+        }
+    }
 
     /// <summary>
     /// Whether the projection already shows the job's successful completion: every planned target is Enabled
@@ -85,47 +116,31 @@ public sealed class ReindexLifecycleEventWriter(
         }
     }
 
-    /// <summary>
-    /// Returns every parameter the job still owns to Pending with a guarded Failed event, planned or not.
-    /// </summary>
-    public async Task FailOwnedAsync(
+    private static object CreateFinishedEvent(
+        ReindexParameterDefinition target,
+        ReindexTargetCompletion? completion,
         string jobId,
-        string reason,
-        CancellationToken cancellationToken)
-    {
-        using (await conformanceState.AcquireActivationLockAsync(cancellationToken))
-        {
-            await conformanceState.AppendWhileActivationLockHeldAsync(
-                eventStore,
-                () => GetOwnedTargets(jobId)
-                    .Select(target => new NewSourceEvent(
-                        $"reindex:{target.Canonical}",
-                        nameof(SearchParameterReindexFailed),
-                        new SearchParameterReindexFailed(
-                            target.Canonical,
-                            target.Code,
-                            target.ResourceType,
-                            jobId,
-                            reason,
-                            target.ActivationEventId)))
-                    .ToArray(),
-                cancellationToken);
-        }
-    }
+        string fallbackReason,
+        TimeSpan duration) =>
+        completion is { Success: true }
+            ? new SearchParameterReindexCompleted(
+                target.Canonical,
+                target.Code,
+                target.ResourceType,
+                jobId,
+                completion.ResourcesIndexed,
+                duration,
+                target.ActivationEventId)
+            : new SearchParameterReindexFailed(
+                target.Canonical,
+                target.Code,
+                target.ResourceType,
+                jobId,
+                completion?.ErrorMessage ?? fallbackReason,
+                target.ActivationEventId);
 
-    /// <summary>Every parameter the job still owns, read from the caught-up projection.</summary>
-    public async Task<IReadOnlyList<ReindexParameterDefinition>> GetOwnedTargetsAsync(
-        string jobId,
-        CancellationToken cancellationToken)
-    {
-        using (await conformanceState.AcquireActivationLockAsync(cancellationToken))
-        {
-            await conformanceState.CatchUpWhileActivationLockHeldAsync(
-                eventStore,
-                cancellationToken);
-            return GetOwnedTargets(jobId).ToArray();
-        }
-    }
+    private static NewSourceEvent ToEvent(ReindexParameterDefinition target, object data) =>
+        new($"reindex:{target.Canonical}", data.GetType().Name, data);
 
     // The caller holds the activation lock.
     private IEnumerable<ReindexParameterDefinition> GetOwnedTargets(string jobId) =>
@@ -145,81 +160,6 @@ public sealed class ReindexLifecycleEventWriter(
             [parameter.ResourceType],
             parameter.OverridesCanonical,
             parameter.FhirVersion);
-
-    private async Task<IReadOnlyList<string>> AppendAsync(
-        IReadOnlyList<ReindexParameterDefinition> targets,
-        Func<ReindexParameterDefinition, object> createEvent,
-        string jobId,
-        bool requireOwnership,
-        CancellationToken cancellationToken)
-    {
-        using (await conformanceState.AcquireActivationLockAsync(cancellationToken))
-        {
-            IReadOnlyList<string> ignored = [];
-            IReadOnlyList<(ReindexParameterDefinition Target, object Data)> appended = [];
-            await conformanceState.AppendWhileActivationLockHeldAsync(
-                eventStore,
-                () =>
-                {
-                    var currentTargets = requireOwnership
-                        ? targets.Where(target => IsOwnedByJob(target, jobId)).ToArray()
-                        : targets;
-                    ignored = requireOwnership
-                        ? targets.Where(target => !IsOwnedByJob(target, jobId)).Select(TargetIdentity).ToArray()
-                        : [];
-                    appended = currentTargets.Select(target => (target, createEvent(target))).ToArray();
-                    return appended
-                        .Select(item => new NewSourceEvent(
-                            $"reindex:{item.Target.Canonical}",
-                            item.Data.GetType().Name,
-                            item.Data))
-                        .ToArray();
-                },
-                cancellationToken);
-
-            return ignored
-                .Concat(appended
-                    .Where(item => !WasApplied(item.Target, item.Data, jobId))
-                    .Select(item => TargetIdentity(item.Target)))
-                .Distinct(StringComparer.Ordinal)
-                .ToArray();
-        }
-    }
-
-    private bool WasApplied(ReindexParameterDefinition target, object data, string jobId)
-    {
-        var current = conformanceState.GetSearchParameter(target.ResourceType, target.Code);
-        if (current is null || !IsSameActivation(current, target))
-        {
-            return false;
-        }
-
-        return data switch
-        {
-            SearchParameterReindexStarted =>
-                current.Status == SearchParameterStatus.Reindexing && current.ReindexJobId == jobId,
-            SearchParameterReindexCompleted =>
-                current.Status == SearchParameterStatus.Enabled && current.ReindexJobId is null,
-            SearchParameterReindexFailed =>
-                current.Status == SearchParameterStatus.Pending && current.ReindexJobId is null,
-            _ => throw new InvalidOperationException($"Unexpected reindex lifecycle event {data.GetType().Name}.")
-        };
-    }
-
-    // Ownership is one activation of one canonical: a planned target that names another canonical or
-    // activation of the same code must neither complete nor fail the parameter the job owns.
-    private bool IsOwnedByJob(ReindexParameterDefinition target, string jobId)
-    {
-        var current = conformanceState.GetSearchParameter(target.ResourceType, target.Code);
-        return current is not null &&
-            IsSameActivation(current, target) &&
-            current.Status == SearchParameterStatus.Reindexing &&
-            current.ReindexJobId == jobId;
-    }
-
-    private static bool IsSameActivation(ActiveSearchParameter current, ReindexParameterDefinition target) =>
-        current.Canonical == target.Canonical &&
-        current.ActivationEventId == target.ActivationEventId;
 
     /// <summary>
     /// Target identity: one activation of one canonical for one resource type and code.
