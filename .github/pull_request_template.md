@@ -4,7 +4,7 @@
 
 ## Acceptance criteria
 
-<!-- Copy the linked issue's criteria here; reviewers may not read the issue. One row per criterion. Evidence is a test name, "manual: <what was checked>", or "none". -->
+<!-- Copy the linked issue's criteria here, or write the criteria for this PR if there is no linked issue. One row per criterion. Prefer an automated test or check and its result. If automation is impractical, use "manual: <steps, observed result, and why automation is impractical>". Use "none" for unverified criteria. -->
 
 | Criterion | Implemented in | Evidence |
 |---|---|---|

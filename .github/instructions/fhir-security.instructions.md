@@ -1,5 +1,5 @@
 ---
-applyTo: "src/**,test/**,tools/**,codegen/**,deploy/**,scripts/**,eng/**,build/**,.github/**,*"
+applyTo: "**"
 excludeAgent: "cloud-agent"
 ---
 

@@ -16,13 +16,17 @@ As verified on 2026-11-06, the active Main ruleset requests Copilot reviews for 
 
 These are a dated settings snapshot, not configuration managed by this document. Inspect the live ruleset before relying on it. SQL integration and documentation jobs also run in PR Build but were not required checks in that snapshot.
 
-Recommended settings are repository instructions enabled, Balanced review effort routinely, and Max requested for security-sensitive or complex changes. Select effort in GitHub; instruction text cannot select models or guarantee named specialist passes. Keep counted Copilot approvals off for this initial rollout and merge manually. Effort and approval settings are separate from automatic-review rules and must be checked separately.
+Recommended settings are repository instructions enabled, Balanced review effort routinely, and Max requested for security-sensitive or complex changes. Select effort in GitHub; instruction text cannot select models or guarantee named specialist passes. Keep counted Copilot approvals off for this initial rollout. Effort and approval settings are separate from automatic-review rules and must be checked separately.
 
-### Before merging
+### Renovate automerge
+
+[Renovate configuration](../renovate.json) enables PR automerge for selected dependency updates. If enabled and GitHub's applicable protections are satisfied, those PRs may merge without the manual procedure below; a requested Copilot review or non-required check may not finish first. This change does not alter automerge settings. Inspect the live settings and decide separately whether human review needs an enforced gate.
+
+### Before merging manually
 
 1. Inspect the individual applicable CI jobs and evidence for the current revision, including SQL integration and documentation results. Missing, unexpectedly skipped, cancelled, or failed work is not a pass. A green rollup comment is not a substitute for these results.
 2. Read Copilot's review of the latest changes. If no review arrived, it failed, or it predates the latest push, request/re-request it from the PR's Reviewers section. If Copilot is unavailable, perform and record a manual review against the same guidelines rather than silently treating absence as approval.
-3. Confirm the PR description states intent and acceptance criteria per the [pull request template](pull_request_template.md), with evidence for each criterion; a criterion marked "none" is an open gap, not a pass. Verify material findings against the code and tests. Fix real defects and rerun affected checks; record a concrete reason when dismissing a false positive. Resolving a thread alone is not evidence that a defect was fixed.
+3. Confirm the PR description states intent and acceptance criteria per the [pull request template](pull_request_template.md), with evidence for each criterion; a criterion marked "none" is an open gap, and a manual check is limited evidence. Verify material findings against the code and tests. Fix real defects and rerun affected checks; record a concrete reason when dismissing a false positive. Resolving a thread alone is not evidence that a defect was fixed.
 4. Personally inspect changes to authorization, tenancy, query expansion/continuation, sensitive data, schema upgrades, and CI/review/test controls, including shared helpers. Copilot reads instructions from the PR head, so a PR editing `AGENTS.md`, `REVIEW.md`, or `.github/instructions/**` is reviewed under its own changes; compare those files against the target branch yourself. Do not let a small diff or reassuring AI review replace that judgment.
 5. Confirm required checks and any repository approval requirements are satisfied, then merge manually. If the base changed materially, update/retest and reassess the affected paths; the snapshot above does not require the branch to be up to date.
 
