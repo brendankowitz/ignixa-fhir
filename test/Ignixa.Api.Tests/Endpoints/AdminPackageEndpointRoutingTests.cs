@@ -14,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Shouldly;
 using Xunit;
+using Ignixa.Api.Tests.TestSupport;
 
 namespace Ignixa.Api.Tests.Endpoints;
 
@@ -55,6 +56,7 @@ public sealed class AdminPackageEndpointRoutingTests : IAsyncLifetime
         var builder = WebApplication.CreateBuilder();
         builder.Services.AddSingleton(mediator);
         builder.Services.AddSingleton(store);
+        builder.Services.AddDisabledFhirAuthorization();
         _app = builder.Build();
     }
 

@@ -60,40 +60,46 @@ Ignixa provides fine-grained authorization based on SMART on FHIR scopes and cus
 
 | Scope | Description |
 |-------|-------------|
-| `patient/Patient.read` | Read patient's own record |
-| `patient/Observation.read` | Read patient's observations |
-| `patient/*.read` | Read all in patient compartment |
+| `patient/Patient.read` | Read patient's own record (refused for now; see below) |
+| `patient/Observation.read` | Read patient's observations (refused for now) |
+| `patient/*.read` | Read all in patient compartment (refused for now) |
 | `user/Patient.write` | User can write patients |
 | `system/*.*` | Full system access |
 
-## Patient Compartment
+## Compartment and Constrained Scopes
 
-When using `patient/` scopes, access is restricted to the patient compartment:
+The server does not yet filter results by compartment or by a scope's search constraints. A request whose grant
+depends on one is refused with `403 Forbidden` rather than answered with unrestricted data. That covers:
 
-```json
-{
-  "context": {
-    "patient": "Patient/123"
-  },
-  "scopes": ["patient/Observation.read"]
-}
-```
+- `patient/` scopes, and `practitioner/` scopes;
+- any scope that carries search parameters, such as `system/Observation.rs?category=laboratory`.
 
-Only returns Observations where:
-- `Observation.subject` references `Patient/123`
+Use a `user/` or `system/` scope without search parameters until compartment enforcement is available.
 
-### Compartment Resources
+## Operations and Bundles
 
-Resources in the Patient compartment:
+SMART has no permission for operations, so each operation route declares the interaction it is authorized as. A
+route that declares none is refused.
 
-- Observation
-- Condition
-- Procedure
-- MedicationRequest
-- Encounter
-- DiagnosticReport
-- CarePlan
-- ... (all clinical resources)
+| Routes | Authorized as |
+|---|---|
+| `$validate` on a type or instance | Read on that type |
+| `/$validate` (system) | Read on `*` |
+| `$includes` | Search on the route's type |
+| `$everything`, `$summary`, `$member-match`, `$graphql` | Search on `*` |
+| `$de-identify`, `$export` (system, tenant and Group), export status and cancel | Read on `*` |
+| `$import`, import status and cancel | Update on `*` |
+| `$bulk-delete` on a type | Delete on that type, then on every type the job reaches |
+| `/$bulk-delete` (system) | Delete on `*`, then on every type the job reaches |
+| `ValueSet/$expand`, `ConceptMap/$translate`, `CodeSystem/$subsumes`, `StructureMap/$transform` | Read on `ValueSet`, `ConceptMap`, `CodeSystem` or `StructureMap` |
+| `/tenant/{id}/admin/packages` (list) | Read on `*` |
+| `/tenant/{id}/admin/packages` (load, unload) | Update on `*` |
+
+Package load and unload change search behaviour for every tenant. While more than one tenant is active they also
+require the `SystemAdmin` role.
+
+Bundle entries are not yet authorized one by one, so a `batch` or `transaction` bundle requires every permission
+on every type: SMART `system/*.cruds` (or `user/*.cruds`), or an RBAC grant of `transaction` on `*`.
 
 ## Configuration
 
@@ -206,7 +212,7 @@ All authorization decisions are logged:
 }
 ```
 
-### Patient Compartment Violation
+### Constrained Scope
 
 ```json
 {
@@ -214,7 +220,7 @@ All authorization decisions are logged:
   "issue": [{
     "severity": "error",
     "code": "forbidden",
-    "diagnostics": "Resource Patient/456 not in authorized patient compartment"
+    "diagnostics": "Grants limited to a compartment or search constraint (patient, practitioner or encounter scopes, or scopes with search parameters) are not supported yet; use an unrestricted grant."
   }]
 }
 ```
@@ -222,7 +228,7 @@ All authorization decisions are logged:
 ## Security Best Practices
 
 1. **Principle of Least Privilege** - Grant minimum required scopes
-2. **Use Patient Compartment** - Restrict clinical app access
+2. **Scope per resource type** - Grant the types an app needs rather than `*`
 3. **Enable Audit Logging** - Track all access
 4. **Rotate API Keys** - Regular key rotation
 5. **Validate Tokens** - Strict JWT validation

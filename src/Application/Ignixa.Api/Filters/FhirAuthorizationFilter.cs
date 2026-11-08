@@ -20,23 +20,20 @@ using Microsoft.Extensions.Options;
 namespace Ignixa.Api.Filters;
 
 /// <summary>
-/// Endpoint filter that enforces FHIR authorization (RBAC, SMART scopes, capability enforcement).
-/// Runs on EVERY FHIR endpoint, including bundle entry processing.
-///
-/// Architecture Decision: Endpoint filters are used instead of middleware because:
-/// 1. Bundle Processing: Bundle entries bypass middleware but go through endpoint filters
-/// 2. Per-Endpoint Granularity: Different endpoints can have different authorization requirements
-/// 3. Composition: Stack multiple filters (auth → audit → validation)
-/// 4. Type Safety: Access to endpoint metadata and route parameters
-///
-/// Usage:
-///   var group = endpoints.MapGroup("/tenant/{tenantId:int}")
-///       .AddEndpointFilter<FhirAuthorizationFilter>()
-///       .AddEndpointFilter<FhirAuditFilter>()
-///       .AddEndpointFilter<ResourceTypeValidationFilter>();
+/// Endpoint filter that enforces FHIR authorization (RBAC, SMART scopes, tenant isolation) on every FHIR endpoint.
+/// Register it with <see cref="FhirAuthorizationEndpointExtensions.RequireFhirAuthorization{TBuilder}"/>.
 /// </summary>
+/// <remarks>
+/// The interaction is derived from the route unless the endpoint declares <see cref="FhirAuthorizationMetadata"/>.
+/// Bundle entries are dispatched in-process and are not authorized individually, so a batch or transaction is
+/// authorized as a whole and requires every permission on every resource type.
+/// </remarks>
 public class FhirAuthorizationFilter : IEndpointFilter
 {
+    internal const string RestrictedGrantDiagnostics =
+        "Grants limited to a compartment or search constraint (patient, practitioner or encounter scopes, or scopes " +
+        "with search parameters) are not supported yet; use an unrestricted grant.";
+
     private readonly IFhirAuthorizationService _authzService;
     private readonly IFhirRequestContextAccessor _fhirContextAccessor;
     private readonly ILogger<FhirAuthorizationFilter> _logger;
@@ -89,14 +86,16 @@ public class FhirAuthorizationFilter : IEndpointFilter
                 return CreateForbiddenResponse(result.DenialReason ?? "Access denied");
             }
 
-            // Store filter in HttpContext for query layer (patient compartment filtering)
-            if (result.Filter != null)
+            // No query path applies a compartment or search constraint yet, so a grant limited by one is refused
+            // rather than served unrestricted data.
+            if (result.Filter is { RestrictsData: true })
             {
-                httpContext.Items["FhirAuthorizationFilter"] = result.Filter;
-
-                _logger.LogDebug(
-                    "Authorization filter applied: PatientFilter={PatientFilter}",
-                    result.Filter.PatientFilter ?? "none");
+                _logger.LogWarning(
+                    "Authorization denied: compartment- or search-constrained grant (User: {User}, Resource: {ResourceType}, Interaction: {Interaction})",
+                    authContext.UserId ?? "anonymous",
+                    authContext.ResourceType ?? "system",
+                    authContext.Interaction);
+                return CreateForbiddenResponse(RestrictedGrantDiagnostics);
             }
 
             // Continue to next filter or handler
@@ -194,6 +193,11 @@ public class FhirAuthorizationFilter : IEndpointFilter
 
         // Parse route to determine interaction
         var (interaction, resourceType, resourceId) = ParseRoute(httpContext);
+        if (httpContext.GetEndpoint()?.Metadata.GetMetadata<FhirAuthorizationMetadata>() is { } declared)
+        {
+            interaction = declared.Interaction;
+            resourceType = declared.ResourceType ?? resourceType;
+        }
 
         return Task.FromResult(CreateAuthorizationContext(httpContext, fhirContext, interaction, resourceType, resourceId));
     }

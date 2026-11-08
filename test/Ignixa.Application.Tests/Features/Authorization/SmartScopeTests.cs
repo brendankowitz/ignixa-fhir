@@ -74,6 +74,14 @@ public class SmartScopeTests
     [InlineData(SmartPermissions.Read, "vread", true)]
     [InlineData(SmartPermissions.Update, "patch", true)]
     [InlineData(SmartPermissions.Search, "search-type", true)]
+    [InlineData(SmartPermissions.None, "capabilities", true)]
+    [InlineData(SmartPermissions.All, "transaction", true)]
+    [InlineData(SmartPermissions.All, "batch", true)]
+    [InlineData(SmartPermissions.Read | SmartPermissions.Search, "transaction", false)]
+    [InlineData(SmartPermissions.Create | SmartPermissions.Update | SmartPermissions.Delete, "batch", false)]
+    [InlineData(SmartPermissions.All, "operation-system", false)]
+    [InlineData(SmartPermissions.All, "operation-type", false)]
+    [InlineData(SmartPermissions.All, "operation-instance", false)]
     public void MatchesInteraction_VariousPermissions_ReturnsCorrectResult(
         SmartPermissions scopePermissions,
         string requiredInteraction,

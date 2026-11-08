@@ -13,6 +13,8 @@ using Ignixa.Application.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Ignixa.Api.Filters;
+using FhirInteraction = Ignixa.Application.Features.Authorization.Models.FhirInteraction;
 
 namespace Ignixa.Api.Endpoints.Experimental;
 
@@ -26,7 +28,8 @@ public static class GraphQlEndpoints
         Action<RouteGroupBuilder>? configureTenantGroup = null)
     {
         endpoints.MapGraphQlTenantEndpoints(configureTenantGroup);
-        endpoints.MapGraphQlAgnosticEndpoints();
+        var agnosticGroup = endpoints.MapGroup(string.Empty).RequireFhirAuthorization();
+        agnosticGroup.MapGraphQlAgnosticEndpoints();
         return endpoints;
     }
 
@@ -39,6 +42,7 @@ public static class GraphQlEndpoints
 
         tenantGroup.MapPost("/$graphql", HandleSystemPost)
             .WithName("GraphQlSystemPostTenant")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.SearchSystem, "*"))
             .WithTags("Experimental", "GraphQL")
             .Accepts<GraphQlRequestBody>("application/json")
             .Produces(StatusCodes.Status200OK, contentType: "application/json")
@@ -46,12 +50,14 @@ public static class GraphQlEndpoints
 
         tenantGroup.MapGet("/$graphql", HandleSystemGet)
             .WithName("GraphQlSystemGetTenant")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.SearchSystem, "*"))
             .WithTags("Experimental", "GraphQL")
             .Produces(StatusCodes.Status200OK, contentType: "application/json")
             .Produces(StatusCodes.Status400BadRequest, contentType: "application/json");
 
         tenantGroup.MapPost("/{resourceType}/{id}/$graphql", HandleInstancePost)
             .WithName("GraphQlInstancePostTenant")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.SearchSystem, "*"))
             .WithTags("Experimental", "GraphQL")
             .Accepts<GraphQlRequestBody>("application/json")
             .Produces(StatusCodes.Status200OK, contentType: "application/json")
@@ -59,6 +65,7 @@ public static class GraphQlEndpoints
 
         tenantGroup.MapGet("/{resourceType}/{id}/$graphql", HandleInstanceGet)
             .WithName("GraphQlInstanceGetTenant")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.SearchSystem, "*"))
             .WithTags("Experimental", "GraphQL")
             .Produces(StatusCodes.Status200OK, contentType: "application/json")
             .Produces(StatusCodes.Status400BadRequest, contentType: "application/json");
@@ -68,6 +75,7 @@ public static class GraphQlEndpoints
     {
         endpoints.MapPost("/$graphql", HandleSystemPost)
             .WithName("GraphQlSystemPostAgnostic")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.SearchSystem, "*"))
             .WithTags("Experimental", "GraphQL")
             .Accepts<GraphQlRequestBody>("application/json")
             .Produces(StatusCodes.Status200OK, contentType: "application/json")
@@ -75,12 +83,14 @@ public static class GraphQlEndpoints
 
         endpoints.MapGet("/$graphql", HandleSystemGet)
             .WithName("GraphQlSystemGetAgnostic")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.SearchSystem, "*"))
             .WithTags("Experimental", "GraphQL")
             .Produces(StatusCodes.Status200OK, contentType: "application/json")
             .Produces(StatusCodes.Status400BadRequest, contentType: "application/json");
 
         endpoints.MapPost("/{resourceType}/{id}/$graphql", HandleInstancePost)
             .WithName("GraphQlInstancePostAgnostic")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.SearchSystem, "*"))
             .WithTags("Experimental", "GraphQL")
             .Accepts<GraphQlRequestBody>("application/json")
             .Produces(StatusCodes.Status200OK, contentType: "application/json")
@@ -88,6 +98,7 @@ public static class GraphQlEndpoints
 
         endpoints.MapGet("/{resourceType}/{id}/$graphql", HandleInstanceGet)
             .WithName("GraphQlInstanceGetAgnostic")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.SearchSystem, "*"))
             .WithTags("Experimental", "GraphQL")
             .Produces(StatusCodes.Status200OK, contentType: "application/json")
             .Produces(StatusCodes.Status400BadRequest, contentType: "application/json");

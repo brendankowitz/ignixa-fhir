@@ -11,6 +11,8 @@ using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Models;
 using Ignixa.Serialization.Models;
+using Ignixa.Api.Filters;
+using FhirInteraction = Ignixa.Application.Features.Authorization.Models.FhirInteraction;
 
 namespace Ignixa.Api.Endpoints;
 
@@ -25,27 +27,32 @@ public static class ExportEndpoints
     /// </summary>
     public static void MapExportEndpoints(this WebApplication app)
     {
+        // Every route reads every resource type, so each authorizes as a read on `*`.
+        var export = app.MapGroup(string.Empty)
+            .RequireFhirAuthorization()
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Read, "*"));
+
         // POST /$export - System-level export (single-tenant or auto-detected tenant)
-        app.MapPost("/$export", StartExportSystemLevelAsync)
+        export.MapPost("/$export", StartExportSystemLevelAsync)
             .WithName("StartExportSystemLevel");
 
         // POST /tenant/{tenantId}/$export - Start a new export job
-        app.MapPost("/tenant/{tenantId:int}/$export", StartExportAsync)
+        export.MapPost("/tenant/{tenantId:int}/$export", StartExportAsync)
             .WithName("StartExport");
 
         // POST /Group/{groupId}/$export - Group-scoped export
-        app.MapPost("/Group/{groupId}/$export", StartGroupExportAsync)
+        export.MapPost("/Group/{groupId}/$export", StartGroupExportAsync)
             .WithName("StartGroupExport");
 
-        app.MapPost("/tenant/{tenantId:int}/Group/{groupId}/$export", StartGroupExportAsync)
+        export.MapPost("/tenant/{tenantId:int}/Group/{groupId}/$export", StartGroupExportAsync)
             .WithName("StartGroupExportForTenant");
 
         // GET /tenant/{tenantId}/_export/{jobId} - Poll export job status
-        app.MapGet("/tenant/{tenantId:int}/_export/{jobId}", GetExportStatusAsync)
+        export.MapGet("/tenant/{tenantId:int}/_export/{jobId}", GetExportStatusAsync)
             .WithName("GetExportStatus");
 
         // DELETE /tenant/{tenantId}/_export/{jobId} - Cancel export job
-        app.MapDelete("/tenant/{tenantId:int}/_export/{jobId}", CancelExportAsync)
+        export.MapDelete("/tenant/{tenantId:int}/_export/{jobId}", CancelExportAsync)
             .WithName("CancelExport");
     }
 

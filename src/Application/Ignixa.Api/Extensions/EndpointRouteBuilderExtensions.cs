@@ -77,7 +77,7 @@ public static class EndpointRouteBuilderExtensions
     private static void ConfigureExperimentalTenantGroup(RouteGroupBuilder tenantGroup)
     {
         tenantGroup
-            .AddEndpointFilter<FhirAuthorizationFilter>()
+            .RequireFhirAuthorization()
             .AddEndpointFilter<FhirAuditFilter>()
             .AddEndpointFilter<FhirMetricsFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();

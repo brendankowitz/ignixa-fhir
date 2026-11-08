@@ -18,12 +18,10 @@ namespace Ignixa.Api.Endpoints;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The route-level <see cref="AuthorizationEndpointFilter"/> classifies a kickoff as <c>operation-type</c>/
-/// <c>operation-system</c>, which SMART maps to no permission at all (any scope on the type passes) and
-/// RBAC checks only against the route's type. That is right for read-only operations and wrong for a
-/// destructive one, so this step re-authorizes the request, through the same handler pipeline, as
-/// <see cref="FhirInteraction.Delete"/> on every type the job can delete -- and as
-/// <see cref="FhirInteraction.Update"/> on every type when <c>_remove-references</c> rewrites referrers.
+/// The route-level <see cref="AuthorizationEndpointFilter"/> authorizes a kickoff as a delete on the route's type
+/// (or on <c>*</c> for the system route). A job can reach further than that, so this step re-authorizes the request,
+/// through the same handler pipeline, as <see cref="FhirInteraction.Delete"/> on every type the job can delete --
+/// and as <see cref="FhirInteraction.Update"/> on every type when <c>_remove-references</c> rewrites referrers.
 /// </para>
 /// <para>
 /// The type set is derived from the request rather than the job's snapshot, and errs wide: the route's

@@ -37,6 +37,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.IO;
 using DeferredWriteCoordinator = Ignixa.Application.Features.Bundle.DeferredWriteCoordinator;
+using FhirInteraction = Ignixa.Application.Features.Authorization.Models.FhirInteraction;
 
 namespace Ignixa.Api.Endpoints;
 
@@ -112,7 +113,7 @@ public static class FhirEndpoints
         // Create a route group with the filter applied to all endpoints
         var tenantGroup = endpoints
             .MapGroup("/tenant/{tenantId:int}")
-            .AddEndpointFilter<FhirAuthorizationFilter>()
+            .RequireFhirAuthorization()
             .AddEndpointFilter<FhirAuditFilter>()
             .AddEndpointFilter<FhirMetricsFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
@@ -184,6 +185,7 @@ public static class FhirEndpoints
         // POST / - Transaction/Batch bundle
         tenantGroup.MapPost("/", HandleBundle)
             .WithName("Bundle")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Transaction, "*"))
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces(StatusCodes.Status501NotImplemented);
@@ -223,7 +225,7 @@ public static class FhirEndpoints
         // Create a route group with the filter applied to all endpoints
         var agnosticGroup = endpoints
             .MapGroup(string.Empty)
-            .AddEndpointFilter<FhirAuthorizationFilter>()
+            .RequireFhirAuthorization()
             .AddEndpointFilter<FhirAuditFilter>()
             .AddEndpointFilter<FhirMetricsFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
@@ -316,6 +318,7 @@ public static class FhirEndpoints
             [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILoggerFactory loggerFactory, CancellationToken ct) =>
             HandleBundle(context, fhirContextAccessor.RequestContext!.TenantId, bundleProcessor, streamingParser, bundleOptions, loggerFactory, ct))
             .WithName("BundleAgnostic")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Transaction, "*"))
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces(StatusCodes.Status400BadRequest)

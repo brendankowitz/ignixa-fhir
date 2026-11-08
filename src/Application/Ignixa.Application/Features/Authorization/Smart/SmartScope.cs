@@ -141,11 +141,8 @@ public record SmartScope
     /// </summary>
     /// <param name="interaction">The FHIR interaction (read, create, update, delete, search-type, etc.).</param>
     /// <returns>True if the scope grants this permission.</returns>
-    public bool MatchesInteraction(string interaction)
-    {
-        var required = MapInteractionToPermission(interaction);
-        return HasPermission(required);
-    }
+    public bool MatchesInteraction(string interaction) =>
+        MapInteractionToPermission(interaction) is { } required && HasPermission(required);
 
     /// <summary>
     /// Checks if this scope matches both a resource type and interaction permission.
@@ -159,9 +156,14 @@ public record SmartScope
     }
 
     /// <summary>
-    /// Maps a FHIR interaction to SMART v2 permission.
+    /// Maps a FHIR interaction to the SMART v2 permissions it needs, or null when no scope grants it.
     /// </summary>
-    private static SmartPermissions MapInteractionToPermission(string interaction)
+    /// <remarks>
+    /// Operations have no SMART permission of their own: an operation route declares the interaction it performs
+    /// (<c>FhirAuthorizationMetadata</c>), and one that does not is refused. Bundle entries are not authorized
+    /// individually, so a batch or transaction needs every permission.
+    /// </remarks>
+    private static SmartPermissions? MapInteractionToPermission(string interaction)
     {
         return interaction.ToUpperInvariant() switch
         {
@@ -177,7 +179,9 @@ public record SmartScope
             "HISTORY" => SmartPermissions.Read,
             "HISTORY-INSTANCE" => SmartPermissions.Read,
             "HISTORY-TYPE" => SmartPermissions.Read,
-            _ => SmartPermissions.None
+            "CAPABILITIES" => SmartPermissions.None,
+            "BATCH" or "TRANSACTION" => SmartPermissions.All,
+            _ => null
         };
     }
 }
