@@ -79,13 +79,20 @@ mode (see Decision).
   the job id and its `TenantIds`. Later deletion of job rows does not change what a migration copies.
 - **Enablement.** A parameter `Enabled` today stays `Enabled` in a tenant when the evidence shows that the job
   completing it covered that tenant. That holds for every tenant active when the job ran (#469 targets a versioned
-  parameter only on its version's tenants). In every other case the parameter becomes `Pending` and completes with
-  that tenant's next job:
-  - a tenant inactive when the job ran, or added later;
-  - a parameter still `Pending` or `Reindexing`;
-  - a completing job whose row was already deleted before cutover.
+  parameter only on its version's tenants). An `Enabled` parameter without that proof is downgraded to `Pending`
+  in the tenant:
+  - the tenant was inactive when the job ran, or was added later;
+  - the completing job's row was deleted before cutover.
 
-  This downgrade is deliberate: an unproven `Enabled` would serve searches over unindexed data.
+  `Pending` and `Reindexing` parameters become `Pending`. `Disabled`, `Staged` and `Disabling` keep their state and
+  their transitions; the copied events reproduce them, and no correction applies to them. The downgrade is
+  deliberate: an unproven `Enabled` would serve searches over unindexed data.
+- **Durable corrections.** A downgrade is an event, not a projection edit. The migration appends one idempotent
+  correction per downgraded or reset parameter to the tenant's stream, above H and keyed by tenant and activation.
+  On replay it moves the parameter back to `Pending` and sets its `PendingSinceEventId` to the correction's id, so
+  restart, eviction and reload give the same state. Because that id is above any finished job's `TargetEventId`,
+  #469's start rule schedules the tenant's next job. The implementation tests reload after migration and the
+  automatic start of that job.
 - **Packages.** Package resources and package terminology come from the frozen source, or are reloaded by package
   id and version, into each tenant that lacks them.
 
