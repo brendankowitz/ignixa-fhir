@@ -194,6 +194,17 @@ public class PatientEverythingHandlerTests
         expression.PatientIds[0].ShouldBe("patient-456");
     }
 
+    // Copilot review: $everything builds its own search options, so it must carry the lease's execution deadline itself.
+    [Fact]
+    public async Task GivenAHeldLease_WhenHandling_ThenTheSearchCarriesTheLeaseExecutionDeadline()
+    {
+        SetupDefaultMocks();
+
+        var result = await _handler.HandleAsync(new PatientEverythingQuery("patient-123"), CancellationToken.None);
+
+        result.SearchOptions.ExecutionDeadline.ShouldNotBeNull();
+    }
+
     [Fact]
     public async Task GivenDateFilters_WhenHandling_ThenCreatesExpressionWithDates()
     {

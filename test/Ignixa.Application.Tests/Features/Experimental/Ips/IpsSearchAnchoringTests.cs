@@ -86,6 +86,10 @@ public class IpsSearchAnchoringTests
             .ShouldBe(["Condition/ips-condition", "Observation/ips-observation"]);
         context.TenantId.ShouldBe(tenantId);
         context.FhirVersion.ShouldBe(version);
+        // Copilot review: IPS builds its own search options, so it must carry the lease's execution deadline itself.
+        var executed = execution.ReceivedCalls().SelectMany(call => call.GetArguments().OfType<SearchOptions>()).ToList();
+        executed.ShouldNotBeEmpty();
+        executed.ShouldAllBe(options => options.ExecutionDeadline != null);
     }
 
     [Theory]

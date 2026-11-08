@@ -125,12 +125,9 @@ public class DefaultMemberMatchStrategy : IMemberMatchStrategy
             ResourceType = KnownResourceTypes.Patient,
             Expression = combinedExpression,
             MaxItemCount = 10, // Limit to detect multiple matches
-            Total = TotalType.Accurate
+            Total = TotalType.Accurate,
+            ExecutionDeadline = _conformanceLease.EnsureRequestCanSearch(requestOriginated: true, context.IsBackgroundTask)
         };
-
-        _conformanceLease.EnsureRequestCanSearch(
-            requestOriginated: true,
-            context.IsBackgroundTask);
 
         var searchService = await _searchServiceFactory.GetSearchServiceAsync(context.TenantId, cancellationToken);
         var results = new List<SearchEntryResult>();

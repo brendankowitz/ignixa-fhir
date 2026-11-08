@@ -70,7 +70,7 @@ public class PatientEverythingHandler(
         // Get FHIR request context (populated by FhirRequestContextMiddleware)
         var context = contextAccessor.RequestContext
             ?? throw new InvalidOperationException("FHIR request context not available");
-        conformanceLease.EnsureRequestCanSearch(
+        var executionDeadline = conformanceLease.EnsureRequestCanSearch(
             requestOriginated: true,
             context.IsBackgroundTask);
 
@@ -107,6 +107,7 @@ public class PatientEverythingHandler(
             ResourceType = "Patient",
             Expression = patientEverythingExpression,
             MaxItemCount = Math.Clamp(request.Count ?? 50, 1, SearchOptionsBuilder.MaxAllowedItemCount),
+            ExecutionDeadline = executionDeadline,
             Sort = [], // _sort parameter not currently supported for $everything
             Include = [], // Not applicable for $everything (already includes everything)
             RevInclude = [], // Not applicable for $everything
