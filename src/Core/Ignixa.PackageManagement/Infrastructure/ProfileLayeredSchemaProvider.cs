@@ -8,6 +8,7 @@ using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.PackageManagement.Infrastructure.Snapshot;
 using Ignixa.PackageManagement.Models;
+using Ignixa.Validation.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -24,12 +25,13 @@ namespace Ignixa.PackageManagement.Infrastructure;
 /// base IG so the IG wins).
 /// </para>
 /// </summary>
-public sealed class ProfileLayeredSchemaProvider : IFhirSchemaProvider
+public sealed class ProfileLayeredSchemaProvider : IFhirSchemaProvider, IExtensionDefinitionInfo
 {
     private readonly IFhirSchemaProvider _base;
     private readonly Dictionary<string, IType> _profileTypes;
     private readonly Dictionary<string, IType> _profileIdentities;
     private readonly ConcurrentDictionary<string, IType> _snapshotTypes = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ExtensionDefinitionInfo> _extensionDefinitions = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Initializes a new instance with the given base provider and a collection of
@@ -100,6 +102,15 @@ public sealed class ProfileLayeredSchemaProvider : IFhirSchemaProvider
                     if (!string.IsNullOrEmpty(res.Version))
                     {
                         _profileIdentities[$"{res.Canonical}|{res.Version}"] = type;
+                    }
+
+                    if (type.Info.Name == "Extension" && ExtensionDefinitionReader.Read(resourceJson) is { } extension)
+                    {
+                        _extensionDefinitions[res.Canonical] = extension;
+                        if (!string.IsNullOrEmpty(res.Version))
+                        {
+                            _extensionDefinitions[$"{res.Canonical}|{res.Version}"] = extension;
+                        }
                     }
                 }
             }
@@ -173,6 +184,13 @@ public sealed class ProfileLayeredSchemaProvider : IFhirSchemaProvider
                 res.Canonical);
             return res.ResourceJson;
         }
+    }
+
+    /// <inheritdoc/>
+    public ExtensionDefinitionInfo? GetExtensionDefinition(string url)
+    {
+        ArgumentNullException.ThrowIfNull(url);
+        return _extensionDefinitions.GetValueOrDefault(url);
     }
 
     /// <inheritdoc/>

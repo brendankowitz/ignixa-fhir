@@ -177,45 +177,27 @@ public sealed class DiagnosticReportState : ScenarioState
         node["issued"] = context.CurrentTime.AddMinutes(_faker.Random.Int(5, 120)).ToString("o");
 
         // Set performer
-        // In all versions (STU3-R5), performer is a BackboneElement[] with actor (Reference).
-        // The role/function field differs: STU3 uses "role", R4+ uses "function" (optional in both).
+        // STU3 performer is a BackboneElement[] holding the Reference in "actor"; from R4 on it is Reference[] itself.
         var performers = new JsonArray();
+        var performerInBackbone = faker.SchemaProvider.Version == Ignixa.Abstractions.FhirVersion.Stu3;
 
         // Add practitioner reference if available
         if (context.CurrentPractitioner is not null)
         {
-            performers.Add(new JsonObject
-            {
-                ["actor"] = new JsonObject
-                {
-                    ["reference"] = $"Practitioner/{context.CurrentPractitioner.Id}"
-                }
-            });
+            performers.Add(Performer(new JsonObject { ["reference"] = $"Practitioner/{context.CurrentPractitioner.Id}" }, performerInBackbone));
         }
 
         // Add organization reference if available
         if (context.CurrentOrganization is not null)
         {
-            performers.Add(new JsonObject
-            {
-                ["actor"] = new JsonObject
-                {
-                    ["reference"] = $"Organization/{context.CurrentOrganization.Id}"
-                }
-            });
+            performers.Add(Performer(new JsonObject { ["reference"] = $"Organization/{context.CurrentOrganization.Id}" }, performerInBackbone));
         }
 
         // If no practitioner or organization, add display name
         if (performers.Count == 0)
         {
             var performerName = PerformerName ?? GeneratePerformerName(isImaging);
-            performers.Add(new JsonObject
-            {
-                ["actor"] = new JsonObject
-                {
-                    ["display"] = performerName
-                }
-            });
+            performers.Add(Performer(new JsonObject { ["display"] = performerName }, performerInBackbone));
         }
 
         node["performer"] = performers;
@@ -350,6 +332,9 @@ public sealed class DiagnosticReportState : ScenarioState
 
         return observation;
     }
+
+    private static JsonObject Performer(JsonObject reference, bool inBackbone) =>
+        inBackbone ? new JsonObject { ["actor"] = reference } : reference;
 
     #region Factory Methods
 

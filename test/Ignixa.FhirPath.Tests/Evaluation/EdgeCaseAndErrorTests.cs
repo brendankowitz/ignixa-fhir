@@ -217,31 +217,116 @@ public class EdgeCaseAndErrorTests
     }
 
     [Fact]
-    public void GivenInvalidRegex_WhenMatches_ThenReturnsEmpty()
+    public void GivenInvalidRegex_WhenMatches_ThenAnErrorIsSignalled()
     {
         // Arrange
         var expr = _parser.Parse("'test'.matches('[invalid(')");
         var root = CreateIntegerElement(0);
 
         // Act
-        var result = _evaluator.Evaluate(root, expr).ToList();
+        var exception = Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
 
         // Assert
-        Assert.Empty(result); // Invalid regex returns empty
+        Assert.Contains("matches()", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("[invalid(", exception.Message, StringComparison.Ordinal);
+        Assert.IsAssignableFrom<ArgumentException>(exception.InnerException);
     }
 
     [Fact]
-    public void GivenInvalidRegex_WhenReplaceMatches_ThenReturnsEmpty()
+    public void GivenInvalidRegex_WhenMatchesFull_ThenAnErrorIsSignalled()
+    {
+        // Arrange
+        var expr = _parser.Parse("'test'.matchesFull('[invalid(')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var exception = Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
+
+        // Assert
+        Assert.Contains("matchesFull()", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("[invalid(", exception.Message, StringComparison.Ordinal);
+        Assert.IsAssignableFrom<ArgumentException>(exception.InnerException);
+    }
+
+    [Fact]
+    public void GivenAnUnbalancedPattern_WhenMatchesFull_ThenAnErrorIsSignalled()
+    {
+        // Arrange: invalid on its own, but "^(?:a)|(b)$" would compile if the pattern were only validated once anchored
+        var expr = _parser.Parse("'xb'.matchesFull('a)|(b')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var exception = Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
+
+        // Assert
+        Assert.Contains("matchesFull()", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("'a)|(b'", exception.Message, StringComparison.Ordinal);
+        Assert.IsAssignableFrom<ArgumentException>(exception.InnerException);
+    }
+
+    [Fact]
+    public void GivenATrailingCommentUnderTheXFlag_WhenMatchesFull_ThenTheAnchorsStillApply()
+    {
+        // Arrange
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var full = _evaluator.Evaluate(root, _parser.Parse("'abc'.matchesFull('abc # comment', 'x')")).Single().Value;
+        var partial = _evaluator.Evaluate(root, _parser.Parse("'abcd'.matchesFull('abc # comment', 'x')")).Single().Value;
+
+        // Assert
+        Assert.Equal(true, full);
+        Assert.Equal(false, partial);
+    }
+
+    [Fact]
+    public void GivenAnInlineCommentModePattern_WhenMatchesFull_ThenTheAnchorsStillApply()
+    {
+        // Arrange
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var full = _evaluator.Evaluate(root, _parser.Parse("'abc'.matchesFull('(?x)abc # c')")).Single().Value;
+        var partial = _evaluator.Evaluate(root, _parser.Parse("'abcd'.matchesFull('(?x)abc # c')")).Single().Value;
+
+        // Assert
+        Assert.Equal(true, full);
+        Assert.Equal(false, partial);
+    }
+
+    [Fact]
+    public void GivenInvalidRegex_WhenReplaceMatches_ThenAnErrorIsSignalled()
     {
         // Arrange
         var expr = _parser.Parse("'test'.replaceMatches('[invalid(', 'x')");
         var root = CreateIntegerElement(0);
 
         // Act
-        var result = _evaluator.Evaluate(root, expr).ToList();
+        var exception = Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
 
         // Assert
-        Assert.Empty(result); // Invalid regex returns empty
+        Assert.Contains("replaceMatches()", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("[invalid(", exception.Message, StringComparison.Ordinal);
+        Assert.IsAssignableFrom<ArgumentException>(exception.InnerException);
+    }
+
+    [Fact]
+    public void GivenValidRegex_WhenMatchesFullAndReplaceMatches_ThenBehaviorIsUnchanged()
+    {
+        // Arrange
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var full = _evaluator.Evaluate(root, _parser.Parse("'abc'.matchesFull('a.c')")).Single().Value;
+        var partial = _evaluator.Evaluate(root, _parser.Parse("'abc'.matchesFull('a.')")).Single().Value;
+        var replaced = _evaluator.Evaluate(root, _parser.Parse("'abc'.replaceMatches('b', 'x')")).Single().Value;
+        var emptyPattern = _evaluator.Evaluate(root, _parser.Parse("'abc'.replaceMatches('', 'x')")).Single().Value;
+
+        // Assert
+        Assert.Equal(true, full);
+        Assert.Equal(false, partial);
+        Assert.Equal("axc", replaced);
+        Assert.Equal("abc", emptyPattern);
     }
 
     #endregion

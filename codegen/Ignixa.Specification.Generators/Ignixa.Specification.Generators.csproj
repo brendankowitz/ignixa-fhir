@@ -7,8 +7,8 @@
     <LangVersion>latest</LangVersion>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
-    <!-- Console application for generating C# IStructureDefinitionSummaryProvider from FHIR packages -->
-    <Description>Console application for generating C# IStructureDefinitionSummaryProvider from FHIR packages</Description>
+    <!-- Console application for generating Ignixa's checked-in FHIR specification artifacts from FHIR packages -->
+    <Description>Console application for generating Ignixa's checked-in FHIR specification artifacts from FHIR packages</Description>
   </PropertyGroup>
 
   <ItemGroup>

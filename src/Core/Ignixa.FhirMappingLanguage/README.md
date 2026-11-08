@@ -165,6 +165,12 @@ var evaluator = new MappingEvaluator(options);
 
 **Default Configuration**: `MappingEvaluatorOptions.Default` provides recommended security settings suitable for production use.
 
+**Timeouts and cancellation**: `TransformTimeout` bounds each `Execute` or `ExecuteGroup` call; a call that runs longer throws `MappingExecutionException` with code `TRANSFORM_TIMEOUT`. The overloads that take a `CancellationToken` stop when it is cancelled (`OperationCanceledException`). Both are checked before every rule, in strict and lenient mode alike (lenient mode never collects them as errors). `FhirPathTimeout`, `MaxMapSizeBytes` and `MaxInputResourceSizeBytes` are not enforced by the evaluator; a caller that needs them checks them itself.
+
+```csharp
+evaluator.ExecuteGroup(map, "PatientToBundle", context, cancellationToken);
+```
+
 ### Error Handling Modes
 
 The library supports two error handling modes:

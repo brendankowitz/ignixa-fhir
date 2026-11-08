@@ -54,7 +54,7 @@ public class StructureDefinitionSchemaBuilder
     /// </summary>
     /// <param name="typeDefinition">The type definition containing element metadata.</param>
     /// <param name="schema">The schema used to resolve type references and build nested schemas.</param>
-    /// <param name="terminologyService">Optional terminology service for binding validation. If null, binding checks are not created.</param>
+    /// <param name="terminologyService">Optional terminology service for binding validation. If null, only required bindings get a check, for the text-only rule that needs no terminology.</param>
     /// <param name="validResourceTypes">Optional set of valid FHIR resource type names for resourceType validation. If provided, a ResourceTypeValidationCheck is added.</param>
     /// <param name="validationSchemaResolver">Optional validation schema resolver for contained resource validation. If provided, a ContainedResourceCheck is added for resources.</param>
     /// <returns>A ValidationSchema with checks derived from the type definition metadata.</returns>
@@ -173,6 +173,7 @@ public class StructureDefinitionSchemaBuilder
                 var elementName = e.Info.IsChoiceElement && e.Info.Name.EndsWith("[x]", StringComparison.Ordinal)
                     ? e.Info.Name[..^3]
                     : e.Info.Name;
+                var exactName = !e.Info.IsChoiceElement && !elementName.EndsWith("[x]", StringComparison.Ordinal);
 
                 // Try to get explicit cardinality from extended metadata
                 if (e is ITypeExtended extended)
@@ -181,14 +182,14 @@ public class StructureDefinitionSchemaBuilder
                     int? max = extended.Max == "*" ? null
                         : int.TryParse(extended.Max, out var parsedMax) ? parsedMax
                         : (int?)null;
-                    return new CardinalityCheck(elementName, min, max);
+                    return new CardinalityCheck(elementName, min, max) { ExactName = exactName };
                 }
 
                 // Fallback to inferred cardinality
                 return new CardinalityCheck(
                     elementName,
                     min: e.IsRequired ? 1 : 0,
-                    max: e.IsCollection ? (int?)null : 1);
+                    max: e.IsCollection ? (int?)null : 1) { ExactName = exactName };
             });
         universalChecks.AddRange(cardinalityChecks);
 
@@ -199,7 +200,7 @@ public class StructureDefinitionSchemaBuilder
         // but the actual concrete type depends on the runtime data (e.g., effectivePeriod is a Period object)
         var typeChecks = elements
             .Where(e => e.Info.IsPrimitive && !e.Info.IsChoiceElement)
-            .Select(e => new TypeCheck(e.Info.Name, GetTypeName(e)));
+            .Select(e => new TypeCheck(e.Info.Name, GetTypeName(e)) { ExactName = true });
         universalChecks.AddRange(typeChecks);
 
         // Tier 2 (Spec): Schema-driven checks from StructureDefinition
@@ -254,16 +255,30 @@ public class StructureDefinitionSchemaBuilder
         // Extract reference format checks - check the type name, not element name
         // Skip choice elements: their DefaultTypeName may be Reference but the actual type
         // depends on runtime data (e.g., medication[x] could be medicationCodeableConcept)
-        var referenceChecks = elements
-            .Where(e => !e.Info.IsChoiceElement && GetTypeName(e) == "Reference")
-            .Select(e => new ReferenceFormatCheck(e.Info.Name));
-        specChecks.AddRange(referenceChecks);
+        var referenceElements = elements.Where(e => !e.Info.IsChoiceElement && GetTypeName(e) == "Reference").ToList();
+        specChecks.AddRange(referenceElements.Select(e => new ReferenceFormatCheck(e.Info.Name) { ExactName = true }));
 
-        // Extract coding structure checks - check the type name, not element name
-        // Skip choice elements for the same reason as reference checks
+        // Reference target types (targetProfile): which resource types each Reference element may point at.
+        var isResourceType = ResourceTypePredicate(schema);
+        specChecks.AddRange(referenceElements
+            .Select(e => BuildReferenceTargetCheck(e.Info.Name, e, schema, isResourceType, "Reference"))
+            .OfType<IValidationCheck>());
+
+        // A CodeableReference (R4B and later) carries its targetProfile on the element; its inner
+        // reference is checked against it.
+        specChecks.AddRange(elements
+            .Where(e => !e.Info.IsChoiceElement && GetTypeName(e) == "CodeableReference")
+            .Select(e => BuildReferenceTargetCheck(e.Info.Name, e, schema, isResourceType, "CodeableReference"))
+            .OfType<IValidationCheck>());
+
+        // Extract coding structure checks - check the type name, not element name. The declared
+        // type tells a CodeableConcept (text-only allowed) from a Coding. A CodeableConcept's own
+        // schema leaves its coding element to the check on the element holding the concept, so each
+        // coding is checked once. Skip choice elements for the same reason as reference checks.
         var codingChecks = elements
             .Where(e => !e.Info.IsChoiceElement && GetTypeName(e) is "CodeableConcept" or "Coding")
-            .Select(e => new CodingStructureCheck(e.Info.Name));
+            .Where(e => !(typeDefinition.Info.Name == "CodeableConcept" && e.Info.Name == "coding"))
+            .Select(e => new CodingStructureCheck(e.Info.Name, GetTypeName(e)) { ExactName = true });
         specChecks.AddRange(codingChecks);
 
         // Extract choice element checks (value[x] pattern)
@@ -320,23 +335,25 @@ public class StructureDefinitionSchemaBuilder
             });
         specChecks.AddRange(patternChecks);
 
-        // Extract binding checks from ITypeExtended (only if terminology service is provided)
-        if (terminologyService != null)
-        {
-            var bindingChecks = elements
-                .Where(e => e is ITypeExtended extended && extended.Binding != null)
-                .Select(e =>
-                {
-                    var extended = (ITypeExtended)e;
-                    var binding = extended.Binding!;
-                    return new BindingCheck(
-                        e.Info.Name,
-                        binding.ValueSet ?? string.Empty,
-                        binding.Strength,
-                        terminologyService);
-                });
-            specChecks.AddRange(bindingChecks);
-        }
+        // Binding checks: every binding with a terminology service; without one only a required binding, whose text-only
+        // rule (binding-required-text-only) needs no terminology.
+        var bindingChecks = elements
+            .Where(e => e is ITypeExtended { Binding: { } binding }
+                && (terminologyService != null || string.Equals(binding.Strength, "Required", StringComparison.OrdinalIgnoreCase)))
+            .Select(e =>
+            {
+                var extended = (ITypeExtended)e;
+                var binding = extended.Binding!;
+                // A choice element is bound by its "[x]" name, through its coded variants; generated core
+                // metadata may name it by its base name alone.
+                return new BindingCheck(
+                    e.Info.IsChoiceElement && !e.Info.Name.EndsWith("[x]", StringComparison.Ordinal) ? e.Info.Name + "[x]" : e.Info.Name,
+                    binding.ValueSet ?? string.Empty,
+                    binding.Strength,
+                    terminologyService,
+                    e.Info.IsChoiceElement ? null : GetTypeName(e));
+            });
+        specChecks.AddRange(bindingChecks);
 
         // Extract nested complex type checks (BackboneElement, complex datatypes)
         // Push the current type onto the cycle guard so any recursive Build via
@@ -406,6 +423,20 @@ public class StructureDefinitionSchemaBuilder
             specChecks.Add(new ContainedResourceCheck(validationSchemaResolver));
         }
 
+        // A resource that carries other resources (a Bundle's entries, a Parameters' resources): each is
+        // validated against its own schema (see EntryResourceCheck).
+        if (isResource && validationSchemaResolver is not null && CarriesResources(typeDefinition, schema))
+        {
+            specChecks.Add(new EntryResourceCheck(validationSchemaResolver));
+        }
+
+        // Every extension of the resource, at any depth of nesting: as the Extension datatype at Spec,
+        // and against its loaded definition at Full (see ExtensionCheck).
+        if (isResource && schema.GetTypeDefinition("Extension") is { } extensionType)
+        {
+            specChecks.Add(new ExtensionCheck(extensionType, schema, terminologyService, _parser, _logger));
+        }
+
         // Tier 3 (Profile): Advanced checks - FHIRPath invariants, slicing, advanced terminology
 
         // Extract FHIRPath invariant checks from ITypeExtended
@@ -440,12 +471,12 @@ public class StructureDefinitionSchemaBuilder
             }
         }
 
-        // Choice-variant nested validation (Full tier): a complex value[x] variant (e.g.
-        // valueAttachment) is skipped by ChoiceElementCheck, which only recurses into primitive
-        // variants. Route each complex variant through its datatype's own schema — reusing
-        // NestedComplexTypeCheck against the concrete variant name — so nested rules (base64Binary on
-        // Attachment.data, cardinality, shape) apply. A no-op when that variant is absent. Profile
-        // tier keeps Compatibility depth unchanged.
+        // Choice-variant nested validation (Spec tier, like the non-choice NestedComplexTypeCheck): a
+        // complex value[x] variant (e.g. valueAttachment) is skipped by ChoiceElementCheck, which only
+        // recurses into primitive variants. Route each complex variant through its datatype's own
+        // schema so nested rules (base64Binary on Attachment.data, cardinality, shape, bindings) apply,
+        // and give Reference/CodeableConcept/Coding variants the dedicated checks their non-choice
+        // counterparts get. A no-op when that variant is absent.
         //
         // Seed the cycle guard with the current type first: the `finally` above cleared
         // _activeTypeNames, and BuildChoiceVariantChecks re-enters BuildSchema per complex variant.
@@ -463,8 +494,8 @@ public class StructureDefinitionSchemaBuilder
         {
             foreach (var choiceElement in elements.Where(e => e.Info.IsChoiceElement))
             {
-                profileChecks.AddRange(BuildChoiceVariantChecks(
-                    choiceElement, schema, terminologyService, _logger, _parser));
+                specChecks.AddRange(BuildChoiceVariantChecks(
+                    choiceElement, schema, terminologyService, isResourceType, _logger, _parser));
             }
         }
         finally
@@ -525,31 +556,49 @@ public class StructureDefinitionSchemaBuilder
     /// human text "If there are more than one enableWhen"); corrected in R4B/R5. Without the fix an
     /// item with exactly two enableWhen and no enableBehavior is wrongly accepted.
     /// </para>
+    /// <para>
+    /// ref-1 and bdl-8 are corrected as the HL7 validator's <c>FHIRPathExpressionFixer</c> corrects them. ref-1 shipped in
+    /// STU3, R4 and R4B without a guard for an absent <c>reference</c>, so a Reference with only an identifier or a display
+    /// evaluates to empty, which fails: R4B's form is wrapped in <c>reference.exists() implies (...)</c>, as R5 published it;
+    /// R4's also accepts <c>#</c> (the container, or the resource itself); STU3's also reads the contained pool from
+    /// <c>%rootResource</c>, since from inside a contained resource <c>%resource</c> has none. STU3's and R4's bdl-8 fail an entry
+    /// without a <c>fullUrl</c>, which R4B guarded with <c>fullUrl.exists() implies</c>. (A Reference's own invariants run
+    /// since Reference is validated as a nested datatype.)
+    /// </para>
     /// </summary>
-    private static readonly IReadOnlyDictionary<string, (string From, string To)> ConstraintExpressionErrata =
-        new Dictionary<string, (string From, string To)>(StringComparer.Ordinal)
+    private static readonly IReadOnlyDictionary<(string Key, string From), string> ConstraintExpressionErrata =
+        new Dictionary<(string Key, string From), string>
         {
-            ["que-12"] = (
-                "enableWhen.count() > 2 implies enableBehavior.exists()",
-                "enableWhen.count() >= 2 implies enableBehavior.exists()"),
+            [("que-12", "enableWhen.count() > 2 implies enableBehavior.exists()")] =
+                "enableWhen.count() >= 2 implies enableBehavior.exists()",
+            // STU3
+            [("ref-1", "reference.startsWith('#').not() or (reference.substring(1).trace('url') in %resource.contained.id.trace('ids'))")] =
+                "reference.exists() implies (reference = '#' or (reference.startsWith('#').not() or (reference.substring(1).trace('url') in %rootResource.contained.id.trace('ids'))))",
+            // R4
+            [("ref-1", "reference.startsWith('#').not() or (reference.substring(1).trace('url') in %rootResource.contained.id.trace('ids'))")] =
+                "reference.exists() implies (reference = '#' or (reference.startsWith('#').not() or (reference.substring(1).trace('url') in %rootResource.contained.id.trace('ids'))))",
+            // R4B
+            [("ref-1", "reference.startsWith('#').not() or (reference.substring(1).trace('url') in %rootResource.contained.id.trace('ids')) or (reference='#' and %rootResource!=%resource)")] =
+                "reference.exists() implies (reference.startsWith('#').not() or (reference.substring(1).trace('url') in %rootResource.contained.id.trace('ids')) or (reference='#' and %rootResource!=%resource))",
+            // STU3 and R4 (R4B and later publish the guarded form)
+            [("bdl-8", "fullUrl.contains('/_history/').not()")] =
+                "fullUrl.exists() implies fullUrl.contains('/_history/').not()",
         };
 
     /// <summary>
     /// Applies a known-erratum correction to a constraint's FHIRPath expression, if one is registered
-    /// for its key and the source expression matches exactly. Returns the original constraint
-    /// otherwise.
+    /// for its key and exact source expression. Returns the original constraint otherwise.
     /// </summary>
     private static IConstraint NormalizeConstraint(IConstraint constraint)
     {
-        if (ConstraintExpressionErrata.TryGetValue(constraint.Key, out var erratum)
-            && string.Equals(constraint.Expression, erratum.From, StringComparison.Ordinal))
+        if (ConstraintExpressionErrata.TryGetValue((constraint.Key, constraint.Expression), out var corrected))
         {
             return new Ignixa.Abstractions.ConstraintDefinition
             {
                 Key = constraint.Key,
                 Severity = constraint.Severity,
                 Human = constraint.Human,
-                Expression = erratum.To,
+                Expression = corrected,
                 Xpath = constraint.Xpath,
             };
         }
@@ -798,11 +847,13 @@ public class StructureDefinitionSchemaBuilder
                     {
                         nestedTypeDefinition = schema.GetTypeDefinition(declaredType) ?? nestedTypeDefinition;
                     }
-                    if (nestedTypeDefinition == null
+                    // A core target found only as an inline element without children (Parameters.part's
+                    // #Parameters.parameter) is a generated backbone; its children live on the named type.
+                    if ((nestedTypeDefinition == null || nestedTypeDefinition.Children.Count == 0)
                         && (snapshotRoot as ITypeExtended)?.CanonicalUrl == null)
                     {
                         string generatedName = string.Join('.', reference[1..].Split('.').Select(CapitalizeFirst));
-                        nestedTypeDefinition = schema.GetTypeDefinition(generatedName);
+                        nestedTypeDefinition = schema.GetTypeDefinition(generatedName) ?? nestedTypeDefinition;
                     }
                 }
             }
@@ -856,9 +907,11 @@ public class StructureDefinitionSchemaBuilder
             return NestedTypeResolution.NotNested;
         }
 
-        // Special types have dedicated checks; xhtml stores content directly; "Resource" is a
-        // contained resource handled by ContainedResourceCheck.
-        if (typeName is "Reference" or "CodeableConcept" or "Coding" or "Extension" or "xhtml" or "Resource")
+        // Extensions are validated by ExtensionCheck; xhtml stores content directly; "Resource" is a
+        // contained or entry resource, validated against its own schema (ContainedResourceCheck,
+        // EntryResourceCheck). Reference, CodeableConcept and Coding are nested like any datatype, in
+        // addition to the dedicated checks on the element holding them.
+        if (typeName is "Extension" or "xhtml" or "Resource")
         {
             return NestedTypeResolution.NotNested;
         }
@@ -1030,16 +1083,18 @@ public class StructureDefinitionSchemaBuilder
     }
 
     /// <summary>
-    /// Builds nested-schema checks for the complex variants of a choice element. Primitive variants
-    /// are handled by <see cref="ChoiceElementCheck"/>; specially-handled datatypes (Reference,
-    /// CodeableConcept, Coding, Extension, Resource, xhtml) are left to their own dedicated checks to
-    /// keep the newly-lit validation surface narrow. Each remaining complex variant yields a
-    /// <see cref="NestedComplexTypeCheck"/> targeting the concrete variant name (e.g. "valueAttachment").
+    /// Builds the checks for the variants of a choice element, mirroring what a non-choice element of
+    /// the variant's type gets. Primitive variants are handled by <see cref="ChoiceElementCheck"/>.
+    /// Reference, CodeableReference, CodeableConcept and Coding variants get the dedicated checks
+    /// (reference format and target type, coding structure); Extension, Resource and xhtml variants are
+    /// left to their own handling. Every complex variant, those included, yields a
+    /// <see cref="ChoiceVariantNestedCheck"/> targeting the concrete variant name (e.g. "valueAttachment").
     /// </summary>
     private static IEnumerable<IValidationCheck> BuildChoiceVariantChecks(
         IType choiceElement,
         ISchema schema,
         ITerminologyService? terminologyService,
+        Func<string, bool> isResourceType,
         ILogger<StructureDefinitionSchemaBuilder>? logger,
         FhirPathParser? parser)
     {
@@ -1059,10 +1114,33 @@ public class StructureDefinitionSchemaBuilder
         foreach (var typeReference in extended.Types)
         {
             var typeName = typeReference.Code;
-            if (string.IsNullOrEmpty(typeName)
-                || !seenTypes.Add(typeName)
-                || IsPrimitiveType(typeName)
-                || typeName is "Reference" or "CodeableConcept" or "Coding" or "Extension" or "xhtml" or "Resource"
+            if (string.IsNullOrEmpty(typeName) || !seenTypes.Add(typeName))
+            {
+                continue;
+            }
+
+            var variantName = baseName + CapitalizeFirst(typeName);
+            switch (typeName)
+            {
+                case "Reference" or "CodeableReference":
+                    if (typeName == "Reference")
+                    {
+                        yield return new ReferenceFormatCheck(variantName) { ExactName = true };
+                    }
+
+                    if (BuildReferenceTargetCheck(variantName, choiceElement, schema, isResourceType, typeName) is { } targetCheck)
+                    {
+                        yield return targetCheck;
+                    }
+
+                    break;
+                case "CodeableConcept" or "Coding":
+                    yield return new CodingStructureCheck(variantName, typeName) { ExactName = true };
+                    break;
+            }
+
+            if (IsPrimitiveType(typeName)
+                || typeName is "Extension" or "xhtml" or "Resource"
                 || (visiting is not null && visiting.Contains(typeName)))
             {
                 continue;
@@ -1077,10 +1155,103 @@ public class StructureDefinitionSchemaBuilder
             var nestedSchema = new StructureDefinitionSchemaBuilder(parser, logger)
                 .BuildSchema(typeDefinition, schema, terminologyService);
 
-            yield return new ChoiceVariantNestedCheck(
-                baseName + CapitalizeFirst(typeName), isCollection, nestedSchema);
+            yield return new ChoiceVariantNestedCheck(variantName, isCollection, nestedSchema);
         }
     }
+
+    /// <summary>
+    /// The target-type check for a Reference element (or choice variant), or null when the element allows any resource.
+    /// The allowed types are the element's <see cref="ITypeExtended.ReferenceTargets"/> that name resource types, and the
+    /// resource type each <c>targetProfile</c> constrains: a core one by its name, another through the loaded definition.
+    /// A target profile that is not loaded leaves what the element allows unknown, which the check reports per reference.
+    /// </summary>
+    private static ReferenceTargetCheck? BuildReferenceTargetCheck(string elementName, IType element, ISchema schema, Func<string, bool> isResourceType, string typeCode)
+    {
+        if (element is not ITypeExtended extended)
+        {
+            return null;
+        }
+
+        var allowed = new HashSet<string>(StringComparer.Ordinal);
+        var unloaded = new List<string>();
+        foreach (var target in extended.ReferenceTargets)
+        {
+            if (target == "Resource")
+            {
+                return null;
+            }
+
+            if (isResourceType(target))
+            {
+                allowed.Add(target);
+            }
+        }
+
+        foreach (var targetProfile in extended.Types.Where(t => t.Code == typeCode).Select(t => t.TargetProfile).OfType<string>())
+        {
+            switch (TargetProfileType(targetProfile, schema, isResourceType))
+            {
+                case "Resource":
+                    return null;
+                case { } type:
+                    allowed.Add(type);
+                    break;
+                default:
+                    unloaded.Add(targetProfile);
+                    break;
+            }
+        }
+
+        return allowed.Count == 0 && unloaded.Count == 0
+            ? null
+            : new ReferenceTargetCheck(elementName, allowed, unloaded, isResourceType, typeCode == "CodeableReference" ? "reference" : null);
+    }
+
+    /// <summary>The resource type a target profile canonical constrains (or <c>Resource</c> for any), or null when it cannot be told.</summary>
+    private static string? TargetProfileType(string canonical, ISchema schema, Func<string, bool> isResourceType)
+    {
+        const string corePrefix = "http://hl7.org/fhir/StructureDefinition/";
+        int pipe = canonical.IndexOf('|', StringComparison.Ordinal);
+        string url = pipe < 0 ? canonical : canonical[..pipe];
+        if (url.StartsWith(corePrefix, StringComparison.Ordinal) && url[corePrefix.Length..] is { Length: > 0 } name && !name.Contains('/', StringComparison.Ordinal)
+            && (name == "Resource" || isResourceType(name)))
+        {
+            return name;
+        }
+
+        string? constrained = (schema.GetTypeDefinition(canonical) ?? schema.GetTypeDefinition(url))?.Info.Name;
+        return constrained is not null && (constrained == "Resource" || isResourceType(constrained)) ? constrained : null;
+    }
+
+    /// <summary>
+    /// Whether instances of <paramref name="typeDefinition"/> can carry resources outside <c>contained</c>: an element of
+    /// type Resource within a few levels (<c>Bundle.entry.resource</c>, <c>Bundle.entry.response.outcome</c>,
+    /// <c>Parameters.parameter.resource</c>; a parameter's parts reuse the parameter's definition).
+    /// </summary>
+    private static bool CarriesResources(IType typeDefinition, ISchema schema)
+    {
+        return Carries(typeDefinition, depth: 0);
+
+        bool Carries(IType type, int depth) =>
+            depth < 4 && type.Children.Any(child => child.Info.Name != "contained" && GetTypeName(child) switch
+            {
+                "Resource" => true,
+
+                // A backbone element, inline or generated as its own type (Bundle.Entry).
+                "BackboneElement" or "Element" => child.Children.Count > 0
+                    ? Carries(child, depth + 1)
+                    : schema.GetTypeDefinition($"{type.Info.Name}.{CapitalizeFirst(child.Info.Name)}") is { } generated && Carries(generated, depth + 1),
+                var backbone when backbone.Contains('.', StringComparison.Ordinal) && schema.GetTypeDefinition(backbone) is { } definition
+                    => Carries(definition, depth + 1),
+                _ => false,
+            });
+    }
+
+    /// <summary>Whether a name is a resource type of the schema's FHIR version.</summary>
+    private static Func<string, bool> ResourceTypePredicate(ISchema schema) =>
+        schema is IFhirSchemaProvider provider
+            ? provider.ResourceTypeNames.Contains
+            : name => schema.GetTypeDefinition(name)?.Info.IsResource == true;
 
     /// <summary>
     /// Capitalizes the first character of a string.

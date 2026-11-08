@@ -5,8 +5,9 @@ namespace Ignixa.Search.Sql;
 
 /// <summary>
 /// A compiled search: the SQL text, its bound parameters, and the plan it came from. Read
-/// <see cref="Query"/> to pick a result-row reader — <c>Query.Includes</c> and <c>Query.Projection</c>
-/// determine the column shape.
+/// <see cref="Query"/> to pick a result-row reader: a <c>Query.CountOnly</c> or <c>Query.IncludesCountOnly</c>
+/// plan returns a single <c>bigint</c>; otherwise <c>Query.Includes</c> and <c>Query.Projection</c> determine
+/// the column shape.
 /// </summary>
 public sealed record CompiledSearch(
     string Sql,

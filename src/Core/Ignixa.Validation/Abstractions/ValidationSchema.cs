@@ -192,12 +192,14 @@ public sealed class ValidationSchema
     {
         ArgumentNullException.ThrowIfNull(state);
 
-        var results = new List<ValidationResult>();
+        // Equivalent to ValidationResult.Combine over every check's result (valid unless an issue is an error or fatal),
+        // without a list of results per element: this runs once per element of every resource validated.
+        List<ValidationIssue>? issues = null;
 
         // Universal checks always run (all depths)
         foreach (var check in _universalChecks)
         {
-            results.Add(check.Validate(element, settings, state));
+            Collect(check.Validate(element, settings, state), ref issues);
         }
 
         // Spec checks: run for Spec, Full, and Compatibility depths
@@ -205,7 +207,7 @@ public sealed class ValidationSchema
         {
             foreach (var check in _specChecks)
             {
-                results.Add(check.Validate(element, settings, state));
+                Collect(check.Validate(element, settings, state), ref issues);
             }
         }
 
@@ -215,7 +217,7 @@ public sealed class ValidationSchema
         {
             foreach (var check in _profileChecks)
             {
-                results.Add(check.Validate(element, settings, state));
+                Collect(check.Validate(element, settings, state), ref issues);
             }
         }
         else if (settings.Depth == ValidationDepth.Compatibility)
@@ -224,11 +226,28 @@ public sealed class ValidationSchema
             {
                 if (check is ICompatibilityConformanceCheck)
                 {
-                    results.Add(check.Validate(element, settings, state));
+                    Collect(check.Validate(element, settings, state), ref issues);
                 }
             }
         }
 
-        return ValidationResult.Combine(results);
+        if (issues is null)
+        {
+            return ValidationResult.Success();
+        }
+
+        var hasErrors = issues.Exists(i => i.Severity is IssueSeverity.Error or IssueSeverity.Fatal);
+        return new ValidationResult(isValid: !hasErrors, issues: issues);
+    }
+
+    private static void Collect(ValidationResult result, ref List<ValidationIssue>? issues)
+    {
+        if (result.Issues.Count == 0)
+        {
+            return;
+        }
+
+        issues ??= [];
+        issues.AddRange(result.Issues);
     }
 }

@@ -21,6 +21,18 @@ namespace Ignixa.Validation.Checks;
 public class ReferenceFormatCheck : IValidationCheck
 {
     private readonly string _fieldName;
+    private readonly string? _shadowName;
+
+    /// <summary>
+    /// Gets a value indicating whether the element name is exact - not a choice element's base name (<c>value</c>), whose
+    /// children are its concrete variants - so an absent element can be passed from the raw JSON without a child lookup.
+    /// Set by the schema builder, which knows; false for any other caller.
+    /// </summary>
+    internal bool ExactName
+    {
+        get => _shadowName is not null;
+        init => _shadowName = value ? $"_{_fieldName}" : null;
+    }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ReferenceFormatCheck"/> class.
@@ -43,6 +55,11 @@ public class ReferenceFormatCheck : IValidationCheck
         var issues = new List<ValidationIssue>();
 
         // Get all instances of this Reference field (may be array)
+        if (_shadowName is not null && RawMembers.CertainlyAbsent(element, _fieldName, _shadowName))
+        {
+            return ValidationResult.Success();
+        }
+
         var fieldNodes = element.Children(_fieldName);
         foreach (var fieldNode in fieldNodes)
         {
@@ -75,10 +92,7 @@ public class ReferenceFormatCheck : IValidationCheck
 
         if (!IsValidReferenceFormat(reference))
         {
-            issues.Add(ValidationIssue.InvariantFailure(
-                "ref-1",
-                $"Reference '{reference}' is not a valid FHIR reference format",
-                referenceChild.Location));
+            issues.Add(ValidationIssue.FromTemplate(IssueSeverity.Error, "ref-1", referenceChild.Location, IssueTemplates.ReferenceFormat, reference));
         }
     }
 

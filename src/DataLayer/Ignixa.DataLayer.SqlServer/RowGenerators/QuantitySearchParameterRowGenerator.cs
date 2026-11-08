@@ -108,6 +108,10 @@ public class QuantitySearchParameterRowGenerator : ISearchParameterRowGenerator
                     continue;
                 }
 
+                // Checked before the lookup, which would create the over-wide code on demand and fail the write.
+                if (!string.IsNullOrEmpty(quantityValue.Code) && !QuantityCodeColumnWidth.Fit(quantityValue.Code, searchIndex.SearchParameter, resource, logger))
+                    continue;
+
                 int quantityCodeId;
                 if (string.IsNullOrEmpty(quantityValue.Code))
                 {
@@ -119,9 +123,10 @@ public class QuantitySearchParameterRowGenerator : ISearchParameterRowGenerator
                 }
                 else
                 {
+                    // The length, never the code: a Quantity's free-text unit is indexed as one and may be patient-entered.
                     logger.LogWarning(
-                        "QuantityCodeId not found in cache for {Code} while indexing {ResourceType}/{ResourceId} -- row skipped",
-                        quantityValue.Code, resource.ResourceType, resource.ResourceId);
+                        "QuantityCodeId not found in cache for a code of {CodeLength} characters while indexing {ResourceType}/{ResourceId} -- row skipped",
+                        quantityValue.Code.Length, resource.ResourceType, resource.ResourceId);
                     continue;
                 }
 

@@ -26,8 +26,17 @@ public class ReferenceTokenLoweringRuleTests
             systemIds: systemIds));
 
     private static SearchParameterInfo CompositeParameter()
+        => CompositeParameter(SearchParamType.Reference, SearchParamType.Token);
+
+    // The composite declares its component types in order; the rule takes each slot's value from the position that
+    // declares that slot's kind.
+    private static SearchParameterInfo CompositeParameter(SearchParamType first, SearchParamType second)
         => new("relatesto", "relatesto", SearchParamType.Composite,
-            new Uri("http://example.org/fhir/SearchParameter/DocumentReference-relatesto"));
+            new Uri("http://example.org/fhir/SearchParameter/DocumentReference-relatesto"),
+            [
+                new SearchParameterComponentInfo { ResolvedSearchParameter = ComponentParameter("first", first) },
+                new SearchParameterComponentInfo { ResolvedSearchParameter = ComponentParameter("second", second) },
+            ]);
 
     private static SearchParameterInfo ComponentParameter(string code, SearchParamType type)
         => new(code, code, type, new Uri($"http://example.org/fhir/SearchParameter/DocumentReference-{code}"));
@@ -86,10 +95,10 @@ public class ReferenceTokenLoweringRuleTests
     }
 
     [Fact]
-    public void GivenATokenComponentThenALocalReferenceComponent_WhenLowered_ThenStillFindsRolesByType()
+    public void GivenATokenFirstDeclaration_WhenLoweredInDeclaredOrder_ThenEachSlotTakesTheValueAtItsDeclaredPosition()
     {
-        // Arrange — swapped order proves role assignment is type-based, not positional
-        var composite = CompositeParameter();
+        // Arrange — guard: a definition that declares token then reference; the table's column order does not change
+        var composite = CompositeParameter(SearchParamType.Token, SearchParamType.Reference);
         var components = new[] { TokenComponent("code"), ReferenceComponent("target") };
 
         // Act
@@ -172,5 +181,38 @@ public class ReferenceTokenLoweringRuleTests
         var codeEqual = tokenAnd.Right.ShouldBeOfType<Predicate.Equal>();
         codeEqual.Column.Column.ShouldBe("Code2");
         codeEqual.Value.Value.ShouldBe("replaces");
+    }
+
+    [Theory]
+    [InlineData(SearchParamType.Reference, SearchParamType.Token)]
+    [InlineData(SearchParamType.Token, SearchParamType.Reference)]
+    public void GivenValuesInTheOppositeOrderToTheDeclaration_WhenLowered_ThenNothingCanMatch(SearchParamType first, SearchParamType second)
+    {
+        // Arrange — the binder types a value by its shape, so a swapped query (relationship=sys|replaces$DocumentReference/dr0
+        // against a reference-first definition) arrives with a reference at the token position
+        var composite = CompositeParameter(first, second);
+        SearchParameterPredicateExpression[] swapped = first == SearchParamType.Reference
+            ? [TokenComponent("code"), ReferenceComponent("target")]
+            : [ReferenceComponent("target"), TokenComponent("code")];
+
+        // Act
+        var cte = ReferenceTokenLoweringRule.Lower(composite, swapped, ContextResolving(composite, 404, "DocumentReference", 55), 55);
+
+        // Assert
+        cte.Table.TableName.ShouldBe("ReferenceTokenCompositeSearchParam");
+        cte.SearchParamId.ShouldBe((short)404);
+        cte.Predicate.ShouldBeOfType<Predicate.False>().Reason.ShouldNotBeNull().ShouldContain("relatesto");
+    }
+
+    [Fact]
+    public void GivenACompositeThatDeclaresNoReferenceComponent_WhenLowered_ThenItFailsLoudly()
+    {
+        // Arrange
+        var composite = CompositeParameter(SearchParamType.Token, SearchParamType.Token);
+        var components = new[] { ReferenceComponent("target"), TokenComponent("code") };
+
+        // Act / Assert
+        Should.Throw<NotSupportedException>(() => ReferenceTokenLoweringRule.Lower(composite, components, ContextResolving(composite, 404, "DocumentReference", 55), 55))
+            .Message.ShouldContain("Reference");
     }
 }

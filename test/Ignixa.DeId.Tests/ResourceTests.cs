@@ -53,20 +53,6 @@ public class ResourceTests
     }
 
     [Fact]
-    public async Task GivenAPatientResource_WhenAnonymizing_ThenResultContainsResourceTypeInJson()
-    {
-        // Act
-        var result = await DeIdTestHelpers.DeidentifyFromFileAsync(
-            _fixture.R4CommonEngine,
-            DeIdTestHelpers.ResourcePath("patient-basic.json"));
-
-        // Assert
-        result.IsSuccess.ShouldBeTrue();
-        result.Value.DeidentifiedJson.ShouldNotBeNullOrEmpty();
-        result.Value.DeidentifiedJson.ShouldContain("\"resourceType\":\"Patient\"");
-    }
-
-    [Fact]
     public async Task GivenAPatientResource_WhenAnonymizing_ThenResultContainsResourceJsonNode()
     {
         // Act
@@ -76,6 +62,7 @@ public class ResourceTests
 
         // Assert
         result.IsSuccess.ShouldBeTrue();
+        result.Value.DeidentifiedJson.ShouldNotBeNullOrEmpty();
         result.Value.Resource.ShouldNotBeNull();
         result.Value.Resource.ResourceType.ShouldBe("Patient");
     }

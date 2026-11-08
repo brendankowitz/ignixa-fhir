@@ -9,6 +9,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Validation.Abstractions;
 
 namespace Ignixa.Validation.Checks;
 
@@ -45,6 +46,12 @@ public static class FhirPrimitiveValidator
 
     private static readonly Regex DateTimeRegex = new(
         @"^([0-9]([0-9]([0-9][1-9]|[1-9]0)|[1-9]00)|[1-9]000)(-(0[1-9]|1[0-2])(-(0[1-9]|[1-2][0-9]|3[0-1])(T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)(\.[0-9]{1,9})?(Z|(\+|-)((0[0-9]|1[0-3]):[0-5][0-9]|14:00)))?)?)?$",
+        RegexOptions.Compiled);
+
+    // The depth-graded dateTime leniency (bug #210-4) applied below Full: the R4 grammar, except that a timezone is optional
+    // after a time and allowed after a full date (the latitude of the R5 regex). Every other component keeps its R4 range.
+    private static readonly Regex DateTimeLenientRegex = new(
+        @"^([0-9]([0-9]([0-9][1-9]|[1-9]0)|[1-9]00)|[1-9]000)(-(0[1-9]|1[0-2])(-(0[1-9]|[1-2][0-9]|3[0-1])(T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)(\.[0-9]{1,9})?)?(Z|(\+|-)((0[0-9]|1[0-3]):[0-5][0-9]|14:00))?)?)?$",
         RegexOptions.Compiled);
 
     private static readonly Regex TimeRegex = new(
@@ -108,6 +115,24 @@ public static class FhirPrimitiveValidator
     /// <param name="reason">On failure, a human-readable explanation.</param>
     /// <returns>True if valid (or not applicable); false if the value violates the type rules.</returns>
     public static bool TryValidate(IElement element, string fhirType, bool enforceStrictDateFormat, out string? reason)
+        => TryValidate(element, fhirType, enforceStrictDateFormat ? DateFormat.Strict : DateFormat.None, out reason);
+
+    /// <summary>
+    /// Validates the primitive value with the date-family format the validation depth calls for: the strict R4 format at
+    /// <see cref="ValidationDepth.Full"/>, and below it the documented dateTime timezone leniency (bug #210-4) — a dateTime may
+    /// omit the timezone after a time, or carry one after a full date. Every other type, and every other dateTime rule, is the
+    /// same at every depth. Both the non-choice (<see cref="TypeCheck"/>) and the choice (<see cref="ChoiceElementCheck"/>)
+    /// paths validate through this, so one rule applies to a dateTime wherever it appears.
+    /// </summary>
+    /// <param name="element">The element carrying the primitive value.</param>
+    /// <param name="fhirType">The declared FHIR primitive type.</param>
+    /// <param name="depth">The validation depth.</param>
+    /// <param name="reason">On failure, a human-readable explanation.</param>
+    /// <returns>True if valid (or not applicable); false if the value violates the type rules.</returns>
+    internal static bool TryValidate(IElement element, string fhirType, ValidationDepth depth, out string? reason)
+        => TryValidate(element, fhirType, fhirType == "dateTime" && depth != ValidationDepth.Full ? DateFormat.Lenient : DateFormat.Strict, out reason);
+
+    private static bool TryValidate(IElement element, string fhirType, DateFormat dateFormat, out string? reason)
     {
         reason = null;
         if (!PrimitiveTypes.Contains(fhirType))
@@ -185,23 +210,25 @@ public static class FhirPrimitiveValidator
                     return false;
                 }
 
-                return ValidateStringFormat(text, fhirType, enforceStrictDateFormat, out reason);
+                return ValidateStringFormat(text, fhirType, dateFormat, out reason);
         }
     }
 
-    private static bool ValidateStringFormat(string text, string fhirType, bool enforceStrictDateFormat, out string? reason)
+    private static bool ValidateStringFormat(string text, string fhirType, DateFormat dateFormat, out string? reason)
     {
         reason = null;
-        var pattern = fhirType switch
+        var pattern = (fhirType, dateFormat) switch
         {
-            "date" => DateRegex,
-            "dateTime" => DateTimeRegex,
-            "time" => TimeRegex,
-            "instant" => InstantRegex,
+            (_, DateFormat.None) => null,
+            ("date", _) => DateRegex,
+            ("dateTime", DateFormat.Lenient) => DateTimeLenientRegex,
+            ("dateTime", _) => DateTimeRegex,
+            ("time", _) => TimeRegex,
+            ("instant", _) => InstantRegex,
             _ => null,
         };
 
-        if (enforceStrictDateFormat && pattern is not null && !pattern.IsMatch(text))
+        if (pattern is not null && !pattern.IsMatch(text))
         {
             reason = $"value '{text}' is not a valid FHIR {fhirType}";
             return false;
@@ -290,6 +317,19 @@ public static class FhirPrimitiveValidator
         }
 
         return true;
+    }
+
+    /// <summary>Which date-family format regex a validation applies.</summary>
+    private enum DateFormat
+    {
+        /// <summary>The strict R4 format.</summary>
+        Strict,
+
+        /// <summary>No format regex (the caller applies its own); calendar validity still applies.</summary>
+        None,
+
+        /// <summary>The R4 format with the #210-4 dateTime timezone leniency.</summary>
+        Lenient,
     }
 
     private static string Describe(JsonValueKind kind, JsonNode node) =>

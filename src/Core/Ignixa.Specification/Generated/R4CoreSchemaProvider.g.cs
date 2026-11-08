@@ -114695,7 +114695,7 @@ public sealed partial class R4CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 patternValue: null,
                 types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Reference, null, "http://hl7.org/fhir/StructureDefinition/Device", null, null) },
                 defaultTypeName: Constants.Str_Reference,
-                referenceTargets: new[] { "Device", "DeviceMetric", "Device" },
+                referenceTargets: new[] { "Device", "DeviceMetric" },
                 contentReference: null,
                 slicing: null
             ),

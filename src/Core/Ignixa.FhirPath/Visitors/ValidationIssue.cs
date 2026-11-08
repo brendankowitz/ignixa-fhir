@@ -51,6 +51,22 @@ public sealed record ValidationIssue
     public bool IsAlwaysEmpty => Kind == ValidationIssueKind.AlwaysEmpty;
 
     /// <summary>
+    /// Gets whether the issue reports a property name that no focus type declares.
+    /// </summary>
+    public bool IsUnresolvedProperty => Kind == ValidationIssueKind.UnresolvedProperty;
+
+    /// <summary>
+    /// Gets the property name an <see cref="ValidationIssueKind.UnresolvedProperty"/> issue reports; null for other kinds.
+    /// </summary>
+    public string? Property { get; private init; }
+
+    /// <summary>
+    /// Gets the names of the focus types an <see cref="ValidationIssueKind.UnresolvedProperty"/> issue looked the property up
+    /// on, so a caller can suggest the names they do declare; empty for other kinds.
+    /// </summary>
+    public IReadOnlyList<string> FocusTypes { get; private init; } = [];
+
+    /// <summary>
     /// Gets the location information (line, column, position).
     /// </summary>
     public string? Location { get; init; }
@@ -71,6 +87,23 @@ public sealed record ValidationIssue
             Severity = ValidationIssueSeverity.Warning,
             Message = message,
             Kind = ValidationIssueKind.AlwaysEmpty,
+            Location = location,
+            Expression = expression
+        };
+    }
+
+    /// <summary>
+    /// Creates an error reporting that no focus type declares <paramref name="property"/>.
+    /// </summary>
+    public static ValidationIssue UnresolvedProperty(string message, string property, IReadOnlyList<string> focusTypes, string? location = null, string? expression = null)
+    {
+        return new ValidationIssue
+        {
+            Severity = ValidationIssueSeverity.Error,
+            Message = message,
+            Kind = ValidationIssueKind.UnresolvedProperty,
+            Property = property,
+            FocusTypes = focusTypes,
             Location = location,
             Expression = expression
         };
@@ -111,7 +144,14 @@ public enum ValidationIssueKind
     /// <summary>
     /// A subexpression was proved to yield the empty collection for every conformant input.
     /// </summary>
-    AlwaysEmpty
+    AlwaysEmpty,
+
+    /// <summary>
+    /// An error: a property name no focus type declares, with the name and the focus types as structured state
+    /// (<see cref="ValidationIssue.Property"/>, <see cref="ValidationIssue.FocusTypes"/>) for callers that suggest
+    /// the names those types do declare.
+    /// </summary>
+    UnresolvedProperty
 }
 
 /// <summary>

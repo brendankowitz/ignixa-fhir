@@ -23,11 +23,9 @@ namespace Ignixa.Application.Tests.Search.InMemory;
 /// "Testing" item 5): for a representative set of query strings and a small in-memory resource fixture,
 /// evaluates the SAME parsed query two ways against the SAME <see cref="SearchQueryInterpreter"/> instance --
 /// "before" (the new typed tree lowered back to the old field-level shape via
-/// <see cref="LegacyExpressionLowerer"/>, then dispatched through this class's pre-existing, unmodified
-/// structural visit methods -- <see cref="SearchQueryInterpreter.VisitBinary"/>/<see cref="SearchQueryInterpreter.VisitString"/>/etc.)
-/// and "after" (the new typed tree dispatched directly through the new
-/// <see cref="SearchQueryInterpreter.VisitSearchParameterPredicate"/>/<see cref="SearchQueryInterpreter.VisitCompositeComponent"/>
-/// overrides) -- and asserts identical result sets.
+/// <see cref="LegacyExpressionLowerer"/>) and "after" (the typed tree as parsed, with its
+/// <see cref="SearchParameterPredicateExpression"/>/<see cref="CompositeComponentExpression"/> leaves) -- and
+/// asserts identical result sets.
 /// </summary>
 public class SearchQueryInterpreterPredicateTests
 {
@@ -169,105 +167,5 @@ public class SearchQueryInterpreterPredicateTests
 
         // Assert: only "1" is an exact, case-sensitive match for "Smith".
         results.ShouldBe([new ResourceKey("Patient", "1")]);
-    }
-
-    // --- Pre-existing gaps, faithfully preserved (equivalence-of-failure) ---
-    //
-    // The two tests below document real, PRE-EXISTING (not introduced by Task 7) gaps in
-    // SearchQueryInterpreter's evaluation model, confirmed empirically: both the "before" path
-    // (LegacyExpressionLowerer + this class's own pre-existing, unmodified VisitBinary/VisitString/
-    // VisitMultiary) and the "after" path (the new VisitSearchParameterPredicate/VisitCompositeComponent)
-    // throw the SAME exception for these inputs. This is expected, not a regression: Task 7's mandate is
-    // to replicate Step 1's real semantics, not invent new (more correct) ones, and LowerAndVisit
-    // (SearchQueryInterpreter.cs) reuses the exact same SearchValueExpressionBuilderHelper decomposition
-    // plus this class's own already-implemented structural visitors for both paths, so any pre-existing
-    // gap in that pipeline necessarily reproduces identically on both sides.
-    //
-    // Root causes (traced, not guessed):
-    // 1. Reference-typed search parameters decompose (via SearchValueExpressionBuilderHelper) into
-    //    StringEquals nodes over FieldName.ReferenceResourceType/ReferenceResourceId. VisitString's
-    //    CompareStringParameter local function switches on SearchIndexEntry.SearchParameter.Type and only
-    //    handles SearchParamType.String/Token -- SearchParamType.Reference falls to its `default` branch,
-    //    which throws NotImplementedException. This means ANY Reference-typed search (not just chained/
-    //    internal-kind ones) is non-functional through SearchQueryInterpreter today.
-    // 2. Composite search parameters are indexed (ElementSearchIndexer.cs) as ONE SearchIndexEntry per
-    //    resource, keyed by the COMPOSITE's own SearchParameterInfo (Type = SearchParamType.Composite),
-    //    whose Value is a CompositeIndexSearchValue wrapping ALL components together.
-    //    ComparisonValueVisitor.Visit(CompositeIndexSearchValue) flattens every component's ISearchValue
-    //    into ONE comparison call regardless of which component/position a given AND-clause targets, so
-    //    evaluating (for example) the quantity half of a token+quantity composite also visits the token
-    //    half's ISearchValue -- a cross-type comparison that reliably throws (NullReferenceException or
-    //    an IComparable type-mismatch, depending on the concrete values involved). This means composite
-    //    search parameters with a Token or String component -- the vast majority of real FHIR composites
-    //    -- are non-functional through SearchQueryInterpreter today.
-    [Fact]
-    public void GivenReferenceSearch_WhenEvaluatedDirectlyOrViaLoweredLegacyTree_ThenBothThrowIdenticalPreExistingGap()
-    {
-        // Arrange
-        var context = new SearchParserTestContext();
-        SearchParameterInfo referenceParam = context.Add("Observation", "subject", SearchParamType.Reference, targets: ["Patient"]);
-        (Expression newExpression, Expression loweredOld) = ParseBothShapes(context, "Observation", "subject=Patient/123");
-        var interpreter = new SearchQueryInterpreter();
-
-        var fixture = new (ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)[]
-        {
-            (new ResourceKey("Observation", "1"), new[]
-            {
-                new SearchIndexEntry(referenceParam, new ReferenceSearchValue(ReferenceKind.InternalOrExternal, null, "Patient", "123")),
-            }),
-        };
-
-        // Act
-        var beforeException = Record.Exception(() => Evaluate(interpreter, loweredOld, fixture));
-        var afterException = Record.Exception(() => Evaluate(interpreter, newExpression, fixture));
-
-        // Assert
-        beforeException.ShouldNotBeNull();
-        afterException.ShouldNotBeNull();
-        afterException.GetType().ShouldBe(beforeException.GetType());
-        afterException.Message.ShouldBe(beforeException.Message);
-    }
-
-    [Fact]
-    public void GivenTokenQuantityCompositeSearch_WhenEvaluatedDirectlyOrViaLoweredLegacyTree_ThenBothThrowIdenticalPreExistingGap()
-    {
-        // Arrange
-        var context = new SearchParserTestContext();
-        SearchParameterInfo codeParam = context.Add("Observation", "component-code", SearchParamType.Token);
-        SearchParameterInfo valueParam = context.Add("Observation", "component-value-quantity", SearchParamType.Quantity);
-        SearchParameterInfo compositeParam = context.Add(
-            "Observation",
-            "component-code-value-quantity",
-            SearchParamType.Composite,
-            components:
-            [
-                new SearchParameterComponentInfo(codeParam.Url) { ResolvedSearchParameter = codeParam },
-                new SearchParameterComponentInfo(valueParam.Url) { ResolvedSearchParameter = valueParam },
-            ]);
-        (Expression newExpression, Expression loweredOld) = ParseBothShapes(
-            context, "Observation", "component-code-value-quantity=http://loinc.org|1234-5$gt10");
-        var interpreter = new SearchQueryInterpreter();
-
-        var componentValues = new IReadOnlyList<ISearchValue>[]
-        {
-            new ISearchValue[] { new TokenSearchValue("http://loinc.org", "1234-5", text: null) },
-            new ISearchValue[] { new QuantitySearchValue(system: null!, code: null!, quantity: 15m) },
-        };
-        var fixture = new (ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)[]
-        {
-            (new ResourceKey("Observation", "1"), new[]
-            {
-                new SearchIndexEntry(compositeParam, new CompositeIndexSearchValue(componentValues)),
-            }),
-        };
-
-        // Act
-        var beforeException = Record.Exception(() => Evaluate(interpreter, loweredOld, fixture));
-        var afterException = Record.Exception(() => Evaluate(interpreter, newExpression, fixture));
-
-        // Assert
-        beforeException.ShouldNotBeNull();
-        afterException.ShouldNotBeNull();
-        afterException.GetType().ShouldBe(beforeException.GetType());
     }
 }

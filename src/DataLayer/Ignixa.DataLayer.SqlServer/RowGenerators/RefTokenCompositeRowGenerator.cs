@@ -21,6 +21,10 @@ public class RefTokenCompositeRowGenerator : ISearchParameterRowGenerator
 {
     private static readonly int Code2Width = SearchParamColumnWidths.For("ReferenceTokenCompositeSearchParam", "Code2");
 
+    private static readonly int BaseUri1Width = SearchParamColumnWidths.For("ReferenceTokenCompositeSearchParam", "BaseUri1");
+
+    private static readonly int ResourceId1Width = SearchParamColumnWidths.For("ReferenceTokenCompositeSearchParam", "ReferenceResourceId1");
+
     private readonly IReadOnlyDictionary<string, int> _systemMappings;
 
     /// <summary>
@@ -44,9 +48,9 @@ public class RefTokenCompositeRowGenerator : ISearchParameterRowGenerator
             new SqlMetaData("ResourceTypeId", SqlDbType.SmallInt),
             new SqlMetaData("ResourceSurrogateId", SqlDbType.BigInt),
             new SqlMetaData("SearchParamId", SqlDbType.SmallInt),
-            new SqlMetaData("BaseUri1", SqlDbType.VarChar, 128),
+            new SqlMetaData("BaseUri1", SqlDbType.VarChar, BaseUri1Width),
             new SqlMetaData("ReferenceResourceTypeId1", SqlDbType.SmallInt),
-            new SqlMetaData("ReferenceResourceId1", SqlDbType.VarChar, 64),
+            new SqlMetaData("ReferenceResourceId1", SqlDbType.VarChar, ResourceId1Width),
             new SqlMetaData("ReferenceResourceVersion1", SqlDbType.Int),
             new SqlMetaData("SystemId2", SqlDbType.Int),
             new SqlMetaData("Code2", SqlDbType.VarChar, Code2Width),
@@ -80,8 +84,8 @@ public class RefTokenCompositeRowGenerator : ISearchParameterRowGenerator
                 if (compositeValue.Components.Count < 2)
                     continue;
 
-                // Find Reference and Token components by type, not by position
-                // This handles cases where component definitions have swapped expressions
+                // Collect by type rather than position: the SQL row has fixed columns (reference in *1, token in *2)
+                // whatever order the parameter's components are declared in.
                 var refComponents = new List<ReferenceSearchValue>();
                 var tokenComponents = new List<TokenSearchValue>();
 
@@ -106,6 +110,11 @@ public class RefTokenCompositeRowGenerator : ISearchParameterRowGenerator
                             searchIndex.SearchParameter.Url, resource.ResourceType, resource.ResourceId);
                         continue;
                     }
+
+                    // A value longer than its column would be truncated by SetString (a different reference, and a
+                    // possible UNIQUE-key collision), so the reference has no rows here.
+                    if (!ReferenceColumnWidths.Fit(refComponent.BaseUri?.ToString(), BaseUri1Width, refComponent.ResourceId, ResourceId1Width, searchIndex.SearchParameter, resource, logger))
+                        continue;
 
                     foreach (var tokenComponent in tokenComponents)
                     {

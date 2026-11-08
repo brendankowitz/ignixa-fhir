@@ -13,23 +13,20 @@ using Ignixa.Search.Models;
 namespace Ignixa.Search.Serialization;
 
 /// <summary>
-/// System.Text.Json converter for compact search index serialization.
-/// Implements parameter-first structure optimization from issue #2686.
+/// System.Text.Json converter for compact search index serialization: values grouped under their parameter's code, each
+/// in the lossless compact value format (<see cref="CompactSearchValueWriter"/>).
 ///
 /// Format:
 /// {
-///   "parameterName": [
-///     { "n_s": "VALUE1" },
-///     { "n_s": "VALUE2" }
+///   "parameterCode": [
+///     { "k": "token", "s": "http://loinc.org", "c": "8867-4" },
+///     { "k": "quantity", "s": "http://unitsofmeasure.org", "c": "/min", "lq": 72, "hq": 72 }
 ///   ],
 ///   "otherParameter": [...]
 /// }
 ///
-/// Benefits:
-/// - 25-35% storage reduction via abbreviated property names
-/// - Eliminates repeated parameter names (issue #2686)
-/// - Groups values by parameter for faster queries
-/// - Optimized for Cosmos DB range indexing
+/// Grouping by parameter avoids repeating the code on every value (issue #2686). Reading is strict: anything this
+/// converter did not write throws <see cref="JsonException"/>.
 /// </summary>
 public class CompactSearchIndexConverter : JsonConverter<List<SearchIndexEntry>>
 {
@@ -38,33 +35,24 @@ public class CompactSearchIndexConverter : JsonConverter<List<SearchIndexEntry>>
     /// </summary>
     public override void Write(Utf8JsonWriter writer, List<SearchIndexEntry> entries, JsonSerializerOptions options)
     {
+        ArgumentNullException.ThrowIfNull(writer);
+
         if (entries == null || entries.Count == 0)
         {
             writer.WriteNullValue();
             return;
         }
 
-        // Group by parameter name (issue #2686 optimization)
-        // This eliminates repeated "p": "parameterName" strings
-        var grouped = entries.GroupBy(e => e.SearchParameter.Code);
-
         writer.WriteStartObject();
 
-        foreach (var group in grouped)
+        foreach (var group in entries.GroupBy(e => e.SearchParameter.Code))
         {
-            // Parameter name as property key
             writer.WritePropertyName(group.Key);
             writer.WriteStartArray();
 
             foreach (var entry in group)
             {
-                // Write compact search value object
-                writer.WriteStartObject();
-
-                var valueWriter = new CompactSearchValueWriter(writer);
-                entry.Value.AcceptVisitor(valueWriter);
-
-                writer.WriteEndObject();
+                CompactSearchValueWriter.WriteObject(writer, entry.Value);
             }
 
             writer.WriteEndArray();
@@ -75,9 +63,10 @@ public class CompactSearchIndexConverter : JsonConverter<List<SearchIndexEntry>>
 
     /// <summary>
     /// Reads search indices from compact, parameter-first format.
-    /// Creates basic SearchParameterInfo objects (without full metadata).
+    /// Creates basic SearchParameterInfo objects (code and type only, the code doubling as the name).
     /// For full metadata, use ISupportedSearchParameterDefinitionManager lookup.
     /// </summary>
+    /// <exception cref="JsonException">The input is not an index this converter wrote.</exception>
     public override List<SearchIndexEntry> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null)
@@ -92,37 +81,40 @@ public class CompactSearchIndexConverter : JsonConverter<List<SearchIndexEntry>>
 
         var entries = new List<SearchIndexEntry>();
 
-        using var doc = JsonDocument.ParseValue(ref reader);
-
-        // Iterate through parameter-first structure
-        foreach (var parameterProperty in doc.RootElement.EnumerateObject())
+        while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
         {
-            string parameterCode = parameterProperty.Name;
-
-            // Iterate through values array for this parameter
-            if (parameterProperty.Value.ValueKind == JsonValueKind.Array)
+            string parameterCode = reader.GetString();
+            if (string.IsNullOrWhiteSpace(parameterCode))
             {
-                foreach (var valueElement in parameterProperty.Value.EnumerateArray())
-                {
-                    if (valueElement.ValueKind == JsonValueKind.Object)
-                    {
-                        // Read search value using CompactSearchValueReader
-                        var searchValue = CompactSearchValueReader.ReadSearchValue(valueElement);
-
-                        // Determine the SearchParamType from the search value's concrete type
-                        var searchParamType = GetSearchParamType(searchValue);
-
-                        // Create SearchParameterInfo with correct type
-                        // Full metadata would require ISupportedSearchParameterDefinitionManager lookup
-                        var searchParameter = new SearchParameterInfo(
-                            name: parameterCode,
-                            code: parameterCode,
-                            searchParamType: searchParamType);
-
-                        entries.Add(new SearchIndexEntry(searchParameter, searchValue));
-                    }
-                }
+                throw new JsonException("A search parameter code is empty.");
             }
+
+            reader.Read();
+            if (reader.TokenType != JsonTokenType.StartArray)
+            {
+                throw new JsonException($"The values of search parameter '{parameterCode}' must be an array.");
+            }
+
+            while (reader.Read() && reader.TokenType == JsonTokenType.StartObject)
+            {
+                ISearchValue searchValue = CompactSearchValueReader.Read(ref reader);
+                var searchParameter = new SearchParameterInfo(
+                    name: parameterCode,
+                    code: parameterCode,
+                    searchParamType: GetSearchParamType(searchValue));
+
+                entries.Add(new SearchIndexEntry(searchParameter, searchValue));
+            }
+
+            if (reader.TokenType != JsonTokenType.EndArray)
+            {
+                throw new JsonException($"The values of search parameter '{parameterCode}' must be search value objects.");
+            }
+        }
+
+        if (reader.TokenType != JsonTokenType.EndObject)
+        {
+            throw new JsonException("The search indices object is not terminated.");
         }
 
         return entries;

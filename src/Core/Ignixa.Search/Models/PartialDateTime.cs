@@ -296,7 +296,8 @@ public class PartialDateTime
     {
         var sb = new StringBuilder();
 
-        sb.Append(Year.ToString(CultureInfo.InvariantCulture));
+        // Parse requires a four-digit year, so years below 1000 are zero-padded.
+        sb.Append(Year.ToString("D4", CultureInfo.InvariantCulture));
 
         AppendIfNotNull('-', Month);
         AppendIfNotNull('-', Day);
@@ -313,7 +314,15 @@ public class PartialDateTime
                     sb.AppendFormat(CultureInfo.InvariantCulture, ":{0:00.0000000}", Second + Fraction);
             }
 
-            sb.AppendFormat(CultureInfo.InvariantCulture, "{0:+00;-00}:{1:D2}", UtcOffset.Value.Hours, UtcOffset.Value.Minutes);
+            // TimeSpan's Hours and Minutes both carry the sign, so formatting them separately printed -05:30 as
+            // "-05:-30" and -00:30 as "+00:-30", neither of which Parse accepts. The sign belongs to the offset as a whole.
+            TimeSpan offset = UtcOffset.Value;
+            sb.AppendFormat(
+                CultureInfo.InvariantCulture,
+                "{0}{1:D2}:{2:D2}",
+                offset < TimeSpan.Zero ? '-' : '+',
+                Math.Abs(offset.Hours),
+                Math.Abs(offset.Minutes));
         }
 
         return sb.ToString();

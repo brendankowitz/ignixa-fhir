@@ -14,6 +14,9 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Ignixa.TestScript")]
 [assembly: InternalsVisibleTo("Ignixa.TestScript.FhirFakes")]
 [assembly: InternalsVisibleTo("Ignixa.Api.E2ETests")]
+
+// Compiles the E2E suite's scenarios (which write through MutableNode) to run them through the server's write validation without SQL.
+[assembly: InternalsVisibleTo("Ignixa.Api.Tests")]
 [assembly: InternalsVisibleTo("Ignixa.Models.Tests")]
 [assembly: InternalsVisibleTo("Ignixa.Serialization.Tests")]
 

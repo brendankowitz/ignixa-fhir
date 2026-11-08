@@ -75,4 +75,18 @@ public class PostalCodeToolTests
         result.WasModified.ShouldBeTrue();
         result.OperationType.ShouldBe(DeIdOperations.Abstract);
     }
+
+    [Fact]
+    public void GivenNonPostalCodeElement_WhenRedacting_ThenElementIsUnchanged()
+    {
+        var resource = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"98052"}""");
+        var node = resource.ToElement(_schema).Children("id").First();
+
+        var result = PostalCodeTool.RedactPostalCode(node);
+
+        result.WasModified.ShouldBeFalse();
+        result.OperationType.ShouldBe(DeIdOperations.Redact);
+        resource.InvalidateCaches();
+        resource.ToElement(_schema).Children("id").First().Value.ShouldBe("98052");
+    }
 }

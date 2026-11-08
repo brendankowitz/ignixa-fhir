@@ -21,18 +21,22 @@ public class RangeToQuantitySearchValueConverter : FhirElementToSearchValueConve
 
     protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
-        var highValue = value.Scalar("high") as IElement;
-        var lowValue = value.Scalar("low") as IElement;
+        IElement highValue = value.Child("high");
+        IElement lowValue = value.Child("low");
+        decimal? low = (decimal?)lowValue.Scalar("value");
+        decimal? high = (decimal?)highValue.Scalar("value");
 
-        IElement quantityRepresentativeValue = lowValue ?? highValue;
+        if (!low.HasValue && !high.HasValue) return [];
 
-        if (quantityRepresentativeValue != null)
-        {
-            string system = quantityRepresentativeValue.Scalar("system") as string;
-            string code = quantityRepresentativeValue.Scalar("code") as string;
+        // A bound without a value says nothing about the range; the representative must be a bound that has one.
+        IElement quantityRepresentativeValue = low.HasValue ? lowValue : highValue;
 
-            // FROM https://www.hl7.org/fhir/datatypes.html#Range: "The unit and code/system elements of the low or high elements SHALL match."
-            yield return new QuantitySearchValue(system, code, (decimal?)lowValue?.Scalar("value"), (decimal?)highValue?.Scalar("value"));
-        }
+        // FROM https://www.hl7.org/fhir/datatypes.html#Range: "The unit and code/system elements of the low or high elements SHALL match."
+        return QuantityUnitSearchValues.Create(
+            quantityRepresentativeValue.Scalar("system") as string,
+            quantityRepresentativeValue.Scalar("code") as string,
+            quantityRepresentativeValue.Scalar("unit") as string,
+            low,
+            high);
     }
 }

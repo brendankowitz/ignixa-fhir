@@ -12,7 +12,8 @@ internal static class IncludeEmitter
     /// reference param and type ids, seeded from the match page and/or earlier stages via EXISTS. The body is
     /// never capped and never filtered by the resume boundary: it seeds downstream <c>:iterate</c> stages
     /// (<see cref="EmitSeedExists"/>), where a parent ranked past the budget can still have a child ranked
-    /// inside it. The budget is applied by the stage's limit companion, or once globally on an IncludesOnly page.
+    /// inside it. The budget is applied by the stage's limit companion, once globally on an IncludesOnly page,
+    /// and not at all under an includes count.
     /// </summary>
     internal static string EmitIncludeStage(
         QueryPlan plan,

@@ -15,7 +15,11 @@ public class SearchParameterComponentInfo
 
     public Uri DefinitionUrl { get; }
 
-    public string Expression { get; }
+    /// <summary>
+    /// The component's FHIRPath expression, relative to the composite's. Set again only by
+    /// <c>CompositeComponentDefinitionRepairs</c>, for a shipped definition whose expression is wrong.
+    /// </summary>
+    public string Expression { get; internal set; }
 
     public SearchParameterInfo ResolvedSearchParameter { get; set; }
 }

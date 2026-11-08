@@ -154,6 +154,27 @@ public class TransformResourceHandlerTests
             async () => await _handler.HandleAsync(command, CancellationToken.None));
     }
 
+    // A client that disconnects cancels the request: the transform stops at its next rule and the cancellation surfaces as itself,
+    // not as a failed transformation.
+    [Fact]
+    public async Task GivenACancelledRequest_WhenTransforming_ThenTheTransformStopsWithACancellation()
+    {
+        // Arrange
+        var fml = """
+            map 'http://example.org/Cancelled' = 'Cancelled'
+            uses 'http://hl7.org/fhir/StructureDefinition/Patient' alias Patient as source
+            uses 'http://hl7.org/fhir/StructureDefinition/Patient' alias Patient as target
+            group Transform(source src : Patient, target tgt : Patient) {
+              src.id -> tgt.id;
+            }
+            """;
+        var command = new TransformResourceCommand(SrcMaps: [fml], Content: CreatePatient("patient-123", "Doe", "John", "male", "1990-01-15"));
+
+        // Act & Assert
+        await Should.ThrowAsync<OperationCanceledException>(
+            async () => await _handler.HandleAsync(command, new CancellationToken(canceled: true)));
+    }
+
     #endregion
 
     #region Mutation Verification Tests

@@ -10,8 +10,11 @@ FHIR validation system with four validation depth levels.
 |------|--------|----------|
 | **Minimal** | JSON structure, required fields | CREATE/UPDATE (blocking), bulk ingestion |
 | **Compatibility** | + Cardinality, types (lenient URIs) | Microsoft FHIR Server migration |
-| **Spec** | + Required terminology, absolute URIs | CREATE/UPDATE (blocking) |
-| **Full** | + FHIRPath invariants, all bindings | $validate (async), compliance testing |
+| **Spec** | + Required terminology, absolute URIs, reference target types, nested datatypes (choice variants and extensions included) | CREATE/UPDATE (blocking) |
+| **Full** | + FHIRPath invariants, all bindings, extensions against their loaded definitions | $validate (async), compliance testing |
+
+An element is validated by its type, whether it is a plain element, a choice variant or an extension's value; a check
+that applies but cannot conclude is reported as a non-failing issue, never passed. See the core SDK validation docs.
 
 ## Quick Start
 
@@ -159,7 +162,9 @@ Standard FHIR specification compliance:
 var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
 ```
 - Enforces absolute URIs in `Coding.system`
-- Required terminology bindings
+- Required terminology bindings (a text-only CodeableConcept under one is an error)
+- Reference target types (`targetProfile`)
+- Every nested datatype, complex choice variants and extension values included
 - Recommended for production API operations
 
 ### Full
@@ -167,8 +172,9 @@ Complete FHIR profile validation:
 ```csharp
 var settings = new ValidationSettings { Depth = ValidationDepth.Full };
 ```
-- All Spec checks plus FHIRPath invariants
+- All Spec checks plus FHIRPath invariants and slicing
 - Extensible terminology bindings
+- Extensions against their loaded definitions (an unloaded one is reported as `extension-definition-unchecked`)
 - Use for compliance testing and profile conformance
 
 ## What Gets Validated
@@ -195,11 +201,14 @@ Additional checks extracted from StructureDefinition metadata:
 | **ReferenceFormatCheck** | Validates Reference.reference format (relative/literal/url)      | Elements with type=Reference |
 | **CodingStructureCheck** | Validates Coding.system + Coding.code structure                  | Elements with type=Coding or CodeableConcept |
 | **ChoiceElementCheck** | Validates choice elements (only one variant present)             | Elements with name ending in [x] |
-| **ExtensionStructureCheck** | Validates Extension.url is present and value/extension rules     | Elements named "extension" |
+| **ExtensionCheck** | Validates every extension as the Extension datatype (Spec) and against its loaded definition (Full) | Resources only, every extension at any depth |
+| **ReferenceTargetCheck** | Validates a reference's target type against `targetProfile`, and `Reference.type` against the reference | Elements and choice variants of type Reference |
 | **FixedValueCheck** | Validates element has exact fixed value                          | Elements with fixedValue constraint |
 | **PatternCheck** | Validates element matches pattern constraint                     | Elements with patternValue constraint |
 | **BindingCheck** | Validates coded values against built-in, required ValueSets      | Elements with binding |
 | **NestedComplexTypeCheck** | Validates nested BackboneElement and complex types               | BackboneElement children |
+| **ChoiceVariantNestedCheck** | Validates a complex choice variant (e.g. `valueAttachment`) against its datatype schema | Complex `[x]` variants |
+| **EntryResourceCheck** | Validates each resource a Bundle or Parameters carries against its own type and `meta.profile` | `Bundle.entry.resource`, `Parameters.parameter.resource` |
 | **UnknownPropertyCheck** | Rejects unknown/undefined properties                             | All resources |
 | **FhirPathInvariantCheck** | Validates FHIRPath constraints (ele-1, dom-1, custom invariants) | Elements with constraint definitions |
 

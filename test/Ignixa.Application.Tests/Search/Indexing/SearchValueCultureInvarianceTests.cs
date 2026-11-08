@@ -26,8 +26,9 @@ namespace Ignixa.Application.Tests.Search.Indexing;
 ///
 /// Scope, deliberately stated because it is narrower than it looks: these <c>ToString()</c> overrides are
 /// NOT on the persistence path. The SQL row generators and <c>CompactSearchValueWriter</c> both write the
-/// typed <c>Low</c>/<c>High</c>/<c>Start</c>/<c>End</c> properties, and nothing re-renders a search value
-/// back into a FHIR search literal. What the locale actually reached was diagnostic and parity output -
+/// typed <c>Low</c>/<c>High</c>/<c>Start</c>/<c>End</c> properties (the writer adds only a date's original
+/// partial-date text, which <c>PartialDateTime</c> formats with the invariant culture), and nothing re-renders
+/// a search value back into a FHIR search literal. What the locale actually reached was diagnostic and parity output -
 /// <c>SearchParameterPredicateExpression.ToString()</c>, the IR trace rows, and composite value rendering.
 /// So this is a latent defect made safe, not stored data repaired; the fix matters because these are public
 /// API whose string form is a documented contract, and because locale-dependent trace output makes parity

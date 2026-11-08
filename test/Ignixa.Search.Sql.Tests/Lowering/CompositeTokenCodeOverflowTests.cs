@@ -34,6 +34,14 @@ public class CompositeTokenCodeOverflowTests
     private static SearchParameterInfo Composite()
         => new("composite", "composite", SearchParamType.Composite, new Uri("http://example.org/fhir/SearchParameter/Observation-composite"));
 
+    // The reference-token rule takes each slot's value from the position that declares its kind.
+    private static SearchParameterInfo ReferenceTokenComposite()
+        => new("composite", "composite", SearchParamType.Composite, new Uri("http://example.org/fhir/SearchParameter/Observation-composite"),
+            [
+                new SearchParameterComponentInfo { ResolvedSearchParameter = Component("target", SearchParamType.Reference) },
+                new SearchParameterComponentInfo { ResolvedSearchParameter = Component("code", SearchParamType.Token) },
+            ]);
+
     private static SearchParameterInfo Component(string code, SearchParamType type)
         => new(code, code, type, new Uri($"http://example.org/fhir/SearchParameter/Observation-{code}"));
 
@@ -106,7 +114,7 @@ public class CompositeTokenCodeOverflowTests
         },
         {
             "ReferenceToken slot 2", () => ReferenceTokenLoweringRule.Lower(
-                Composite(),
+                ReferenceTokenComposite(),
                 [
                     new(Component("target", SearchParamType.Reference), SearchComparator.Eq, modifier: null,
                         new ReferenceSearchValue(ReferenceKind.Internal, baseUri: null!, resourceType: "DocumentReference", resourceId: "456")),
@@ -179,7 +187,7 @@ public class CompositeTokenCodeOverflowTests
         },
         {
             "ReferenceToken slot 2", () => ReferenceTokenLoweringRule.Lower(
-                Composite(),
+                ReferenceTokenComposite(),
                 [
                     new(Component("target", SearchParamType.Reference), SearchComparator.Eq, modifier: null,
                         new ReferenceSearchValue(ReferenceKind.Internal, baseUri: null!, resourceType: "DocumentReference", resourceId: "456")),

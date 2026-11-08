@@ -5,8 +5,10 @@
 
 #nullable enable
 
+using System.Globalization;
 using Ignixa.Abstractions;
 using Ignixa.Search.Exceptions;
+using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Specification.ValueSets.Normative;
 
@@ -39,9 +41,18 @@ internal sealed class SearchAtomicValueParser
         };
     }
 
+    /// <exception cref="SearchOperationNotSupportedException"><paramref name="type"/> has no value grammar (Special).</exception>
     internal ISearchValue Parse(SearchParamType type, string rawText)
     {
-        return MapAtomicErrors(() => _parsers[type](rawText));
+        if (!_parsers.TryGetValue(type, out Func<string, ISearchValue>? parser))
+        {
+            throw new SearchOperationNotSupportedException(string.Format(
+                CultureInfo.InvariantCulture,
+                Resources.SearchParamTypeNotSearchableByValue,
+                type));
+        }
+
+        return MapAtomicErrors(() => parser(rawText));
     }
 
     internal OfTypeTokenSearchValue ParseOfType(string rawText)

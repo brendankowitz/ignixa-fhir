@@ -21,8 +21,9 @@ public class RangeToNumberSearchValueConverter : FhirElementToSearchValueConvert
 
     protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
-        decimal? lowValue = (decimal?)value.Scalar("low");
-        decimal? highValue = (decimal?)value.Scalar("high");
+        // low and high are Quantities, so the bound is their value child, not their own (always null) value.
+        decimal? lowValue = (decimal?)value.Child("low").Scalar("value");
+        decimal? highValue = (decimal?)value.Child("high").Scalar("value");
 
         if (lowValue.HasValue || highValue.HasValue) yield return new NumberSearchValue(lowValue, highValue);
     }

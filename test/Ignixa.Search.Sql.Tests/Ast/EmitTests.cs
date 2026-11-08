@@ -2849,24 +2849,22 @@ public class EmitTests
     [Fact]
     public void GivenAnIncludesOnlyPlanWithAKeysetPage_WhenEmitted_ThenThrowsNotSupportedException()
     {
-        // A sort is allowed on an includes-only page (its phase filters the match set), but a keyset Page is
-        // not: EmitSeekPredicate would seek the match rows by the sort-key boundary, a second paging mechanism
-        // the includes-only page does not use -- its match window is the surrogate range and its include rows
-        // page from a cursor. Letting it through would let the sort key decide which resources are included, so
-        // the emitter refuses it.
+        // A sort is allowed on an includes-only page (its phase filters the match set), but a bare keyset Page is
+        // not: EmitSeekPredicate would seek the match rows by the sort-key boundary with no page size to stop at.
+        // Only a MatchReplay names a page to seek to, so without one the emitter refuses it.
         var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Sort: new SortSpec([new SortKey(203, SortKeyKind.Date, SortOrder.Ascending)], SortPhase.Valued), Page: new PageSpec([new SqlParameterRef("2000-01-01")], BoundaryResourceTypeId: null, BoundarySurrogateId: new SqlParameterRef(4200L)), Shape: new ResultShape.IncludesPage()), [ForwardIncludeStage(103, 111, 10)]);
 
-        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan)).Message.ShouldContain("keyset Page unless it replays a match page");
     }
 
     [Fact]
     public void GivenAnIncludesOnlyPlanWithATopCap_WhenEmitted_ThenThrowsNotSupportedException()
     {
-        // Top bounds the match set that seeds the include stages, so it drops include rows without marking
-        // the result partial. An includes-only page bounds its match set with SurrogateRange instead.
+        // A bare Top bounds the match set that seeds the include stages, so it drops include rows without marking
+        // the result partial. Only a MatchReplay may cap the seed, because it names the page being replayed.
         var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Top: 25, Shape: new ResultShape.IncludesPage()), [ForwardIncludeStage(103, 111, 10)]);
 
-        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan)).Message.ShouldContain("Top cap unless it replays a match page");
     }
 
     [Fact]
@@ -2874,7 +2872,7 @@ public class EmitTests
     {
         var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.IncludesPage(), OffsetPage: new OffsetSpec(100, 50)), [ForwardIncludeStage(103, 111, 10)]);
 
-        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan)).Message.ShouldContain("cannot be combined with an OffsetPage");
     }
 
     [Theory]

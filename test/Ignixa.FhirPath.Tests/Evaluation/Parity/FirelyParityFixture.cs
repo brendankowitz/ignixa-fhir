@@ -63,6 +63,17 @@ internal static class FirelyParityFixture
         "birthDate < '1980-01-01'",
         "birthDate < @T10:30:00",
 
+        // Invalid regular expressions (#519). A custom SearchParameter with a broken pattern must surface
+        // as an evaluation error (the search indexer contains it and logs a warning) rather than as an
+        // empty result indistinguishable from "no match", so an engine that answers empty here diverges
+        // from Firely in the way that matters most. The valid rows are controls: they prove the invalid
+        // rows throw because of the pattern, not the path.
+        "identifier.value.matches('abc[')",
+        "name.where(family.matches('Sm['))",
+        "identifier.value.replaceMatches('[', 'x')",
+        "identifier.value.matches('a.c')",
+        "identifier.value.replaceMatches('b', 'x')",
+
         "1 'mg' = 1000 'ug'",
         "1 'm' + 1 'cm'",
         "1 'kg' > 1 'g'",

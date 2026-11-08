@@ -21,6 +21,15 @@ public class CompositeLoweringDispatcherTests
     private static SearchParameterInfo CompositeParameter(string code)
         => new(code, code, SearchParamType.Composite, new Uri($"http://example.org/fhir/SearchParameter/Observation-{code}"));
 
+    // A ReferenceToken composite whose components declare the given types in order: the rule takes each slot's value
+    // from the position that declares its kind.
+    private static SearchParameterInfo DeclaredComposite(string code, SearchParamType first, SearchParamType second)
+        => new(code, code, SearchParamType.Composite, new Uri($"http://example.org/fhir/SearchParameter/DocumentReference-{code}"),
+            [
+                new SearchParameterComponentInfo { ResolvedSearchParameter = new("first", "first", first) },
+                new SearchParameterComponentInfo { ResolvedSearchParameter = new("second", "second", second) },
+            ]);
+
     private static SearchParameterInfo ComponentParameter(string code)
         => new(code, code, SearchParamType.Token, new Uri($"http://example.org/fhir/SearchParameter/Observation-{code}"));
 
@@ -201,7 +210,7 @@ public class CompositeLoweringDispatcherTests
     public void GivenAReferenceThenATokenComponent_WhenDispatched_ThenRoutesToReferenceToken()
     {
         // Arrange
-        var composite = CompositeParameter("relatesto");
+        var composite = DeclaredComposite("relatesto", SearchParamType.Reference, SearchParamType.Token);
         var components = new[] { ReferenceComponentAt(0, "target"), TokenComponentAt(1, "code", "replaces") };
 
         // Act
@@ -215,8 +224,8 @@ public class CompositeLoweringDispatcherTests
     [Fact]
     public void GivenATokenThenAReferenceComponent_WhenDispatched_ThenStillRoutesToReferenceToken()
     {
-        // Arrange -- swapped order, proving the dispatcher's second arm for this type also works
-        var composite = CompositeParameter("relatesto");
+        // Arrange -- token-first declaration, proving the dispatcher's second arm for this type also works
+        var composite = DeclaredComposite("relatesto", SearchParamType.Token, SearchParamType.Reference);
         var components = new[] { TokenComponentAt(0, "code", "replaces"), ReferenceComponentAt(1, "target") };
 
         // Act

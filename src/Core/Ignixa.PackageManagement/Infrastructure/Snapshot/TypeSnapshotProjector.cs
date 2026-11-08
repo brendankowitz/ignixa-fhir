@@ -27,6 +27,8 @@ namespace Ignixa.PackageManagement.Infrastructure.Snapshot;
 /// </remarks>
 internal static class TypeSnapshotProjector
 {
+    private const string CorePrefix = "http://hl7.org/fhir/StructureDefinition/";
+
     /// <summary>Projects <paramref name="root"/> into a snapshot <c>element</c> array in document order.</summary>
     /// <param name="root">The root type of a core StructureDefinition (e.g. Patient).</param>
     /// <returns>A fresh <see cref="JsonArray"/> of <c>ElementDefinition</c> objects.</returns>
@@ -44,7 +46,12 @@ internal static class TypeSnapshotProjector
         elements.Add(BuildElement(type, path));
         foreach (var child in type.Children)
         {
-            Walk(child, $"{path}.{child.Info.Name}", elements);
+            // Generated core metadata may name a choice element by its base name ("value"); a snapshot path names it
+            // "value[x]", which is what a differential constraining it says, so the merger matches the two.
+            var name = child.Info.IsChoiceElement && !child.Info.Name.EndsWith("[x]", StringComparison.Ordinal)
+                ? child.Info.Name + "[x]"
+                : child.Info.Name;
+            Walk(child, $"{path}.{name}", elements);
         }
     }
 
@@ -61,7 +68,7 @@ internal static class TypeSnapshotProjector
 
         if (ext.Types.Count > 0)
         {
-            element["type"] = BuildTypes(ext.Types);
+            element["type"] = BuildTypes(ext.Types, ext.ReferenceTargets);
         }
 
         if (ext.Binding is { } binding)
@@ -82,20 +89,34 @@ internal static class TypeSnapshotProjector
         return element;
     }
 
-    private static JsonArray BuildTypes(IReadOnlyList<ITypeReference> types)
+    /// <summary>
+    /// One <c>type</c> entry per type code, carrying every profile and target profile the metadata gives it. Generated core
+    /// metadata states a Reference's (and a CodeableReference's) targets in full only in <paramref name="referenceTargets"/> (resource type names), with
+    /// the first target alone in <paramref name="types"/>, so those names are added as core canonicals: a profile that does not
+    /// constrain the element must keep every target its base allows.
+    /// </summary>
+    private static JsonArray BuildTypes(IReadOnlyList<ITypeReference> types, IReadOnlyList<string> referenceTargets)
     {
         var array = new JsonArray();
-        foreach (var typeReference in types)
+        foreach (var group in types.GroupBy(typeReference => typeReference.Code, StringComparer.Ordinal))
         {
-            var entry = new JsonObject { ["code"] = typeReference.Code };
-            if (typeReference.Profile is { } profile)
+            var entry = new JsonObject { ["code"] = group.Key };
+            List<string> profiles = [.. group.Select(typeReference => typeReference.Profile).OfType<string>().Distinct(StringComparer.Ordinal)];
+            if (profiles.Count > 0)
             {
-                entry["profile"] = new JsonArray(JsonValue.Create(profile));
+                entry["profile"] = new JsonArray([.. profiles.Select(profile => JsonValue.Create(profile))]);
             }
 
-            if (typeReference.TargetProfile is { } targetProfile)
+            IEnumerable<string> targets = group.Select(typeReference => typeReference.TargetProfile).OfType<string>();
+            if (group.Key is "Reference" or "CodeableReference")
             {
-                entry["targetProfile"] = new JsonArray(JsonValue.Create(targetProfile));
+                targets = targets.Concat(referenceTargets.Select(target => CorePrefix + target));
+            }
+
+            List<string> targetProfiles = [.. targets.Distinct(StringComparer.Ordinal)];
+            if (targetProfiles.Count > 0)
+            {
+                entry["targetProfile"] = new JsonArray([.. targetProfiles.Select(target => JsonValue.Create(target))]);
             }
 
             array.Add(entry);

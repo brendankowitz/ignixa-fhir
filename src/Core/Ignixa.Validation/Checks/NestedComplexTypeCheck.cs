@@ -29,6 +29,8 @@ public class NestedComplexTypeCheck : IValidationCheck
     /// </summary>
     internal string ElementName { get; }
 
+    private readonly string _shadowName;
+
     /// <summary>
     /// Gets a value indicating whether this element is a collection (array).
     /// </summary>
@@ -49,6 +51,7 @@ public class NestedComplexTypeCheck : IValidationCheck
     public NestedComplexTypeCheck(string elementName, bool isCollection, ValidationSchema nestedSchema)
     {
         ElementName = elementName ?? throw new ArgumentNullException(nameof(elementName));
+        _shadowName = $"_{elementName}";
         IsCollection = isCollection;
         NestedSchema = nestedSchema ?? throw new ArgumentNullException(nameof(nestedSchema));
     }
@@ -70,9 +73,15 @@ public class NestedComplexTypeCheck : IValidationCheck
         var isValid = true;
 
         // Get all instances of this element (may be array)
-        var elementNodes = element.Children(ElementName).ToList();
+        // Never a choice element (those nest through ChoiceVariantNestedCheck), so the exact name decides absence.
+        if (RawMembers.CertainlyAbsent(element, ElementName, _shadowName))
+        {
+            return ValidationResult.Success();
+        }
 
-        if (!elementNodes.Any())
+        var elementNodes = element.Children(ElementName);
+
+        if (elementNodes.Count == 0)
         {
             // No elements to validate - cardinality checks handle missing/empty collections
             return ValidationResult.Success();

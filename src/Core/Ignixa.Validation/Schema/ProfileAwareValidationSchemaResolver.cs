@@ -147,11 +147,12 @@ public sealed class ProfileAwareValidationSchemaResolver : IValidationSchemaReso
 
         public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
         {
-            var issue = new ValidationIssue(
+            var issue = ValidationIssue.FromTemplate(
                 IssueSeverity.Warning,
                 "unresolvable-profile",
                 element.Location ?? string.Empty,
-                $"Profile '{_profileUrl}' declared in meta.profile could not be resolved and was not validated. Available schemas were still applied.");
+                IssueTemplates.ProfileNotResolved,
+                _profileUrl);
             return new ValidationResult(isValid: true, issues: [issue]);
         }
     }

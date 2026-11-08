@@ -624,14 +624,18 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
             defaultTypeName = _constantTracker?.GetConstantReference(firstType) ?? $"\"{EscapeString(firstType)}\"";
         }
 
-        // 8. Reference Targets
+        // 8. Reference Targets: every targetProfile of the element's Reference and CodeableReference types (R4B and later
+        // carry a CodeableReference's targets on the element, as for a Reference). The type list above keeps only each
+        // type's first targetProfile, so this list is the element's complete set.
         string referenceTargets = "null";
-        var referenceType = element.Type?.FirstOrDefault(t => t.Code == "Reference");
-        if (referenceType?.TargetProfile != null && referenceType.TargetProfile.Any())
+        var referenceTypes = element.Type?.Where(t => t.Code is "Reference" or "CodeableReference" && t.TargetProfile != null).ToList();
+        if (referenceTypes is { Count: > 0 })
         {
-            var targets = referenceType.TargetProfile
+            var targets = referenceTypes
+                .SelectMany(t => t.TargetProfile)
                 .Select(url => url.Split('/').Last())
                 .Where(t => !string.IsNullOrEmpty(t))
+                .Distinct(StringComparer.Ordinal)
                 .ToList();
 
             if (targets.Count > 0)

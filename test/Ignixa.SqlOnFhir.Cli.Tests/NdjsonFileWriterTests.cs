@@ -83,6 +83,48 @@ public class NdjsonFileWriterTests : IAsyncDisposable
         lines[1].ShouldContain("p2");
     }
 
+    [Fact]
+    public async Task GivenRows_WhenWritten_ThenTheFileHasNoByteOrderMark()
+    {
+        await using (var writer = new NdjsonFileWriter(_outputPath, NullLogger.Instance))
+        {
+            await writer.WriteRowAsync(new Dictionary<string, object?> { ["id"] = "p1" });
+            await writer.FlushAsync();
+        }
+
+        byte[] bytes = await File.ReadAllBytesAsync(_outputPath);
+        bytes[0].ShouldBe((byte)'{');
+    }
+
+    [Fact]
+    public async Task GivenAStream_WhenRowsAreWritten_ThenTheyGoToThatStreamAndItIsClosed()
+    {
+        var stream = new FileStream(_outputPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+        await using (var writer = new NdjsonFileWriter(stream, NullLogger.Instance))
+        {
+            await writer.WriteRowAsync(new Dictionary<string, object?> { ["id"] = "p1" });
+            await writer.FlushAsync();
+            writer.BytesWritten.ShouldBe(stream.Length);
+        }
+
+        (await File.ReadAllTextAsync(_outputPath)).Trim().ShouldBe("""{"id":"p1"}""");
+        stream.CanWrite.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task GivenAStreamThatCannotSeekOrBeMeasured_WhenRowsAreWritten_ThenTheBytesAreCountedAsTheyAreWritten()
+    {
+        using var inner = new MemoryStream();
+        var stream = new WriteOnlyStream(inner);
+        await using (var writer = new NdjsonFileWriter(stream, NullLogger.Instance))
+        {
+            await writer.WriteRowAsync(new Dictionary<string, object?> { ["id"] = "p1" });
+            await writer.FlushAsync();
+            writer.BytesWritten.ShouldBe(inner.Length);
+            writer.BytesWritten.ShouldBeGreaterThan(0);
+        }
+    }
+
     public ValueTask DisposeAsync()
     {
         if (File.Exists(_outputPath)) File.Delete(_outputPath);

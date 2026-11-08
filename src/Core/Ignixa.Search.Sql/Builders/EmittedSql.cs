@@ -8,8 +8,9 @@ public sealed record EmittedSqlParameter(string Name, object Value);
 /// when the plan has includes, plus any <see cref="Ast.QueryPlan.Projection"/> columns in declared order, plus a
 /// final <c>Distance</c> (float) when <see cref="Ast.MatchPageSpec.Ranking"/> is set — NULL on include rows.
 /// IsMatch is 1 for a match-page row; IsPartial is 1 on an included row whose stage TOP truncated more rows.
-/// Callers pick the shape from <c>plan.Includes?.Count</c>, <c>plan.Projection</c> and
-/// <c>plan.MatchSpec.Ranking</c>, not from the SQL text.
+/// A <see cref="Ast.ResultShape.Count"/> or <see cref="Ast.ResultShape.IncludesCount"/> plan instead returns
+/// a single <c>bigint</c> scalar. Callers pick the shape from <c>plan.Includes?.Count</c>, <c>plan.Projection</c>,
+/// and <c>plan.MatchSpec.Ranking</c>, not from the SQL text.
 /// </summary>
 internal sealed record EmittedSql(
     string Sql,

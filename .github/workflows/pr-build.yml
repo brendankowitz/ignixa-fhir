@@ -3,21 +3,6 @@ name: PR Build
 on:
   pull_request:
     branches: [ main, fhir-v2 ]
-    paths:
-      - 'src/**'
-      - 'test/**'
-      - 'bench/**'
-      - 'tools/**'
-      - 'docs/site/**'
-      - 'All.sln'
-      - 'global.json'
-      - 'Directory.Packages.props'
-      - 'Directory.Build.props'
-      - 'Directory.Build.targets'
-      - 'Dockerfile'
-      - '.dockerignore'
-      - '.github/workflows/pr-build.yml'
-      - '.github/actions/dotnet-build-and-test/**'
 
 concurrency:
   group: pr-build-${{ github.event.pull_request.number }}

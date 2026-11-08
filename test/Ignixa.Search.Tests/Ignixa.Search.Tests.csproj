@@ -18,6 +18,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <!-- Tests the experimental in-memory search engine API ([Experimental("IGNIXAEXP001")]). -->
+    <NoWarn>$(NoWarn);IGNIXAEXP001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

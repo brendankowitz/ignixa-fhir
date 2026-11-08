@@ -184,6 +184,19 @@ public sealed record AnalysisContext
     }
 
     /// <summary>
+    /// Adds an error reporting that none of <paramref name="focusTypes"/> declares <paramref name="property"/>.
+    /// </summary>
+    public void AddUnresolvedPropertyError(string message, string property, IReadOnlyList<string> focusTypes, Expression? location = null)
+    {
+        _issues.Add(ValidationIssue.UnresolvedProperty(
+            message,
+            property,
+            focusTypes,
+            location?.Location?.ToString(),
+            location?.ToString()));
+    }
+
+    /// <summary>
     /// Adds a warning that marks the analysis as indeterminate rather than invalid.
     /// </summary>
     public void AddIndeterminateWarning(string message, Expression? location = null)

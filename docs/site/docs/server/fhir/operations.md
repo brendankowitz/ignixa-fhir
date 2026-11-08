@@ -603,6 +603,8 @@ Content-Type: application/fhir+json
 }
 ```
 
+A transform is stopped after `MappingEvaluatorOptions.TransformTimeout` (30 seconds by default), failing as a transformation that did not finish within the transform timeout (the mapping library's `TRANSFORM_TIMEOUT`), and when the client disconnects (the request is cancelled). Both are checked before each rule of the map, so a single long FHIRPath evaluation inside a rule runs to its end first.
+
 ## Not Yet Implemented
 
 The following operations are planned but not yet available:

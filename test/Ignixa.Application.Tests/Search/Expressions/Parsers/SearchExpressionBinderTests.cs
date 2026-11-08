@@ -380,12 +380,14 @@ public class SearchExpressionBinderTests
     }
 
     [Fact]
-    public void GivenReferenceShapedCompositeComponent_WhenBinding_ThenInfersReferenceType()
+    public void GivenReferenceShapedTokenCompositeComponent_WhenBinding_ThenInfersReferenceType()
     {
+        // Only a declared Token or Reference component is retyped by its value's shape; a String one keeps its type
+        // (CompositeComponentTypingTests in Ignixa.Search.Tests).
         var context = new SearchParserTestContext();
         SearchParameterInfo composite = CreateSingleComponentComposite(
             context,
-            SearchParamType.String);
+            SearchParamType.Token);
         var binder = CreateBinder(context);
         var syntax = SearchValueSyntaxParser.Parse(
             SearchParamType.Composite,

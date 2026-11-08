@@ -51,8 +51,8 @@ All four counts are pinned in `KnownDivergences.SearchParameterPopulation`, beca
 an evaluation that stopped comparing values and started throwing on both engines left every entry in
 this document satisfied and the suite green.
 
-The language-construct corpus (83 expressions, deliberately chosen to target what this branch
-changed) produces 58 outcomes, grouped in this document under 6 open root causes. 17 of its 415
+The language-construct corpus (90 expressions, deliberately chosen to target what this branch
+changed) produces 58 outcomes, grouped in this document under 6 open root causes. 22 of its 450
 evaluations are mutual throws - it deliberately probes operations one engine or the other does not
 implement - and those are pinned in `KnownDivergences.ConstructPopulation` for the same reason.
 **None of them is reachable from any shipped R4 SearchParameter expression.**
@@ -334,6 +334,18 @@ The brief predicted four findings. Two were confirmed, two refuted.
 | ~12 constructs signal errors where Firely returns empty | **Refuted in direction.** The asymmetry mostly runs the other way: Firely throws where Ignixa answers (`@T10:30:00 + 1 hour`) or returns empty where Ignixa answers (`- multipleBirthInteger`, `deceasedBoolean`). Only `hasExtension` has Ignixa erroring where Firely does not - and Firely does not return empty there either, it throws earlier. |
 | `as` filters element-wise below R5; at R5+ Ignixa throws where Firely does not | **Not covered** - see below. At R4, `name as HumanName`, `name.as(HumanName)` and `name.ofType(HumanName)` all agree. |
 | Ignixa's `Scalar`/`IsTrue`/`IsBoolean` differ from Firely's | **Confirmed for `Scalar`** (entry 7). `IsTrue` agrees. `Predicate` is worse than absent - Ignixa ships two same-named methods with different, mutually disagreeing empty/multi-item contracts, neither matching Firely's empty-collection-is-true rule (see entry 7). ADR 2608 derives `Predicate` in the seam because Firely's is `internal`; the divergence is the reason that derivation cannot instead delegate to either Ignixa copy. |
+
+### Invalid regular expressions (resolved, #519)
+
+`matches()` and `replaceMatches()` with an unparseable pattern (for example `'abc['`) used to return
+empty in Ignixa while Firely throws. Ignixa now throws `FhirPathEvaluationException` (wrapping the
+`ArgumentException` from the regex parser), and `matchesFull()` does the same. This is no longer a
+divergence: the construct corpus carries three invalid-pattern rows plus two valid-pattern controls,
+and the invalid rows are counted among the mutual throws in `KnownDivergences.ConstructPopulation`.
+
+The error surfaces only when the pattern is actually compiled. On an empty input collection both
+engines short-circuit to empty without touching the pattern, so only subjects that populate the
+operand (the Patient in the corpus) throw.
 
 ---
 

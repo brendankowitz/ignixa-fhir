@@ -65,26 +65,12 @@ public class DeIdOptionsLoaderTests
         result.Error.Code.ShouldBe("CONFIG_PARSE_ERROR");
     }
 
-    [Fact]
-    public void GivenConfigWithoutRules_WhenLoadFromJson_ThenReturnsNoRulesError()
+    [Theory]
+    [InlineData("""{ "fhirVersion": "", "abc": "123" }""")]
+    [InlineData("""{ "fhirVersion": "", "fhirPathRules": [] }""")]
+    [InlineData("""{ "fhirVersion": "", "fhirPathRules": null }""")]
+    public void GivenConfigWithoutRules_WhenLoadFromJson_ThenReturnsNoRulesError(string json)
     {
-        // Arrange
-        var json = """{ "fhirVersion": "", "abc": "123" }""";
-
-        // Act
-        var result = DeIdOptionsLoader.LoadFromJson(json);
-
-        // Assert
-        result.IsSuccess.ShouldBeFalse();
-        result.Error.Code.ShouldBe("CONFIG_NO_RULES");
-    }
-
-    [Fact]
-    public void GivenConfigWithEmptyRules_WhenLoadFromJson_ThenReturnsNoRulesError()
-    {
-        // Arrange
-        var json = """{ "fhirVersion": "", "fhirPathRules": [] }""";
-
         // Act
         var result = DeIdOptionsLoader.LoadFromJson(json);
 
@@ -122,6 +108,8 @@ public class DeIdOptionsLoaderTests
         result.Value.Parameters!.DateShiftKey.ShouldBe("test-key");
         result.Value.Parameters.CryptoHashKey.ShouldBe("hash-key");
         result.Value.Parameters.EnablePartialDatesForRedact.ShouldBeTrue();
+        result.Value.Parameters.EnablePartialAgesForRedact.ShouldBeTrue();
+        result.Value.Parameters.EnablePartialZipCodesForRedact.ShouldBeTrue();
     }
 
     [Fact]
@@ -162,7 +150,13 @@ public class DeIdOptionsLoaderTests
                 {
                     "path": "Patient.name",
                     "method": "substitute",
-                    "replaceWith": "REDACTED"
+                    "resourceType": "Patient",
+                    "replaceWith": "REDACTED",
+                    "roundTo": 2,
+                    "span": 0.25,
+                    "enabled": true,
+                    "cases": { "true": "value" },
+                    "unused": null
                 }
             ]
         }
@@ -174,7 +168,13 @@ public class DeIdOptionsLoaderTests
         // Assert
         result.IsSuccess.ShouldBeTrue();
         result.Value.Rules[0].Settings.ShouldNotBeNull();
+        result.Value.Rules[0].ResourceType.ShouldBe("Patient");
         result.Value.Rules[0].Settings!["replaceWith"].ShouldBe("REDACTED");
+        result.Value.Rules[0].Settings!["roundTo"].ShouldBeOfType<int>().ShouldBe(2);
+        result.Value.Rules[0].Settings!["span"].ShouldBeOfType<double>().ShouldBe(0.25);
+        result.Value.Rules[0].Settings!["enabled"].ShouldBeOfType<bool>().ShouldBeTrue();
+        result.Value.Rules[0].Settings!["cases"].ShouldBe("""{"true":"value"}""");
+        result.Value.Rules[0].Settings!.ContainsKey("unused").ShouldBeFalse();
     }
 
     [Fact]
@@ -185,8 +185,14 @@ public class DeIdOptionsLoaderTests
         {
             "fhirVersion": "R4",
             "fhirPathRules": [
+                null,
+                {},
+                { "method": "redact" },
+                { "path": "Patient.name" },
                 { "path": "", "method": "redact" },
                 { "path": "Patient.name", "method": "" },
+                { "path": " ", "method": "redact" },
+                { "path": "Patient.name", "method": " " },
                 { "path": "Patient.address", "method": "keep" }
             ]
         }
@@ -199,5 +205,29 @@ public class DeIdOptionsLoaderTests
         result.IsSuccess.ShouldBeTrue();
         result.Value.Rules.Length.ShouldBe(1);
         result.Value.Rules[0].Path.ShouldBe("Patient.address");
+    }
+
+    [Fact]
+    public void GivenMissingFhirVersion_WhenLoadFromJson_ThenVersionDefaultsToEmpty()
+    {
+        var result = DeIdOptionsLoader.LoadFromJson(
+            """{"fhirPathRules":[{"path":"Patient.name","method":"redact"}]}""");
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.FhirVersion.ShouldBeEmpty();
+        result.Value.Parameters.ShouldBeNull();
+        result.Value.Processing.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("""{"fhirPathRules":{}}""")]
+    [InlineData("""{"fhirPathRules":[{"path":1,"method":"redact"}]}""")]
+    public void GivenWrongConfigurationShape_WhenLoadFromJson_ThenReturnsParseError(string json)
+    {
+        var result = DeIdOptionsLoader.LoadFromJson(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.Code.ShouldBe("CONFIG_PARSE_ERROR");
+        result.Error.Exception.ShouldBeOfType<InvalidOperationException>();
     }
 }

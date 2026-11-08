@@ -91,7 +91,9 @@ public sealed class ExtensionDefinitionCheck : IValidationCheck, ISingletonCheck
                 case JsonArray array:
                     WalkArray(array, childPath, isExtensionArray, childOnShadow, issues);
                     break;
-                case JsonObject nested:
+                // A nested resource (a Bundle or Parameters entry) is validated against its own schema, which
+                // applies this same rule (EntryResourceCheck); walking into it would duplicate the diagnostic.
+                case JsonObject nested when !nested.ContainsKey("resourceType"):
                     WalkObject(nested, childPath, childOnShadow, issues);
                     break;
             }
@@ -117,10 +119,7 @@ public sealed class ExtensionDefinitionCheck : IValidationCheck, ISingletonCheck
                 && urlValue.ToString() is { Length: > 0 } url
                 && IsReservedExampleUrl(url))
             {
-                issues.Add(ValidationIssue.InvariantFailure(
-                    "ext-example-url",
-                    $"Example URLs are not allowed in this context ({url})",
-                    $"{path}[{i}].url"));
+                issues.Add(ValidationIssue.FromTemplate(IssueSeverity.Error, "ext-example-url", $"{path}[{i}].url", IssueTemplates.ExtensionExampleUrl, url));
             }
 
             WalkObject(item, $"{path}[{i}]", onPrimitiveShadow, issues);

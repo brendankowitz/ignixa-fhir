@@ -70,6 +70,8 @@ public class DateTimeToolTests
 
     public static IEnumerable<object[]> GetAgeDataForPartialRedact()
     {
+        yield return [89];
+        yield return [90];
         yield return [92];
         yield return [57];
     }
@@ -306,5 +308,50 @@ public class DateTimeToolTests
         updatedNode?.Value.ShouldBeNull();
         result.WasModified.ShouldBeTrue();
         result.OperationType.ShouldBe(DeIdOperations.Redact);
+    }
+
+    [Theory]
+    [InlineData("birthDate", "2015-02-07", 3, "2015-02-10")]
+    [InlineData("birthDate", "2015-02-07", 0, "2015-02-07")]
+    [InlineData("effectiveDateTime", "2015-02-07T13:28:17-05:00", -3, "2015-02-04T00:00:00-05:00")]
+    [InlineData("effectiveDateTime", "2015-02-07", 3, "2015-02-10")]
+    [InlineData("issued", "2015-02-07T13:28:17Z", 3, "2015-02-10T00:00:00Z")]
+    public void GivenFixedOffset_WhenDateShift_ThenOffsetOverridesKey(
+        string field, string value, int offset, string expected)
+    {
+        var resourceType = field == "birthDate" ? "Patient" : "Observation";
+        var resource = ResourceJsonNode.Parse(
+            $$"""{"resourceType":"{{resourceType}}","{{field}}":"{{value}}"}""");
+        var node = resource.ToElement(_schema).Children(field).First();
+
+        var result = field == "birthDate"
+            ? DateTimeTool.ShiftDateNode(node, "dummy", "prefix", offset)
+            : DateTimeTool.ShiftDateTimeAndInstantNode(node, "dummy", "prefix", offset);
+
+        resource.InvalidateCaches();
+        resource.ToElement(_schema).Children(field).First().Value?.ToString().ShouldBe(expected);
+        result.WasModified.ShouldBeTrue();
+        result.OperationType.ShouldBe(DeIdOperations.Perturb);
+    }
+
+    [Fact]
+    public void GivenNonDateElement_WhenRedactingOrShifting_ThenElementIsUnchanged()
+    {
+        var resource = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"keep-me"}""");
+        var node = resource.ToElement(_schema).Children("id").First();
+
+        var date = DateTimeTool.RedactDateNode(node);
+        var dateTime = DateTimeTool.RedactDateTimeAndInstantNode(node);
+        var age = DateTimeTool.RedactAgeDecimalNode(node);
+        var shiftedDate = DateTimeTool.ShiftDateNode(node, "", "", 3);
+        var shiftedDateTime = DateTimeTool.ShiftDateTimeAndInstantNode(node, "", "", 3);
+
+        date.WasModified.ShouldBeFalse();
+        dateTime.WasModified.ShouldBeFalse();
+        age.WasModified.ShouldBeFalse();
+        shiftedDate.WasModified.ShouldBeFalse();
+        shiftedDateTime.WasModified.ShouldBeFalse();
+        resource.InvalidateCaches();
+        resource.ToElement(_schema).Children("id").First().Value.ShouldBe("keep-me");
     }
 }

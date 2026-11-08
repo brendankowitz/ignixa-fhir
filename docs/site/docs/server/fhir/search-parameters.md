@@ -161,6 +161,10 @@ GET /Observation?subject.name=Smith
 GET /Observation?subject:identifier=http://hospital.org|MRN123
 ```
 
+:::note SQL Server index limits
+On SQL Server, a reference whose base URI is longer than 128 characters or whose id is longer than 64 characters (possible only for an unparsed reference such as a long `urn:oid:`) is not indexed. The resource is still stored, and the skip is logged as warning `4001` (`ReferenceRowSkipped`). Such a reference cannot be found by value, and `:missing` treats it as absent.
+:::
+
 ### Date/DateTime
 
 Temporal comparisons:
@@ -191,6 +195,10 @@ GET /Observation?value-quantity=gt100
 GET /Observation?value-quantity=100||mg
 GET /Observation?value-quantity=ge5.4|http://unitsofmeasure.org|mg
 ```
+
+:::note SQL Server index limits
+On SQL Server, a quantity code or unit longer than 256 characters is not indexed, and the skip is logged as warning `4002` (`QuantityCodeRowSkipped`). If the quantity has no other indexable code, `:missing` treats it as absent.
+:::
 
 ### URI
 

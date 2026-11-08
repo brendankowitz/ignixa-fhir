@@ -212,6 +212,29 @@ public class StructureDefinitionTypeAdapterTests
         subject.ReferenceTargets.ShouldContain("Group");
     }
 
+    // Regression (PR #516 review, finding 6): STU3 states type.targetProfile as a single uri (0..1), not an array, so
+    // an STU3 Reference element lost its target types.
+    [Fact]
+    public void GivenStu3ReferenceWithScalarTargetProfile_WhenAdapted_ThenExposesTheTarget()
+    {
+        const string json = """
+            {
+              "resourceType": "StructureDefinition", "id": "obs", "url": "http://example.org/fhir/StructureDefinition/obs",
+              "name": "Obs", "status": "active", "kind": "resource", "abstract": false, "type": "Observation",
+              "snapshot": { "element": [
+                { "id": "Observation", "path": "Observation", "min": 0, "max": "*" },
+                { "id": "Observation.subject", "path": "Observation.subject", "min": 0, "max": "1",
+                  "type": [ { "code": "Reference", "targetProfile": "http://hl7.org/fhir/StructureDefinition/Patient" } ] }
+              ] }
+            }
+            """;
+
+        var type = new StructureDefinitionTypeAdapter().Adapt(json, "3.0.2")!;
+        var subject = (ITypeExtended)type.Children.Single(c => c.Info.Name == "subject");
+
+        subject.ReferenceTargets.ShouldBe(["Patient"]);
+    }
+
     // ===== Slicing rules parsing =====
 
     [Theory]

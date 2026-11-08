@@ -216,7 +216,7 @@ public class AsOperatorSearchParameterCardinalityTests
         var indices = Index(new R4CoreSchemaProvider(), TwoComponentObservationJson);
 
         // Act
-        var entries = indices.Where(i => i.SearchParameter.Code == searchParameterCode).ToList();
+        var entries = indices.Where(i => i.SearchParameter.Code == searchParameterCode && IsCodedQuantity(i)).ToList();
 
         // Assert
         entries.Count.ShouldBe(expectedEntries);
@@ -234,7 +234,7 @@ public class AsOperatorSearchParameterCardinalityTests
         var indices = Index(new R5CoreSchemaProvider(), TwoComponentObservationJson);
 
         // Act
-        var entries = indices.Where(i => i.SearchParameter.Code == searchParameterCode).ToList();
+        var entries = indices.Where(i => i.SearchParameter.Code == searchParameterCode && IsCodedQuantity(i)).ToList();
 
         // Assert
         entries.Count.ShouldBe(expectedEntries);
@@ -278,6 +278,11 @@ public class AsOperatorSearchParameterCardinalityTests
         // Assert
         results.Count.ShouldBe(2);
     }
+
+    // Each component's quantity also indexes its stated unit (mmHg, differing from the code mm[Hg]) as a second value with
+    // no system; only the values carrying the system count the components.
+    private static bool IsCodedQuantity(SearchIndexEntry entry) =>
+        entry.Value is Ignixa.Search.Indexing.SearchValues.QuantitySearchValue { System: not null };
 
     private static IReadOnlyCollection<SearchIndexEntry> Index(IFhirSchemaProvider schema, string resourceJson)
     {

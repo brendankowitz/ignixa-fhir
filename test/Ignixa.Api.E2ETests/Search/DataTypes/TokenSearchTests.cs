@@ -39,12 +39,12 @@ public class TokenSearchTests : CapabilityDrivenTestBase, IClassFixture<TokenSea
         ["code1", 0, 5, 6],                      // Matches obs 0, 5, 6
         ["code3", 4, 6, 7],                      // Matches obs 4, 6, 7
         ["a|b"],                                 // Empty (no system 'a')
-        ["system2|code2", 1],                    // Exact system+code match
-        ["|code2"],                              // Any system with code2 (obs 1 has system2|code2)
+        [$"{TokenSearchObservations.System2}|code2", 1],  // Exact system+code match
+        ["|code2"],                              // Any system with code2 (obs 1 has System2|code2)
         ["|code3", 7],                           // Any system with code3 (obs 7 has no system)
         ["a|"],                                  // Empty (system 'a' with any code)
-        ["system3|", 4, 5, 6],                   // System3 with any code
-        ["code1,system2|code2", 0, 1, 5, 6]     // OR: code1 OR system2|code2
+        [$"{TokenSearchObservations.System3}|", 4, 5, 6],  // System3 with any code
+        [$"code1,{TokenSearchObservations.System2}|code2", 0, 1, 5, 6]  // OR: code1 OR System2|code2
     ];
 
     /// <summary>
