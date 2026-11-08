@@ -237,10 +237,10 @@ transition whose grace period has elapsed but which is still uncommitted (§7).
 - `TransitionSafetyMargin` defaults to 2 minutes 30 seconds. It covers four 30-second SQL command attempts,
   the three exponential retry delays, and 15 seconds of clock skew, rounded up to the next 30-second boundary.
 - The margin is enforced, not assumed. A request-originated search the lease admits must finish by
-  `admission + TransitionSafetyMargin − 15 s` (`SearchOptions.ExecutionDeadline`). The SQL search service cancels
-  every connection open, retry and command of the search at that instant and returns a retryable `503`, so a
-  sorted search's several commands, or slow connection opens, cannot outlive the margin. Startup requires the
-  margin to exceed the 15-second clock-skew allowance.
+  `admission + TransitionSafetyMargin − ClockSkewAllowance` (`SearchOptions.ExecutionDeadline`;
+  `Conformance:ClockSkewAllowance` defaults to 15 s). The SQL search service cancels every connection open, retry
+  and command of the search at that instant and returns a retryable `503`, so a sorted search's several commands,
+  or slow connection opens, cannot outlive the margin. Startup requires the margin to exceed the allowance.
 - **Without the lease**, every request that evaluates search parameters (F15) **fails closed**. It returns `503`
   with `Retry-After` and an `OperationOutcome` (*"Conformance state is stale; search is temporarily
   unavailable."*). Reads by id, history reads, and unconditional writes continue. Write extraction staleness is

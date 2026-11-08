@@ -220,6 +220,8 @@ public class SqlReindexOrchestrationTests
             builder.UseSetting("Conformance:MaxStaleness", "00:00:01");
             builder.UseSetting("Conformance:TransitionGrace", "00:00:02");
             builder.UseSetting("Conformance:TransitionSafetyMargin", "00:00:01");
+            // One host, one clock: there is no skew between instances to allow for.
+            builder.UseSetting("Conformance:ClockSkewAllowance", "00:00:00");
             builder.UseSetting("Reindex:BarrierDelay", "00:00:01");
             // Follow-up jobs start from the periodic reconciliation tick.
             builder.UseSetting("Conformance:SyncIntervalSeconds", "1");

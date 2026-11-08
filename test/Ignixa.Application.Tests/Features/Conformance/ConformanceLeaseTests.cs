@@ -19,7 +19,8 @@ public class ConformanceLeaseTests
     public void GivenAHeldLease_WhenSearchesAreAdmitted_ThenOnlyRequestSearchesGetADeadlineWithinTheSafetyMargin()
     {
         _lease.Renew(_lease.CaptureStart());
-        var budget = new ConformanceTransitionOptions().TransitionSafetyMargin - ConformanceTransitionOptions.ClockSkewAllowance;
+        var defaults = new ConformanceTransitionOptions();
+        var budget = defaults.TransitionSafetyMargin - defaults.ClockSkewAllowance;
 
         _lease.EnsureRequestCanSearch(requestOriginated: true, isBackgroundTask: false).ShouldBe(_clock.GetUtcNow() + budget);
         _lease.EnsureRequestCanSearch(requestOriginated: true, isBackgroundTask: true).ShouldBeNull();

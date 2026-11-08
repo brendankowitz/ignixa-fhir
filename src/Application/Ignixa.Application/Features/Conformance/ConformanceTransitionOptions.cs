@@ -4,8 +4,7 @@ namespace Ignixa.Application.Features.Conformance;
 
 public sealed class ConformanceTransitionOptions
 {
-    /// <summary>The part of <see cref="TransitionSafetyMargin"/> reserved for clock skew between instances.</summary>
-    public static readonly TimeSpan ClockSkewAllowance = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan DefaultClockSkewAllowance = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan SafetyMarginRoundingInterval = TimeSpan.FromSeconds(30);
 
     public const string SectionName = "Conformance";
@@ -16,7 +15,7 @@ public sealed class ConformanceTransitionOptions
     /// </summary>
     private static readonly TimeSpan DefaultTransitionSafetyMargin =
         RoundUp(
-            SqlExecutionPolicyDefaults.MaximumExecutionBudget + ClockSkewAllowance,
+            SqlExecutionPolicyDefaults.MaximumExecutionBudget + DefaultClockSkewAllowance,
             SafetyMarginRoundingInterval);
 
     /// <summary>
@@ -38,6 +37,12 @@ public sealed class ConformanceTransitionOptions
     /// Gets or sets the execution allowance added above <see cref="MaxStaleness"/> before a transition may commit.
     /// </summary>
     public TimeSpan TransitionSafetyMargin { get; set; } = DefaultTransitionSafetyMargin;
+
+    /// <summary>
+    /// Gets or sets the part of <see cref="TransitionSafetyMargin"/> reserved for clock skew between the instance
+    /// that admits a search and the one that commits a transition.
+    /// </summary>
+    public TimeSpan ClockSkewAllowance { get; set; } = DefaultClockSkewAllowance;
 
     /// <summary>
     /// Gets how long a search admitted under the staleness lease may run: the safety margin less the clock-skew

@@ -221,6 +221,8 @@ public class SqlOverrideActivationLifecycleTests
                 builder.UseSetting("Conformance:MaxStaleness", "00:00:00.050");
                 builder.UseSetting("Conformance:TransitionGrace", "00:00:00.100");
                 builder.UseSetting("Conformance:TransitionSafetyMargin", "00:00:00.050");
+                // One host, one clock: there is no skew between instances to allow for.
+                builder.UseSetting("Conformance:ClockSkewAllowance", "00:00:00");
                 builder.UseSetting("Reindex:BarrierDelay", "00:00:00.050");
             }
 
