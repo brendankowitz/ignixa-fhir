@@ -44,6 +44,15 @@ public class AuthenticationHandler : IAuthorizationHandler
             return ValueTask.FromResult(AuthorizationResult.AuthenticationRequired);
         }
 
+        // The RBAC and SMART handlers each skip a caller that has nothing for them to check, so a token with
+        // neither a resource scope nor a role would otherwise pass every handler.
+        if (!context.HasSmartScopes && !context.HasRoles)
+        {
+            _logger.LogWarning("Authentication check: Request denied - no SMART resource scope or role");
+            return ValueTask.FromResult(AuthorizationResult.Denied(
+                "The caller is authenticated but holds no SMART resource scope or role."));
+        }
+
         _logger.LogDebug(
             "Authentication check: User {UserId} authenticated",
             context.UserId ?? context.SmartContext?.TokenClaims.FhirUser ?? "unknown");

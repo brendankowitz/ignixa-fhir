@@ -85,8 +85,7 @@ route that declares none is refused.
 |---|---|
 | `$validate` on a type or instance | Read on that type |
 | `/$validate` (system) | Read on `*` |
-| `$includes` | Search on the route's type |
-| `$everything`, `$summary`, `$member-match`, `$graphql` | Search on `*` |
+| `$everything`, `$summary`, `$member-match`, `$graphql`, `$includes` | Search on `*` |
 | `$de-identify`, `$export` (system, tenant and Group), export status and cancel | Read on `*` |
 | `$import`, import status and cancel | Update on `*` |
 | `$bulk-delete` on a type | Delete on that type, then on every type the job reaches |
@@ -98,8 +97,13 @@ route that declares none is refused.
 Package load and unload change search behaviour for every tenant. While more than one tenant is active they also
 require the `SystemAdmin` role.
 
-Bundle entries are not yet authorized one by one, so a `batch` or `transaction` bundle requires every permission
-on every type: SMART `system/*.cruds` (or `user/*.cruds`), or an RBAC grant of `transaction` on `*`.
+A `batch` or `transaction` bundle is authorized in two steps. The bundle request itself needs a grant on `*` (any
+SMART scope on `*`, or an RBAC grant of `transaction` on `*`). Each entry then runs through its own
+endpoint's authorization as the interaction it performs, so a `PUT` entry also needs update on its type. One
+refused entry fails a transaction; a batch reports it as that entry's response.
+
+A caller that is authenticated but holds neither a SMART resource scope nor a role is refused on every protected
+route.
 
 ## Configuration
 

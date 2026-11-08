@@ -160,8 +160,8 @@ public record SmartScope
     /// </summary>
     /// <remarks>
     /// Operations have no SMART permission of their own: an operation route declares the interaction it performs
-    /// (<c>FhirAuthorizationMetadata</c>), and one that does not is refused. Bundle entries are not authorized
-    /// individually, so a batch or transaction needs every permission.
+    /// (<c>FhirAuthorizationMetadata</c>), and one that does not is refused. A batch or transaction needs no
+    /// permission of its own because each entry runs through its endpoint's authorization.
     /// </remarks>
     private static SmartPermissions? MapInteractionToPermission(string interaction)
     {
@@ -180,7 +180,7 @@ public record SmartScope
             "HISTORY-INSTANCE" => SmartPermissions.Read,
             "HISTORY-TYPE" => SmartPermissions.Read,
             "CAPABILITIES" => SmartPermissions.None,
-            "BATCH" or "TRANSACTION" => SmartPermissions.All,
+            "BATCH" or "TRANSACTION" => SmartPermissions.None,
             _ => null
         };
     }

@@ -25,8 +25,8 @@ namespace Ignixa.Api.Filters;
 /// </summary>
 /// <remarks>
 /// The interaction is derived from the route unless the endpoint declares <see cref="FhirAuthorizationMetadata"/>.
-/// Bundle entries are dispatched in-process and are not authorized individually, so a batch or transaction is
-/// authorized as a whole and requires every permission on every resource type.
+/// Bundle entries are dispatched through their endpoints' pipelines with the caller's principal, so each entry is
+/// authorized by this filter as the interaction it performs.
 /// </remarks>
 public class FhirAuthorizationFilter : IEndpointFilter
 {
@@ -98,8 +98,6 @@ public class FhirAuthorizationFilter : IEndpointFilter
                 return CreateForbiddenResponse(RestrictedGrantDiagnostics);
             }
 
-            // Continue to next filter or handler
-            return await next(context);
         }
         catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable)
         {
@@ -120,6 +118,9 @@ public class FhirAuthorizationFilter : IEndpointFilter
             // Return generic error to prevent internal error leakage
             return CreateErrorResponse("An error occurred during authorization");
         }
+
+        // Outside the try: failures downstream belong to FhirExceptionMiddleware, not to authorization.
+        return await next(context);
     }
 
     /// <summary>

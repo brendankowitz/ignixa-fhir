@@ -123,6 +123,19 @@ public class FhirAuthorizationFilterTests
         await next.DidNotReceive().Invoke(Arg.Any<EndpointFilterInvocationContext>());
     }
 
+    // A failure after authorization belongs to FhirExceptionMiddleware, which maps it to the right status.
+    [Fact]
+    public async Task GivenAuthorizedRequest_WhenTheEndpointThrows_ThenTheExceptionPropagates()
+    {
+        var (context, next) = CreateFilterContext();
+        _authzService.AuthorizeAsync(Arg.Any<FhirAuthorizationContext>(), Arg.Any<CancellationToken>())
+            .Returns(AuthorizationResult.Success());
+        next.Invoke(Arg.Any<EndpointFilterInvocationContext>())
+            .Returns<ValueTask<object?>>(_ => throw new ArgumentException("downstream"));
+
+        await Should.ThrowAsync<ArgumentException>(async () => await _filter.InvokeAsync(context, next));
+    }
+
     public static TheoryData<DataFilter> RestrictingFilters =>
     [
         DataFilter.ForPatient("Patient/123"),

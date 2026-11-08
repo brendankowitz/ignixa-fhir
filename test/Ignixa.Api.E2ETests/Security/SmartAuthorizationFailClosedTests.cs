@@ -16,8 +16,8 @@ namespace Ignixa.Api.E2ETests.Security;
 
 /// <summary>
 /// Drives real requests through an authorization-enabled host to prove that grants the server cannot enforce are
-/// refused: compartment-limited scopes, operations a scope does not cover, bundles that would write under a read
-/// scope, and routes that previously had no authorization at all.
+/// refused: compartment-limited scopes, tokens with no resource scope or role, operations a scope does not cover,
+/// and routes that previously had no authorization at all.
 /// </summary>
 /// <remarks>Uses the same derived-host pattern as <see cref="BulkDeleteAuthorizationTests"/>.</remarks>
 [Collection(E2ETestCollection.Name)]
@@ -37,8 +37,9 @@ public class SmartAuthorizationFailClosedTests(IgnixaApiFixture fixture)
         search.StatusCode.ShouldBe(HttpStatusCode.Forbidden, await search.Content.ReadAsStringAsync());
     }
 
+    // Each bundle entry runs through its endpoint's authorization with the caller's principal.
     [Fact]
-    public async Task GivenAReadOnlyWildcardScope_WhenPostingATransactionThatWrites_ThenItIsForbiddenAndNothingIsWritten()
+    public async Task GivenAReadOnlyWildcardScope_WhenPostingATransactionThatWrites_ThenTheEntryIsRefusedAndNothingIsWritten()
     {
         await using var application = CreateAuthorizedApplication();
         var id = Guid.NewGuid().ToString("N");
@@ -46,9 +47,22 @@ public class SmartAuthorizationFailClosedTests(IgnixaApiFixture fixture)
 
         using var response = await PostTransactionAsync(client, id);
 
-        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden, await response.Content.ReadAsStringAsync());
+        response.IsSuccessStatusCode.ShouldBeFalse(await response.Content.ReadAsStringAsync());
         using var readBack = await fixture.Client.GetAsync($"/tenant/1/Patient/{id}");
         readBack.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Theory]
+    [InlineData("GET", "/tenant/1/Patient")]
+    [InlineData("GET", "/tenant/1/admin/packages")]
+    public async Task GivenATokenWithNoResourceScopeOrRole_WhenCallingAProtectedRoute_ThenItIsForbidden(string method, string path)
+    {
+        await using var application = CreateAuthorizedApplication();
+        using var client = CreateScopedClient(application, "openid profile");
+
+        using var response = await client.SendAsync(new HttpRequestMessage(new HttpMethod(method), path));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden, await response.Content.ReadAsStringAsync());
     }
 
     [Fact]

@@ -114,7 +114,7 @@ public static class OperationEndpoints
         // GET /{resourceType}/$includes - Fetch additional included resources (tenant-explicit)
         tenantGroup.MapGet("/{resourceType}/$includes", HandleIncludesOperation)
             .WithName("IncludesOperation")
-            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.SearchType))
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.SearchSystem, "*"))
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
 
@@ -181,7 +181,7 @@ public static class OperationEndpoints
         // GET /{resourceType}/$includes - Fetch additional included resources (agnostic route)
         agnosticGroup.MapGet("/{resourceType}/$includes", HandleIncludesOperationAgnostic)
             .WithName("IncludesOperationAgnostic")
-            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.SearchType))
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.SearchSystem, "*"))
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
 

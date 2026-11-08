@@ -42,6 +42,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Data.SqlClient;
 using Microsoft.IO;
 using Shouldly;
+using Ignixa.Application.Features.Authorization;
+using Ignixa.Application.Features.Authorization.Services;
+using Ignixa.Application.Features.Authorization.Models;
 
 namespace Ignixa.DataLayer.SqlServer.IntegrationTests;
 
@@ -181,6 +184,9 @@ public sealed class ExportWorkerSqlContractTests : IAsyncLifetime
         builder.Services.AddSingleton<IFhirVersionContext>(_versions);
         builder.Services.AddSingleton<IFhirRequestContextAccessor>(_contextAccessor);
         builder.Services.AddSingleton(_baseUriResolver);
+        // The export routes run FhirAuthorizationFilter; this test covers tenant routing, so authorization is off.
+        builder.Services.AddSingleton<IFhirAuthorizationService, UnusedAuthorizationService>();
+        builder.Services.AddSingleton(Options.Create(new AuthorizationOptions { Enabled = false }));
         await using var app = builder.Build();
         app.UseRouting();
         app.UseFhirExceptionHandler();
@@ -595,5 +601,13 @@ public sealed class ExportWorkerSqlContractTests : IAsyncLifetime
         public Task ExecuteInTransactionAsync(int tenantId,
             Func<ISqlTransactionContext, CancellationToken, Task> work, CancellationToken cancellationToken) =>
             inner.ExecuteInTransactionAsync(tenantId, work, cancellationToken);
+    }
+
+    private sealed class UnusedAuthorizationService : IFhirAuthorizationService
+    {
+        public ValueTask<AuthorizationResult> AuthorizeAsync(
+            FhirAuthorizationContext context,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Authorization is disabled in this host.");
     }
 }
