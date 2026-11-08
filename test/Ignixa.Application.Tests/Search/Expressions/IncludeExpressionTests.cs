@@ -24,11 +24,15 @@ public class IncludeExpressionTests
         both.ValueInsensitiveEquals(Wildcard(Subject, Performer)).ShouldBeTrue();
         both.ValueInsensitiveEquals(Wildcard(Subject)).ShouldBeFalse();
         both.ValueInsensitiveEquals(Wildcard(Performer, Subject)).ShouldBeFalse();
+        Wildcard(Subject).ValueInsensitiveEquals(Wildcard("DiagnosticReport", Subject)).ShouldBeFalse();
         HashOf(both).ShouldBe(HashOf(Wildcard(Subject, Performer)));
     }
 
-    private static IncludeExpression Wildcard(params SearchParameterInfo[] resolved) =>
-        new(["Observation"], null!, "Observation", null!, null, wildCard: true, reversed: false, iterate: false, resolved);
+    private static IncludeExpression Wildcard(params SearchParameterInfo[] resolved) => Wildcard("Observation", resolved);
+
+    private static IncludeExpression Wildcard(string referencingType, params SearchParameterInfo[] resolved) =>
+        new(["Observation"], null!, "Observation", null!, null, wildCard: true, reversed: false, iterate: false,
+            resolved.Select(parameter => new WildcardIncludeParameter(referencingType, parameter)));
 
     private static int HashOf(Expression expression)
     {

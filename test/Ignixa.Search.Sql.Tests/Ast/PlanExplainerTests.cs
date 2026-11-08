@@ -185,8 +185,8 @@ public class PlanExplainerTests
             "inc0 = IncludeStage(ref=*, seedTypes=*, outputTypes=*, seeds=[match], limit=500 iterate, Reverse)");
     }
 
-    // §4.2: a wildcard include that resolved to the searchable reference parameters names them, so Explain shows
-    // which ids the stage follows rather than an unrestricted wildcard.
+    // §4.2: a wildcard include that resolved to the searchable reference parameters names them per referencing
+    // type, so Explain shows which (type, id) pairs the stage follows rather than an unrestricted wildcard.
     [Fact]
     public void GivenAWildcardIncludeStageWithResolvedReferences_WhenExplained_ThenItListsTheReferenceIds()
     {
@@ -195,7 +195,7 @@ public class PlanExplainerTests
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var stage = new IncludeStage(
             IncludeDirection.Reverse, null, [103], null, [], SeedFromMatch: true, Iterate: false, Limit: 500,
-            WildcardReferenceSearchParamIds: [55, 66]);
+            WildcardReferenceSearchParamIds: new Dictionary<short, IReadOnlyList<short>> { [104] = [55], [106] = [55, 66] });
         var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0)), [stage]);
 
         // Act
@@ -203,7 +203,7 @@ public class PlanExplainerTests
 
         // Assert
         explained.ShouldEndWith(
-            "inc0 = IncludeStage(ref=[55,66], seedTypes=[103], outputTypes=*, seeds=[match], limit=500, Reverse)");
+            "inc0 = IncludeStage(ref=[104:55,106:55|66], seedTypes=[103], outputTypes=*, seeds=[match], limit=500, Reverse)");
     }
 
     [Fact]

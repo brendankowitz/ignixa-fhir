@@ -1070,7 +1070,7 @@ public class EndToEndCompilationTests
         var organization = Reference("organization", "Patient-organization");
         var include = new IncludeExpression(
             ["Patient"], null, "Patient", null, ["Organization"], wildCard: true, reversed: false, iterate: false,
-            wildcardReferenceSearchParameters: [organization]);
+            wildcardReferenceSearchParameters: [new WildcardIncludeParameter("Patient", organization)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[organization.Url.ToString()] = 55;
@@ -1083,11 +1083,12 @@ public class EndToEndCompilationTests
 
         // Assert
         plan.Includes![0].ReferenceSearchParamId.ShouldBeNull();
-        plan.Includes[0].WildcardReferenceSearchParamIds.ShouldBe([(short)55]);
+        var (referencingTypeId, searchParamIds) = plan.Includes[0].WildcardReferenceSearchParamIds!.ShouldHaveSingleItem();
+        (referencingTypeId, searchParamIds.Single()).ShouldBe(((short)103, (short)55));
         plan.Includes[0].OutputTypeIds.ShouldBe([(short)105]);
 
         var emitted = SqlBuilder.Run(plan);
-        emitted.Sql.ShouldContain("rsp.SearchParamId = 55");
+        emitted.Sql.ShouldContain("((rsp.ResourceTypeId = 103 AND rsp.SearchParamId = 55))");
         emitted.Sql.ShouldContain("r.ResourceTypeId = 105");
     }
 
@@ -1099,7 +1100,7 @@ public class EndToEndCompilationTests
         var patient = Reference("patient", "Condition-patient");
         var revInclude = new IncludeExpression(
             ["*"], null, "*", "Patient", ["Observation", "Condition"], wildCard: true, reversed: true, iterate: false,
-            wildcardReferenceSearchParameters: [subject, patient]);
+            wildcardReferenceSearchParameters: [new WildcardIncludeParameter("Observation", subject), new WildcardIncludeParameter("Condition", patient)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[subject.Url.ToString()] = 55;
@@ -1114,14 +1115,13 @@ public class EndToEndCompilationTests
 
         // Assert
         plan.Includes![0].ReferenceSearchParamId.ShouldBeNull();
-        plan.Includes[0].WildcardReferenceSearchParamIds.ShouldBe([(short)55, (short)66]);
         plan.Includes[0].OutputTypeIds.ShouldBeNull();
         plan.Includes[0].SeedTypeIds.ShouldBe([(short)103]);
 
+        // Each referencing type admits only its own searchable parameters; there is no separate output filter.
         var emitted = SqlBuilder.Run(plan);
-        emitted.Sql.ShouldContain("(rsp.SearchParamId = 55 OR rsp.SearchParamId = 66)");
-        emitted.Sql.ShouldNotContain("rsp.ResourceTypeId = 104");
-        emitted.Sql.ShouldNotContain("rsp.ResourceTypeId = 106");
+        emitted.Sql.ShouldContain("((rsp.ResourceTypeId = 104 AND rsp.SearchParamId = 55) OR (rsp.ResourceTypeId = 106 AND rsp.SearchParamId = 66))");
+        emitted.Sql.ShouldNotContain("(rsp.ResourceTypeId = 104 OR rsp.ResourceTypeId = 106)");
     }
 
     private static SearchParameterInfo Reference(string code, string id) =>

@@ -105,6 +105,12 @@ internal sealed class SearchParserTestContext
         {
             searchParameters = new List<SearchParameterInfo>();
             _searchParametersByResourceType[resourceType] = searchParameters;
+            DefinitionManager.TryGetSearchParameters(resourceType, out Arg.Any<IEnumerable<SearchParameterInfo>>())
+                .Returns(callInfo =>
+                {
+                    callInfo[1] = GetSearchParameters(resourceType);
+                    return true;
+                });
         }
 
         if (!searchParameters.Contains(parameter))

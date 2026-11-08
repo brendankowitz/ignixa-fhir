@@ -78,8 +78,8 @@ internal sealed class SearchKeyBinder(ISearchParameterDefinitionManager definiti
             targetResourceType = resourceTypes[0];
         }
 
-        ImmutableArray<SearchParameterInfo> wildcardReferenceSearchParameters = syntax.Wildcard
-            ? [.. WildcardIncludeParameters.Resolve(definitionManager, resourceTypes, syntax.SourceResourceType, isReversed)]
+        ImmutableArray<WildcardIncludeParameter> wildcardReferenceSearchParameters = syntax.Wildcard
+            ? [.. WildcardIncludeParameters.Resolve(definitionManager, schemaProvider.ResourceTypeNames, resourceTypes, syntax.SourceResourceType, isReversed, iterate)]
             : [];
         ImmutableArray<string> referencedTypes = syntax.Wildcard
             ? ResolveWildcardReferencedTypes(wildcardReferenceSearchParameters)
@@ -304,11 +304,11 @@ internal sealed class SearchKeyBinder(ISearchParameterDefinitionManager definiti
     }
 
     private static ImmutableArray<string> ResolveWildcardReferencedTypes(
-        ImmutableArray<SearchParameterInfo> searchParameters)
+        ImmutableArray<WildcardIncludeParameter> searchParameters)
     {
         var referencedTypes = new List<string>();
 
-        foreach (SearchParameterInfo searchParameter in searchParameters)
+        foreach (SearchParameterInfo searchParameter in searchParameters.Select(include => include.Parameter))
         {
             foreach (string targetResourceType in searchParameter.TargetResourceTypes)
             {

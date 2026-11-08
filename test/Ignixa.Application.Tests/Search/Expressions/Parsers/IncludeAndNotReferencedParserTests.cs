@@ -5,6 +5,7 @@
 
 #nullable enable
 
+using Ignixa.Search.Expressions;
 using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Expressions.Parsers.Binding;
 using Ignixa.Search.Expressions.Parsers.Syntax;
@@ -62,8 +63,40 @@ public class IncludeAndNotReferencedParserTests
         var include = binder.BindInclude(PatientResourceTypes, syntax, isReversed: false, iterate: false);
 
         include.ReferenceSearchParameter.ShouldBeNull();
-        include.WildcardReferenceSearchParameters.ShouldBe([generalPractitioner]);
+        include.WildcardReferenceSearchParameters.ShouldBe([new WildcardIncludeParameter("Patient", generalPractitioner)]);
         include.ReferencedTypes.ShouldBe(["Organization", "Practitioner"], ignoreOrder: false);
+    }
+
+    // A parameter hidden on one type can share its storage identity with one searchable on another; a reverse
+    // wildcard must not follow the hidden type's references because the other type's are searchable.
+    [Fact]
+    public void GivenAReferenceHiddenOnOneTypeOnly_WhenBindingAReverseWildcard_ThenOnlyTheSearchableTypeIsFollowed()
+    {
+        var context = new SearchParserTestContext();
+        var shared = new Uri("http://hl7.org/fhir/SearchParameter/clinical-patient");
+        var condition = context.Add("Condition", "patient", SearchParamType.Reference, targets: ["Patient"], url: shared);
+        context.Add("AllergyIntolerance", "patient", SearchParamType.Reference, targets: ["Patient"], url: shared).IsHiddenByTransition = true;
+        var binder = new SearchKeyBinder(context.DefinitionManager, context.SchemaProvider);
+
+        var include = binder.BindInclude(PatientResourceTypes, new IncludeKeySyntax("*", null, null, true), isReversed: true, iterate: false);
+
+        include.WildcardReferenceSearchParameters.ShouldBe([new WildcardIncludeParameter("Condition", condition)]);
+    }
+
+    // An iterative wildcard is seeded by included resources, so it follows the references of their types too.
+    [Fact]
+    public void GivenAnIterativeWildcardInclude_WhenBinding_ThenReferencesOfTypesOutsideTheSearchAreFollowed()
+    {
+        var context = new SearchParserTestContext();
+        var organization = context.Add("Patient", "organization", SearchParamType.Reference, targets: ["Organization"]);
+        var partOf = context.Add("Organization", "partof", SearchParamType.Reference, targets: ["Organization"]);
+        var binder = new SearchKeyBinder(context.DefinitionManager, context.SchemaProvider);
+
+        var include = binder.BindInclude(PatientResourceTypes, new IncludeKeySyntax("*", null, null, true), isReversed: false, iterate: true);
+
+        include.WildcardReferenceSearchParameters.ShouldBe(
+            [new WildcardIncludeParameter("Patient", organization), new WildcardIncludeParameter("Organization", partOf)],
+            ignoreOrder: true);
     }
 
     [Fact]

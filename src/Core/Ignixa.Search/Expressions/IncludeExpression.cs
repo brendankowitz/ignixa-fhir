@@ -37,7 +37,7 @@ public class IncludeExpression : Expression
         bool wildCard,
         bool reversed,
         bool iterate,
-        IEnumerable<SearchParameterInfo> wildcardReferenceSearchParameters = null)
+        IEnumerable<WildcardIncludeParameter> wildcardReferenceSearchParameters = null)
     {
         EnsureArg.HasItems(resourceTypes, nameof(resourceTypes));
 
@@ -85,7 +85,10 @@ public class IncludeExpression : Expression
     /// </summary>
     public IReadOnlyList<string> ReferencedTypes { get; }
 
-    public IReadOnlyList<SearchParameterInfo> WildcardReferenceSearchParameters { get; }
+    /// <summary>
+    /// Gets the reference parameters a wildcard follows, each on the type that holds the reference.
+    /// </summary>
+    public IReadOnlyList<WildcardIncludeParameter> WildcardReferenceSearchParameters { get; }
 
     /// <summary>
     ///  Gets the type of resources the expression requires (includes from).
@@ -183,7 +186,7 @@ public class IncludeExpression : Expression
         if (ReferencedTypes != null)
             foreach (string referencedType in ReferencedTypes)
                 hashCode.Add(referencedType);
-        foreach (SearchParameterInfo parameter in WildcardReferenceSearchParameters)
+        foreach (WildcardIncludeParameter parameter in WildcardReferenceSearchParameters)
             hashCode.Add(parameter);
 
         hashCode.Add(WildCard);

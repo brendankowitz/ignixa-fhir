@@ -106,7 +106,7 @@ public sealed class LegacyExpressionParser : IExpressionParser
 
         SearchParameterInfo refSearchParameter;
         List<string> referencedTypes = null;
-        IReadOnlyList<SearchParameterInfo> wildcardReferenceSearchParameters = [];
+        IReadOnlyList<WildcardIncludeParameter> wildcardReferenceSearchParameters = [];
         bool wildCard = false;
         string targetType = null;
 
@@ -154,10 +154,10 @@ public sealed class LegacyExpressionParser : IExpressionParser
         {
             referencedTypes = new List<string>();
             wildcardReferenceSearchParameters = WildcardIncludeParameters
-                .Resolve(_searchParameterDefinitionManager, resourceTypes, originalType.ToString(), isReversed)
+                .Resolve(_searchParameterDefinitionManager, _schemaProvider.ResourceTypeNames, resourceTypes, originalType.ToString(), isReversed, iterate)
                 .ToList();
 
-            foreach (SearchParameterInfo p in wildcardReferenceSearchParameters)
+            foreach (SearchParameterInfo p in wildcardReferenceSearchParameters.Select(include => include.Parameter))
             foreach (string t in p.TargetResourceTypes)
                 if (!referencedTypes.Contains(t))
                     referencedTypes.Add(t);

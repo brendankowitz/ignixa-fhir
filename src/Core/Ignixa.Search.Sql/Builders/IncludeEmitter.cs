@@ -33,11 +33,15 @@ internal static class IncludeEmitter
         {
             whereClauses.Add($"rsp.SearchParamId = {paramId}");
         }
-        else if (stage.WildcardReferenceSearchParamIds is { } wildcardParamIds)
+        else if (stage.WildcardReferenceSearchParamIds is { } wildcardReferences)
         {
-            whereClauses.Add(wildcardParamIds.Count == 0
+            // Searchability is per referencing type, so each type admits only its own searchable parameters.
+            whereClauses.Add(wildcardReferences.Count == 0
                 ? "1 = 0"
-                : EmitTypeInFilter("rsp.SearchParamId", wildcardParamIds));
+                : "(" + string.Join(
+                    " OR ",
+                    wildcardReferences.Select(pair =>
+                        $"(rsp.ResourceTypeId = {pair.Key} AND {EmitTypeInFilter("rsp.SearchParamId", pair.Value)})")) + ")");
         }
 
         if (stage.SeedTypeIds is { Count: > 0 } seedTypeIds)

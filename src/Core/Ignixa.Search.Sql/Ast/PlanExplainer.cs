@@ -326,8 +326,8 @@ public static class PlanExplainer
     {
         var refParam = stage.ReferenceSearchParamId is { } id
             ? $"{id}"
-            : stage.WildcardReferenceSearchParamIds is { } wildcardIds
-                ? $"[{string.Join(",", wildcardIds)}]"
+            : stage.WildcardReferenceSearchParamIds is { } wildcardReferences
+                ? $"[{string.Join(",", wildcardReferences.Select(pair => $"{pair.Key}:{string.Join("|", pair.Value)}"))}]"
                 : "*";
         var seedTypes = stage.SeedTypeIds is null ? "*" : $"[{string.Join(",", stage.SeedTypeIds)}]";
         var outputTypes = stage.OutputTypeIds is null ? "*" : $"[{string.Join(",", stage.OutputTypeIds)}]";
