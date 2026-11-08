@@ -78,8 +78,7 @@ public sealed class CompleteReindexActivity(
         var success = errors.Length == 0 &&
             input.FailureMessage is null &&
             missingTenantIds.Length == 0 &&
-            input.Tenants.All(tenant => tenant.Success) &&
-            completions.All(completion => completion.Success);
+            input.Tenants.All(tenant => tenant.Success);
         job.Close(
             success ? ReindexJobStatus.Completed : ReindexJobStatus.Failed,
             success ? null : string.Join(" ", errors),

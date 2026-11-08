@@ -102,24 +102,21 @@ public sealed class ReindexRangeProcessor(
                     }
                 }
 
-                if (extracted.Count > 0)
+                var offset = 0;
+                while (offset < extracted.Count)
                 {
-                    var offset = 0;
-                    while (offset < extracted.Count)
+                    var count = Math.Min(writeBatchSize, extracted.Count - offset);
+                    var batch = extracted.GetRange(offset, count);
+                    try
                     {
-                        var count = Math.Min(writeBatchSize, extracted.Count - offset);
-                        var batch = extracted.GetRange(offset, count);
-                        try
-                        {
-                            var updated = await store.UpdateSearchIndicesAsync(batch, cancellationToken);
-                            resourcesReindexed += updated.Updated;
-                            conflicts += updated.Conflicts;
-                            offset += count;
-                        }
-                        catch (TimeoutException) when (writeBatchSize > MinimumWriteBatchSize)
-                        {
-                            writeBatchSize = Math.Max(MinimumWriteBatchSize, writeBatchSize / 2);
-                        }
+                        var updated = await store.UpdateSearchIndicesAsync(batch, cancellationToken);
+                        resourcesReindexed += updated.Updated;
+                        conflicts += updated.Conflicts;
+                        offset += count;
+                    }
+                    catch (TimeoutException) when (writeBatchSize > MinimumWriteBatchSize)
+                    {
+                        writeBatchSize = Math.Max(MinimumWriteBatchSize, writeBatchSize / 2);
                     }
                 }
 
