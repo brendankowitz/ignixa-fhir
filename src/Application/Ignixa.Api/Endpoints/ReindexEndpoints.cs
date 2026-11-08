@@ -28,7 +28,7 @@ public static class ReindexEndpoints
 
     private static void MapRoutes(RouteGroupBuilder group, string nameSuffix)
     {
-        group.AddEndpointFilter<FhirAuthorizationFilter>()
+        group.RequireFhirAuthorization()
             .AddEndpointFilter<FhirAuditFilter>()
             .AddEndpointFilter<FhirMetricsFilter>();
         group.MapGet("/OperationDefinition/reindex", GetOperationDefinition)
@@ -36,6 +36,7 @@ public static class ReindexEndpoints
 
         var reindex = group.MapGroup(string.Empty)
             .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Update, "*"))
+            .RequireServerWideAuthority()
             .AddEndpointFilter(RequireReindexAvailableAsync);
         reindex.MapPost("/$reindex", CreateAsync).WithName($"CreateReindex{nameSuffix}");
         reindex.MapGet("/$reindex", ListAsync).WithName($"ListReindex{nameSuffix}");

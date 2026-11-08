@@ -370,7 +370,9 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         builder.Services.AddSingleton(requestContext);
         builder.Services.AddSingleton(Substitute.For<IAuditLogger>());
         builder.Services.AddSingleton(Substitute.For<IMetricsService>());
-        builder.Services.AddSingleton(Substitute.For<ITenantConfigurationStore>());
+        var tenants = Substitute.For<ITenantConfigurationStore>();
+        tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<TenantConfiguration>());
+        builder.Services.AddSingleton(tenants);
         builder.Services.AddSingleton<IOptions<AuthorizationOptions>>(Options.Create(new AuthorizationOptions { Enabled = authorizationEnabled }));
         var app = builder.Build();
         app.MapReindexEndpoints();

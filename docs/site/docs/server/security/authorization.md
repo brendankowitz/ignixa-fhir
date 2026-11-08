@@ -93,6 +93,7 @@ route that declares none is refused.
 | `$bulk-delete` on a type | Delete on that type, then on every type the job reaches |
 | `/$bulk-delete` (system) | Delete on `*`, then on every type the job reaches |
 | `ValueSet/$expand`, `ConceptMap/$translate`, `CodeSystem/$subsumes`, `StructureMap/$transform` | Read on `ValueSet`, `ConceptMap`, `CodeSystem` or `StructureMap` |
+| `$reindex` (create, list, status, cancel) | Update on `*` |
 | `/tenant/{id}/admin/packages` (list) | Read on `*` |
 | `/tenant/{id}/admin/packages` (load, unload) | Update on `*` |
 
@@ -101,8 +102,8 @@ while authorization is enabled, because they write without a per-resource permis
 update and delete interactions instead. The GraphQL IDE (`Experimental:Features:GraphQl:EnableGraphQlIde`) is not mapped while
 authorization is enabled, because its executor bypasses these checks.
 
-Package load and unload change search behaviour for every tenant. While more than one tenant is active they also
-require the `SystemAdmin` role.
+`$reindex` and package load and unload change search behaviour for every tenant. While more than one tenant is
+active they also require the `SystemAdmin` role.
 
 A `batch` or `transaction` bundle is authorized in two steps. The bundle request itself needs a grant on `*` (any
 SMART scope on `*`, or an RBAC grant of `transaction` on `*`). Each entry then runs through its own

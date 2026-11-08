@@ -459,7 +459,17 @@ with an `OperationOutcome`. Package params stay `Pending` and can be searched on
 
 Every system and tenant `$reindex` route (`POST`, list `GET`, job `GET`, and `DELETE`) requires `Update` on
 resource type `*`: SMART `system/*.write` or RBAC write on `*`. `OperationDefinition/reindex` requires only read.
-`/admin/packages` lacking equivalent authorization remains issue #486.
+
+Two further requirements apply, as on every bulk operation:
+
+- The grant must be unrestricted. A patient, practitioner or encounter scope, or one with a search constraint,
+  is refused with `403`, because a job is not limited to a compartment.
+- A job spans every tenant while conformance definitions are shared, so while more than one tenant is active the
+  caller also needs the `SystemAdmin` role. With a single active tenant the write on `*` is enough. Package load
+  and unload under `/admin/packages` follow the same rule (issue #486).
+
+Per-tenant conformance definitions, which would let a tenant's own administrator reindex that tenant alone, are a
+separate decision superseding the scope section of ADR-2512.
 
 ---
 
