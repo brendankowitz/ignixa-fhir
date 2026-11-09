@@ -68,6 +68,9 @@ internal static class IncludeStagePlanner
             var referenceSearchParamId = entry.Expression.WildCard
                 ? (short?)null
                 : symbols.SearchParamId(entry.Expression.ReferenceSearchParameter);
+            IReadOnlyDictionary<short, IReadOnlyList<short>>? wildcardReferences = entry.Expression.WildCard
+                ? ResolveWildcardReferences(entry.Expression.WildcardReferenceSearchParameters, symbols)
+                : null;
 
             stages.Add(new IncludeStage(
                 entry.Direction,
@@ -77,7 +80,8 @@ internal static class IncludeStagePlanner
                 seedStages,
                 seedFromMatch,
                 entry.Expression.Iterate,
-                includeLimit));
+                includeLimit,
+                WildcardReferenceSearchParamIds: wildcardReferences));
             stageProduces.Add(entry.Produces);
         }
 
@@ -86,6 +90,26 @@ internal static class IncludeStagePlanner
         // plan with nothing to include emits exactly what it emitted before includes existed. SqlBuilder
         // branches on null, not on Count, so an empty list would still open an includes CTE.
         return stages.Count == 0 ? null : stages;
+    }
+
+    /// <summary>
+    /// Groups a wildcard's (type, parameter) pairs by referencing type id, in id order so equal plans render
+    /// the same SQL. A type with no row in dbo.ResourceType holds no references and is dropped.
+    /// </summary>
+    private static SortedDictionary<short, IReadOnlyList<short>> ResolveWildcardReferences(
+        IEnumerable<WildcardIncludeParameter> wildcards,
+        SymbolTable symbols)
+    {
+        var references = new SortedDictionary<short, IReadOnlyList<short>>();
+        foreach (var byType in wildcards.GroupBy(wildcard => wildcard.ResourceType, StringComparer.Ordinal))
+        {
+            if (symbols.TryGetResourceTypeId(byType.Key, out var resourceTypeId) && resourceTypeId != SymbolTable.UnmatchableResourceTypeId)
+            {
+                references[resourceTypeId] = byType.Select(wildcard => symbols.SearchParamId(wildcard.Parameter)).Distinct().Order().ToList();
+            }
+        }
+
+        return references;
     }
 
     /// <summary>Resolves an include's direction and its seed/output resource-type ids into a <see cref="ResolvedInclude"/>.</summary>

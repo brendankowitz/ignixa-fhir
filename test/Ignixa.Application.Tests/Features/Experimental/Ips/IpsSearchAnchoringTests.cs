@@ -74,7 +74,7 @@ public class IpsSearchAnchoringTests
         var generator = new IpsGeneratorService(
             [new DefaultIpsGenerationStrategy()], execution, repositoryFactory,
             new IsolatedModePartitionStrategy(NullLogger<IsolatedModePartitionStrategy>.Instance),
-            accessor, narratives, schema, NullLogger<IpsGeneratorService>.Instance);
+            accessor, narratives, schema, TestConformanceLease.Held(), NullLogger<IpsGeneratorService>.Instance);
 
         var bundle = await generator.GenerateIpsAsync(PatientId, cancellationToken: CancellationToken.None);
 
@@ -86,6 +86,10 @@ public class IpsSearchAnchoringTests
             .ShouldBe(["Condition/ips-condition", "Observation/ips-observation"]);
         context.TenantId.ShouldBe(tenantId);
         context.FhirVersion.ShouldBe(version);
+        // Copilot review: IPS builds its own search options, so it must carry the lease's execution deadline itself.
+        var executed = execution.ReceivedCalls().SelectMany(call => call.GetArguments().OfType<SearchOptions>()).ToList();
+        executed.ShouldNotBeEmpty();
+        executed.ShouldAllBe(options => options.ExecutionDeadline != null);
     }
 
     [Theory]

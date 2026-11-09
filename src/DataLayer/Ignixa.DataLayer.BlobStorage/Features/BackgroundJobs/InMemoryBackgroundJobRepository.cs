@@ -151,6 +151,34 @@ public partial class InMemoryBackgroundJobRepository<T> : IBackgroundJobReposito
         return Task.FromResult<IReadOnlyList<BackgroundJob<T>>>(jobs);
     }
 
+    public Task<BackgroundJob<T>?> GetActiveAsync(
+        int jobType,
+        CancellationToken cancellationToken = default)
+    {
+        var job = _jobs.Values
+            .Where(candidate =>
+                candidate.JobType == jobType &&
+                !IsTerminal(candidate.Status))
+            .OrderByDescending(candidate => candidate.CreateDate)
+            .Select(Snapshot)
+            .FirstOrDefault();
+        return Task.FromResult(job);
+    }
+
+    public Task<BackgroundJob<T>?> GetLatestFinishedAsync(
+        int jobType,
+        CancellationToken cancellationToken = default)
+    {
+        var job = _jobs.Values
+            .Where(candidate =>
+                candidate.JobType == jobType &&
+                IsTerminal(candidate.Status))
+            .OrderByDescending(candidate => candidate.EndDate ?? candidate.CreateDate)
+            .Select(Snapshot)
+            .FirstOrDefault();
+        return Task.FromResult(job);
+    }
+
     /// <inheritdoc/>
     public Task DeleteAsync(string jobId, int tenantId, CancellationToken cancellationToken)
     {

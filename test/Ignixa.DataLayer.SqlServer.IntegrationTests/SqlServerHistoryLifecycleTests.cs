@@ -77,13 +77,17 @@ public class SqlServerHistoryLifecycleTests : IAsyncLifetime
     {
         await PutAsync();
         var key = new ResourceKey("Patient", ResourceId);
-        DateTimeOffset beforeDelete = DateTimeOffset.UtcNow;
+        // Transactional writes stamp surrogate ids from SQL Server's clock, which can drift from the
+        // test host's clock (e.g. a CI container), so the cutoff must come from the same clock.
+        DateTimeOffset beforeDelete = new(
+            await _database.ExecuteScalarAsync<DateTime>("SELECT SYSUTCDATETIME()"),
+            TimeSpan.Zero);
         // Keep the cutoff strictly after the PUT and before the tombstone's millisecond timestamp.
         await Task.Delay(20);
         await _database.Repository.DeleteAsync(key, new ResourceRequest("DELETE", $"Patient/{ResourceId}"),
-            transactionId: null, cancellationToken: CancellationToken.None);
+            definitionsEventId: 0, transactionId: null, cancellationToken: CancellationToken.None);
         (await _database.ExecuteScalarAsync<int>(
-            $"SELECT COUNT(*) FROM dbo.Resource WHERE ResourceId = '{ResourceId}' AND IsDeleted = 1 AND TransactionId IS NULL"))
+            $"SELECT COUNT(*) FROM dbo.Resource WHERE ResourceId = '{ResourceId}' AND IsDeleted = 1 AND TransactionId IS NOT NULL"))
             .ShouldBe(1);
         var parameters = new HistoryQueryParameters { Since = beforeDelete, Count = 1, Total = TotalMode.Accurate };
 

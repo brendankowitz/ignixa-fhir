@@ -272,6 +272,7 @@ public sealed class SqlServerSourceEventStore(
         nameof(SearchParameterReindexStarted) => typeof(SearchParameterReindexStarted),
         nameof(SearchParameterReindexCompleted) => typeof(SearchParameterReindexCompleted),
         nameof(SearchParameterReindexFailed) => typeof(SearchParameterReindexFailed),
+        nameof(SearchParameterTransitionCommitted) => typeof(SearchParameterTransitionCommitted),
         nameof(SearchParameterDeactivated) => typeof(SearchParameterDeactivated),
         nameof(SearchParameterDeleted) => typeof(SearchParameterDeleted),
         nameof(StructureDefinitionActivated) => typeof(StructureDefinitionActivated),
@@ -280,7 +281,8 @@ public sealed class SqlServerSourceEventStore(
             $"Unknown event type '{eventType}'. This may indicate database corruption or version mismatch. " +
             $"Valid types: PackageUploaded, PackageActivated, PackageDeactivated, SearchParameterActivated, " +
             $"SearchParameterReindexStarted, SearchParameterReindexCompleted, SearchParameterReindexFailed, " +
-            $"SearchParameterDeactivated, SearchParameterDeleted, StructureDefinitionActivated, StructureDefinitionDeactivated"),
+            $"SearchParameterTransitionCommitted, SearchParameterDeactivated, SearchParameterDeleted, " +
+            $"StructureDefinitionActivated, StructureDefinitionDeactivated"),
     };
 
     private sealed record SourceEventRow(

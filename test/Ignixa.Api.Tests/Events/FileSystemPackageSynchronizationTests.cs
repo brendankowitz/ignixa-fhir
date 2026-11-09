@@ -2,7 +2,6 @@ using Ignixa.Abstractions;
 using Ignixa.Api.Events;
 using Ignixa.Application.Events.Package;
 using Ignixa.Application.Features.Search;
-using Ignixa.Application.Infrastructure.Caching;
 using Ignixa.DataLayer.SqlServer;
 using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.Domain.Abstractions;
@@ -17,7 +16,7 @@ namespace Ignixa.Api.Tests.Events;
 public class FileSystemPackageSynchronizationTests
 {
     [Fact]
-    public async Task GivenFileSystemTenantAndSharedSqlContent_WhenPackageLoads_ThenCapabilitiesAreInvalidatedWithoutSqlCatalogAccess()
+    public async Task GivenFileSystemTenantAndSharedSqlContent_WhenPackageLoads_ThenItSkipsSqlCatalogSynchronization()
     {
         var contentStorage = new TenantStorageConfiguration { Type = "SqlServer", ConnectionString = "unused" };
         TenantConfiguration[] tenants =
@@ -38,12 +37,9 @@ public class FileSystemPackageSynchronizationTests
         manager.AllSearchParameters.Returns([]);
         var versions = Substitute.For<IFhirVersionContext>();
         versions.GetSearchParameterDefinitionManager(Arg.Any<FhirVersion>(), Arg.Any<int?>()).Returns(manager);
-        var invalidator = Substitute.For<ICapabilityCacheInvalidator>();
         var handler = new PackageLoadedSearchParameterSyncHandler(
-            versions, registry, store, invalidator, NullLogger<PackageLoadedSearchParameterSyncHandler>.Instance);
+            versions, registry, store, NullLogger<PackageLoadedSearchParameterSyncHandler>.Instance);
 
         await handler.HandleAsync(new PackageLoadedEvent("filesystem.package", "1.0.0", 2, DateTimeOffset.UnixEpoch), CancellationToken.None);
-
-        await invalidator.Received(1).InvalidateForTenantAsync(2, CancellationToken.None);
     }
 }

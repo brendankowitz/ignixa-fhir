@@ -11,6 +11,7 @@ using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
 using Ignixa.Conformance.Events.Models;
 using Ignixa.DataLayer.SqlServer.Indexing;
+using Ignixa.DataLayer.SqlServer.Search;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.SqlClient;
@@ -30,24 +31,8 @@ public class SqlOverrideRestartTests
     [SqlFact]
     public async Task GivenPersistedOverride_WhenTheWebHostRestarts_ThenItsFirstQueryAndNewWritesUseTheOriginalIdentity()
     {
-        var configured = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING")
-            ?? throw new InvalidOperationException("A SQL test connection is required.");
-        var database = $"IgnixaSqlOverrideRestart_{Guid.NewGuid():N}";
-        var connectionString = new SqlConnectionStringBuilder(configured) { InitialCatalog = database }.ConnectionString;
-        var master = new SqlConnectionStringBuilder(configured) { InitialCatalog = "master" }.ConnectionString;
-        using var names = new SqlCommandBuilder();
-        var quotedDatabase = names.QuoteIdentifier(database);
-        await ExecuteDatabaseCommandAsync(master, $"CREATE DATABASE {quotedDatabase}");
-        try
-        {
-            await AssertRestartAsync(connectionString);
-        }
-        finally
-        {
-            using var pool = new SqlConnection(connectionString);
-            SqlConnection.ClearPool(pool);
-            await ExecuteDatabaseCommandAsync(master, $"DROP DATABASE {quotedDatabase}");
-        }
+        await using var database = await TemporarySqlDatabase.CreateAsync("IgnixaSqlOverrideRestart");
+        await AssertRestartAsync(database.ConnectionString);
     }
 
     private static async Task AssertRestartAsync(string connectionString)
@@ -63,7 +48,7 @@ public class SqlOverrideRestartTests
         {
             using var initialClient = initialHost.CreateClient();
             await PutPatientAsync(initialClient, beforeId, identifier);
-            await AssertPatientsAsync(initialClient, identifier, beforeId);
+            await AssertPatientAsync(initialClient, identifier, beforeId);
             initialState = initialHost.Services.GetRequiredService<ConformanceState>();
             initialState.IsInitialized.ShouldBeTrue();
 
@@ -90,21 +75,28 @@ public class SqlOverrideRestartTests
         await using var restartedHost = CreateHost(template, connectionString);
         using var client = restartedHost.CreateClient();
 
-        await AssertPatientsAsync(client, identifier, beforeId);
+        await SearchParameterLifecycleTestHelper.AssertHiddenAsync(
+            client, $"/tenant/1/Patient?identifier={Uri.EscapeDataString($"{IdentifierSystem}|{identifier}")}", "identifier", redefined: false);
         var restartedState = restartedHost.Services.GetRequiredService<ConformanceState>();
         ReferenceEquals(restartedState, initialState).ShouldBeFalse();
         restartedState.IsInitialized.ShouldBeTrue();
         restartedState.FindByCanonical(OverrideUrl).ShouldNotBeNull();
+        await SearchParameterLifecycleTestHelper.CompleteReindexAsync(restartedHost.Services, OverrideUrl);
         var definitions = restartedHost.Services.GetRequiredService<IFhirVersionContext>()
             .GetSearchParameterDefinitionManager(FhirVersion.R4, 1);
         definitions.GetSearchParameter("Patient", "identifier").Url.ShouldBe(new Uri(OverrideUrl));
         var restartedCache = await restartedHost.Services.GetRequiredService<SqlServerSearchIndexCacheRegistry>()
             .GetOrCreateAsync(1, CancellationToken.None);
         ReferenceEquals(restartedCache, initialCache).ShouldBeFalse();
-        (await restartedCache.GetSearchParamIdAsync(OverrideUrl, CancellationToken.None)).ShouldBe(originalId);
+        (await restartedCache.GetSearchParamIdAsync(OverrideUrl, CancellationToken.None)).ShouldNotBe(originalId);
+        var resolver = new SqlServerSymbolResolver(restartedCache);
+        (await resolver.GetSearchParamIdAsync(
+            definitions.GetSearchParameter("Patient", "identifier"),
+            CancellationToken.None)).ShouldBe(originalId);
 
         await PutPatientAsync(client, afterId, identifier);
-        await AssertPatientsAsync(client, identifier, beforeId, afterId);
+        // This restart test uses the synthetic lifecycle helper to isolate replay and storage-identity behavior.
+        await AssertPatientAsync(client, identifier, afterId);
 
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
@@ -131,15 +123,6 @@ public class SqlOverrideRestartTests
                     ["Tenants:Configurations:0:Storage:Type"] = "SqlServer"
                 })));
 
-    private static async Task ExecuteDatabaseCommandAsync(string connectionString, string statement)
-    {
-        await using var connection = new SqlConnection(connectionString);
-        await connection.OpenAsync();
-        using var command = new SqlCommand("EXEC sys.sp_executesql @statement", connection);
-        command.Parameters.Add("@statement", SqlDbType.NVarChar, -1).Value = statement;
-        await command.ExecuteNonQueryAsync();
-    }
-
     private static async Task PutPatientAsync(HttpClient client, string id, string identifier)
     {
         using var content = new StringContent($$"""
@@ -152,25 +135,13 @@ public class SqlOverrideRestartTests
         JsonNode.Parse(body)!["meta"]!["versionId"]!.GetValue<string>().ShouldBe("1");
     }
 
-    private static async Task AssertPatientsAsync(HttpClient client, string identifier, params string[] ids)
+    private static async Task AssertPatientAsync(HttpClient client, string identifier, string id)
     {
         using var response = await client.GetAsync(
             $"/tenant/1/Patient?identifier={Uri.EscapeDataString($"{IdentifierSystem}|{identifier}")}");
         var body = await response.Content.ReadAsStringAsync();
         response.StatusCode.ShouldBe(HttpStatusCode.OK, body);
         var entries = JsonNode.Parse(body)!["entry"]!.AsArray();
-        entries.Select(entry => entry!["resource"]!["id"]!.GetValue<string>()).Order()
-            .ShouldBe(ids.Order());
-    }
-
-    private sealed class SqlFactAttribute : FactAttribute
-    {
-        public SqlFactAttribute()
-        {
-            if (Environment.GetEnvironmentVariable("TEST_USE_FILESYSTEM")?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                Skip = "Requires SQL Server startup and persisted reference identities.";
-            }
-        }
+        entries.Select(entry => entry!["resource"]!["id"]!.GetValue<string>()).ShouldContain(id);
     }
 }

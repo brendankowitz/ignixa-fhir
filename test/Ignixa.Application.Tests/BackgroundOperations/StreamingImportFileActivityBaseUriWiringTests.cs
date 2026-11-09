@@ -10,6 +10,7 @@ using DurableTask.Core;
 using Ignixa.Abstractions;
 using Ignixa.Application.BackgroundOperations.Import.Activities;
 using Ignixa.Application.BackgroundOperations.Import.Models;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
@@ -110,7 +111,7 @@ public class StreamingImportFileActivityBaseUriWiringTests
             }));
 
         var repository = Substitute.For<IFhirRepository>();
-        repository.GetNextTransactionIdAsync(Arg.Any<CancellationToken>())
+        repository.GetNextTransactionIdAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
             .Returns(new ValueTask<TransactionId>(new TransactionId(1)));
         repository
             .BatchWriteAsync(
@@ -135,6 +136,7 @@ public class StreamingImportFileActivityBaseUriWiringTests
             new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Import:ConsumerCount"] = "1" }).Build(),
             accessor,
             new ResourceElementOrdering(new SerializationOptions()),
+            TestConformanceBarrierRetryPolicy.Create(),
             NullLogger<StreamingImportFileActivity>.Instance);
 
         var input = new StreamingImportFileInput

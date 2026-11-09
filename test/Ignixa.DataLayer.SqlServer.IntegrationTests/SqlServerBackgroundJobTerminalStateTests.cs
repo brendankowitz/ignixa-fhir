@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using Ignixa.DataLayer.SqlServer.Features.BackgroundJobs;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -97,6 +98,39 @@ public class SqlServerBackgroundJobTerminalStateTests(SqlPersistenceContractFixt
     {
         var error = await Should.ThrowAsync<InvalidOperationException>(() => CreateRepository().UpdateAsync(NewJob(), 1));
         error.GetType().FullName.ShouldNotBe(ConflictType);
+    }
+
+    // §7 start rule: the two job-table reads, the active job and the latest finished one.
+    [Fact]
+    public async Task GivenJobsInEveryStatus_WhenTheActiveAndLatestFinishedJobsAreRead_ThenEachReadSkipsTheOtherStatuses()
+    {
+        // A job type no other test uses, because the fixture database is shared.
+        const int jobType = 97;
+        var repository = CreateRepository();
+        var start = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        string[] statuses = ["Running", "Failed", "Completed", "Cancelled", "Queued"];
+        var jobs = statuses.Select((status, index) =>
+        {
+            var job = NewJob();
+            job.JobType = jobType;
+            job.CreateDate = start.AddMinutes(index);
+            return job;
+        }).ToArray();
+        foreach (var (job, status) in jobs.Zip(statuses))
+        {
+            await repository.CreateAsync(job);
+            if (status != "Queued")
+            {
+                var stored = (await repository.GetAsync(job.JobId, 1))!;
+                stored.Status = status;
+                stored.EndDate = status == "Running" ? null : stored.CreateDate;
+                await repository.UpdateAsync(stored, 1);
+            }
+        }
+
+        (await repository.GetActiveAsync(jobType))!.JobId.ShouldBe(jobs[4].JobId);
+        // Cancelled is the latest finished job; the later Queued one is not finished.
+        (await repository.GetLatestFinishedAsync(jobType))!.JobId.ShouldBe(jobs[3].JobId);
     }
 
     private SqlServerBackgroundJobRepository<ExportJobDefinition> CreateRepository(

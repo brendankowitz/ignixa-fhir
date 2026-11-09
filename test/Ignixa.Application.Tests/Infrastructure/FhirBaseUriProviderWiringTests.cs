@@ -4,11 +4,14 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Specification.Generated;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
@@ -46,7 +49,43 @@ public class FhirBaseUriProviderWiringTests
     {
         Should.Throw<ArgumentNullException>(() => new SearchOptionsBuilderFactory(
             Substitute.For<IFhirVersionContext>(),
-            baseUriProvider: null!));
+            baseUriProvider: null!,
+            Substitute.For<IHttpContextAccessor>(),
+            Substitute.For<IFhirRequestContextAccessor>(),
+            TestConformanceLease.Held()));
+    }
+
+    // M-L4: the lease is checked once, when search options are created for a request.
+    [Fact]
+    public void GivenStaleLeaseForAnHttpRequest_WhenCreatingSearchOptions_ThenItFailsClosed()
+    {
+        var httpContextAccessor = Substitute.For<IHttpContextAccessor>();
+        httpContextAccessor.HttpContext.Returns(new DefaultHttpContext());
+        var factory = new SearchOptionsBuilderFactory(
+            Substitute.For<IFhirVersionContext>(), NullFhirBaseUriProvider.Instance, httpContextAccessor, Substitute.For<IFhirRequestContextAccessor>(), TestConformanceLease.NotHeld());
+
+        var exception = Should.Throw<ConformanceStaleException>(() => factory.Create(FhirVersion.R4));
+
+        exception.RetryAfter.ShouldBe(TimeSpan.FromSeconds(30));
+    }
+
+    // Copilot review: only a search the lease admitted for a request carries the lease's execution deadline.
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public void GivenAHeldLease_WhenBuildingSearchOptions_ThenOnlyARequestSearchCarriesTheExecutionDeadline(
+        bool httpRequest,
+        bool expectDeadline)
+    {
+        var httpContextAccessor = Substitute.For<IHttpContextAccessor>();
+        httpContextAccessor.HttpContext.Returns(httpRequest ? new DefaultHttpContext() : null);
+        using var versions = new FhirVersionContext(NullLoggerFactory.Instance, new SearchParameterResolutionOptions(), NullFhirBaseUriProvider.Instance);
+        using var factory = new SearchOptionsBuilderFactory(
+            versions, NullFhirBaseUriProvider.Instance, httpContextAccessor, Substitute.For<IFhirRequestContextAccessor>(), TestConformanceLease.Held());
+
+        var options = factory.Create(FhirVersion.R4).Build("Patient", []);
+
+        options.ExecutionDeadline.HasValue.ShouldBe(expectDeadline);
     }
 
     [Fact]

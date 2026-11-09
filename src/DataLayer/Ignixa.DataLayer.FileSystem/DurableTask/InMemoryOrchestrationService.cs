@@ -5,6 +5,7 @@
 
 using System.Collections.Concurrent;
 using DurableTask.Core;
+using DurableTask.Core.Exceptions;
 using DurableTask.Core.History;
 using Microsoft.Extensions.Logging;
 
@@ -18,6 +19,7 @@ public partial class InMemoryOrchestrationService : IOrchestrationService, IOrch
 {
     private readonly ILogger<InMemoryOrchestrationService> _logger;
     private readonly ConcurrentDictionary<string, OrchestrationState> _instances = new();
+    private readonly Lock _instancesLock = new();
     private readonly ConcurrentQueue<TaskMessage> _orchestrationQueue = new();
     private readonly ConcurrentQueue<TaskMessage> _activityQueue = new();
     private readonly ConcurrentDictionary<string, List<HistoryEvent>> _history = new();
@@ -82,11 +84,14 @@ public partial class InMemoryOrchestrationService : IOrchestrationService, IOrch
             if (_orchestrationQueue.TryDequeue(out var message))
             {
                 var instanceId = message.OrchestrationInstance.InstanceId;
+                var runtimeState = _history.TryGetValue(instanceId, out var history)
+                    ? new OrchestrationRuntimeState(history)
+                    : new OrchestrationRuntimeState();
                 return new TaskOrchestrationWorkItem
                 {
                     InstanceId = instanceId,
                     NewMessages = new List<TaskMessage> { message },
-                    OrchestrationRuntimeState = new OrchestrationRuntimeState(),
+                    OrchestrationRuntimeState = runtimeState,
                 };
             }
 
@@ -105,6 +110,8 @@ public partial class InMemoryOrchestrationService : IOrchestrationService, IOrch
         TaskMessage continuedAsNewMessage,
         OrchestrationState orchestrationState)
     {
+        using var instancesLockScope = _instancesLock.EnterScope();
+
         // Update state
         if (orchestrationState != null)
         {
@@ -126,6 +133,26 @@ public partial class InMemoryOrchestrationService : IOrchestrationService, IOrch
         foreach (var msg in orchestratorMessages ?? Array.Empty<TaskMessage>())
         {
             _orchestrationQueue.Enqueue(msg);
+        }
+
+        foreach (var timerMessage in timerMessages ?? Array.Empty<TaskMessage>())
+        {
+            var timerEvent = timerMessage.Event switch
+            {
+                TimerCreatedEvent timer => new TimerFiredEvent(timer.EventId, timer.FireAt),
+                TimerFiredEvent timer => timer,
+                _ => throw new InvalidOperationException(
+                    $"Expected a {nameof(TimerCreatedEvent)} or {nameof(TimerFiredEvent)} but received {timerMessage.Event.EventType}."),
+            };
+            _ = EnqueueTimerAsync(
+                new TaskMessage
+                {
+                    OrchestrationInstance = _instances.TryGetValue(workItem.InstanceId, out var current)
+                        ? current.OrchestrationInstance
+                        : timerMessage.OrchestrationInstance,
+                    Event = timerEvent,
+                },
+                timerEvent.FireAt);
         }
 
         return Task.CompletedTask;
@@ -210,11 +237,34 @@ public partial class InMemoryOrchestrationService : IOrchestrationService, IOrch
 
     #endregion
 
+    private async Task EnqueueTimerAsync(TaskMessage timerMessage, DateTime fireAt)
+    {
+        var delay = fireAt - DateTime.UtcNow;
+        if (delay > TimeSpan.Zero)
+        {
+            await Task.Delay(delay);
+        }
+
+        _orchestrationQueue.Enqueue(timerMessage);
+    }
+
     #region IOrchestrationServiceClient Implementation
 
-    public Task CreateTaskOrchestrationAsync(TaskMessage creationMessage)
+    public Task CreateTaskOrchestrationAsync(TaskMessage creationMessage) =>
+        CreateTaskOrchestrationAsync(creationMessage, null);
+
+    public Task CreateTaskOrchestrationAsync(TaskMessage creationMessage, OrchestrationStatus[]? dedupeStatuses)
     {
         var instanceId = creationMessage.OrchestrationInstance.InstanceId;
+        using var instancesLockScope = _instancesLock.EnterScope();
+        _instances.TryGetValue(instanceId, out var existing);
+        if (dedupeStatuses?.Length > 0 &&
+            existing != null &&
+            dedupeStatuses.Contains(existing.OrchestrationStatus))
+        {
+            throw new OrchestrationAlreadyExistsException(
+                $"An orchestration with instance ID '{instanceId}' and status '{existing.OrchestrationStatus}' already exists.");
+        }
 
         // Create initial state
         var state = new OrchestrationState
@@ -227,15 +277,15 @@ public partial class InMemoryOrchestrationService : IOrchestrationService, IOrch
             Input = null,
         };
 
+        // A create always starts a new execution; replaying a terminal predecessor's history would
+        // resume that execution instead of running the new input.
         _instances[instanceId] = state;
+        _history.TryRemove(instanceId, out _);
         _orchestrationQueue.Enqueue(creationMessage);
 
         LogCreatedOrchestration(_logger, instanceId);
         return Task.CompletedTask;
     }
-
-    public Task CreateTaskOrchestrationAsync(TaskMessage creationMessage, OrchestrationStatus[] dedupeStatuses) =>
-        CreateTaskOrchestrationAsync(creationMessage);
 
     public Task SendTaskOrchestrationMessageAsync(TaskMessage message)
     {

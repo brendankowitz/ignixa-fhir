@@ -12,6 +12,7 @@ using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.FhirPath.Evaluation;
+using Ignixa.Search.Indexing;
 using Ignixa.Serialization;
 using Ignixa.Specification.Extensions;
 using Ignixa.Validation;
@@ -45,6 +46,8 @@ public class ViewDefinitionCompositionTests
         var versions = Substitute.For<IFhirVersionContext>();
         versions.GetSchemaProvider(version, Arg.Any<int?>()).Returns(composite);
         versions.GetBaseSchemaProvider(version).Returns(baseSchema);
+        versions.GetDefinitionsHandle(version, Arg.Any<int?>())
+            .Returns(new DefinitionsHandle(Substitute.For<ISearchIndexer>(), composite, DefinitionsEventId: 0));
         var repositoryFactory = Substitute.For<IFhirRepositoryFactory>();
         var segment = new ResourceInteractionCapabilitySegment(versions,
             NullLogger<ResourceInteractionCapabilitySegment>.Instance, repositoryFactory);
