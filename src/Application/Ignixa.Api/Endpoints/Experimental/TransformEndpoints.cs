@@ -13,6 +13,8 @@ using Ignixa.Serialization.SourceNodes;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IO;
+using Ignixa.Api.Filters;
+using FhirInteraction = Ignixa.Application.Features.Authorization.Models.FhirInteraction;
 
 namespace Ignixa.Api.Endpoints.Experimental;
 
@@ -35,7 +37,8 @@ public static class TransformEndpoints
         Action<RouteGroupBuilder>? configureTenantGroup = null)
     {
         endpoints.MapTransformTenantEndpoints(configureTenantGroup);
-        endpoints.MapTransformAgnosticEndpoints();
+        var agnosticGroup = endpoints.MapGroup(string.Empty).RequireFhirAuthorization();
+        agnosticGroup.MapTransformAgnosticEndpoints();
         return endpoints;
     }
 
@@ -58,6 +61,7 @@ public static class TransformEndpoints
         // POST /tenant/{tenantId}/StructureMap/$transform - Type-level transform
         tenantGroup.MapPost("/StructureMap/$transform", HandleTransformType)
             .WithName("TransformResourceType")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Read, "StructureMap"))
             .WithTags("Experimental", "Transform")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
@@ -66,6 +70,7 @@ public static class TransformEndpoints
         // POST /tenant/{tenantId}/StructureMap/{id}/$transform - Instance-level transform
         tenantGroup.MapPost("/StructureMap/{id}/$transform", HandleTransformInstance)
             .WithName("TransformResourceInstance")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Read, "StructureMap"))
             .WithTags("Experimental", "Transform")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
@@ -82,6 +87,7 @@ public static class TransformEndpoints
         // POST /StructureMap/$transform - Type-level transform (agnostic route)
         endpoints.MapPost("/StructureMap/$transform", HandleTransformTypeAgnostic)
             .WithName("TransformResourceTypeAgnostic")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Read, "StructureMap"))
             .WithTags("Experimental", "Transform")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
@@ -90,6 +96,7 @@ public static class TransformEndpoints
         // POST /StructureMap/{id}/$transform - Instance-level transform (agnostic route)
         endpoints.MapPost("/StructureMap/{id}/$transform", HandleTransformInstanceAgnostic)
             .WithName("TransformResourceInstanceAgnostic")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Read, "StructureMap"))
             .WithTags("Experimental", "Transform")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)

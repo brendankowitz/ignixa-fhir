@@ -32,6 +32,7 @@ using Ignixa.Abstractions;
 using Ignixa.Search.Models;
 using FhirOperationOutcomeIssue = Ignixa.Models.OperationOutcomeIssue;
 using Ignixa.Api.Infrastructure;
+using FhirInteraction = Ignixa.Application.Features.Authorization.Models.FhirInteraction;
 
 namespace Ignixa.Api.Endpoints;
 
@@ -69,7 +70,7 @@ public static class OperationEndpoints
         // Create a route group for operations with tenant ID validation
         var tenantGroup = endpoints
             .MapGroup("/tenant/{tenantId:int}")
-            .AddEndpointFilter<FhirAuthorizationFilter>()
+            .RequireFhirAuthorization()
             .AddEndpointFilter<FhirAuditFilter>()
             .AddEndpointFilter<FhirMetricsFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
@@ -77,6 +78,7 @@ public static class OperationEndpoints
         // POST /{resourceType}/$validate - Type-level validation
         tenantGroup.MapPost("/{resourceType}/$validate", HandleValidateResource)
             .WithName("ValidateResource")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Read))
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
@@ -84,6 +86,7 @@ public static class OperationEndpoints
         // POST /{resourceType}/{id}/$validate - Instance-level validation
         tenantGroup.MapPost("/{resourceType}/{id}/$validate", HandleValidateResourceInstance)
             .WithName("ValidateResourceInstance")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Read))
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
@@ -91,6 +94,7 @@ public static class OperationEndpoints
         // GET /Patient/{id}/$everything - Patient $everything operation (tenant-explicit)
         tenantGroup.MapGet("/Patient/{id}/$everything", HandlePatientEverything)
             .WithName("PatientEverything")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.SearchSystem, "*"))
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
@@ -101,6 +105,7 @@ public static class OperationEndpoints
         // POST /Patient/$member-match - Member match operation (tenant-explicit)
         tenantGroup.MapPost("/Patient/$member-match", HandleMemberMatch)
             .WithName("MemberMatch")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.SearchSystem, "*"))
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson)
@@ -109,6 +114,7 @@ public static class OperationEndpoints
         // GET /{resourceType}/$includes - Fetch additional included resources (tenant-explicit)
         tenantGroup.MapGet("/{resourceType}/$includes", HandleIncludesOperation)
             .WithName("IncludesOperation")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.SearchSystem, "*"))
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
 
@@ -121,30 +127,41 @@ public static class OperationEndpoints
     /// </summary>
     private static IEndpointRouteBuilder MapOperationAgnosticEndpoints(this IEndpointRouteBuilder endpoints)
     {
+        var agnosticGroup = endpoints
+            .MapGroup(string.Empty)
+            .RequireFhirAuthorization()
+            .AddEndpointFilter<FhirAuditFilter>()
+            .AddEndpointFilter<FhirMetricsFilter>()
+            .AddEndpointFilter<ResourceTypeValidationFilter>();
+
         // POST /$validate - System-level validation
-        endpoints.MapPost("/$validate", HandleValidateResourceSystem)
+        agnosticGroup.MapPost("/$validate", HandleValidateResourceSystem)
             .WithName("ValidateResourceSystem")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Read, "*"))
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
 
         // POST /{resourceType}/$validate - Type-level validation (agnostic route)
-        endpoints.MapPost("/{resourceType}/$validate", HandleValidateResourceAgnostic)
+        agnosticGroup.MapPost("/{resourceType}/$validate", HandleValidateResourceAgnostic)
             .WithName("ValidateResourceAgnostic")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Read))
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
 
         // POST /{resourceType}/{id}/$validate - Instance-level validation (agnostic route)
-        endpoints.MapPost("/{resourceType}/{id}/$validate", HandleValidateResourceInstanceAgnostic)
+        agnosticGroup.MapPost("/{resourceType}/{id}/$validate", HandleValidateResourceInstanceAgnostic)
             .WithName("ValidateResourceInstanceAgnostic")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Read))
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
 
         // GET /Patient/{id}/$everything - Patient $everything operation (agnostic route)
-        endpoints.MapGet("/Patient/{id}/$everything", HandlePatientEverything)
+        agnosticGroup.MapGet("/Patient/{id}/$everything", HandlePatientEverything)
             .WithName("PatientEverythingAgnostic")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.SearchSystem, "*"))
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
@@ -153,16 +170,18 @@ public static class OperationEndpoints
         // NOTE: $transform endpoints moved to Experimental/TransformEndpoints.cs
 
         // POST /Patient/$member-match - Member match operation (agnostic route)
-        endpoints.MapPost("/Patient/$member-match", HandleMemberMatchAgnostic)
+        agnosticGroup.MapPost("/Patient/$member-match", HandleMemberMatchAgnostic)
             .WithName("MemberMatchAgnostic")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.SearchSystem, "*"))
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status422UnprocessableEntity, KnownContentTypes.ApplicationFhirJson);
 
         // GET /{resourceType}/$includes - Fetch additional included resources (agnostic route)
-        endpoints.MapGet("/{resourceType}/$includes", HandleIncludesOperationAgnostic)
+        agnosticGroup.MapGet("/{resourceType}/$includes", HandleIncludesOperationAgnostic)
             .WithName("IncludesOperationAgnostic")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.SearchSystem, "*"))
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
 

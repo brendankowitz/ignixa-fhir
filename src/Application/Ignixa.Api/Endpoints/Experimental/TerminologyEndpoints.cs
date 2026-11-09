@@ -15,6 +15,8 @@ using Ignixa.Serialization.Models;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
 using FhirOperationOutcomeIssue = Ignixa.Models.OperationOutcomeIssue;
+using Ignixa.Api.Filters;
+using FhirInteraction = Ignixa.Application.Features.Authorization.Models.FhirInteraction;
 
 namespace Ignixa.Api.Endpoints.Experimental;
 
@@ -37,7 +39,8 @@ public static class TerminologyEndpoints
         Action<RouteGroupBuilder>? configureTenantGroup = null)
     {
         endpoints.MapTerminologyTenantEndpoints(configureTenantGroup);
-        endpoints.MapTerminologyAgnosticEndpoints();
+        var agnosticGroup = endpoints.MapGroup(string.Empty).RequireFhirAuthorization();
+        agnosticGroup.MapTerminologyAgnosticEndpoints();
         return endpoints;
     }
 
@@ -62,6 +65,7 @@ public static class TerminologyEndpoints
         // GET /tenant/{tenantId}/ValueSet/$expand
         tenantGroup.MapGet("/ValueSet/$expand", HandleExpandValueSetTenant)
             .WithName("ExpandValueSetTenant")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Read, "ValueSet"))
             .WithTags("Terminology")
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson)
@@ -72,6 +76,7 @@ public static class TerminologyEndpoints
         // POST /tenant/{tenantId}/ConceptMap/$translate
         tenantGroup.MapPost("/ConceptMap/$translate", HandleTranslateCodeTenant)
             .WithName("TranslateCodeTenant")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Read, "ConceptMap"))
             .WithTags("Terminology")
             .Accepts<TranslateRequestDto>(KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
@@ -82,6 +87,7 @@ public static class TerminologyEndpoints
         // POST /tenant/{tenantId}/CodeSystem/$subsumes
         tenantGroup.MapPost("/CodeSystem/$subsumes", HandleSubsumesTenant)
             .WithName("SubsumesTenant")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Read, "CodeSystem"))
             .WithTags("Terminology")
             .Accepts<SubsumesRequestDto>(KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
@@ -112,6 +118,7 @@ public static class TerminologyEndpoints
         // Tenant-agnostic route
         endpoints.MapGet("/ValueSet/$expand", HandleExpandValueSet)
             .WithName("ExpandValueSet")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Read, "ValueSet"))
             .WithTags("Terminology")
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson)
@@ -208,6 +215,7 @@ public static class TerminologyEndpoints
     {
         endpoints.MapPost("/ConceptMap/$translate", HandleTranslateCode)
             .WithName("TranslateCode")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Read, "ConceptMap"))
             .WithTags("Terminology")
             .Accepts<TranslateRequestDto>(KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
@@ -292,6 +300,7 @@ public static class TerminologyEndpoints
     {
         endpoints.MapPost("/CodeSystem/$subsumes", HandleSubsumes)
             .WithName("SubsumesCodes")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Read, "CodeSystem"))
             .WithTags("Terminology")
             .Accepts<SubsumesRequestDto>(KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)

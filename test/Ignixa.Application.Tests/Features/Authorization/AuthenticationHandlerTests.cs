@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Shouldly;
+using Ignixa.Application.Features.Authorization.Smart;
 using Ignixa.Application.Features.Authorization.Handlers;
 using Ignixa.Application.Features.Authorization.Models;
 using Ignixa.Application.Infrastructure;
@@ -64,27 +65,52 @@ public class AuthenticationHandlerTests
         result.DenialReason.ShouldBe("Authentication required");
     }
 
+    // The RBAC and SMART handlers skip a caller with nothing for them to check, so this handler must refuse one
+    // that holds neither a resource scope nor a role.
     [Fact]
-    public async Task HandleAsync_AuthenticatedByUserId_ReturnsSuccess()
+    public async Task GivenAnAuthenticatedCallerWithNoScopeOrRole_WhenHandled_ThenItIsDenied()
     {
-        // Arrange
-        var httpContext = Substitute.For<HttpContext>();
-        var context = new FhirAuthorizationContext
+        var result = await _handler.HandleAsync(CreateContext(roles: null, scopes: null), CancellationToken.None);
+
+        result.Allowed.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task GivenAnAuthenticatedCallerWithARole_WhenHandled_ThenItPasses()
+    {
+        var result = await _handler.HandleAsync(CreateContext(roles: ["Clinician"], scopes: null), CancellationToken.None);
+
+        result.Allowed.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task GivenAnAuthenticatedCallerWithAResourceScope_WhenHandled_ThenItPasses()
+    {
+        var scopes = SmartScopeParser.ParseScopes("system/Patient.rs");
+
+        var result = await _handler.HandleAsync(CreateContext(roles: null, scopes), CancellationToken.None);
+
+        result.Allowed.ShouldBeTrue();
+    }
+
+    private static FhirAuthorizationContext CreateContext(List<string>? roles, IReadOnlyList<SmartScope>? scopes) =>
+        new()
         {
             RequestContext = CreateRequestContext(),
             UserId = "user123",
+            Roles = roles,
+            SmartContext = scopes is null
+                ? null
+                : new SmartAuthorizationContext
+                {
+                    TokenClaims = new SmartTokenClaims { ScopeString = "system/Patient.rs", Scopes = scopes },
+                    Scopes = scopes
+                },
             Interaction = FhirInteraction.Read,
             ResourceType = "Patient",
-            HttpContext = httpContext,
+            HttpContext = Substitute.For<HttpContext>(),
             Timestamp = DateTimeOffset.UtcNow
         };
-
-        // Act
-        var result = await _handler.HandleAsync(context, CancellationToken.None);
-
-        // Assert
-        result.Allowed.ShouldBeTrue();
-    }
 
     [Fact]
     public void Priority_Is10()

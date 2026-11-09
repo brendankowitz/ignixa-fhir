@@ -55,7 +55,7 @@ public static class HistoryEndpoints
         // Create a route group with the filter for resource-type-specific routes
         var tenantGroup = endpoints
             .MapGroup("/tenant/{tenantId:int}")
-            .AddEndpointFilter<FhirAuthorizationFilter>()
+            .RequireFhirAuthorization()
             .AddEndpointFilter<FhirAuditFilter>()
             .AddEndpointFilter<FhirMetricsFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
@@ -74,9 +74,10 @@ public static class HistoryEndpoints
             .WithName("GetTypeHistory")
             .Produces(StatusCodes.Status200OK);
 
-        // GET /_history - System-level history (no resource type, no filter needed)
+        // GET /_history - System-level history (no resource type to validate, so outside the group; still authorized)
         endpoints.MapGet("/tenant/{tenantId:int}/_history", HandleGetSystemHistory)
             .WithName("GetSystemHistory")
+            .RequireFhirAuthorization()
             .Produces(StatusCodes.Status200OK);
 
         return endpoints;
@@ -94,7 +95,7 @@ public static class HistoryEndpoints
         // Create a route group with the filter for resource-type-specific routes
         var agnosticGroup = endpoints
             .MapGroup(string.Empty)
-            .AddEndpointFilter<FhirAuthorizationFilter>()
+            .RequireFhirAuthorization()
             .AddEndpointFilter<FhirAuditFilter>()
             .AddEndpointFilter<FhirMetricsFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
@@ -121,12 +122,13 @@ public static class HistoryEndpoints
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest);
 
-        // GET /_history - System-level history (agnostic, no resource type, no filter needed)
+        // GET /_history - System-level history (agnostic; outside the group, still authorized)
         endpoints.MapGet("/_history", (HttpContext context,
             [FromServices] IMediator mediator, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
             [FromServices] ILoggerFactory loggerFactory, CancellationToken ct) =>
             HandleGetSystemHistory(context, fhirContextAccessor.RequestContext!.TenantId, mediator, versionContext, fhirContextAccessor, loggerFactory, ct))
             .WithName("GetSystemHistoryAgnostic")
+            .RequireFhirAuthorization()
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest);
 

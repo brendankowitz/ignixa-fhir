@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
 using Ignixa.Serialization;
 using FhirOperationOutcomeIssue = Ignixa.Models.OperationOutcomeIssue;
+using FhirInteraction = Ignixa.Application.Features.Authorization.Models.FhirInteraction;
 
 namespace Ignixa.Api.Endpoints;
 
@@ -38,7 +39,7 @@ public static class BulkDeleteEndpoints
 
         var tenantGroup = endpoints
             .MapGroup("/tenant/{tenantId:int}")
-            .AddEndpointFilter<FhirAuthorizationFilter>()
+            .RequireFhirAuthorization()
             .AddEndpointFilter<FhirAuditFilter>()
             .AddEndpointFilter<FhirMetricsFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
@@ -50,7 +51,8 @@ public static class BulkDeleteEndpoints
                 [FromServices] BulkDeleteKickoffAuthorizer authorizer,
                 CancellationToken cancellationToken) =>
             StartBulkDeleteAsync(context, tenantId, isTenantScopedRoute: true, resourceType: null, mediator, authorizer, cancellationToken))
-            .WithName("StartBulkDeleteSystemLevel");
+            .WithName("StartBulkDeleteSystemLevel")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Delete, "*"));
 
         tenantGroup.MapDelete("/{resourceType}/$bulk-delete", (
                 HttpContext context,
@@ -60,7 +62,8 @@ public static class BulkDeleteEndpoints
                 [FromServices] BulkDeleteKickoffAuthorizer authorizer,
                 CancellationToken cancellationToken) =>
             StartBulkDeleteAsync(context, tenantId, isTenantScopedRoute: true, resourceType, mediator, authorizer, cancellationToken))
-            .WithName("StartBulkDeleteTypeLevel");
+            .WithName("StartBulkDeleteTypeLevel")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Delete));
 
         tenantGroup.MapGet("/_operations/bulk-delete/{jobId}", (
                 HttpContext context,
@@ -83,7 +86,7 @@ public static class BulkDeleteEndpoints
 
         var agnosticGroup = endpoints
             .MapGroup(string.Empty)
-            .AddEndpointFilter<FhirAuthorizationFilter>()
+            .RequireFhirAuthorization()
             .AddEndpointFilter<FhirAuditFilter>()
             .AddEndpointFilter<FhirMetricsFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
@@ -95,7 +98,8 @@ public static class BulkDeleteEndpoints
                 [FromServices] BulkDeleteKickoffAuthorizer authorizer,
                 CancellationToken cancellationToken) =>
             StartBulkDeleteAsync(context, fhirContextAccessor.RequestContext!.TenantId, isTenantScopedRoute: false, resourceType: null, mediator, authorizer, cancellationToken))
-            .WithName("StartBulkDeleteSystemLevelAgnostic");
+            .WithName("StartBulkDeleteSystemLevelAgnostic")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Delete, "*"));
 
         agnosticGroup.MapDelete("/{resourceType}/$bulk-delete", (
                 HttpContext context,
@@ -105,7 +109,8 @@ public static class BulkDeleteEndpoints
                 [FromServices] BulkDeleteKickoffAuthorizer authorizer,
                 CancellationToken cancellationToken) =>
             StartBulkDeleteAsync(context, fhirContextAccessor.RequestContext!.TenantId, isTenantScopedRoute: false, resourceType, mediator, authorizer, cancellationToken))
-            .WithName("StartBulkDeleteTypeLevelAgnostic");
+            .WithName("StartBulkDeleteTypeLevelAgnostic")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Delete));
 
         agnosticGroup.MapGet("/_operations/bulk-delete/{jobId}", (
                 HttpContext context,

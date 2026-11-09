@@ -5,6 +5,8 @@
 
 using System.Security.Claims;
 using Shouldly;
+using Microsoft.Extensions.DependencyInjection;
+using Ignixa.Api.Filters;
 using Ignixa.Application.Features.Authorization;
 using Ignixa.Application.Features.Authorization.Models;
 using Ignixa.Application.Features.Authorization.Services;
@@ -121,26 +123,69 @@ public class FhirAuthorizationFilterTests
         await next.DidNotReceive().Invoke(Arg.Any<EndpointFilterInvocationContext>());
     }
 
+    // A failure after authorization belongs to FhirExceptionMiddleware, which maps it to the right status.
     [Fact]
-    public async Task InvokeAsync_WithFilter_StoresFilterInHttpContext()
+    public async Task GivenAuthorizedRequest_WhenTheEndpointThrows_ThenTheExceptionPropagates()
     {
-        // Arrange
         var (context, next) = CreateFilterContext();
-        var filter = DataFilter.ForPatient("Patient/123");
+        _authzService.AuthorizeAsync(Arg.Any<FhirAuthorizationContext>(), Arg.Any<CancellationToken>())
+            .Returns(AuthorizationResult.Success());
+        next.Invoke(Arg.Any<EndpointFilterInvocationContext>())
+            .Returns<ValueTask<object?>>(_ => throw new ArgumentException("downstream"));
+
+        await Should.ThrowAsync<ArgumentException>(async () => await _filter.InvokeAsync(context, next));
+    }
+
+    public static TheoryData<DataFilter> RestrictingFilters =>
+    [
+        DataFilter.ForPatient("Patient/123"),
+        new DataFilter { SearchFilters = new Dictionary<string, string> { ["category"] = "laboratory" } },
+    ];
+
+    // No query path applies a compartment or search constraint, so serving the request would return unrestricted data.
+    [Theory]
+    [MemberData(nameof(RestrictingFilters))]
+    public async Task GivenAGrantLimitedByAFilter_WhenInvoked_ThenItIsForbiddenWithoutCallingNext(DataFilter filter)
+    {
+        var (context, next) = CreateFilterContext();
         _authzService.AuthorizeAsync(Arg.Any<FhirAuthorizationContext>(), Arg.Any<CancellationToken>())
             .Returns(AuthorizationResult.SuccessWithFilter(filter));
 
-        next.Invoke(Arg.Any<EndpointFilterInvocationContext>())
-            .Returns(ValueTask.FromResult<object?>(Results.Ok()));
+        var result = await _filter.InvokeAsync(context, next);
 
-        // Act
+        var httpContext = new DefaultHttpContext { RequestServices = new ServiceCollection().AddLogging().BuildServiceProvider() };
+        httpContext.Response.Body = new MemoryStream();
+        await ((IResult)result!).ExecuteAsync(httpContext);
+        httpContext.Response.StatusCode.ShouldBe(StatusCodes.Status403Forbidden);
+        await next.DidNotReceive().Invoke(Arg.Any<EndpointFilterInvocationContext>());
+    }
+
+    [Theory]
+    [InlineData("*", "*")]
+    [InlineData(null, "Patient")]
+    public async Task GivenDeclaredMetadata_WhenInvoked_ThenItAuthorizesAsTheDeclaredInteraction(
+        string? declaredType,
+        string expectedType)
+    {
+        var httpContext = CreateHttpContext("POST", "/tenant/1/Patient/$everything");
+        httpContext.Request.RouteValues["resourceType"] = "Patient";
+        httpContext.SetEndpoint(new Endpoint(
+            _ => Task.CompletedTask,
+            new EndpointMetadataCollection(new FhirAuthorizationMetadata(FhirInteraction.SearchSystem, declaredType)),
+            "operation"));
+        var (context, next) = CreateFilterContext(httpContext);
+        FhirAuthorizationContext? captured = null;
+        _authzService.AuthorizeAsync(Arg.Any<FhirAuthorizationContext>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                captured = call.Arg<FhirAuthorizationContext>();
+                return new ValueTask<AuthorizationResult>(AuthorizationResult.Success());
+            });
+        next.Invoke(Arg.Any<EndpointFilterInvocationContext>()).Returns(ValueTask.FromResult<object?>(Results.Ok()));
+
         await _filter.InvokeAsync(context, next);
 
-        // Assert
-        context.HttpContext.Items.ShouldContainKey("FhirAuthorizationFilter");
-        var storedFilter = context.HttpContext.Items["FhirAuthorizationFilter"] as DataFilter;
-        storedFilter.ShouldNotBeNull();
-        storedFilter!.PatientFilter.ShouldBe("Patient/123");
+        (captured.ShouldNotBeNull().Interaction, captured.ResourceType).ShouldBe((FhirInteraction.SearchSystem, expectedType));
     }
 
     #endregion
@@ -233,10 +278,12 @@ public class FhirAuthorizationFilterTests
     }
 
     [Fact]
-    public async Task InvokeAsync_Metadata_SetsCapabilitiesInteraction()
+    public async Task GivenAResourceWhoseIdIsMetadata_WhenDeleting_ThenItIsAuthorizedAsADeleteNotAsCapabilities()
     {
         // Arrange
-        var httpContext = CreateHttpContext("GET", "/tenant/1/metadata");
+        var httpContext = CreateHttpContext("DELETE", "/tenant/1/Patient/metadata");
+        httpContext.Request.RouteValues["resourceType"] = "Patient";
+        httpContext.Request.RouteValues["id"] = "metadata";
 
         var (context, next) = CreateFilterContext(httpContext);
         FhirAuthorizationContext? capturedContext = null;
@@ -255,7 +302,7 @@ public class FhirAuthorizationFilterTests
 
         // Assert
         capturedContext.ShouldNotBeNull();
-        capturedContext!.Interaction.ShouldBe(FhirInteraction.Capabilities);
+        (capturedContext!.Interaction, capturedContext.ResourceType).ShouldBe((FhirInteraction.Delete, "Patient"));
     }
 
     #endregion

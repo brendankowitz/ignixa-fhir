@@ -1,6 +1,8 @@
 using Ignixa.Application.Features.Admin;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
+using Ignixa.Api.Filters;
+using FhirInteraction = Ignixa.Application.Features.Authorization.Models.FhirInteraction;
 
 namespace Ignixa.Api.Endpoints;
 
@@ -15,9 +17,14 @@ public static class AdminPackageEndpoints
     /// </summary>
     public static IEndpointRouteBuilder MapAdminPackageEndpoints(this IEndpointRouteBuilder endpoints)
     {
+        var packages = endpoints.MapGroup(string.Empty).RequireFhirAuthorization();
+
         // Match the FHIR route's tenant constraint so the literal admin segments take precedence.
         // POST /tenant/{tenantId:int}/admin/packages/load - Load a package into tenant
-        endpoints.MapPost("/tenant/{tenantId:int}/admin/packages/load", HandleLoadPackage)
+        // Activation changes the conformance definitions every tenant shares.
+        packages.MapPost("/tenant/{tenantId:int}/admin/packages/load", HandleLoadPackage)
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Update, "*"))
+            .RequireServerWideAuthority()
             .WithName("LoadPackage")
             .WithDescription("Load a FHIR package from NPM registry into a tenant's database")
             .Accepts<LoadPackageRequest>("application/json")
@@ -26,14 +33,17 @@ public static class AdminPackageEndpoints
             .Produces(StatusCodes.Status500InternalServerError);
 
         // GET /tenant/{tenantId:int}/admin/packages - List packages loaded in tenant
-        endpoints.MapGet("/tenant/{tenantId:int}/admin/packages", HandleListPackages)
+        packages.MapGet("/tenant/{tenantId:int}/admin/packages", HandleListPackages)
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Read, "*"))
             .WithName("ListPackages")
             .WithDescription("List all loaded FHIR packages for a specific tenant")
             .Produces<ListPackagesResponse>(StatusCodes.Status200OK, contentType: "application/json")
             .Produces(StatusCodes.Status500InternalServerError);
 
         // DELETE /tenant/{tenantId:int}/admin/packages/{packageId}/{version} - Unload package from tenant
-        endpoints.MapDelete("/tenant/{tenantId:int}/admin/packages/{packageId}/{version}", HandleUnloadPackage)
+        packages.MapDelete("/tenant/{tenantId:int}/admin/packages/{packageId}/{version}", HandleUnloadPackage)
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Update, "*"))
+            .RequireServerWideAuthority()
             .WithName("UnloadPackage")
             .WithDescription("Unload (deactivate) a FHIR package from a tenant's database")
             .Produces<UnloadPackageResponse>(StatusCodes.Status200OK, contentType: "application/json")

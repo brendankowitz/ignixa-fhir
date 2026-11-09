@@ -469,6 +469,59 @@ public class SmartScopeAuthorizationHandlerTests
         result.DenialReason.ShouldContain("POST _search is not supported with constrained SMART scopes");
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task GivenAConstrainedAndAnUnrestrictedScope_WhenReading_ThenNoFilterIsAppliedWhicheverComesFirst(
+        bool constrainedFirst)
+    {
+        SmartScope constrained = ObservationScope(new Dictionary<string, string> { ["category"] = "laboratory" });
+        SmartScope unrestricted = ObservationScope(searchConstraints: null);
+        List<SmartScope> scopes = constrainedFirst ? [constrained, unrestricted] : [unrestricted, constrained];
+
+        var result = await _handler.HandleAsync(ObservationReadContext(scopes), CancellationToken.None);
+
+        result.Allowed.ShouldBeTrue();
+        result.Filter.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GivenOnlyAConstrainedScope_WhenReading_ThenTheConstraintIsReturnedAsAFilter()
+    {
+        List<SmartScope> scopes = [ObservationScope(new Dictionary<string, string> { ["category"] = "laboratory" })];
+
+        var result = await _handler.HandleAsync(ObservationReadContext(scopes), CancellationToken.None);
+
+        result.Allowed.ShouldBeTrue();
+        result.Filter.ShouldNotBeNull();
+        result.Filter!.SearchFilters.ShouldContainKey("category");
+    }
+
+    private static SmartScope ObservationScope(IReadOnlyDictionary<string, string>? searchConstraints) => new()
+    {
+        Type = SmartScopeType.System,
+        ResourceType = "Observation",
+        Permissions = SmartPermissions.Read | SmartPermissions.Search,
+        PermissionString = "RS",
+        OriginalScope = searchConstraints is null ? "system/Observation.rs" : "system/Observation.rs?category=laboratory",
+        SearchConstraints = searchConstraints
+    };
+
+    private static FhirAuthorizationContext ObservationReadContext(List<SmartScope> scopes) => new()
+    {
+        RequestContext = CreateRequestContext(),
+        UserId = "user123",
+        SmartContext = new SmartAuthorizationContext
+        {
+            TokenClaims = new SmartTokenClaims { ScopeString = string.Join(' ', scopes.Select(s => s.OriginalScope)), Scopes = scopes },
+            Scopes = scopes
+        },
+        Interaction = FhirInteraction.Read,
+        ResourceType = "Observation",
+        HttpContext = Substitute.For<HttpContext>(),
+        Timestamp = DateTimeOffset.UtcNow
+    };
+
     private static IFhirRequestContext CreateRequestContext(int tenantId = 1)
     {
         var context = Substitute.For<IFhirRequestContext>();

@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 using Ignixa.Api.Endpoints.Experimental;
 using Ignixa.Api.Http;
+using Ignixa.Api.Tests.TestSupport;
 using Ignixa.Application.Features.Experimental.Terminology.Expand;
 using Ignixa.Application.Features.Experimental.Terminology.Subsumes;
 using Ignixa.Application.Features.Experimental.Terminology.Translate;
@@ -45,6 +46,7 @@ public sealed class TerminologyEndpointErrorSerializationTests : IAsyncLifetime
         var accessor = Substitute.For<IFhirRequestContextAccessor>();
         accessor.RequestContext.Returns(FhirRequestContextFactory.CreateBackgroundContext(1));
         var builder = WebApplication.CreateBuilder();
+        builder.Services.AddDisabledFhirAuthorization();
         builder.Services.AddSingleton(mediator);
         builder.Services.AddSingleton(accessor);
         _app = builder.Build();

@@ -4,8 +4,10 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
+using Ignixa.Application.Features.Authorization;
 using Ignixa.Application.Features.Experimental.Configuration;
 using Ignixa.Application.Features.Experimental.GraphQl.Schema;
+using Microsoft.Extensions.Options;
 
 namespace Ignixa.Api.Endpoints.Experimental;
 
@@ -69,7 +71,14 @@ public static class ExperimentalEndpointExtensions
         {
             app.MapGraphQlEndpoints(configureTenantGroup);
 
-            if (options.Features.GraphQl.EnableGraphQlIde)
+            // The IDE's native executor runs mutations without the endpoint filters or the mutation refusal.
+            if (options.Features.GraphQl.EnableGraphQlIde &&
+                app.Services.GetRequiredService<IOptions<AuthorizationOptions>>().Value.Enabled)
+            {
+                app.Logger.LogWarning(
+                    "The GraphQL IDE at /graphql is not mapped because authorization is enabled; use $graphql instead.");
+            }
+            else if (options.Features.GraphQl.EnableGraphQlIde)
             {
                 var deploymentVersion = options.Features.GraphQl.WarmupVersions.FirstOrDefault(FhirVersion.R4);
                 var schemaName = GraphQlNamingHelper.GetSchemaName(deploymentVersion);
