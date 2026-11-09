@@ -5,6 +5,7 @@
 
 using Ignixa.Application.Events.Terminology;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 using Medino;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -28,10 +29,6 @@ public class TerminologyImportBootstrapService(
     ILogger<TerminologyImportBootstrapService> logger,
     TimeSpan? startupDelay = null) : BackgroundService
 {
-    // The tenant stamped on the published event, for the import orchestration's request context. It does
-    // not select which resources are found -- package content is global.
-    private const int OrchestrationTenantId = 1;
-
     private static readonly TimeSpan DefaultStartupDelay = TimeSpan.FromSeconds(5);
 
     private readonly IServiceProvider _serviceProvider =
@@ -110,7 +107,9 @@ public class TerminologyImportBootstrapService(
 
             await mediator.PublishAsync(
                 new TerminologyImportTriggeredEvent(
-                    TenantId: OrchestrationTenantId,
+                    // Only the orchestration's request context; package content is global, so the tenant
+                    // does not select which resources are found.
+                    TenantId: SystemConstants.GlobalTenantId,
                     PackageId: packageId,
                     PackageVersion: packageVersion,
                     PackageResourceIds: packageResourceIds),

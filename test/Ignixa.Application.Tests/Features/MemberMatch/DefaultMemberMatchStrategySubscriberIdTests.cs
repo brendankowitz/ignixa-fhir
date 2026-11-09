@@ -53,6 +53,17 @@ public class DefaultMemberMatchStrategySubscriberIdTests
     private static readonly string[] R4SubscriberId = ["SUB12345"];
     private static readonly string[] MemberAndBothSubscriberIds = ["MEM-1", "SUB-A", "SUB-B"];
 
+    // Copilot review: $member-match builds its own search options, so it must carry the lease's execution deadline itself.
+    [Fact]
+    public async Task GivenAHeldLease_WhenMatching_ThenTheSearchCarriesTheLeaseExecutionDeadline()
+    {
+        var coverage = """{ "resourceType": "Coverage", "id": "coverage-1", "subscriberId": "SUB-A" }""";
+
+        await CreateStrategy(FhirVersion.R4).MatchAsync(Parse(PatientWithoutIdentifiers), Parse(coverage), null, CancellationToken.None);
+
+        CapturedSearchOptions().ExecutionDeadline.ShouldNotBeNull();
+    }
+
     [Fact]
     public async Task GivenAnR5CoverageWithTwoSubscriberIds_WhenMatching_ThenBothReachTheSearch()
     {
@@ -223,6 +234,7 @@ public class DefaultMemberMatchStrategySubscriberIdTests
             _searchServiceFactory,
             _contextAccessor,
             _versionContext,
+            TestConformanceLease.Held(),
             NullLogger<DefaultMemberMatchStrategy>.Instance);
     }
 
@@ -241,15 +253,15 @@ public class DefaultMemberMatchStrategySubscriberIdTests
     /// </summary>
     private IReadOnlyList<string> CapturedTokenValues()
     {
-        var call = _searchService.ReceivedCalls()
-            .Single(c => c.GetMethodInfo().Name == nameof(ISearchService.SearchStreamAsync));
-
-        var searchOptions = (SearchOptions)call.GetArguments()[0]!;
-
         var values = new List<string>();
-        CollectTokenValues(searchOptions.Expression, values);
+        CollectTokenValues(CapturedSearchOptions().Expression, values);
         return values;
     }
+
+    private SearchOptions CapturedSearchOptions() =>
+        (SearchOptions)_searchService.ReceivedCalls()
+            .Single(c => c.GetMethodInfo().Name == nameof(ISearchService.SearchStreamAsync))
+            .GetArguments()[0]!;
 
     private static void CollectTokenValues(Expression? expression, List<string> values)
     {

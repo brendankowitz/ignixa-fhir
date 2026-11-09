@@ -13,6 +13,8 @@ using Ignixa.Serialization.SourceNodes;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IO;
+using Ignixa.Api.Filters;
+using FhirInteraction = Ignixa.Application.Features.Authorization.Models.FhirInteraction;
 
 namespace Ignixa.Api.Endpoints.Experimental;
 
@@ -35,7 +37,8 @@ public static class SummaryEndpoints
         Action<RouteGroupBuilder>? configureTenantGroup = null)
     {
         endpoints.MapSummaryTenantEndpoints(configureTenantGroup);
-        endpoints.MapSummaryAgnosticEndpoints();
+        var agnosticGroup = endpoints.MapGroup(string.Empty).RequireFhirAuthorization();
+        agnosticGroup.MapSummaryAgnosticEndpoints();
         return endpoints;
     }
 
@@ -58,6 +61,7 @@ public static class SummaryEndpoints
         // GET /tenant/{tenantId}/Patient/{id}/$summary - Patient $summary (IPS) operation
         tenantGroup.MapGet("/Patient/{id}/$summary", HandlePatientSummaryById)
             .WithName("PatientSummaryById")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.SearchSystem, "*"))
             .WithTags("Experimental", "Summary", "IPS")
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
@@ -66,6 +70,7 @@ public static class SummaryEndpoints
         // GET /tenant/{tenantId}/Patient/$summary?identifier=... - Patient $summary by identifier
         tenantGroup.MapGet("/Patient/$summary", HandlePatientSummaryByIdentifier)
             .WithName("PatientSummaryByIdentifier")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.SearchSystem, "*"))
             .WithTags("Experimental", "Summary", "IPS")
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
@@ -74,6 +79,7 @@ public static class SummaryEndpoints
         // POST /tenant/{tenantId}/Patient/{id}/$summary - Patient $summary (IPS) operation POST variant
         tenantGroup.MapPost("/Patient/{id}/$summary", HandlePatientSummaryByIdPost)
             .WithName("PatientSummaryByIdPost")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.SearchSystem, "*"))
             .WithTags("Experimental", "Summary", "IPS")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
@@ -90,6 +96,7 @@ public static class SummaryEndpoints
         // GET /Patient/{id}/$summary - Patient $summary (IPS) operation (agnostic route)
         endpoints.MapGet("/Patient/{id}/$summary", HandlePatientSummaryById)
             .WithName("PatientSummaryByIdAgnostic")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.SearchSystem, "*"))
             .WithTags("Experimental", "Summary", "IPS")
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
@@ -98,6 +105,7 @@ public static class SummaryEndpoints
         // GET /Patient/$summary?identifier=... - Patient $summary by identifier (agnostic route)
         endpoints.MapGet("/Patient/$summary", HandlePatientSummaryByIdentifier)
             .WithName("PatientSummaryByIdentifierAgnostic")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.SearchSystem, "*"))
             .WithTags("Experimental", "Summary", "IPS")
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
@@ -106,6 +114,7 @@ public static class SummaryEndpoints
         // POST /Patient/{id}/$summary - Patient $summary (IPS) operation POST variant (agnostic route)
         endpoints.MapPost("/Patient/{id}/$summary", HandlePatientSummaryByIdPost)
             .WithName("PatientSummaryByIdPostAgnostic")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.SearchSystem, "*"))
             .WithTags("Experimental", "Summary", "IPS")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)

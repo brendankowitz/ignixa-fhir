@@ -20,6 +20,7 @@ using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using System.Text.Json.Nodes;
 using Ignixa.Application.Features.Search;
+using Ignixa.Application.Features.Conformance;
 
 namespace Ignixa.Application.Features.Resource;
 
@@ -44,6 +45,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
     private readonly IFhirVersionContext _fhirVersionContext;
     private readonly Func<FhirVersion, IValidationSchemaResolver> _schemaResolverFactory;
     private readonly ResourceElementOrdering _elementOrdering;
+    private readonly ConformanceBarrierRetryPolicy _barrierRetryPolicy;
     private readonly ILogger<CreateOrUpdateResourceHandler> _logger;
     private readonly SemanticIndexer? _semanticIndexer;
 
@@ -54,6 +56,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         IFhirVersionContext fhirVersionContext,
         Func<FhirVersion, IValidationSchemaResolver> schemaResolverFactory,
         ResourceElementOrdering elementOrdering,
+        ConformanceBarrierRetryPolicy barrierRetryPolicy,
         ILogger<CreateOrUpdateResourceHandler> logger,
         SemanticIndexer? semanticIndexer = null)
     {
@@ -63,6 +66,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
         _schemaResolverFactory = schemaResolverFactory ?? throw new ArgumentNullException(nameof(schemaResolverFactory));
         _elementOrdering = elementOrdering ?? throw new ArgumentNullException(nameof(elementOrdering));
+        _barrierRetryPolicy = barrierRetryPolicy ?? throw new ArgumentNullException(nameof(barrierRetryPolicy));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _semanticIndexer = semanticIndexer;
     }
@@ -87,9 +91,6 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         // Tenant ID available from context for tenant-aware search indexing
         int? tenantId = context.TenantId;
 
-        // Create wrapper (needed for both paths now)
-        var wrapper = CreateResourceWrapper(command, fhirVersionEnum, schemaProvider, tenantId);
-
         UpdateResult result;
 
         // Resolve coordinator from command OR context (pipeline routing fallback)
@@ -107,6 +108,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         // Routing logic - coordinator presence determines path
         if (coordinator != null)
         {
+            var wrapper = CreateResourceWrapper(command, fhirVersionEnum, schemaProvider, tenantId);
             // Bundle path - queue for deferred batch write
             _logger.LogDebug(
                 "Using deferred write coordinator for {ResourceType}/{Id}",
@@ -180,18 +182,22 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             // 4. Get repository from factory
             var repository = await _repositoryFactory.GetRepositoryAsync(resolvedTenantId, cancellationToken);
 
-            // 5. Embed semantic text before writing: a committed write must never leave the vector
-            // index stale, so embedding failures must surface before the repository call below, not
-            // after. Bundle writes are embedded separately by DeferredWriteCoordinator -- after alias
-            // rewrite/re-extraction, and batched across the whole transaction/micro-batch -- not here.
-            if (_semanticIndexer is not null)
-            {
-                var hasSemanticSearchParameter = BuildSemanticParameterPredicate(fhirVersionEnum, tenantId);
-                wrapper = (await _semanticIndexer.IndexAsync([wrapper], hasSemanticSearchParameter, cancellationToken))[0];
-            }
-
-            // 6. Write immediately to repository - returns UpdateResult with ResourceKey + raw bytes
-            result = await repository.CreateOrUpdateAsync(wrapper, cancellationToken);
+            // 5. Write immediately to repository - returns UpdateResult with ResourceKey + raw bytes
+            result = await _barrierRetryPolicy.ExecuteAsync(
+                async ct =>
+                {
+                    var wrapper = CreateResourceWrapper(command, fhirVersionEnum, schemaProvider, tenantId);
+                    if (_semanticIndexer is not null)
+                    {
+                        var hasSemanticSearchParameter = BuildSemanticParameterPredicate(fhirVersionEnum, tenantId);
+                        wrapper = (await _semanticIndexer.IndexAsync(
+                            [wrapper],
+                            hasSemanticSearchParameter,
+                            ct))[0];
+                    }
+                    return await repository.CreateOrUpdateAsync(wrapper, ct);
+                },
+                cancellationToken);
 
             // 7. Process X-Provenance header if provided (only for standalone operations)
             // Provenance cannot be processed in bundle/deferred context because the main resource isn't persisted yet
@@ -202,14 +208,31 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
                     result.Key.ResourceType,
                     result.Key.Id);
 
-                await ProcessProvenanceAsync(
-                    command.ProvenanceResource,
-                    result,
-                    fhirVersionEnum,
-                    schemaProvider,
-                    tenantId,
-                    repository,
-                    cancellationToken);
+                try
+                {
+                    await ProcessProvenanceAsync(
+                        command.ProvenanceResource,
+                        result,
+                        fhirVersionEnum,
+                        schemaProvider,
+                        tenantId,
+                        repository,
+                        cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+                {
+                    ProvenanceWriteMetrics.RecordFailure();
+                    _logger.LogError(
+                        ex,
+                        "Primary write {ResourceType}/{Id}/_history/{VersionId} succeeded but its X-Provenance resource could not be persisted",
+                        result.Key.ResourceType,
+                        result.Key.Id,
+                        result.Key.VersionId);
+                    result = result with
+                    {
+                        OperationOutcomeBytes = CreateProvenanceFailureOutcome().SerializeToBytes()
+                    };
+                }
             }
         }
 
@@ -221,6 +244,18 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             result.Key.VersionId);
 
         return result;
+    }
+
+    private static OperationOutcome CreateProvenanceFailureOutcome()
+    {
+        var outcome = new OperationOutcome();
+        outcome.Issue.Add(new Ignixa.Models.OperationOutcomeIssue
+        {
+            SeverityCode = Ignixa.Models.OperationOutcomeIssue.IssueSeverityCode.Warning,
+            IssueTypeCode = Ignixa.Models.OperationOutcomeIssue.IssueTypeCommon.Processing,
+            Diagnostics = "The resource was saved, but the X-Provenance resource could not be persisted."
+        });
+        return outcome;
     }
 
     /// <summary>
@@ -240,14 +275,14 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         // Get tenant-aware search indexer from context if tenantId available
         // When tenantId is provided, indexer uses IG-specific search parameters from loaded packages
         // When no tenantId, indexer uses base FHIR spec search parameters only
-        var searchIndexer = _fhirVersionContext.GetSearchIndexer(fhirVersionEnum, tenantId);
+        var definitionsHandle = _fhirVersionContext.GetDefinitionsHandle(fhirVersionEnum, tenantId);
 
         // Extract search indices using version-specific indexer
         IReadOnlyCollection<SearchIndexEntry>? searchIndices = null;
         try
         {
-            var typedElement = command.JsonNode.ToElement(schemaProvider);
-            searchIndices = searchIndexer.Extract((IElement)typedElement);
+            var typedElement = command.JsonNode.ToElement(definitionsHandle.SchemaProvider);
+            searchIndices = definitionsHandle.Indexer.Extract((IElement)typedElement);
 
             _logger.LogDebug(
                 "Extracted {Count} search indices for {ResourceType}/{Id} (FHIR {Version})",
@@ -299,6 +334,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         {
             FhirVersion = fhirVersionEnum.ToVersionString(), // Convert enum to string for storage
             SearchIndices = searchIndices?.ToArray(),
+            DefinitionsEventId = definitionsHandle.DefinitionsEventId,
             ExpectedVersionId = command.IfMatch,
             ExpiresAt = command.ExpiresAt
         };
@@ -355,58 +391,52 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         // Create ResourceWrapper for the Provenance resource
         var request = new ResourceRequest("POST", $"Provenance/{provenanceId}");
 
-        // Extract search indices for Provenance
-        var searchIndexer = _fhirVersionContext.GetSearchIndexer(fhirVersion, tenantId);
-        IReadOnlyCollection<SearchIndexEntry>? searchIndices = null;
-        try
-        {
-            var typedElement = provenanceTemplate.ToElement(schemaProvider);
-            searchIndices = searchIndexer.Extract((IElement)typedElement);
+        var provenanceResult = await _barrierRetryPolicy.ExecuteAsync(
+            async ct =>
+            {
+                var definitionsHandle = _fhirVersionContext.GetDefinitionsHandle(fhirVersion, tenantId);
+                IReadOnlyCollection<SearchIndexEntry> searchIndices;
+                try
+                {
+                    var typedElement = provenanceTemplate.ToElement(definitionsHandle.SchemaProvider);
+                    searchIndices = definitionsHandle.Indexer.Extract((IElement)typedElement);
 
-            _logger.LogDebug(
-                "Extracted {Count} search indices for Provenance/{Id}",
-                searchIndices.Count,
-                provenanceId);
-        }
-        catch (Exception ex)
-        {
-            // Log with full details to help diagnose indexing failures
-            _logger.LogError(
-                ex,
-                "Failed to extract search indices for Provenance/{Id}. Error: {ErrorMessage}. This may indicate a bug in search parameter extraction.",
-                provenanceId,
-                ex.Message);
+                    _logger.LogDebug(
+                        "Extracted {Count} search indices for Provenance/{Id}",
+                        searchIndices.Count,
+                        provenanceId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(
+                        ex,
+                        "Failed to extract search indices for Provenance/{Id}. Error: {ErrorMessage}. This may indicate a bug in search parameter extraction.",
+                        provenanceId,
+                        ex.Message);
+                    throw new InvalidOperationException(
+                        $"Failed to extract search indices for Provenance/{provenanceId}: {ex.Message}. See logs for details.",
+                        ex);
+                }
 
-            // Re-throw to fail the request - search indexing is not optional
-            throw new InvalidOperationException(
-                $"Failed to extract search indices for Provenance/{provenanceId}: {ex.Message}. See logs for details.",
-                ex);
-        }
+                _elementOrdering.OrderForStorage(provenanceTemplate, definitionsHandle.SchemaProvider);
 
-        _elementOrdering.OrderForStorage(provenanceTemplate, schemaProvider);
+                var provenanceWrapper = new ResourceWrapper(
+                    "Provenance",
+                    provenanceId,
+                    provenanceTemplate.Meta.VersionId!,
+                    provenanceTemplate.Meta.LastUpdatedOffset!.Value,
+                    provenanceTemplate,
+                    request,
+                    false)
+                {
+                    FhirVersion = fhirVersion.ToVersionString(),
+                    SearchIndices = searchIndices.ToArray(),
+                    DefinitionsEventId = definitionsHandle.DefinitionsEventId
+                };
 
-        var provenanceWrapper = new ResourceWrapper(
-            "Provenance",
-            provenanceId,
-            provenanceTemplate.Meta.VersionId!,
-            provenanceTemplate.Meta.LastUpdatedOffset!.Value,
-            provenanceTemplate, // Provenance extends ResourceJsonNode, so this works
-            request,
-            false) // isDeleted
-        {
-            FhirVersion = fhirVersion.ToVersionString(),
-            SearchIndices = searchIndices?.ToArray()
-        };
-
-        // No semantic indexing call here: Provenance carries no semantic search parameter in any shipped
-        // definition, so IndexAsync would always find zero semantic entries and its
-        // hasSemanticSearchParameter predicate would always say "not evaluated" for it, leaving
-        // VectorIndices null either way (see ResourceWrapper.VectorIndices) -- the same value the record
-        // already defaults to. If a tenant-defined custom package ever adds a semantic search parameter
-        // targeting Provenance, this will need the same predicate-driven call the main resource gets above.
-
-        // Persist the Provenance resource (validation was performed above by ValidateProvenance)
-        var provenanceResult = await repository.CreateOrUpdateAsync(provenanceWrapper, cancellationToken);
+                return await repository.CreateOrUpdateAsync(provenanceWrapper, ct);
+            },
+            cancellationToken);
 
         _logger.LogInformation(
             "Created Provenance resource {ProvenanceId} (version {VersionId}) for {TargetType}/{TargetId}",

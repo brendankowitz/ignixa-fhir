@@ -16,6 +16,9 @@ namespace Ignixa.Api.Services;
 public class ConformanceStateInitializerService(
     ISourceEventStore eventStore,
     ConformanceState conformanceState,
+    ConformanceRefresher conformanceRefresher,
+    ConformanceLease conformanceLease,
+    TimeProvider timeProvider,
     ILogger<ConformanceStateInitializerService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -33,18 +36,26 @@ public class ConformanceStateInitializerService(
 
         for (int attempt = 0; attempt <= maxRetries; attempt++)
         {
+            var leaseStart = conformanceLease.CaptureStart();
             var stopwatch = Stopwatch.StartNew();
 
             try
             {
                 await conformanceState.InitializeFromEventsAsync(eventStore, stoppingToken);
+                await conformanceRefresher.RefreshAsync(force: false, stoppingToken);
+                conformanceLease.Renew(leaseStart);
 
                 stopwatch.Stop();
 
-                var spCount = conformanceState.AllSearchParameters.Count;
-                var sdCount = conformanceState.StructureDefinitions.Count;
-                var pkgCount = conformanceState.Packages.Count;
-                var lastEventId = conformanceState.LastProcessedEventId;
+                int spCount, sdCount, pkgCount;
+                long lastEventId;
+                using (await conformanceState.AcquireActivationLockAsync(stoppingToken))
+                {
+                    spCount = conformanceState.AllSearchParameters.Count;
+                    sdCount = conformanceState.StructureDefinitions.Count;
+                    pkgCount = conformanceState.Packages.Count;
+                    lastEventId = conformanceState.LastProcessedEventId;
+                }
 
                 logger.LogInformation(
                     "ConformanceStateInitializerService completed in {ElapsedMs:N0}ms. " +
@@ -78,7 +89,7 @@ public class ConformanceStateInitializerService(
 
                     try
                     {
-                        await Task.Delay(delays[attempt], stoppingToken);
+                        await Task.Delay(delays[attempt], timeProvider, stoppingToken);
                     }
                     catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                     {
@@ -98,6 +109,7 @@ public class ConformanceStateInitializerService(
                     // ConformanceState.IsInitialized will remain false, which can be checked by dependent services
                 }
             }
+
         }
     }
 }

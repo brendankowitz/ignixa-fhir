@@ -4,6 +4,11 @@ using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Conformance.Events.Events;
 
+/// <param name="FhirVersion">
+/// The FHIR version ("4.0", "5.0", ...) whose tenants this definition applies to. Null on events appended
+/// before versions were recorded; such a definition applies to every version, which is how it was always
+/// projected.
+/// </param>
 public record SearchParameterActivated(
     string Canonical,
     string Code,
@@ -17,6 +22,7 @@ public record SearchParameterActivated(
     IReadOnlyList<SearchParameterComponentData>? Components,
     string? Name,
     string? Description,
+    string? FhirVersion = null,
     VectorSearchConfig? VectorConfig = null,
     bool HasInvalidVectorConfig = false);
 
@@ -29,7 +35,8 @@ public record SearchParameterReindexStarted(
     string Code,
     string ResourceType,
     string JobId,
-    IReadOnlyList<string> AffectedResourceTypes);
+    IReadOnlyList<string> AffectedResourceTypes,
+    long? ActivationEventId = null);
 
 public record SearchParameterReindexCompleted(
     string Canonical,
@@ -37,14 +44,21 @@ public record SearchParameterReindexCompleted(
     string ResourceType,
     string JobId,
     long ResourcesIndexed,
-    TimeSpan Duration);
+    TimeSpan Duration,
+    long? ActivationEventId = null);
 
 public record SearchParameterReindexFailed(
     string Canonical,
     string Code,
     string ResourceType,
     string JobId,
-    string ErrorMessage);
+    string ErrorMessage,
+    long? ActivationEventId = null);
+
+public record SearchParameterTransitionCommitted(
+    int SearchParamId,
+    IReadOnlyList<long> ActivationEventIds,
+    IReadOnlyList<long> DeactivationEventIds);
 
 public record SearchParameterDeactivated(
     string Canonical,

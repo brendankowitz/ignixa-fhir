@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.SemanticSearch;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Features.Search;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Models;
 using Ignixa.Serialization.Models;
@@ -35,6 +36,7 @@ public class BundleProcessor
     private readonly ILogger<BundleProcessor> _logger;
     private readonly IFhirVersionContext _fhirVersionContext;
     private readonly SemanticIndexer? _semanticIndexer;
+    private readonly ConformanceBarrierRetryPolicy _barrierRetryPolicy;
 
     public BundleProcessor(
         BundleReferencePreProcessor referencePreProcessor,
@@ -46,6 +48,7 @@ public class BundleProcessor
         ILoggerFactory loggerFactory,
         ILogger<BundleProcessor> logger,
         IFhirVersionContext fhirVersionContext,
+        ConformanceBarrierRetryPolicy barrierRetryPolicy,
         SemanticIndexer? semanticIndexer = null)
     {
         _referencePreProcessor = EnsureArg.IsNotNull(referencePreProcessor, nameof(referencePreProcessor));
@@ -58,6 +61,7 @@ public class BundleProcessor
         _logger = EnsureArg.IsNotNull(logger, nameof(logger));
         _fhirVersionContext = EnsureArg.IsNotNull(fhirVersionContext, nameof(fhirVersionContext));
         _semanticIndexer = semanticIndexer;
+        _barrierRetryPolicy = EnsureArg.IsNotNull(barrierRetryPolicy, nameof(barrierRetryPolicy));
     }
 
 
@@ -104,6 +108,8 @@ public class BundleProcessor
                 repositoryFactory: _repositoryFactory,
                 partitionStrategy: _partitionStrategy,
                 contextAccessor: _contextAccessor,
+                fhirVersionContext: _fhirVersionContext,
+                barrierRetryPolicy: _barrierRetryPolicy,
                 logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
                 cancellationToken: cancellationToken,
                 semanticIndexer: _semanticIndexer);
@@ -212,6 +218,8 @@ public class BundleProcessor
                     repositoryFactory: _repositoryFactory,
                     partitionStrategy: _partitionStrategy,
                     contextAccessor: _contextAccessor,
+                    fhirVersionContext: _fhirVersionContext,
+                    barrierRetryPolicy: _barrierRetryPolicy,
                     logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
                     cancellationToken: cancellationToken,
                     semanticIndexer: _semanticIndexer);
@@ -378,6 +386,7 @@ public class BundleProcessor
         var coordinator = hasWrites
             ? await DeferredWriteCoordinator.CreateAsync(options.ChannelCapacity,
                 _repositoryFactory, _partitionStrategy, _contextAccessor,
+                _fhirVersionContext, _barrierRetryPolicy,
                 _loggerFactory.CreateLogger<DeferredWriteCoordinator>(), atomic: true,
                 semanticIndexer: _semanticIndexer, cancellationToken: cancellationToken)
             : null;
@@ -469,6 +478,8 @@ public class BundleProcessor
                 repositoryFactory: _repositoryFactory,
                 partitionStrategy: _partitionStrategy,
                 contextAccessor: _contextAccessor,
+                fhirVersionContext: _fhirVersionContext,
+                barrierRetryPolicy: _barrierRetryPolicy,
                 logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
                 cancellationToken: cancellationToken,
                 semanticIndexer: _semanticIndexer);
@@ -553,6 +564,8 @@ public class BundleProcessor
                 repositoryFactory: _repositoryFactory,
                 partitionStrategy: _partitionStrategy,
                 contextAccessor: _contextAccessor,
+                fhirVersionContext: _fhirVersionContext,
+                barrierRetryPolicy: _barrierRetryPolicy,
                 logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
                 cancellationToken: cancellationToken,
                 semanticIndexer: _semanticIndexer);
@@ -747,6 +760,8 @@ public class BundleProcessor
             repositoryFactory: _repositoryFactory,
             partitionStrategy: _partitionStrategy,
             contextAccessor: _contextAccessor,
+            fhirVersionContext: _fhirVersionContext,
+            barrierRetryPolicy: _barrierRetryPolicy,
             logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
             cancellationToken: cancellationToken,
             semanticIndexer: _semanticIndexer);

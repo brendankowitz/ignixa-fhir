@@ -2,7 +2,6 @@ using System.Diagnostics;
 using Ignixa.Abstractions;
 using Ignixa.Application.Events.Package;
 using Ignixa.Application.Features.Search;
-using Ignixa.Application.Infrastructure.Caching;
 using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Serialization;
@@ -52,7 +51,6 @@ public class PackageLoadedSearchParameterSyncHandler(
     IFhirVersionContext fhirVersionContext,
     SqlServerSearchIndexCacheRegistry cacheRegistry,
     ITenantConfigurationStore tenantConfigStore,
-    ICapabilityCacheInvalidator capabilityCacheInvalidator,
     ILogger<PackageLoadedSearchParameterSyncHandler> logger) : INotificationHandler<PackageLoadedEvent>
 {
     public async Task HandleAsync(PackageLoadedEvent notification, CancellationToken cancellationToken)
@@ -85,9 +83,8 @@ public class PackageLoadedSearchParameterSyncHandler(
 
             if (string.Equals(tenantConfig.Storage.Type, "FileSystem", StringComparison.OrdinalIgnoreCase))
             {
-                await capabilityCacheInvalidator.InvalidateForTenantAsync(notification.TenantId, cancellationToken);
                 logger.LogInformation(
-                    "Invalidated capability cache for FileSystem tenant {TenantId}; SQL catalog synchronization is not applicable",
+                    "Skipped SQL catalog synchronization for FileSystem tenant {TenantId}",
                     notification.TenantId);
                 return;
             }
@@ -140,13 +137,6 @@ public class PackageLoadedSearchParameterSyncHandler(
                 notification.PackageId,
                 notification.PackageVersion);
 
-            await capabilityCacheInvalidator.InvalidateForTenantAsync(notification.TenantId, cancellationToken);
-
-            logger.LogInformation(
-                "Invalidated capability cache for tenant {TenantId} after loading {PackageId}@{PackageVersion}",
-                notification.TenantId,
-                notification.PackageId,
-                notification.PackageVersion);
         }
         catch (OperationCanceledException)
         {
@@ -159,7 +149,7 @@ public class PackageLoadedSearchParameterSyncHandler(
             logger.LogError(
                 ex,
                 "Failed to refresh search-parameter state for {PackageId}@{PackageVersion} in tenant {TenantId}. "
-                + "SQL catalog synchronization and capability invalidation failures are surfaced rather than swallowed.",
+                + "SQL catalog synchronization failures are surfaced rather than swallowed.",
                 notification.PackageId,
                 notification.PackageVersion,
                 notification.TenantId);

@@ -2,6 +2,8 @@ using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.DataLayer.SqlServer.Tests.Fixtures;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.Search.Definition;
+using Ignixa.Specification.Extensions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IO;
 using NSubstitute;
@@ -78,7 +80,10 @@ public sealed class SqlServerTenantServiceFactoryCancellationTests : IDisposable
             // reject the integrated-security-free test connection string before the path under test ran.
             new ManagedIdentityConnectionStringValidator(
                 "Development", NullLogger<ManagedIdentityConnectionStringValidator>.Instance),
-            _sql);
+            _sql,
+            (version, _) => new SearchParameterDefinitionManager(
+                version.GetSchemaProvider(),
+                NullLogger<SearchParameterDefinitionManager>.Instance));
     }
 
     private async Task<SqlServerTenantServiceFactory> CreateWarmFactoryAsync()

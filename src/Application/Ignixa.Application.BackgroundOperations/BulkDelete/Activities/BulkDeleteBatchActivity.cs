@@ -8,6 +8,7 @@ using System.Text.Json.Nodes;
 using DurableTask.Core;
 using Ignixa.Abstractions;
 using Ignixa.Application.BackgroundOperations.BulkDelete.Models;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
@@ -39,6 +40,13 @@ namespace Ignixa.Application.BackgroundOperations.BulkDelete.Activities;
 /// Cancellation is cooperative through the job row: a batch that finds the job terminal deletes nothing,
 /// and a batch whose progress write loses to a terminal state reports <see cref="BulkDeleteBatchOutput.Superseded"/>.
 /// </para>
+/// <para>
+/// Unlike read-only <c>$export</c>, a batch requires the conformance staleness lease even though it runs in a
+/// background context: an instance whose synchronization has failed for longer than the maximum staleness
+/// could select matches with an outgoing search-parameter definition over rows other instances already index
+/// the new way, and delete the wrong set. Without the lease the batch does nothing and reports
+/// <see cref="BulkDeleteBatchOutput.ConformanceStale"/>.
+/// </para>
 /// </remarks>
 public class BulkDeleteBatchActivity(
     IBackgroundJobRepository<BulkDeleteJobDefinition> jobRepository,
@@ -51,6 +59,7 @@ public class BulkDeleteBatchActivity(
     IFhirBaseUriProvider baseUriProvider,
     IMediator mediator,
     IFhirRequestContextAccessor fhirContextAccessor,
+    ConformanceLease conformanceLease,
     IHostApplicationLifetime applicationLifetime,
     ILogger<BulkDeleteBatchActivity> logger) : AsyncTaskActivity<BulkDeleteBatchInput, BulkDeleteBatchOutput>
 {
@@ -82,6 +91,14 @@ public class BulkDeleteBatchActivity(
         {
             logger.LogInformation("Bulk delete batch for {JobId} skipped: job is {Status}", input.JobId, job.Status);
             return Superseded([]);
+        }
+
+        if (!conformanceLease.IsHeld)
+        {
+            logger.LogWarning(
+                "Bulk delete batch for job {JobId}, tenant {TenantId}, type {ResourceType} deferred: the conformance staleness lease is not held",
+                input.JobId, input.TenantId, input.ResourceType);
+            return BulkDeleteBatchOutput.WaitForConformance();
         }
 
         var tenant = await tenantConfigurationStore.GetTenantConfigurationAsync(input.TenantId, cancellationToken)

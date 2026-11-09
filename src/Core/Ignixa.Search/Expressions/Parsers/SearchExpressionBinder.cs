@@ -47,7 +47,7 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
     /// subclass, not the <see cref="InvalidSearchOperationException"/> base, even though no modifier is
     /// literally involved. <see cref="Parsing.SearchOptionsBuilder"/>'s catch order only routes the
     /// subclass into <see cref="SearchOptions.UnsupportedModifierParams"/>, which
-    /// <c>FhirEndpoints.CheckStrictHandling</c> rejects with a 400 by default (no <c>Prefer</c> header
+    /// <c>SearchRequestHandling.CheckStrictHandling</c> rejects with a 400 by default (no <c>Prefer</c> header
     /// needed); the base type lands in the weaker <see cref="SearchOptions.UnsupportedParams"/>, silently
     /// dropped unless the client opts in with <c>Prefer: handling=strict</c>. A chain into a semantic
     /// parameter has exactly the same "silently widens instead of narrows" failure mode as an unsupported
@@ -94,7 +94,8 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
             include.ReferencedTypes,
             include.Wildcard,
             isReversed,
-            iterate);
+            iterate,
+            include.WildcardReferenceSearchParameters);
 
     internal static NotReferencedExpression BindNotReferenced(
         BoundNotReferencedKey notReferenced) =>

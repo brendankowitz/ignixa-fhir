@@ -6,6 +6,7 @@ using Ignixa.Abstractions;
 using Ignixa.Application.Features.SemanticSearch;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Features.Search;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
@@ -26,6 +27,8 @@ public class DeferredWriteCoordinator
     private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly ILogger<DeferredWriteCoordinator> _logger;
     private readonly SemanticIndexer? _semanticIndexer;
+    private readonly IFhirVersionContext _fhirVersionContext;
+    private readonly ConformanceBarrierRetryPolicy _barrierRetryPolicy;
     private readonly List<(int EntryIndex, ResourceWrapper Resource)> _stagedWrites = [];
     private readonly ConcurrentDictionary<int, bool> _createdEntries = new();
 
@@ -34,6 +37,8 @@ public class DeferredWriteCoordinator
         IFhirRepositoryFactory repositoryFactory,
         IPartitionStrategy partitionStrategy,
         IFhirRequestContextAccessor contextAccessor,
+        IFhirVersionContext fhirVersionContext,
+        ConformanceBarrierRetryPolicy barrierRetryPolicy,
         ILogger<DeferredWriteCoordinator> logger,
         bool atomic,
         SemanticIndexer? semanticIndexer)
@@ -42,6 +47,8 @@ public class DeferredWriteCoordinator
         _repositoryFactory = repositoryFactory;
         _partitionStrategy = partitionStrategy;
         _contextAccessor = contextAccessor;
+        _fhirVersionContext = fhirVersionContext;
+        _barrierRetryPolicy = barrierRetryPolicy;
         _logger = logger;
         IsAtomic = atomic;
         _semanticIndexer = semanticIndexer;
@@ -57,6 +64,8 @@ public class DeferredWriteCoordinator
         IFhirRepositoryFactory repositoryFactory,
         IPartitionStrategy partitionStrategy,
         IFhirRequestContextAccessor contextAccessor,
+        IFhirVersionContext fhirVersionContext,
+        ConformanceBarrierRetryPolicy barrierRetryPolicy,
         ILogger<DeferredWriteCoordinator> logger,
         bool atomic = false,
         SemanticIndexer? semanticIndexer = null,
@@ -70,7 +79,7 @@ public class DeferredWriteCoordinator
             throw new Domain.Exceptions.NotImplementedException("This storage provider does not support atomic transactions.");
         }
         return new DeferredWriteCoordinator(channelCapacity, repositoryFactory, partitionStrategy,
-            contextAccessor, logger, atomic, semanticIndexer);
+            contextAccessor, fhirVersionContext, barrierRetryPolicy, logger, atomic, semanticIndexer);
     }
 
     public async Task<ResourceKey> QueueWriteAsync(
@@ -176,13 +185,52 @@ public class DeferredWriteCoordinator
             {
                 var partitionId = ResolvePartition(operation.Wrapper);
                 var repository = await _repositoryFactory.GetRepositoryAsync(partitionId, cancellationToken);
-                var result = await repository.CreateOrUpdateAsync(operation.Wrapper, cancellationToken);
+                var attempt = 0;
+                var result = await _barrierRetryPolicy.ExecuteAsync(
+                    async ct =>
+                    {
+                        attempt++;
+                        var wrapper = operation.Wrapper;
+                        if (attempt > 1)
+                        {
+                            wrapper = Reextract(wrapper, CurrentDefinitions(_fhirVersionContext));
+                            if (_semanticIndexer is not null)
+                            {
+                                var context = _contextAccessor.RequestContext
+                                    ?? throw new InvalidOperationException("FHIR request context not available");
+                                var indexed = await _semanticIndexer.IndexIndependentlyAsync(
+                                    [wrapper],
+                                    BuildSemanticParameterPredicate(versionContext, context.FhirVersion, context.TenantId),
+                                    ct);
+                                if (indexed[0].Error is { } error)
+                                {
+                                    throw error;
+                                }
+                                wrapper = indexed[0].Resource!;
+                            }
+                        }
+                        return await repository.CreateOrUpdateAsync(wrapper, ct);
+                    },
+                    cancellationToken);
                 _createdEntries[operation.EntryIndex] = result.IsCreated ?? result.Key.VersionId == "1";
                 operation.CompletionSource.TrySetResult(result.Key);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 operation.CompletionSource.TrySetCanceled(cancellationToken);
+                throw;
+            }
+            catch (ConformanceStaleException ex)
+            {
+                foreach (var pendingOperation in operations)
+                {
+                    pendingOperation.CompletionSource.TrySetException(ex);
+                }
+                CompleteWrites(ex);
+                while (_writeChannel.Reader.TryRead(out var pendingOperation))
+                {
+                    pendingOperation.CompletionSource.TrySetException(ex);
+                }
                 throw;
             }
             catch (Exception ex)
@@ -210,6 +258,23 @@ public class DeferredWriteCoordinator
         }
         return partition.PartitionIds[0];
     }
+
+    private DefinitionsHandle CurrentDefinitions(IFhirVersionContext versionContext)
+    {
+        var context = _contextAccessor.RequestContext
+            ?? throw new InvalidOperationException("FHIR request context not available");
+        return versionContext.GetDefinitionsHandle(context.FhirVersion, context.TenantId);
+    }
+
+    private static ResourceWrapper Reextract(ResourceWrapper wrapper, DefinitionsHandle definitionsHandle) =>
+        wrapper with
+        {
+            SearchIndices = wrapper.IsDeleted
+                ? []
+                : definitionsHandle.Indexer.Extract(
+                    (IElement)wrapper.Resource.ToElement(definitionsHandle.SchemaProvider)).ToArray(),
+            DefinitionsEventId = definitionsHandle.DefinitionsEventId,
+        };
 
     private async Task<ResourceKey> StageWriteAsync(ResourceWrapper wrapper, int entryIndex, CancellationToken cancellationToken)
     {
@@ -266,20 +331,49 @@ public class DeferredWriteCoordinator
         var context = _contextAccessor.RequestContext
             ?? throw new InvalidOperationException("FHIR request context not available");
         var repository = await _repositoryFactory.GetRepositoryAsync(context.TenantId, cancellationToken);
-
-        if (_semanticIndexer is not null && _stagedWrites.Count > 0)
-        {
-            var hasSemanticSearchParameter = BuildSemanticParameterPredicate(versionContext, context.FhirVersion, context.TenantId);
-            var indexed = await _semanticIndexer.IndexAsync(
-                _stagedWrites.ConvertAll(write => write.Resource), hasSemanticSearchParameter, cancellationToken);
-            for (var i = 0; i < _stagedWrites.Count; i++)
+        var attempt = 0;
+        await _barrierRetryPolicy.ExecuteAsync(
+            async ct =>
             {
-                _stagedWrites[i] = (_stagedWrites[i].EntryIndex, indexed[i]);
-            }
-        }
+                attempt++;
+                if (attempt > 1)
+                {
+                    ReextractStagedWrites(ct);
+                }
 
-        await ((IAtomicFhirRepository)repository).WriteTransactionAsync(
-            _stagedWrites.Select(write => write.Resource).ToArray(), cancellationToken);
+                if (_semanticIndexer is not null && _stagedWrites.Count > 0)
+                {
+                    var hasSemanticSearchParameter = BuildSemanticParameterPredicate(
+                        versionContext,
+                        context.FhirVersion,
+                        context.TenantId);
+                    var indexed = await _semanticIndexer.IndexAsync(
+                        _stagedWrites.ConvertAll(write => write.Resource),
+                        hasSemanticSearchParameter,
+                        ct);
+                    for (var i = 0; i < _stagedWrites.Count; i++)
+                    {
+                        _stagedWrites[i] = (_stagedWrites[i].EntryIndex, indexed[i]);
+                    }
+                }
+
+                await ((IAtomicFhirRepository)repository).WriteTransactionAsync(
+                    _stagedWrites.Select(write => write.Resource).ToArray(),
+                    ct);
+                return true;
+            },
+            cancellationToken);
+    }
+
+    private void ReextractStagedWrites(CancellationToken cancellationToken)
+    {
+        var definitionsHandle = CurrentDefinitions(_fhirVersionContext);
+        for (var index = 0; index < _stagedWrites.Count; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var (entryIndex, wrapper) = _stagedWrites[index];
+            _stagedWrites[index] = (entryIndex, Reextract(wrapper, definitionsHandle));
+        }
     }
 
     /// <summary>
@@ -307,10 +401,7 @@ public class DeferredWriteCoordinator
         {
             return;
         }
-        var context = _contextAccessor.RequestContext
-            ?? throw new InvalidOperationException("FHIR request context not available");
-        var schemaProvider = versionContext.GetBaseSchemaProvider(context.FhirVersion);
-        var indexer = versionContext.GetSearchIndexer(context.FhirVersion, context.TenantId);
+        var definitionsHandle = CurrentDefinitions(versionContext);
         for (var index = 0; index < _stagedWrites.Count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -320,10 +411,7 @@ public class DeferredWriteCoordinator
                 // Conditional creates may select existing IDs. JSON and reference indexes must both
                 // reflect those final identities before the single core write.
                 wrapper.Resource.InvalidateCaches();
-                _stagedWrites[index] = (entryIndex, wrapper with
-                {
-                    SearchIndices = indexer.Extract((IElement)wrapper.Resource.ToElement(schemaProvider)).ToArray()
-                });
+                _stagedWrites[index] = (entryIndex, Reextract(wrapper, definitionsHandle));
             }
         }
     }

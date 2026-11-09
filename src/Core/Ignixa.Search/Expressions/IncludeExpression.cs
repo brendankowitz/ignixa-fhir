@@ -28,7 +28,16 @@ public class IncludeExpression : Expression
     /// <param name="wildCard">If this is a wildcard reference include (include all referenced resources).</param>
     /// <param name="reversed">If this is a reversed include (revinclude) expression.</param>
     /// <param name="iterate"> If :iterate (:recurse) modifer was applied.</param>
-    public IncludeExpression(string[] resourceTypes, SearchParameterInfo referenceSearchParameter, string sourceResourceType, string targetResourceType, IEnumerable<string> referencedTypes, bool wildCard, bool reversed, bool iterate)
+    public IncludeExpression(
+        string[] resourceTypes,
+        SearchParameterInfo referenceSearchParameter,
+        string sourceResourceType,
+        string targetResourceType,
+        IEnumerable<string> referencedTypes,
+        bool wildCard,
+        bool reversed,
+        bool iterate,
+        IEnumerable<WildcardIncludeParameter> wildcardReferenceSearchParameters = null)
     {
         EnsureArg.HasItems(resourceTypes, nameof(resourceTypes));
 
@@ -41,6 +50,7 @@ public class IncludeExpression : Expression
         SourceResourceType = sourceResourceType;
         TargetResourceType = targetResourceType;
         ReferencedTypes = referencedTypes?.ToList();
+        WildcardReferenceSearchParameters = wildcardReferenceSearchParameters?.ToList() ?? [];
         WildCard = wildCard;
         Reversed = reversed;
         Iterate = iterate;
@@ -74,6 +84,11 @@ public class IncludeExpression : Expression
     ///  Gets the type of resources referenced by resourceType. Used when iterating over wildcard results.
     /// </summary>
     public IReadOnlyList<string> ReferencedTypes { get; }
+
+    /// <summary>
+    /// Gets the reference parameters a wildcard follows, each on the type that holds the reference.
+    /// </summary>
+    public IReadOnlyList<WildcardIncludeParameter> WildcardReferenceSearchParameters { get; }
 
     /// <summary>
     ///  Gets the type of resources the expression requires (includes from).
@@ -171,6 +186,8 @@ public class IncludeExpression : Expression
         if (ReferencedTypes != null)
             foreach (string referencedType in ReferencedTypes)
                 hashCode.Add(referencedType);
+        foreach (WildcardIncludeParameter parameter in WildcardReferenceSearchParameters)
+            hashCode.Add(parameter);
 
         hashCode.Add(WildCard);
         hashCode.Add(Reversed);
@@ -180,14 +197,15 @@ public class IncludeExpression : Expression
     public override bool ValueInsensitiveEquals(Expression other)
     {
         if (other is not IncludeExpression include ||
-            !include.ReferenceSearchParameter.Equals(ReferenceSearchParameter) ||
+            !Equals(include.ReferenceSearchParameter, ReferenceSearchParameter) ||
             include.SourceResourceType != SourceResourceType ||
             include.TargetResourceType != TargetResourceType ||
             include.WildCard != WildCard ||
             include.Reversed != Reversed ||
             include.Iterate != Iterate ||
             include.ResourceTypes.Length != ResourceTypes.Length ||
-            include.ReferencedTypes == null != (ReferencedTypes == null))
+            include.ReferencedTypes == null != (ReferencedTypes == null) ||
+            include.WildcardReferenceSearchParameters.Count != WildcardReferenceSearchParameters.Count)
             return false;
 
         for (int i = 0; i < ResourceTypes.Length; i++)
@@ -198,6 +216,10 @@ public class IncludeExpression : Expression
             for (int i = 0; i < ReferencedTypes.Count; i++)
                 if (include.ReferencedTypes[i] != ReferencedTypes[i])
                     return false;
+
+        for (int i = 0; i < WildcardReferenceSearchParameters.Count; i++)
+            if (!include.WildcardReferenceSearchParameters[i].Equals(WildcardReferenceSearchParameters[i]))
+                return false;
 
         return true;
     }

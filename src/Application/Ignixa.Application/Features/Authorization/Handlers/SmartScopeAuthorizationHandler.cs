@@ -49,10 +49,11 @@ public class SmartScopeAuthorizationHandler : IAuthorizationHandler
             resourceType.SanitizeForLog() ?? "system",
             interaction);
 
-        // Find matching scope using SMART v2 matching
-        var matchingScope = scopes.FirstOrDefault(scope =>
-            scope.MatchesResource(resourceType) &&
-            scope.MatchesInteraction(interaction));
+        // Scope order carries no meaning, so an unrestricted grant wins over a compartment or constrained one.
+        var matchingScopes = scopes
+            .Where(scope => scope.MatchesResource(resourceType) && scope.MatchesInteraction(interaction))
+            .ToList();
+        var matchingScope = matchingScopes.FirstOrDefault(IsUnrestricted) ?? matchingScopes.FirstOrDefault();
 
         if (matchingScope == null)
         {
@@ -175,4 +176,8 @@ public class SmartScopeAuthorizationHandler : IAuthorizationHandler
             ? AuthorizationResult.SuccessWithFilter(filter)
             : AuthorizationResult.Success());
     }
+
+    private static bool IsUnrestricted(SmartScope scope) =>
+        scope.Type is SmartScopeType.User or SmartScopeType.System &&
+        scope.SearchConstraints is not { Count: > 0 };
 }

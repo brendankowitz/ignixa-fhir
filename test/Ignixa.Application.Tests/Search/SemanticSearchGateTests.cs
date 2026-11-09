@@ -132,6 +132,8 @@ public class SemanticSearchGateTests
     {
         var versionContext = Substitute.For<IFhirVersionContext>();
         versionContext.GetSearchParameterDefinitionManager(Arg.Any<FhirVersion>(), Arg.Any<int?>()).Returns(manager);
+        versionContext.GetSearchableSearchParameterDefinitionManager(Arg.Any<FhirVersion>(), Arg.Any<int?>(), Arg.Any<Func<bool>?>())
+            .Returns(new SearchableSearchParameterDefinitionManager(manager));
 
         var segment = new SearchParameterCapabilitySegment(versionContext, NullLogger<SearchParameterCapabilitySegment>.Instance);
 
@@ -168,7 +170,7 @@ public class SemanticSearchGateTests
             FhirVersion.R4.GetSchemaProvider(), NullLogger<SearchParameterDefinitionManager>.Instance);
         var manager = new CompositeSearchParameterDefinitionManager(
             baseManager,
-            state,
+            state.CreateSnapshot(),
             null,
             NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
             new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = true, VectorSearchEnabled = vectorSearchEnabled });
@@ -180,12 +182,13 @@ public class SemanticSearchGateTests
     private static async IAsyncEnumerable<SourceEvent> Events()
     {
         await Task.CompletedTask;
+        var canonical = "http://example.org/SearchParameter/semantic-text";
         yield return new SourceEvent(
             1,
             "semantic-search-gate",
             nameof(SearchParameterActivated),
             new SearchParameterActivated(
-                "http://example.org/SearchParameter/semantic-text",
+                canonical,
                 "semantic-text",
                 "Patient",
                 "Patient.name.family",
@@ -199,6 +202,31 @@ public class SemanticSearchGateTests
                 Description: null,
                 VectorConfig: ValidVectorConfig,
                 HasInvalidVectorConfig: false),
+            DateTimeOffset.UtcNow);
+        yield return new SourceEvent(
+            2,
+            "semantic-search-gate",
+            nameof(SearchParameterReindexStarted),
+            new SearchParameterReindexStarted(
+                canonical,
+                "semantic-text",
+                "Patient",
+                "job",
+                ["Patient"],
+                ActivationEventId: 1),
+            DateTimeOffset.UtcNow);
+        yield return new SourceEvent(
+            3,
+            "semantic-search-gate",
+            nameof(SearchParameterReindexCompleted),
+            new SearchParameterReindexCompleted(
+                canonical,
+                "semantic-text",
+                "Patient",
+                "job",
+                ResourcesIndexed: 0,
+                Duration: TimeSpan.Zero,
+                ActivationEventId: 1),
             DateTimeOffset.UtcNow);
     }
 }

@@ -16,6 +16,8 @@ using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.AspNetCore.Mvc;
+using Ignixa.Api.Filters;
+using FhirInteraction = Ignixa.Application.Features.Authorization.Models.FhirInteraction;
 
 namespace Ignixa.Api.Endpoints;
 
@@ -30,16 +32,21 @@ public static class ImportEndpoints
     /// </summary>
     public static void MapImportEndpoints(this WebApplication app)
     {
+        // Import creates and overwrites resources of any type, so every route authorizes as an update on `*`.
+        var import = app.MapGroup(string.Empty)
+            .RequireFhirAuthorization()
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Update, "*"));
+
         // POST /tenant/{tenantId}/$import - Start a new import job
-        app.MapPost("/tenant/{tenantId:int}/$import", StartImportAsync)
+        import.MapPost("/tenant/{tenantId:int}/$import", StartImportAsync)
             .WithName("StartImport");
 
         // GET /tenant/{tenantId}/_import/{jobId} - Poll import job status
-        app.MapGet("/tenant/{tenantId:int}/_import/{jobId}", GetImportStatusAsync)
+        import.MapGet("/tenant/{tenantId:int}/_import/{jobId}", GetImportStatusAsync)
             .WithName("GetImportStatus");
 
         // DELETE /tenant/{tenantId}/_import/{jobId} - Cancel import job
-        app.MapDelete("/tenant/{tenantId:int}/_import/{jobId}", CancelImportAsync)
+        import.MapDelete("/tenant/{tenantId:int}/_import/{jobId}", CancelImportAsync)
             .WithName("CancelImport");
     }
 

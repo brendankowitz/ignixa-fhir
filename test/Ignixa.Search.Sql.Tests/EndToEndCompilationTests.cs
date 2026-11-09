@@ -1067,17 +1067,18 @@ public class EndToEndCompilationTests
     }
 
     [Fact]
-    public async Task GivenPatientIncludeWildcard_WhenCompiledEndToEnd_ThenNoSearchParamIdFilterButOutputTypesAreTheRealReferencedTypes()
+    public async Task GivenPatientIncludeWildcard_WhenCompiledEndToEnd_ThenOnlySearchableReferenceParametersAreUsed()
     {
-        // Arrange -- Patient?_include=Patient:* -- WildCard=true, ReferenceSearchParameter=null,
-        // ReferencedTypes carries the REAL resolved output types (design §1.2: this is NOT the "*"
-        // sentinel case -- that only arises for _revinclude's wildcard-SOURCE form, tested separately).
-        var include = new IncludeExpression(["Patient"], null, "Patient", null, ["Organization", "Practitioner"], wildCard: true, reversed: false, iterate: false);
+        // Arrange -- Patient?_include=Patient:* resolves to the searchable reference parameters only (spec F1).
+        var organization = Reference("organization", "Patient-organization");
+        var include = new IncludeExpression(
+            ["Patient"], null, "Patient", null, ["Organization"], wildCard: true, reversed: false, iterate: false,
+            wildcardReferenceSearchParameters: [new WildcardIncludeParameter("Patient", organization)]);
 
         var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[organization.Url.ToString()] = 55;
         resolver.ResourceTypeIds["Patient"] = 103;
         resolver.ResourceTypeIds["Organization"] = 105;
-        resolver.ResourceTypeIds["Practitioner"] = 107;
 
         // Act
         var symbols = (await ResolveHarness.RunAsync(expression: null, includes: [include], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
@@ -1085,20 +1086,28 @@ public class EndToEndCompilationTests
 
         // Assert
         plan.Includes![0].ReferenceSearchParamId.ShouldBeNull();
-        plan.Includes[0].OutputTypeIds.ShouldBe([(short)105, (short)107]);
+        var (referencingTypeId, searchParamIds) = plan.Includes[0].WildcardReferenceSearchParamIds!.ShouldHaveSingleItem();
+        (referencingTypeId, searchParamIds.Single()).ShouldBe(((short)103, (short)55));
+        plan.Includes[0].OutputTypeIds.ShouldBe([(short)105]);
 
         var emitted = SqlBuilder.Run(plan);
-        emitted.Sql.ShouldNotContain("rsp.SearchParamId");
-        emitted.Sql.ShouldContain("(r.ResourceTypeId = 105 OR r.ResourceTypeId = 107)");
+        emitted.Sql.ShouldContain("((rsp.ResourceTypeId = 103 AND rsp.SearchParamId = 55))");
+        emitted.Sql.ShouldContain("r.ResourceTypeId = 105");
     }
 
     [Fact]
     public async Task GivenRevincludeWildcardSource_WhenCompiledEndToEnd_ThenOutputTypeIdsIsNullSoNoOutputFilterIsEmitted()
     {
         // Arrange -- Patient?_revinclude=*:* -- Produces=["*"] (the literal sentinel, design §1.2).
-        var revInclude = new IncludeExpression(["*"], null, "*", "Patient", ["Observation", "Condition"], wildCard: true, reversed: true, iterate: false);
+        var subject = Reference("subject", "Observation-subject");
+        var patient = Reference("patient", "Condition-patient");
+        var revInclude = new IncludeExpression(
+            ["*"], null, "*", "Patient", ["Observation", "Condition"], wildCard: true, reversed: true, iterate: false,
+            wildcardReferenceSearchParameters: [new WildcardIncludeParameter("Observation", subject), new WildcardIncludeParameter("Condition", patient)]);
 
         var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[subject.Url.ToString()] = 55;
+        resolver.SearchParamIds[patient.Url.ToString()] = 66;
         resolver.ResourceTypeIds["Patient"] = 103;
         resolver.ResourceTypeIds["Observation"] = 104;
         resolver.ResourceTypeIds["Condition"] = 106;
@@ -1112,11 +1121,14 @@ public class EndToEndCompilationTests
         plan.Includes[0].OutputTypeIds.ShouldBeNull();
         plan.Includes[0].SeedTypeIds.ShouldBe([(short)103]);
 
+        // Each referencing type admits only its own searchable parameters; there is no separate output filter.
         var emitted = SqlBuilder.Run(plan);
-        emitted.Sql.ShouldNotContain("rsp.SearchParamId");
-        emitted.Sql.ShouldNotContain("rsp.ResourceTypeId = 104");
-        emitted.Sql.ShouldNotContain("rsp.ResourceTypeId = 106");
+        emitted.Sql.ShouldContain("((rsp.ResourceTypeId = 104 AND rsp.SearchParamId = 55) OR (rsp.ResourceTypeId = 106 AND rsp.SearchParamId = 66))");
+        emitted.Sql.ShouldNotContain("(rsp.ResourceTypeId = 104 OR rsp.ResourceTypeId = 106)");
     }
+
+    private static SearchParameterInfo Reference(string code, string id) =>
+        new(code, code, SearchParamType.Reference, new Uri($"http://hl7.org/fhir/SearchParameter/{id}"));
 
     [Fact]
     public async Task GivenChainedIterateIncludesSpecifiedOutOfOrder_WhenCompiledEndToEnd_ThenTheKahnSortReordersThemRegardlessOfInputOrder()

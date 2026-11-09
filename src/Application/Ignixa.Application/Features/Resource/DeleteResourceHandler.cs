@@ -7,6 +7,8 @@ using Ignixa.Abstractions;
 using Medino;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Application.Features.Search;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization.SourceNodes;
@@ -22,17 +24,23 @@ public class DeleteResourceHandler : IRequestHandler<DeleteResourceCommand, bool
     private readonly IFhirRepositoryFactory _repositoryFactory;
     private readonly IPartitionStrategy _partitionStrategy;
     private readonly IFhirRequestContextAccessor _contextAccessor;
+    private readonly IFhirVersionContext _fhirVersionContext;
+    private readonly ConformanceBarrierRetryPolicy _barrierRetryPolicy;
     private readonly ILogger<DeleteResourceHandler> _logger;
 
     public DeleteResourceHandler(
         IFhirRepositoryFactory repositoryFactory,
         IPartitionStrategy partitionStrategy,
         IFhirRequestContextAccessor contextAccessor,
+        IFhirVersionContext fhirVersionContext,
+        ConformanceBarrierRetryPolicy barrierRetryPolicy,
         ILogger<DeleteResourceHandler> logger)
     {
         _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
         _partitionStrategy = partitionStrategy ?? throw new ArgumentNullException(nameof(partitionStrategy));
         _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
+        _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
+        _barrierRetryPolicy = barrierRetryPolicy ?? throw new ArgumentNullException(nameof(barrierRetryPolicy));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -97,6 +105,7 @@ public class DeleteResourceHandler : IRequestHandler<DeleteResourceCommand, bool
         ResourceKey? deletedKey;
         if (context.DeferredWriteCoordinator is { IsAtomic: true } coordinator)
         {
+            var definitionsHandle = _fhirVersionContext.GetDefinitionsHandle(context.FhirVersion, context.TenantId);
             var existing = await repository.GetAsync(key, cancellationToken);
             if (existing == null)
             {
@@ -110,12 +119,26 @@ public class DeleteResourceHandler : IRequestHandler<DeleteResourceCommand, bool
                 command.ResourceType, command.Id, existing.VersionId, DateTimeOffset.UtcNow,
                 minimalResourceNode, request, IsDeleted: true)
             {
-                ExpectedVersionId = existing.VersionId
+                ExpectedVersionId = existing.VersionId,
+                DefinitionsEventId = definitionsHandle.DefinitionsEventId
             }, context.BundleEntryIndex ?? 0, cancellationToken);
         }
         else
         {
-            deletedKey = await repository.DeleteAsync(key, request, transactionId: null, cancellationToken);
+            deletedKey = await _barrierRetryPolicy.ExecuteAsync(
+                async ct =>
+                {
+                    var definitionsHandle = _fhirVersionContext.GetDefinitionsHandle(
+                        context.FhirVersion,
+                        context.TenantId);
+                    return await repository.DeleteAsync(
+                        key,
+                        request,
+                        definitionsHandle.DefinitionsEventId,
+                        transactionId: null,
+                        ct);
+                },
+                cancellationToken);
         }
 
         if (deletedKey == null)

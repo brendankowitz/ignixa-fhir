@@ -13,4 +13,5 @@ namespace Ignixa.Application.Features.ConditionalOperations.ConditionalUpdate;
 public record ConditionalUpdateResult(
     ResourceWrapper Resource,
     bool WasCreated,  // true = 201 Created, false = 200 OK (updated)
-    int MatchCount);
+    int MatchCount,
+    ReadOnlyMemory<byte>? OperationOutcomeBytes = null);

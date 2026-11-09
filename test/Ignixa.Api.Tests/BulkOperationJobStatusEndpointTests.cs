@@ -28,6 +28,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 using Shouldly;
+using Ignixa.Api.Tests.TestSupport;
 
 namespace Ignixa.Api.Tests;
 
@@ -71,6 +72,7 @@ public sealed class BulkOperationJobStatusEndpointTests : IAsyncLifetime
         builder.Services.AddSingleton(client);
         builder.Services.AddSingleton<IBackgroundJobRepository<ExportJobDefinition>>(_exports);
         builder.Services.AddSingleton<IBackgroundJobRepository<ImportJobDefinition>>(_imports);
+        builder.Services.AddDisabledFhirAuthorization();
         _app = builder.Build();
         _app.MapExportEndpoints();
         _app.MapImportEndpoints();
@@ -489,7 +491,9 @@ public sealed class BulkOperationJobStatusEndpointTests : IAsyncLifetime
         await AddActiveJobAsync(jobType);
         var services = new ServiceCollection()
             .AddSingleton(_app.Services.GetRequiredService<TaskHubClient>())
-            .AddSingleton(_app.Services.GetRequiredService<ILoggerFactory>());
+            .AddSingleton(_app.Services.GetRequiredService<ILoggerFactory>())
+            .AddLogging()
+            .AddDisabledFhirAuthorization();
         if (jobType == "Export")
         {
             services.AddSingleton(DeleteAfterConflict(_exports, jobType));

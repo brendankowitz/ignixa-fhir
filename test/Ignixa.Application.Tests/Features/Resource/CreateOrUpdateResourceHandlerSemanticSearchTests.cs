@@ -200,6 +200,8 @@ public class CreateOrUpdateResourceHandlerSemanticSearchTests
             var versionContext = Substitute.For<IFhirVersionContext>();
             versionContext.GetSchemaProvider(Arg.Any<FhirVersion>(), Arg.Any<int?>()).Returns(new R4CoreSchemaProvider());
             versionContext.GetSearchIndexer(Arg.Any<FhirVersion>(), Arg.Any<int?>()).Returns(searchIndexer);
+            versionContext.GetDefinitionsHandle(Arg.Any<FhirVersion>(), Arg.Any<int?>())
+                .Returns(new DefinitionsHandle(searchIndexer, new R4CoreSchemaProvider(), DefinitionsEventId: 1));
 
             // "Patient" (the only resource type these tests write) has this semantic parameter active
             // only when resourceTypeHasSemanticParameter is true, matching what the real definition
@@ -219,6 +221,7 @@ public class CreateOrUpdateResourceHandlerSemanticSearchTests
                 versionContext,
                 schemaResolverFactory,
                 new ResourceElementOrdering(new SerializationOptions()),
+                TestConformanceBarrierRetryPolicy.Create(),
                 NullLogger<CreateOrUpdateResourceHandler>.Instance,
                 semanticIndexer);
         }

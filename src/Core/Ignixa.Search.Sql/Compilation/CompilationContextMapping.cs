@@ -30,6 +30,8 @@ internal static class CompilationContextMapping
     /// <summary>The properties that deliberately do not become compilation inputs, and why.</summary>
     public static FrozenDictionary<string, string> NotApplicable { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
     {
+        [nameof(SearchOptions.ExecutionDeadline)] =
+            "A bound on execution time, not on the SQL text: the SQL search service cancels every connection open, retry and command of the search once it passes, so the compiled query is the same with or without it.",
         [nameof(SearchOptions.MaxItemCount)] =
             "A page size, not a row cap: the adapter layer pairs it with ProbeExtraRow and a decoded continuation token to build either an OffsetSpec or a Top-capped Keyset on ResultShape.Matches. Forwarding it as a cap as well would apply the same number twice. Row capping is SearchPaging.Keyset.Top on ResultShape.Matches.",
         [nameof(SearchOptions.ProbeExtraRow)] =
@@ -50,8 +52,12 @@ internal static class CompilationContextMapping
             "Builder output, like UnsupportedParams: the subset R4 says SHALL be rejected rather than ignored. It decides an HTTP status at the API boundary, never a CTE.",
         [nameof(SearchOptions.UnsupportedModifierReasons)] =
             "Builder output, like UnsupportedModifierParams: the diagnostic text for some of those rejections. It shapes the OperationOutcome, never a CTE.",
+        [nameof(SearchOptions.HiddenSearchParameters)] =
+            "Builder output, like UnsupportedParams: the hidden parameters were already left out of Expression, so the compiler never sees them.",
         [nameof(SearchOptions.BundleIssues)] =
             "Builder output, like UnsupportedParams.",
+        [nameof(SearchOptions.ResolvedSearchParameters)] =
+            "Parse-time diagnostics for lifecycle-hidden parameter warnings and conditional validation; does not affect SQL shape.",
         [nameof(SearchOptions.ResourceType)] =
             "Superseded by the targetResourceType argument, which is normalized once in CompilationContext.Create so every stage observes the same value.",
         [nameof(SearchOptions.IncludesMaxItemCount)] =

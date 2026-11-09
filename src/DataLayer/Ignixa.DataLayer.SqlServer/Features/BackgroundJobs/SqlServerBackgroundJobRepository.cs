@@ -197,6 +197,44 @@ public sealed class SqlServerBackgroundJobRepository<T>(
         return await sqlExecutionService.ExecuteReaderAsync(connectionTenantId, command, ReadJob, cancellationToken);
     }
 
+    public async Task<BackgroundJob<T>?> GetActiveAsync(
+        int jobType,
+        CancellationToken cancellationToken = default)
+    {
+        using var command = CreateCommand(
+            $"SELECT TOP (1) {AllColumns} FROM {QualifiedTable} " +
+            $"WHERE {Jobs.Column("JobType").Name} = @jobType " +
+            $"AND {Jobs.Column("Status").Name} IN ('Queued', 'Running') " +
+            $"ORDER BY {Jobs.Column("CreateDate").Name} DESC");
+        command.Parameters.AddWithValue("@jobType", jobType);
+
+        var jobs = await sqlExecutionService.ExecuteReaderAsync(
+            connectionTenantId,
+            command,
+            ReadJob,
+            cancellationToken);
+        return jobs.Count == 0 ? null : jobs[0];
+    }
+
+    public async Task<BackgroundJob<T>?> GetLatestFinishedAsync(
+        int jobType,
+        CancellationToken cancellationToken = default)
+    {
+        using var command = CreateCommand(
+            $"SELECT TOP (1) {AllColumns} FROM {QualifiedTable} " +
+            $"WHERE {Jobs.Column("JobType").Name} = @jobType " +
+            $"AND {Jobs.Column("Status").Name} IN ('Completed', 'Failed', 'Cancelled') " +
+            $"ORDER BY COALESCE({Jobs.Column("EndDate").Name}, {Jobs.Column("CreateDate").Name}) DESC");
+        command.Parameters.AddWithValue("@jobType", jobType);
+
+        var jobs = await sqlExecutionService.ExecuteReaderAsync(
+            connectionTenantId,
+            command,
+            ReadJob,
+            cancellationToken);
+        return jobs.Count == 0 ? null : jobs[0];
+    }
+
     private BackgroundJob<T>? AuthorizeRead(BackgroundJob<T>? job, string jobId, int tenantId)
     {
         if (job is null)

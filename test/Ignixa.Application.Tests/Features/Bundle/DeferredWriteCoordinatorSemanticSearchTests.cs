@@ -71,6 +71,8 @@ public class DeferredWriteCoordinatorSemanticSearchTests
             repositoryFactory: repositoryFactory,
             partitionStrategy: partitionStrategy,
             contextAccessor: contextAccessor,
+            fhirVersionContext: BuildVersionContextWithSemanticParameter(),
+            barrierRetryPolicy: TestConformanceBarrierRetryPolicy.Create(),
             logger: NullLogger<DeferredWriteCoordinator>.Instance,
             atomic: true,
             semanticIndexer: indexer,
@@ -131,6 +133,8 @@ public class DeferredWriteCoordinatorSemanticSearchTests
             repositoryFactory: repositoryFactory,
             partitionStrategy: partitionStrategy,
             contextAccessor: contextAccessor,
+            fhirVersionContext: BuildVersionContextWithSemanticParameter(),
+            barrierRetryPolicy: TestConformanceBarrierRetryPolicy.Create(),
             logger: NullLogger<DeferredWriteCoordinator>.Instance,
             atomic: true,
             semanticIndexer: indexer,
@@ -189,6 +193,8 @@ public class DeferredWriteCoordinatorSemanticSearchTests
             repositoryFactory: repositoryFactory,
             partitionStrategy: partitionStrategy,
             contextAccessor: contextAccessor,
+            fhirVersionContext: BuildVersionContextWithSemanticParameter(),
+            barrierRetryPolicy: TestConformanceBarrierRetryPolicy.Create(),
             logger: NullLogger<DeferredWriteCoordinator>.Instance,
             semanticIndexer: indexer,
             cancellationToken: CancellationToken.None);
@@ -268,6 +274,8 @@ public class DeferredWriteCoordinatorSemanticSearchTests
             repositoryFactory: repositoryFactory,
             partitionStrategy: partitionStrategy,
             contextAccessor: contextAccessor,
+            fhirVersionContext: BuildVersionContextWithSemanticParameter(),
+            barrierRetryPolicy: TestConformanceBarrierRetryPolicy.Create(),
             logger: NullLogger<DeferredWriteCoordinator>.Instance,
             semanticIndexer: indexer,
             cancellationToken: CancellationToken.None);
@@ -340,6 +348,8 @@ public class DeferredWriteCoordinatorSemanticSearchTests
             repositoryFactory: repositoryFactory,
             partitionStrategy: partitionStrategy,
             contextAccessor: contextAccessor,
+            fhirVersionContext: BuildVersionContextWithSemanticParameter(),
+            barrierRetryPolicy: TestConformanceBarrierRetryPolicy.Create(),
             logger: NullLogger<DeferredWriteCoordinator>.Instance,
             semanticIndexer: indexer,
             cancellationToken: CancellationToken.None);
@@ -416,6 +426,8 @@ public class DeferredWriteCoordinatorSemanticSearchTests
         var versionContext = Substitute.For<IFhirVersionContext>();
         versionContext.GetBaseSchemaProvider(Arg.Any<FhirVersion>()).Returns(new R4CoreSchemaProvider());
         versionContext.GetSearchIndexer(Arg.Any<FhirVersion>(), Arg.Any<int?>()).Returns(searchIndexer);
+        versionContext.GetDefinitionsHandle(Arg.Any<FhirVersion>(), Arg.Any<int?>())
+            .Returns(new DefinitionsHandle(searchIndexer, new R4CoreSchemaProvider(), DefinitionsEventId: 1));
         ConfigureSemanticParameterDefinitionManager(versionContext);
         return versionContext;
     }

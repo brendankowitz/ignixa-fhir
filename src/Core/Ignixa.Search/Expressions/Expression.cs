@@ -89,10 +89,11 @@ public abstract class Expression
     /// <param name="wildCard">If this is a wildcard include.</param>
     /// <param name="reversed">If this is a reversed include (revinclude) expression.</param>
     /// <param name="iterate">If this is include has :iterate (:recurse) modifier.</param>
+    /// <param name="wildcardReferenceSearchParameters">For a wildcard, the reference parameters it follows on each referencing type; a wildcard with none follows nothing.</param>
     /// <returns>A <see cref="IncludeExpression"/> that represents an include on <param name="targetResourceType"> through <paramref name="referenceSearchParameter"/>.</param></returns>
-    public static IncludeExpression Include(string[] resourceTypes, SearchParameterInfo referenceSearchParameter, string sourceResourceType, string targetResourceType, IEnumerable<string> referencedTypes, bool wildCard, bool reversed, bool iterate)
+    public static IncludeExpression Include(string[] resourceTypes, SearchParameterInfo referenceSearchParameter, string sourceResourceType, string targetResourceType, IEnumerable<string> referencedTypes, bool wildCard, bool reversed, bool iterate, IEnumerable<WildcardIncludeParameter> wildcardReferenceSearchParameters = null)
     {
-        return new IncludeExpression(resourceTypes, referenceSearchParameter, sourceResourceType, targetResourceType, referencedTypes, wildCard, reversed, iterate);
+        return new IncludeExpression(resourceTypes, referenceSearchParameter, sourceResourceType, targetResourceType, referencedTypes, wildCard, reversed, iterate, wildcardReferenceSearchParameters);
     }
 
     /// <summary>

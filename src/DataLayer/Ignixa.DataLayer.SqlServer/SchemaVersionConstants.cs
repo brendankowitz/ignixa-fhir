@@ -38,13 +38,22 @@ public static class SchemaVersionConstants
     // columns in PackageResource, TermValueSet and TermConceptMap, and TermCodeSystem.Version, use CS_AS
     // identity comparisons and indexes. Existing procedure callers may omit the new optional ContentHash
     // parameter. No core resource tables or TVPs change.
-    // Version 4 (expand) -- semantic vector search, slice 1. Adds dbo.EmbeddingModel and
-    // dbo.VectorSearchParam (Embedding vector(1536), native SQL Database Engine type -- requires Azure SQL
-    // Database or SQL Server 2025+; SchemaDeployer refuses to deploy or upgrade onto an engine without it),
-    // the dbo.VectorResourceList and dbo.VectorSearchParamList table types, and dbo.MergeVectorSearchParams
-    // / dbo.GetOrCreateEmbeddingModel. HardDeleteResource.sql and DeleteHistory.sql gain a VectorSearchParam
-    // cleanup step alongside every other search-index table. dbo.MergeResources, its TVPs and
-    // dbo.MergeResourcesAndSearchParams are unchanged -- vectors are written by a separate post-merge
-    // procedure, never atomically with the resource write (see docs/features/semantic-search). No column
-    // or table used by an older build is dropped, renamed or retyped.
+    // Version 4 (contract, unreleased) -- reindex write path and storage. UpdateResourceSearchParams
+    // ignores stale resource-write-claim and typed-index inserts once its current-resource update rejects a
+    // superseded surrogate, and returns the surrogate ids whose index rows it updated so reindex can skip
+    // post-write extension updates for version conflicts. Adds two dbo.Transactions indexes read by the
+    // reindex barrier and drain: IX_Transactions_SurrogateIdRangeLastValue (surrogate cutoff) and the
+    // covering filtered IX_Transactions_SurrogateIdRangeFirstValue_Incomplete (WHERE IsCompleted = 0, the
+    // oldest incomplete transaction). Both are built ONLINE = ON inside the lazy upgrade, so like the
+    // ResourceChangeData indexes they need an edition with online index operations (Enterprise, Developer,
+    // Azure SQL Database / Managed Instance); on a large dbo.Transactions the build runs for as long as the
+    // deploy command timeouts allow. Retires the unused legacy dbo.ReindexJob table, its five procedures and
+    // the unused bulk reindex TVP: Script.PostDeployment.sql removes precisely those objects only when
+    // ReindexJob is empty, and otherwise fails with an actionable error and preserves the legacy records.
+    // DacFx leaves all other target-only objects untouched. Also adds semantic vector search storage:
+    // dbo.EmbeddingModel and dbo.VectorSearchParam (Embedding vector(1536), requiring Azure SQL Database or
+    // SQL Server 2025+), the dbo.VectorResourceList and dbo.VectorSearchParamList table types, and
+    // dbo.MergeVectorSearchParams / dbo.GetOrCreateEmbeddingModel. HardDeleteResource.sql and
+    // DeleteHistory.sql clean up vector rows. Vector writes remain separate from dbo.MergeResources and its
+    // TVPs; semantic vectors are updated after the core resource write.
 }

@@ -1,4 +1,39 @@
 /*
+    Retire the pre-DurableTask reindex storage without allowing DacFx to reconcile every target-only
+    object. The legacy table is the only retired object that can hold user data, so a populated
+    table fails before any legacy object is removed. DacFx runs post-deployment scripts for both
+    fresh publishes and upgrades; all guards make this repeatable after a failed or completed run.
+*/
+IF OBJECT_ID(N'dbo.ReindexJob', N'U') IS NOT NULL
+BEGIN
+    EXEC sys.sp_executesql N'
+        IF EXISTS (SELECT 1 FROM dbo.ReindexJob)
+            THROW 51000, N''Cannot retire dbo.ReindexJob because it contains legacy rows. Export or delete the rows before upgrading.'', 1;
+        ';
+END
+
+IF OBJECT_ID(N'dbo.AcquireReindexJobs', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.AcquireReindexJobs;
+
+IF OBJECT_ID(N'dbo.CheckActiveReindexJobs', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.CheckActiveReindexJobs;
+
+IF OBJECT_ID(N'dbo.CreateReindexJob', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.CreateReindexJob;
+
+IF OBJECT_ID(N'dbo.GetReindexJobById', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.GetReindexJobById;
+
+IF OBJECT_ID(N'dbo.UpdateReindexJob', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.UpdateReindexJob;
+
+IF OBJECT_ID(N'dbo.ReindexJob', N'U') IS NOT NULL
+    DROP TABLE dbo.ReindexJob;
+
+IF TYPE_ID(N'dbo.BulkReindexResourceTableType_1') IS NOT NULL
+    DROP TYPE dbo.BulkReindexResourceTableType_1;
+
+/*
     Hourly partition maintenance for ResourceChangeData.
 
     PartitionFunction_ResourceChangeData_Timestamp is created with exactly ONE declared

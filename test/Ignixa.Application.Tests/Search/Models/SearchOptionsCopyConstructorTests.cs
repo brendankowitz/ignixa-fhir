@@ -144,6 +144,11 @@ public class SearchOptionsCopyConstructorTests
             return 424242L + ordinal;
         }
 
+        if (type == typeof(DateTimeOffset))
+        {
+            return DateTimeOffset.UnixEpoch.AddMinutes(ordinal);
+        }
+
         if (type.IsEnum)
         {
             // Rotated by ordinal so two properties sharing an enum type still get different members and a

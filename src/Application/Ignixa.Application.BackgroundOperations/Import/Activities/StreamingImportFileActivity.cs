@@ -12,6 +12,7 @@ using DurableTask.Core;
 using Ignixa.Abstractions;
 using Ignixa.Application.BackgroundOperations.Import.Models;
 using Ignixa.Application.Features.Search;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain;
 using Ignixa.Domain.Abstractions;
@@ -50,6 +51,7 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
     private readonly IConfiguration _configuration;
     private readonly IFhirRequestContextAccessor _fhirContextAccessor;
     private readonly ResourceElementOrdering _elementOrdering;
+    private readonly ConformanceBarrierRetryPolicy _barrierRetryPolicy;
     private readonly ILogger<StreamingImportFileActivity> _logger;
 
     public StreamingImportFileActivity(
@@ -60,6 +62,7 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
         IConfiguration configuration,
         IFhirRequestContextAccessor fhirContextAccessor,
         ResourceElementOrdering elementOrdering,
+        ConformanceBarrierRetryPolicy barrierRetryPolicy,
         ILogger<StreamingImportFileActivity> logger)
     {
         _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
@@ -69,6 +72,7 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _fhirContextAccessor = fhirContextAccessor ?? throw new ArgumentNullException(nameof(fhirContextAccessor));
         _elementOrdering = elementOrdering ?? throw new ArgumentNullException(nameof(elementOrdering));
+        _barrierRetryPolicy = barrierRetryPolicy ?? throw new ArgumentNullException(nameof(barrierRetryPolicy));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -115,10 +119,9 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                 throw new InvalidOperationException($"Tenant {input.TenantId} not found or inactive");
             }
 
-            // Get FHIR schema and indexer using tenant's configured FHIR version
+            // Resolve the tenant's configured FHIR version. Each batch acquires one definitions handle
+            // containing the matching schema provider and indexer.
             var fhirVersion = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
-            var schemaProvider = _fhirVersionContext.GetSchemaProvider(fhirVersion, input.TenantId);
-            var searchIndexer = _fhirVersionContext.GetSearchIndexer(fhirVersion, input.TenantId);
 
             // Read global configuration for consumer count
             var consumerCount = _configuration.GetValue<int>("Import:ConsumerCount", 8);
@@ -179,14 +182,15 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                         await foreach (var entry in channel.Reader.ReadAllAsync(pipelineCancellation.Token))
                         {
                             pipelineCancellation.Token.ThrowIfCancellationRequested();
+                            var definitionsHandle = _fhirVersionContext.GetDefinitionsHandle(fhirVersion, input.TenantId);
                             var batchOperations = new List<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)>();
 
                             // Add current entry to batch
                             batchOperations.Add(PrepareResource(
                                 entry,
                                 input.ResourceType,
-                                schemaProvider,
-                                searchIndexer,
+                                definitionsHandle.SchemaProvider,
+                                definitionsHandle.Indexer,
                                 localErrors));
 
                             // Try to fill batch with more entries (non-blocking)
@@ -196,8 +200,8 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                                 batchOperations.Add(PrepareResource(
                                     nextEntry,
                                     input.ResourceType,
-                                    schemaProvider,
-                                    searchIndexer,
+                                    definitionsHandle.SchemaProvider,
+                                    definitionsHandle.Indexer,
                                     localErrors));
                             }
 
@@ -215,30 +219,23 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                                 // defect and must fail the import rather than be reported as bad input.
                                 foreach (var operation in validOperations)
                                 {
-                                    OrderForStorage(operation.resourceType, operation.resourceId, operation.resource, schemaProvider);
+                                    OrderForStorage(operation.resourceType, operation.resourceId, operation.resource, definitionsHandle.SchemaProvider);
                                 }
 
                                 _logger.LogDebug(
                                     "Consumer {ConsumerId} executing batch of {Count} resources",
                                     consumerId, validOperations.Count);
 
-                                // A file can outgrow a reserved range, and blank lines are not resource offsets.
-                                var transactionId = await consumerRepository.GetNextTransactionIdAsync(CancellationToken.None);
-                                var keys = await consumerRepository.BatchWriteAsync(
-                                    transactionId, validOperations, CancellationToken.None);
-                                try
-                                {
-                                    await consumerRepository.CommitTransactionAsync(transactionId, CancellationToken.None);
-                                }
-                                catch (Exception ex) when (ex is IOException or DbException or TimeoutException or InvalidOperationException or OperationCanceledException)
-                                {
-                                    throw new InvalidOperationException(
-                                        $"Import commit outcome is indeterminate for transaction {transactionId.Value} ({validOperations.Count} resources). {ex.Message}", ex);
-                                }
-                                localSuccessCount += keys.Count;
+                                var writtenCount = await WriteBatchAsync(
+                                    consumerRepository,
+                                    validOperations,
+                                    definitionsHandle,
+                                    fhirVersion,
+                                    input.TenantId);
+                                localSuccessCount += writtenCount;
                                 _logger.LogDebug(
                                     "Consumer {ConsumerId} completed batch: {Count} resources written",
-                                    consumerId, keys.Count);
+                                    consumerId, writtenCount);
                             }
                         }
                         completed = true;
@@ -357,6 +354,52 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                 lineNumber,
                 fileUrl);
         }
+    }
+
+    /// <summary>
+    /// Writes one batch under the conformance barrier. The first attempt uses the indexes extracted with
+    /// <paramref name="definitionsHandle"/>; a barrier rejection re-extracts every resource against the
+    /// current definitions and retries once on a fresh transaction.
+    /// </summary>
+    private Task<int> WriteBatchAsync(
+        IFhirRepository repository,
+        IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)> operations,
+        DefinitionsHandle definitionsHandle,
+        FhirVersion fhirVersion,
+        int tenantId)
+    {
+        var attempt = 0;
+        return _barrierRetryPolicy.ExecuteAsync(
+            async ct =>
+            {
+                attempt++;
+                var attemptHandle = attempt == 1 ? definitionsHandle : _fhirVersionContext.GetDefinitionsHandle(fhirVersion, tenantId);
+                var attemptOperations = attempt == 1
+                    ? operations
+                    : operations.Select(operation =>
+                    {
+                        IReadOnlyList<object> indexes = attemptHandle.Indexer.Extract(
+                            (IElement)operation.resource.ToElement(attemptHandle.SchemaProvider)).ToArray();
+                        return (operation.resourceType, operation.resourceId, operation.resource, searchIndexes: indexes, operation.httpMethod, operation.entryIndex);
+                    }).ToList();
+
+                // A file can outgrow a reserved range, and blank lines are not resource offsets.
+                var transactionId = await repository.GetNextTransactionIdAsync(attemptHandle.DefinitionsEventId, ct);
+                var keys = await repository.BatchWriteAsync(transactionId, attemptOperations, ct);
+                try
+                {
+                    await repository.CommitTransactionAsync(transactionId, CancellationToken.None);
+                }
+                catch (Exception ex) when (ex is IOException or DbException or TimeoutException or InvalidOperationException or OperationCanceledException)
+                {
+                    throw new InvalidOperationException(
+                        $"Import commit outcome is indeterminate for transaction {transactionId.Value} ({attemptOperations.Count} resources). {ex.Message}",
+                        ex);
+                }
+
+                return keys.Count;
+            },
+            CancellationToken.None);
     }
 
     /// <summary>

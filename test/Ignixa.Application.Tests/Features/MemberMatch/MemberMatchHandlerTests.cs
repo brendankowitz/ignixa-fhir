@@ -5,6 +5,7 @@
 
 #nullable disable
 
+using Ignixa.Domain.Exceptions;
 using System.Text.Json.Nodes;
 using Ignixa.Application.Operations.Features.MemberMatch;
 using Ignixa.Models;
@@ -220,6 +221,23 @@ public class MemberMatchHandlerTests
         result.Success.ShouldBeTrue();
         result.MemberIdentifier.ShouldNotBeNull();
         result.PatientReference.ShouldBe("Patient/matched-patient-123");
+    }
+
+    // Copilot review: a search that ran past its lease deadline is a retryable 503, not malformed input.
+    [Fact]
+    public async Task GivenTheMatchSearchExceedsItsDeadline_WhenProcessing_ThenTheServiceUnavailableIsPropagated()
+    {
+        var patient = await JsonSourceNodeFactory.ParseAsync(
+            new MemoryStream("""{ "resourceType": "Patient", "id": "p" }"""u8.ToArray()), CancellationToken.None);
+        var coverage = await JsonSourceNodeFactory.ParseAsync(
+            new MemoryStream("""{ "resourceType": "Coverage", "id": "c", "subscriberId": "SUB" }"""u8.ToArray()), CancellationToken.None);
+        _matchStrategy.MatchAsync(Arg.Any<Ignixa.Serialization.SourceNodes.ResourceJsonNode>(), Arg.Any<Ignixa.Serialization.SourceNodes.ResourceJsonNode>(), Arg.Any<Ignixa.Serialization.SourceNodes.ResourceJsonNode>(), Arg.Any<CancellationToken>())
+            .Returns<Task<MemberMatchResult>>(_ => throw new SearchDeadlineExceededException(new OperationCanceledException()));
+
+        var exception = await Should.ThrowAsync<SearchDeadlineExceededException>(() =>
+            _handler.HandleAsync(new MemberMatchCommand(MemberPatient: patient, CoverageToMatch: coverage), CancellationToken.None));
+
+        exception.StatusCode.ShouldBe(503);
     }
 
     #endregion

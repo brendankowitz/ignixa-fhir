@@ -78,7 +78,7 @@ public class CompositeSearchParameterDefinitionManagerVectorConfigTests
             FhirVersion.R4.GetSchemaProvider(), NullLogger<SearchParameterDefinitionManager>.Instance);
         return new CompositeSearchParameterDefinitionManager(
             baseManager,
-            state,
+            state.CreateSnapshot(),
             null,
             NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
             // VectorSearchEnabled = true: this file covers the vector-search-config -> IsSemantic/IsSupported

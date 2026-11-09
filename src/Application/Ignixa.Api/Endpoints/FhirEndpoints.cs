@@ -37,6 +37,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.IO;
 using DeferredWriteCoordinator = Ignixa.Application.Features.Bundle.DeferredWriteCoordinator;
+using FhirInteraction = Ignixa.Application.Features.Authorization.Models.FhirInteraction;
 
 namespace Ignixa.Api.Endpoints;
 
@@ -112,7 +113,7 @@ public static class FhirEndpoints
         // Create a route group with the filter applied to all endpoints
         var tenantGroup = endpoints
             .MapGroup("/tenant/{tenantId:int}")
-            .AddEndpointFilter<FhirAuthorizationFilter>()
+            .RequireFhirAuthorization()
             .AddEndpointFilter<FhirAuditFilter>()
             .AddEndpointFilter<FhirMetricsFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
@@ -184,6 +185,7 @@ public static class FhirEndpoints
         // POST / - Transaction/Batch bundle
         tenantGroup.MapPost("/", HandleBundle)
             .WithName("Bundle")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Transaction, "*"))
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces(StatusCodes.Status501NotImplemented);
@@ -223,7 +225,7 @@ public static class FhirEndpoints
         // Create a route group with the filter applied to all endpoints
         var agnosticGroup = endpoints
             .MapGroup(string.Empty)
-            .AddEndpointFilter<FhirAuthorizationFilter>()
+            .RequireFhirAuthorization()
             .AddEndpointFilter<FhirAuditFilter>()
             .AddEndpointFilter<FhirMetricsFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
@@ -316,6 +318,7 @@ public static class FhirEndpoints
             [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILoggerFactory loggerFactory, CancellationToken ct) =>
             HandleBundle(context, fhirContextAccessor.RequestContext!.TenantId, bundleProcessor, streamingParser, bundleOptions, loggerFactory, ct))
             .WithName("BundleAgnostic")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Transaction, "*"))
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces(StatusCodes.Status400BadRequest)
@@ -572,6 +575,11 @@ public static class FhirEndpoints
         {
             logger.LogInformation("Created {ResourceType}/{Id} (version {Version}) in tenant {TenantId}", resourceType.SanitizeForLog(), result.Key.Id, result.Key.VersionId, tenantId);
 
+            if (result.OperationOutcomeBytes is { } createWarning)
+            {
+                return WarningOutcome(createWarning, location, result.Key.VersionId!, result.LastModified, context);
+            }
+
             if (actualReturnPreference == ReturnPreference.Representation)
             {
                 // Return full resource representation with Location and ETag headers
@@ -587,6 +595,11 @@ public static class FhirEndpoints
         }
 
         logger.LogInformation("Updated {ResourceType}/{Id} (version {Version}) in tenant {TenantId}", resourceType.SanitizeForLog(), result.Key.Id, result.Key.VersionId, tenantId);
+
+        if (result.OperationOutcomeBytes is { } updateWarning)
+        {
+            return WarningOutcome(updateWarning, createdLocation: null, result.Key.VersionId!, result.LastModified, context);
+        }
 
         if (actualReturnPreference == ReturnPreference.Representation)
         {
@@ -644,7 +657,7 @@ public static class FhirEndpoints
         var searchOptions = searchOptionsBuilder.Build(resourceType, queryParameters, schemaProvider);
 
         // Check for unsupported modifiers (always rejected) and unsupported parameters (handling=strict)
-        var strictResult = CheckStrictHandling(context, searchOptions, resourceType, logger);
+        var strictResult = SearchRequestHandling.CheckStrictHandling(context, searchOptions, resourceType, logger);
         if (strictResult is not null)
         {
             return strictResult;
@@ -735,7 +748,7 @@ public static class FhirEndpoints
         var searchOptions = searchOptionsBuilder.Build(resourceType, queryParameters, schemaProvider);
 
         // Check for unsupported modifiers (always rejected) and unsupported parameters (handling=strict)
-        var strictResult = CheckStrictHandling(context, searchOptions, resourceType, logger);
+        var strictResult = SearchRequestHandling.CheckStrictHandling(context, searchOptions, resourceType, logger);
         if (strictResult is not null)
         {
             return strictResult;
@@ -1050,6 +1063,11 @@ public static class FhirEndpoints
             createResult.Key.VersionId,
             tenantId);
 
+        if (createResult.OperationOutcomeBytes is { } createWarning)
+        {
+            return WarningOutcome(createWarning, createLocation, createResult.Key.VersionId!, createResult.LastModified, context);
+        }
+
         if (actualReturnPreference == ReturnPreference.Representation)
         {
             // Return full resource representation
@@ -1329,6 +1347,11 @@ public static class FhirEndpoints
             // Use the documented version-specific location for PUT-as-create.
             var location = $"{context.Request.Scheme}://{context.Request.Host}/tenant/{tenantId}/{resourceType}/{result.Resource.ResourceId}/_history/{result.Resource.VersionId}";
 
+            if (result.OperationOutcomeBytes is { } createWarning)
+            {
+                return WarningOutcome(createWarning, location, result.Resource.VersionId, result.Resource.LastModified, context: null);
+            }
+
             if (actualReturnPreference == ReturnPreference.Minimal)
             {
                 // return=minimal - return headers only, no body (FHIR spec compliant)
@@ -1355,6 +1378,11 @@ public static class FhirEndpoints
         else
         {
             // 200 OK
+            if (result.OperationOutcomeBytes is { } updateWarning)
+            {
+                return WarningOutcome(updateWarning, createdLocation: null, result.Resource.VersionId, result.Resource.LastModified, context: null);
+            }
+
             if (actualReturnPreference == ReturnPreference.Minimal)
             {
                 // return=minimal - return headers only, no body (FHIR spec compliant)
@@ -1526,7 +1554,7 @@ public static class FhirEndpoints
         var searchOptions = searchOptionsBuilder.Build(null, queryParameters, schemaProvider);
 
         // Check for unsupported modifiers (always rejected) and unsupported parameters (handling=strict)
-        var strictResult = CheckStrictHandling(context, searchOptions, null, logger);
+        var strictResult = SearchRequestHandling.CheckStrictHandling(context, searchOptions, null, logger);
         if (strictResult is not null)
         {
             return strictResult;
@@ -1615,7 +1643,7 @@ public static class FhirEndpoints
         var searchOptions = searchOptionsBuilder.Build(null, queryParameters, schemaProvider);
 
         // Check for unsupported modifiers (always rejected) and unsupported parameters (handling=strict)
-        var strictResult = CheckStrictHandling(context, searchOptions, null, logger);
+        var strictResult = SearchRequestHandling.CheckStrictHandling(context, searchOptions, null, logger);
         if (strictResult is not null)
         {
             return strictResult;
@@ -1716,122 +1744,25 @@ public static class FhirEndpoints
     }
 
     /// <summary>
-    /// Checks for unsupported search parameters and modifiers.
-    /// Returns a BadRequest result if an unsupported modifier was used, or if strict handling is
-    /// requested and unsupported parameters exist.
+    /// The response to a write whose resource was saved while a non-atomic secondary write (X-Provenance)
+    /// failed: the warning OperationOutcome instead of the resource, with the saved version's headers.
+    /// <paramref name="context"/> is passed through only by the routes that honour <c>_pretty</c>.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// An unknown or unsupported <i>parameter</i> SHOULD be ignored — proxies and HTTP stacks inject
-    /// parameters the client never sent, and the self link reports what was actually used — so it only
-    /// fails the request when the client asked for <c>Prefer: handling=strict</c>.
-    /// </para>
-    /// <para>
-    /// An unsupported <i>modifier</i> is a SHALL: "Server SHALL reject any search request that ... is
-    /// suffixed by a modifier that the server does not support for that parameter ... using an HTTP 400
-    /// error". Ignoring one does not narrow the query, it widens it — <c>_id:above=abc</c> would return
-    /// every resource — and the client cannot tell that from a filter that matched everything. So it fails
-    /// by default and only an explicit <c>handling=lenient</c> downgrades it to the bundle warning the
-    /// search options already carry.
-    /// </para>
-    /// </remarks>
-    /// <param name="context">The HTTP context.</param>
-    /// <param name="searchOptions">The search options carrying the unsupported parameter lists.</param>
-    /// <param name="resourceType">Optional resource type for error message context.</param>
-    /// <param name="logger">Logger for warnings.</param>
-    /// <returns>BadRequest result if the request must be rejected, null otherwise.</returns>
-    private static IResult? CheckStrictHandling(
-        HttpContext context,
-        SearchOptions searchOptions,
-        string? resourceType,
-        ILogger logger)
+    private static FhirResult WarningOutcome(
+        ReadOnlyMemory<byte> outcome,
+        string? createdLocation,
+        string versionId,
+        DateTimeOffset lastModified,
+        HttpContext? context)
     {
-        // FHIR R4 SHALL rejects a search suffixed by a modifier the server does not support for that
-        // parameter (https://hl7.org/fhir/R4/search.html#modifiers), unlike an unsupported *parameter*,
-        // which only SHOULD be rejected and is opt-in via Prefer: handling=strict below. Silently
-        // dropping the modifier would widen the result set instead of narrowing it, so rejecting is the
-        // default whenever the client has not said otherwise.
-        //
-        // handling=lenient is the client saying otherwise, and it is not an error case: R4's
-        // http.html#2.21.0.2 has the server ignore what it could not honour and report it, which is what
-        // the reference implementation does -- 200, a warning issue in the bundle, and the offending
-        // parameter dropped from the self link. All three already happen for free here, because the
-        // builder records an unsupported modifier in BOTH UnsupportedParams (which drives the bundle
-        // warning and the self-link filter) and UnsupportedModifierParams (which drives this rejection).
-        // So the only thing lenient has to do is decline to reject.
-        if (searchOptions.UnsupportedModifierParams.Count > 0 &&
-            !PreferHeaderParser.IsLenientHandling(context.Request.Headers))
+        var response = (createdLocation, context) switch
         {
-            logger.LogWarning(
-                "Unsupported search modifier(s) found: {UnsupportedModifierParams}",
-                string.Join(", ", searchOptions.UnsupportedModifierParams.Select(p => p.SanitizeForLog())));
-
-            return BuildUnsupportedParametersResult(
-                searchOptions.UnsupportedModifierParams,
-                resourceType,
-                isModifierRejection: true,
-                reasons: searchOptions.UnsupportedModifierReasons);
-        }
-
-        if (!PreferHeaderParser.IsStrictHandling(context.Request.Headers) ||
-            searchOptions.UnsupportedParams.Count == 0)
-        {
-            return null;
-        }
-
-        logger.LogWarning(
-            "Rejecting search: unsupported parameters {UnsupportedParams}",
-            string.Join(", ", searchOptions.UnsupportedParams.Select(p => p.SanitizeForLog())));
-
-        return BuildUnsupportedParametersResult(searchOptions.UnsupportedParams, resourceType, isModifierRejection: false);
-    }
-
-    /// <summary>
-    /// Builds the BadRequest <see cref="OperationOutcome"/> for a set of unsupported search parameters.
-    /// </summary>
-    /// <param name="unsupportedParams">The parameter (and, for modifiers, key) names to report.</param>
-    /// <param name="resourceType">Optional resource type for error message context.</param>
-    /// <param name="isModifierRejection">
-    /// True when rejecting a SHALL-mandated unsupported modifier (see <see cref="CheckStrictHandling"/>);
-    /// false for the opt-in, strict-handling unsupported-parameter case. Only affects the diagnostics
-    /// text, so the two are distinguishable to a client instead of reading as the same generic message.
-    /// </param>
-    /// <param name="reasons">
-    /// Optional, specific rejection reason per entry of <paramref name="unsupportedParams"/> (see
-    /// <see cref="SearchOptions.UnsupportedModifierReasons"/>). When an entry has one, it replaces the
-    /// generic modifier template below, which would otherwise misreport cases like a chain terminating in
-    /// a semantic parameter as "uses a modifier that is not supported" even though the modifier used
-    /// (e.g. a reference type qualifier) was perfectly valid. Ignored unless <paramref name="isModifierRejection"/>
-    /// is true -- the unsupported-parameter case never has a more specific reason to prefer.
-    /// </param>
-    private static IResult BuildUnsupportedParametersResult(
-        IReadOnlyList<string> unsupportedParams,
-        string? resourceType,
-        bool isModifierRejection,
-        IReadOnlyDictionary<string, string>? reasons = null)
-    {
-        var operationOutcome = new OperationOutcome();
-        foreach (var param in unsupportedParams)
-        {
-            var diagnostics = isModifierRejection && reasons is not null && reasons.TryGetValue(param, out string? reason)
-                ? $"Search parameter '{param}': {reason}"
-                : isModifierRejection
-                    ? (resourceType is not null
-                        ? $"Search parameter '{param}' uses a modifier that is not supported for resource type '{resourceType}'"
-                        : $"Search parameter '{param}' uses a modifier that is not supported")
-                    : (resourceType is not null
-                        ? $"Search parameter '{param}' is not supported for resource type '{resourceType}'"
-                        : $"Search parameter '{param}' is not supported");
-
-            operationOutcome.Issue.Add(new Ignixa.Models.OperationOutcomeIssue
-            {
-                SeverityCode = Ignixa.Models.OperationOutcomeIssue.IssueSeverityCode.Error,
-                IssueTypeCode = Ignixa.Models.OperationOutcomeIssue.IssueTypeCommon.NotSupported,
-                Diagnostics = diagnostics
-            });
-        }
-
-        return Results.BadRequest(operationOutcome.MutableNode);
+            (null, null) => FhirResults.Ok(outcome),
+            (null, { } httpContext) => FhirResults.Ok(outcome, httpContext),
+            ({ } location, null) => FhirResults.Created(location, outcome),
+            ({ } location, { } httpContext) => FhirResults.Created(location, outcome, httpContext),
+        };
+        return response.WithETag(versionId).WithLastModified(lastModified);
     }
 
     /// <summary>

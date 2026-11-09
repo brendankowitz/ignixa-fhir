@@ -19,7 +19,8 @@ public class TenantIsolationHandler : IAuthorizationHandler
 {
     private readonly IFhirRequestContextAccessor _fhirContextAccessor;
     private readonly ILogger<TenantIsolationHandler> _logger;
-    private const string SystemAdminRole = "SystemAdmin";
+    /// <summary>The role that may act across tenants.</summary>
+    public const string SystemAdminRole = "SystemAdmin";
 
     public TenantIsolationHandler(
         IFhirRequestContextAccessor fhirContextAccessor,

@@ -353,7 +353,11 @@ public static class PlanExplainer
     /// <summary>Prints one include stage; <paramref name="limitIgnored"/> is set under an includes count, which emits no budget.</summary>
     private static string PrintIncludeStage(IncludeStage stage, bool limitIgnored)
     {
-        var refParam = stage.ReferenceSearchParamId is { } id ? $"{id}" : "*";
+        var refParam = stage.ReferenceSearchParamId is { } id
+            ? $"{id}"
+            : stage.WildcardReferenceSearchParamIds is { } wildcardReferences
+                ? $"[{string.Join(",", wildcardReferences.Select(pair => $"{pair.Key}:{string.Join("|", pair.Value)}"))}]"
+                : "*";
         var seedTypes = stage.SeedTypeIds is null ? "*" : $"[{string.Join(",", stage.SeedTypeIds)}]";
         var outputTypes = stage.OutputTypeIds is null ? "*" : $"[{string.Join(",", stage.OutputTypeIds)}]";
         var seedStageLabels = stage.SeedStages.Select(IncludeLabel);

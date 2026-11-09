@@ -152,7 +152,7 @@ public class SqlServerFhirRepositoryBulkDeleteTests : IAsyncLifetime
         await CreateVersionAsync(ResourceId);
         await CreateVersionAsync(ResourceId);
         await _repository.DeleteAsync(
-            key, new ResourceRequest("DELETE", $"Patient/{ResourceId}"), null, CancellationToken.None);
+            key, new ResourceRequest("DELETE", $"Patient/{ResourceId}"), definitionsEventId: 0, cancellationToken: CancellationToken.None);
 
         // Act
         var purgedCount = await _repository.PurgeHistoryAsync(key, CancellationToken.None);

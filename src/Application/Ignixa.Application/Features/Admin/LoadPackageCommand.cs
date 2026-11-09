@@ -1,3 +1,4 @@
+using Ignixa.Application.Features.Conformance;
 using Medino;
 
 namespace Ignixa.Application.Features.Admin;
@@ -63,4 +64,16 @@ public record LoadPackageResult
     /// Non-null non-empty list indicates a partial load.
     /// </summary>
     public IReadOnlyList<string>? SkippedPackages { get; init; }
+
+    /// <summary>
+    /// Warning and information issues of the durable activation, such as codes hidden until their transition
+    /// commits or follow-up work that is deferred.
+    /// </summary>
+    public IReadOnlyList<ValidationIssue> Issues { get; init; } = [];
+
+    public IReadOnlyList<string> PendingReindex { get; init; } = [];
+
+    public string? ReindexJobId { get; init; }
+
+    public string? ReindexStatusUrl { get; init; }
 }

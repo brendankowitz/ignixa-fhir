@@ -16,6 +16,7 @@ using Ignixa.Serialization.SourceNodes;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IO;
+using FhirInteraction = Ignixa.Application.Features.Authorization.Models.FhirInteraction;
 
 namespace Ignixa.Api.Endpoints;
 
@@ -38,12 +39,13 @@ public static class DeIdOperationEndpoints
     {
         var tenantGroup = endpoints
             .MapGroup("/tenant/{tenantId:int}")
-            .AddEndpointFilter<FhirAuthorizationFilter>()
+            .RequireFhirAuthorization()
             .AddEndpointFilter<FhirAuditFilter>()
             .AddEndpointFilter<FhirMetricsFilter>();
 
         tenantGroup.MapPost("/$de-identify", HandleDeIdentify)
             .WithName("DeIdentify")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Read, "*"))
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
@@ -53,8 +55,15 @@ public static class DeIdOperationEndpoints
 
     private static IEndpointRouteBuilder MapDeIdOperationAgnosticEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapPost("/$de-identify", HandleDeIdentifyAgnostic)
+        var agnosticGroup = endpoints
+            .MapGroup(string.Empty)
+            .RequireFhirAuthorization()
+            .AddEndpointFilter<FhirAuditFilter>()
+            .AddEndpointFilter<FhirMetricsFilter>();
+
+        agnosticGroup.MapPost("/$de-identify", HandleDeIdentifyAgnostic)
             .WithName("DeIdentifyAgnostic")
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Read, "*"))
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);

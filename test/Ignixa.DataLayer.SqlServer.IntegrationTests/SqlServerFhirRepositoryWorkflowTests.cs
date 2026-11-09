@@ -41,7 +41,7 @@ public class SqlServerFhirRepositoryWorkflowTests : IAsyncLifetime
         var updated = await _repository.CreateOrUpdateAsync(patient with { }, CancellationToken.None);
         updated.Key.VersionId.ShouldBe("2");
 
-        var batchTransactionId = await _repository.GetNextTransactionIdAsync(CancellationToken.None);
+        var batchTransactionId = await _repository.GetNextTransactionIdAsync(0, CancellationToken.None);
         var batchOperations = new (string, string, ResourceJsonNode, IReadOnlyList<object>, string, int)[]
         {
             ("Observation", "workflow-obs-1", ResourceJsonNode.Parse("""{"resourceType":"Observation","id":"workflow-obs-1"}"""), [], "PUT", 0),
@@ -53,6 +53,7 @@ public class SqlServerFhirRepositoryWorkflowTests : IAsyncLifetime
         var deletedKey = await _repository.DeleteAsync(
             new ResourceKey("Observation", "workflow-obs-1"),
             new ResourceRequest("DELETE", "Observation/workflow-obs-1"),
+            definitionsEventId: 0,
             cancellationToken: CancellationToken.None);
         deletedKey!.VersionId.ShouldBe("2");
 

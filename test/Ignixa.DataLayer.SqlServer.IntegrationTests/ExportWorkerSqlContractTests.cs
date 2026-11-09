@@ -12,6 +12,7 @@ using Ignixa.Application.BackgroundOperations.Export;
 using Ignixa.Application.BackgroundOperations.Export.Activities;
 using Ignixa.Application.BackgroundOperations.Export.Models;
 using Ignixa.Application.BackgroundOperations.Export.Orchestrations;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.DataLayer.BlobStorage;
@@ -42,6 +43,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Data.SqlClient;
 using Microsoft.IO;
 using Shouldly;
+using Ignixa.Application.Features.Authorization;
+using Ignixa.Application.Features.Authorization.Services;
+using Ignixa.Application.Features.Authorization.Models;
 
 namespace Ignixa.DataLayer.SqlServer.IntegrationTests;
 
@@ -96,7 +100,9 @@ public sealed class ExportWorkerSqlContractTests : IAsyncLifetime
 
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddHttpContextAccessor();
         services.AddSingleton<IFhirVersionContext>(_versions);
+        services.AddSingleton(CreateHeldConformanceLease());
         services.AddSingleton<ITenantConfigurationStore>(tenants);
         services.AddSingleton<IFhirBaseUriProvider>(baseUris);
         services.AddSingleton<IFhirRequestContextAccessor>(_contextAccessor);
@@ -181,6 +187,9 @@ public sealed class ExportWorkerSqlContractTests : IAsyncLifetime
         builder.Services.AddSingleton<IFhirVersionContext>(_versions);
         builder.Services.AddSingleton<IFhirRequestContextAccessor>(_contextAccessor);
         builder.Services.AddSingleton(_baseUriResolver);
+        // The export routes run FhirAuthorizationFilter; this test covers tenant routing, so authorization is off.
+        builder.Services.AddSingleton<IFhirAuthorizationService, UnusedAuthorizationService>();
+        builder.Services.AddSingleton(Options.Create(new AuthorizationOptions { Enabled = false }));
         await using var app = builder.Build();
         app.UseRouting();
         app.UseFhirExceptionHandler();
@@ -523,6 +532,16 @@ public sealed class ExportWorkerSqlContractTests : IAsyncLifetime
         public Task<IFhirRepository> GetRepositoryAsync(int tenantId, CancellationToken ct = default) => Task.FromResult(repository);
     }
 
+    private static ConformanceLease CreateHeldConformanceLease()
+    {
+        var lease = new ConformanceLease(
+            Options.Create(new ConformanceTransitionOptions { MaxStaleness = TimeSpan.FromHours(1) }),
+            TimeProvider.System,
+            NullLogger<ConformanceLease>.Instance);
+        lease.Renew(lease.CaptureStart());
+        return lease;
+    }
+
     private sealed class SearchFactory(ISearchService service) : ISearchServiceFactory
     {
         public Task<ISearchService> GetSearchServiceAsync(int tenantId, CancellationToken ct = default) => Task.FromResult(service);
@@ -595,5 +614,13 @@ public sealed class ExportWorkerSqlContractTests : IAsyncLifetime
         public Task ExecuteInTransactionAsync(int tenantId,
             Func<ISqlTransactionContext, CancellationToken, Task> work, CancellationToken cancellationToken) =>
             inner.ExecuteInTransactionAsync(tenantId, work, cancellationToken);
+    }
+
+    private sealed class UnusedAuthorizationService : IFhirAuthorizationService
+    {
+        public ValueTask<AuthorizationResult> AuthorizeAsync(
+            FhirAuthorizationContext context,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Authorization is disabled in this host.");
     }
 }
