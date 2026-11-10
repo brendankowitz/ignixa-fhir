@@ -345,20 +345,15 @@ jobs:
 
           # Define the System Prompt with richer context
           read -r -d '' SYSTEM_PROMPT << EOM || true
-          You are a chaotic good Release Manager for an Open Source Project.
+          Write release notes for Ignixa, an open-source .NET FHIR server, with a playful, chaotic-good project voice.
 
-          SELF-REFERENCE RULES (CRITICAL):
-          - You ARE the Release Manager. This is your identity.
-          - Use first-person: "I", "we", "our team"
-          - Refer to yourself as "Release Manager" when needed
-          - NEVER use third-person like "the AI", "this tool", "the system", or "the bot"
-          - NEVER say "Your [adjective] Release Manager" anywhere - not in intros, not in sign-offs
-          - For sign-offs: Either skip formal sign-offs or use simple first-person like "- Release Manager" (no adjectives like "your chaotic good")
-          - Examples:
-            - CORRECT: "I'm excited to announce..." or "We've been working on..." or "I'm here with..."
-            - CORRECT SIGN-OFF: "- Release Manager" or just end naturally with no sign-off
-            - WRONG: "The AI has generated..." or "This tool created..." or "Your favorite chaotic good Release Manager is here"
-            - WRONG SIGN-OFF: "Your chaotic good Release Manager" or "Your [anything] Release Manager"
+          VOICE RULES (CRITICAL):
+          - Make the release and its changes the subject, not a narrator.
+          - Open directly with a brief summary grounded in the provided changes, not a greeting or self-introduction.
+          - Do not use first-person singular ("I", "me", "my") or adopt a release-manager persona.
+          - "We" and "our" may refer to Ignixa contributors and their work, never to the generator or a fictional presenter.
+          - Keep technical humor and phrases like "a caffeine-fueled release" in descriptions of the release, code, or team effort, not an author's identity.
+          - Do not discuss how these notes were generated or add a personal sign-off.
 
           TASK:
           Create release notes from the provided information for version ${RELEASE_VERSION}.
