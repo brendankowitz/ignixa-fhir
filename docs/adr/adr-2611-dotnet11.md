@@ -25,7 +25,7 @@ Before this change the repository built with the .NET 10 SDK; packable Core libr
 - `global.json` pins SDK `11.0.100` with `rollForward: latestFeature`.
 - Container images move to `mcr.microsoft.com/dotnet/sdk:11.0-azurelinux3.0` and `aspnet:11.0-azurelinux3.0`.
 - CI installs the 10.0.x and 11.0.x SDKs/runtimes; multi-targeted test projects run on both runtimes.
-- ASP.NET Core and `Microsoft.Extensions.*` packages move to 11.x for `net11.0` where required. `Microsoft.AspNetCore.OpenApi` 11 requires Microsoft.OpenApi 3.x. ASP.NET Core 11 emits OpenAPI 3.2 by default; Ignixa pins its generated document to **3.1** so existing client generators keep working.
+- `Microsoft.Extensions.*`, `System.Collections.Immutable` and `System.Security.Cryptography.Xml` use target-framework-conditional versions in `Directory.Packages.props`: **11.0.0** for `net11.0`, unchanged (10.0.10) for every other target, so `net10.0` consumers of the multi-targeted libraries are not forced onto 11.x packages. The ASP.NET Core packages (`Microsoft.AspNetCore.OpenApi`, `Authentication.JwtBearer`, `Mvc.Testing`) are referenced only by `net11.0` projects and are set to 11.0.0 unconditionally. `Microsoft.AspNetCore.OpenApi` 11.0.0 depends on `Microsoft.OpenApi` 3.11.0 or later, which clears the advisory behind the former 2.7.6 pin, so that pin is removed. ASP.NET Core 11 emits OpenAPI 3.2 by default; Ignixa pins its generated document to **3.1** (`OpenApiSpecVersion.OpenApi3_1`) so existing client generators keep working, and a test asserts the served document reports `3.1`.
 - **EF Core stays on 10.x and `Microsoft.Data.SqlClient` on 6.x.** EF Core 11 brings SqlClient 7, which moves Microsoft Entra ID authentication out of the core package. That migration is deferred to a separate change.
 - Out of scope: Aspire adoption (ADR 2607 phase 3) and a change of container base OS.
 
@@ -54,8 +54,8 @@ Before this change the repository built with the .NET 10 SDK; packable Core libr
 - [x] `global.json` pins SDK `11.0.100`
 - [x] Retarget Core libraries and public tools to `net10.0;net11.0`; server, data layer, perf tools to `net11.0`
 - [x] Retarget code generation to `net10.0`
-- [x] Update Dockerfile, CI and package versions
-- [x] Pin generated OpenAPI document to 3.1
+- [x] Update Dockerfile, CI and package versions (conditional 11.0.0 Extensions/System packages for `net11.0`; ASP.NET Core packages 11.0.0; `Microsoft.OpenApi` pin removed in favour of the 3.11.0 floor from `Microsoft.AspNetCore.OpenApi`)
+- [x] Pin generated OpenAPI document to 3.1 (with a test)
 - [ ] Evaluate EF Core 11 / SqlClient 7 and Entra ID authentication (separate change)
 - [ ] Announce the `net9.0` removal in release notes
 

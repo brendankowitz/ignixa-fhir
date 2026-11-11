@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HostFiltering;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IO;
+using Microsoft.OpenApi;
 
 namespace Ignixa.Api.Registrations;
 
@@ -38,8 +39,9 @@ public static class CoreServicesRegistration
         // Startup timing diagnostics
         services.AddStartupTimingDiagnostics();
 
-        // OpenAPI documentation
-        services.AddOpenApi();
+        // OpenAPI documentation. Pin the emitted document to OpenAPI 3.1 so the output stays stable
+        // when ASP.NET Core / Microsoft.OpenApi change their default specification version.
+        services.AddOpenApi(options => options.OpenApiVersion = OpenApiSpecVersion.OpenApi3_1);
 
         // Memory cache for CapabilityStatement caching
         services.AddMemoryCache();
