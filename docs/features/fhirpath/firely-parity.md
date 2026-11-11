@@ -262,6 +262,20 @@ No provider action while unreachable; revisit if boundary functions ever enter a
 `0.04000000 'm2'` and `0.040000 'm2'`. Numerically equal, different scale. Cosmetic at the SQL layer,
 which normalises decimal scale on storage.
 
+**On .NET 11 these entries change shape, and `1 'm' + 1 'cm'` joins them.** .NET 11 made
+`(decimal)double` exact, where earlier runtimes kept 15 significant digits. Fhir.Metrics, which Firely
+5.11.4 uses for UCUM, builds its unit factors with that cast, so Firely returns decimals carrying the
+double's binary representation error (`2.0 'cm' * 2.0 'm'` gives `0.0400000000000000024980018052 'm2'`,
+`1 'm' + 1 'cm'` gives `1.0100000000000000004163336342 'm'`); the Firely SDK's own decimal boundary
+calculation does the same (`1.5.lowBoundary()` gives `1.4499999999999999989591659145`). The root cause
+is upstream and is not an Ignixa defect. Ignixa strips the noise (`DecimalConversion`) and returns
+`0.04 'm2'` and `1.01 'm'` - the right values, but without the trailing zeros net10 kept (`0.040000`,
+`1.0100`), which is accepted. `KnownDivergences` therefore pins different signatures per TFM
+(`#if NET11_0_OR_GREATER`), and the construct sweep's agreements-on-values floor is 171 on net11
+against 176 on net10, because `1 'm' + 1 'cm'` no longer agrees on five subjects. Delete the net11
+pins once the upstream packages stop adding the noise; the pinned divergences will vanish and the test
+will say so.
+
 ### 10. Time plus a quantity
 
 `@T10:30:00 + 1 hour`: Firely throws `InvalidOperationException`; **Ignixa returns `11:30:00`, which

@@ -105,20 +105,33 @@ internal static class KnownDivergences
     /// land in <see cref="ExpectedBothEmpty"/> (174 to 194), and the two valid-pattern rows add 2
     /// agreements on values on the Patient (174 to 176).
     /// </para>
+    /// <para>
+    /// On net11 the agreements-on-values floor is 171, not 176: <c>1 'm' + 1 'cm'</c> stops agreeing on
+    /// five subjects because Firely's Fhir.Metrics UCUM factors carry .NET 11's exact
+    /// <c>(decimal)double</c> noise (see <see cref="ConstructSignatures"/>). The other counts are the
+    /// same on both TFMs.
+    /// </para>
     /// </remarks>
     public static ExpressionCorpusExpectations ConstructPopulation { get; } =
         new(
             MinimumEvaluationsPerEngine: 450,
             ExpectedBothThrew: 22,
             ExpectedBothEmpty: 194,
+#if NET11_0_OR_GREATER
+            MinimumAgreementsOnValues: 171);
+#else
             MinimumAgreementsOnValues: 176);
+#endif
 
     /// <summary>
     /// Divergences in the language constructs this branch changed. None of these is reachable from a
     /// shipped R4 SearchParameter expression, which is what makes them cheap.
     /// </summary>
-    public static IReadOnlyDictionary<string, int> ConstructSignatures { get; } =
-        new Dictionary<string, int>(StringComparer.Ordinal)
+    public static IReadOnlyDictionary<string, int> ConstructSignatures { get; } = CreateConstructSignatures();
+
+    private static Dictionary<string, int> CreateConstructSignatures()
+    {
+        var signatures = new Dictionary<string, int>(StringComparer.Ordinal)
         {
             // Ignixa carries the timezone extremes (+14:00 / -12:00) that make a boundary an actual
             // instant; Firely returns a local-form dateTime with no offset. Same date and time, only
@@ -127,12 +140,6 @@ internal static class KnownDivergences
             ["birthDate.highBoundary() :: firely=1 result(s): [DATETIME|temporal:System.DateTime|1974-12-25T23:59:59.999] ignixa=1 result(s): [DATETIME|string|1974-12-25T23:59:59.999-12:00]"] = 1,
             ["@2012.lowBoundary() :: firely=1 result(s): [DATETIME|temporal:System.DateTime|2012-01-01T00:00:00] ignixa=1 result(s): [DATETIME|string|2012-01-01T00:00:00.000+14:00]"] = 5,
             ["@2012.highBoundary() :: firely=1 result(s): [DATETIME|temporal:System.DateTime|2012-12-31T23:59:59.999] ignixa=1 result(s): [DATETIME|string|2012-12-31T23:59:59.999-12:00]"] = 5,
-
-            // Numerically equal, different decimal scale. Ignixa pads to its working scale where
-            // Firely reports the significant digits the spec's boundary rules produce.
-            ["1.5.lowBoundary() :: firely=1 result(s): [DECIMAL|decimal|1.45] ignixa=1 result(s): [DECIMAL|decimal|1.45000000]"] = 5,
-            ["1.587.highBoundary() :: firely=1 result(s): [DECIMAL|decimal|1.5875] ignixa=1 result(s): [DECIMAL|decimal|1.58750000]"] = 5,
-            ["2.0 'cm' * 2.0 'm' :: firely=1 result(s): [QUANTITY|quantity|0.04000000 'm2'] ignixa=1 result(s): [QUANTITY|quantity|0.040000 'm2']"] = 5,
 
             // Values agree, but carrier-aware comparison exposes that Firely returns temporal values
             // while Ignixa's arithmetic currently returns strings typed as date.
@@ -162,6 +169,38 @@ internal static class KnownDivergences
             // name, so the suffixed path is empty for it. deceasedBoolean is false on the Patient
             // fixture, so `false` is the correct value.
             ["deceasedBoolean as boolean :: firely=empty ignixa=1 result(s): [BOOLEAN|boolean|false]"] = 1,
-
         };
+
+#if NET11_0_OR_GREATER
+        // The pins below exist only on net11. .NET 11 made (decimal)double exact where earlier runtimes
+        // kept 15 significant digits, and Firely SDK 5.11.4 and Fhir.Metrics (which Firely uses for
+        // UCUM) both convert doubles with that cast. Firely therefore reports decimals carrying the
+        // binary representation error of the double (28 digits, e.g. 0.0400000000000000024980018052
+        // for the true 0.04); that is an upstream issue, not an Ignixa defect. Ignixa strips the same
+        // noise in DecimalConversion, so the engines agree on the value
+        // and the divergence is Firely's noise. The Firely digits are exact IEEE-754 expansions and so
+        // deterministic; if an upstream release stops adding the noise, these pins vanish and the
+        // test fails, which is the signal to delete this block and use the net10 pins for both TFMs.
+
+        // Fhir.Metrics builds the UCUM unit factors (cm = 0.01 m) with (decimal)double, so Firely's
+        // unit conversion is noisy. Ignixa returns the clean value, 1.01 m, which also loses the
+        // trailing-zero scale net10 produced (1.0100): numerically equal, so accepted. Where net10
+        // had both engines agree on 1 'm' + 1 'cm', net11 now has them diverge.
+        signatures["1 'm' + 1 'cm' :: firely=1 result(s): [QUANTITY|quantity|1.0100000000000000004163336342 'm'] ignixa=1 result(s): [QUANTITY|quantity|1.01 'm']"] = 5;
+        signatures["2.0 'cm' * 2.0 'm' :: firely=1 result(s): [QUANTITY|quantity|0.0400000000000000024980018052 'm2'] ignixa=1 result(s): [QUANTITY|quantity|0.04 'm2']"] = 5;
+
+        // Not a UCUM case: Firely SDK's decimal boundary calculation carries the same cast noise.
+        // Ignixa's 1.45000000 is unchanged from net10.
+        signatures["1.5.lowBoundary() :: firely=1 result(s): [DECIMAL|decimal|1.4499999999999999989591659145] ignixa=1 result(s): [DECIMAL|decimal|1.45000000]"] = 5;
+        signatures["1.587.highBoundary() :: firely=1 result(s): [DECIMAL|decimal|1.5875000000000000000239608680] ignixa=1 result(s): [DECIMAL|decimal|1.58750000]"] = 5;
+#else
+        // Numerically equal, different decimal scale. Ignixa pads to its working scale where Firely
+        // reports the significant digits the spec's boundary rules produce.
+        signatures["1.5.lowBoundary() :: firely=1 result(s): [DECIMAL|decimal|1.45] ignixa=1 result(s): [DECIMAL|decimal|1.45000000]"] = 5;
+        signatures["1.587.highBoundary() :: firely=1 result(s): [DECIMAL|decimal|1.5875] ignixa=1 result(s): [DECIMAL|decimal|1.58750000]"] = 5;
+        signatures["2.0 'cm' * 2.0 'm' :: firely=1 result(s): [QUANTITY|quantity|0.04000000 'm2'] ignixa=1 result(s): [QUANTITY|quantity|0.040000 'm2']"] = 5;
+#endif
+
+        return signatures;
+    }
 }
