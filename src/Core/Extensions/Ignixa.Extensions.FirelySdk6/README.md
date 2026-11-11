@@ -89,8 +89,10 @@ IEnumerable<ITypedElement> firelyElements = ignixaElements.ToTypedElements();
 
 1. **IgnixaElementAdapter**: Wraps Firely `ITypedElement` → Implements Ignixa `IElement`
    - Lazy child materialization
-   - Caches all children to avoid repeated enumeration
-   - Filters by name efficiently
+   - Caches the full child list for `Children()` and the result of each named lookup
+   - `Children(name)` asks the wrapped element for that name alone, so an element the Firely model does not define cannot break a lookup of its modelled siblings
+   - Matches names exactly: a choice child is found by its base name (`value`), not a suffixed one (`valueDateTime`)
+   - Follows the wrapped element's own named lookup: with Firely 5.x `TypeErrorMode.Ignore` or `Passthrough`, a child the model does not define, or any child of an element whose type cannot be resolved, is not returned by name, as with native Firely and Firely FHIRPath. It can still be visible through `Children()`
 
 2. **TypedElementAdapter**: Wraps Ignixa `IElement` → Implements Firely `ITypedElement`
    - Streaming conversion (no upfront materialization)
@@ -126,8 +128,8 @@ IElement back = firely.ToCoreElement();  // Returns original ignixa, not a wrapp
 
 CoreElementAdapter (Firely → Ignixa):
 - Children are materialized only on first access
-- All children cached to avoid repeated Firely enumeration
-- Name filtering uses cached children
+- `Children()` caches the full child list to avoid repeated Firely enumeration
+- `Children(name)` caches each looked-up name separately and does not enumerate the other children, so an adapter created per evaluation pays only for the names that evaluation asks for
 
 ### Streaming Conversion
 

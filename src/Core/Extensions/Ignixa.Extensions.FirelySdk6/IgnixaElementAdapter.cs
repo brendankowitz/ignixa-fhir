@@ -89,24 +89,27 @@ public class IgnixaElementAdapter : IElement
     /// <inheritdoc/>
     public IReadOnlyList<IElement> Children(string? name = null)
     {
-        // Materialize all children on first access (lazy)
-        if (_cachedAllChildren == null)
+        if (name == null)
         {
-            _cachedAllChildren = _firelyElement.Children()
+            // Materialize all children on first access (lazy)
+            return _cachedAllChildren ??= _firelyElement.Children()
                 .Select(child => (IElement)new IgnixaElementAdapter(child))
                 .ToArray();
         }
-
-        // Filter by name if specified
-        if (name == null)
-            return _cachedAllChildren;
 
         // Cache filtered children to avoid repeated allocations
         _childrenByName ??= new Dictionary<string, IReadOnlyList<IElement>>();
 
         if (!_childrenByName.TryGetValue(name, out var filtered))
         {
-            filtered = _cachedAllChildren.Where(c => c.Name == name).ToArray();
+            // Ask the wrapped element for this name alone. Enumerating every child makes Firely 5.x
+            // throw for any element its model does not define, even when the caller wants a modelled
+            // sibling. The Name check keeps the match exact: Firely 6 would otherwise also resolve a
+            // suffixed choice name such as "valueDateTime", which this adapter has never done.
+            filtered = _firelyElement.Children(name)
+                .Where(child => child.Name == name)
+                .Select(child => (IElement)new IgnixaElementAdapter(child))
+                .ToArray();
             _childrenByName[name] = filtered;
         }
 
