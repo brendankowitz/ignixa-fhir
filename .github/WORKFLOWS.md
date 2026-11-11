@@ -10,9 +10,11 @@ GitHub Actions supplies build and test evidence. Native Copilot reviews provide 
 
 As verified on 2026-11-06, the active Main ruleset requests Copilot reviews for PRs targeting the default branch and for new pushes, with draft review off. It requires these GitHub Actions checks:
 
-- `Build and Unit Tests (11.0.x)`
+- `Build and Unit Tests (10.0.x)`
 - `Validate Docker Build`
 - `E2E Tests (SQL Server)`
+
+The .NET 11 upgrade renames the first check to `Build and Unit Tests (11.0.x)` (the name comes from the job matrix). When that change merges, update the Main ruleset's required checks to the new name, or PRs will wait on a check that no longer runs.
 
 These are a dated settings snapshot, not configuration managed by this document. Inspect the live ruleset before relying on it. SQL integration and documentation jobs also run in PR Build but were not required checks in that snapshot.
 
