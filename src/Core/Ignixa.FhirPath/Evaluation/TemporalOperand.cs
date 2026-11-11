@@ -181,7 +181,7 @@ internal static class TemporalOperand
             return FhirPrimitive.Time;
 
         var wire = literal.Length > 0 && literal[0] == '@' ? literal[1..] : literal;
-        if (wire.StartsWith('T') || (wire.Contains(':', StringComparison.Ordinal) && !wire.Contains('-', StringComparison.Ordinal)))
+        if (wire.StartsWith("T", StringComparison.Ordinal) || (wire.Contains(':', StringComparison.Ordinal) && !wire.Contains('-', StringComparison.Ordinal)))
             return FhirPrimitive.Time;
 
         return wire.Contains('T', StringComparison.Ordinal) ? FhirPrimitive.DateTime : FhirPrimitive.Date;

@@ -97,7 +97,7 @@ internal static class RunCommand
         catch (Exception ex)
         {
             Print(quiet, $"✗ Error: {ex.Message}");
-            await Console.Error.WriteLineAsync(ex.StackTrace);
+            await Console.Error.WriteLineAsync(ex.StackTrace.AsMemory(), CancellationToken.None);
             Environment.ExitCode = 1;
         }
     }

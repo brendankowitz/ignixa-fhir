@@ -66,7 +66,7 @@ public static class FhirPathTestSuiteParser
                 if (type is "date" or "dateTime" or "time" or "instant")
                 {
                     value = value.TrimStart('@');
-                    if (type == "time" && value.StartsWith('T'))
+                    if (type == "time" && value.StartsWith("T", StringComparison.Ordinal))
                         value = value.Substring(1);
                 }
 

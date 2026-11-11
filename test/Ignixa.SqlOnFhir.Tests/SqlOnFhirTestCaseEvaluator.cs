@@ -315,7 +315,7 @@ public static class SqlOnFhirTestCaseEvaluator
 
     private static string NormalizeTemporalValue(string value)
     {
-        if (value.StartsWith('T') && value.Length > 1 && char.IsDigit(value[1]))
+        if (value.StartsWith("T", StringComparison.Ordinal) && value.Length > 1 && char.IsDigit(value[1]))
         {
             return value[1..];
         }

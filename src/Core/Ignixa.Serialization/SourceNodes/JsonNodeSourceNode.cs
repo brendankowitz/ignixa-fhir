@@ -145,7 +145,7 @@ public class JsonNodeSourceNode : ISourceNavigator
         }
 
         // Handle choice type suffix (e.g., "value*" matches "valueString", "valueCode", etc.)
-        if (name.EndsWith(ChoiceTypeSuffix))
+        if (name.Length > 0 && name[^1] == ChoiceTypeSuffix)
         {
             string matchPrefix = name.TrimEnd(ChoiceTypeSuffix);
             return _cachedNodes
@@ -231,7 +231,7 @@ public class JsonNodeSourceNode : ISourceNavigator
             {
                 (string Name, JsonNode? Value) innerItem = item.First();
 
-                if (innerItem.Name.StartsWith(_shadowNodePrefix))
+                if (innerItem.Name.Length > 0 && innerItem.Name[0] == _shadowNodePrefix)
                 {
                     // Shadow-only property (e.g., _birthDate without birthDate).
                     // Use the base name for schema lookup and pass value as shadow content.
@@ -254,8 +254,8 @@ public class JsonNodeSourceNode : ISourceNavigator
             else if (item.Count() == 2)
             {
                 // Property with shadow (e.g., birthDate + _birthDate)
-                (string Name, JsonNode? Value) innerItem = item.SingleOrDefault(x => !x.Name.StartsWith(_shadowNodePrefix));
-                (string Name, JsonNode? Value) shadowItem = item.SingleOrDefault(x => x.Name.StartsWith(_shadowNodePrefix));
+                (string Name, JsonNode? Value) innerItem = item.SingleOrDefault(x => !(x.Name.Length > 0 && x.Name[0] == _shadowNodePrefix));
+                (string Name, JsonNode? Value) shadowItem = item.SingleOrDefault(x => x.Name.Length > 0 && x.Name[0] == _shadowNodePrefix);
                 (string Name, Lazy<IEnumerable<ISourceNavigator>>) values = (
                     innerItem.Name,
                     new Lazy<IEnumerable<ISourceNavigator>>(() => JsonNodeToSourceNodes(innerItem.Name, location, innerItem.Value!, shadowItem.Value).ToList())

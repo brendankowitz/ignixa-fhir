@@ -347,7 +347,7 @@ public class TransformResourceHandler(
             // Extract resource type from StructureDefinition URL
             // e.g., "http://hl7.org/fhir/StructureDefinition/Bundle" → "Bundle"
             var url = targetUses.Url;
-            var lastSlash = url.LastIndexOf('/');
+            var lastSlash = url.LastIndexOf("/", StringComparison.Ordinal);
 
             if (lastSlash >= 0 && lastSlash < url.Length - 1)
             {

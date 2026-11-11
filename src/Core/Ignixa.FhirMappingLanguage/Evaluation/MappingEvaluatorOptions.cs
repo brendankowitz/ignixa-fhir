@@ -183,7 +183,7 @@ public class MappingEvaluatorOptions
 
         // Check wildcard matches
         return AllowedConceptMapTargetSystems
-            .Where(allowed => allowed.EndsWith('*'))
+            .Where(allowed => allowed.EndsWith("*", StringComparison.Ordinal))
             .Any(allowed => targetSystem.StartsWith(allowed.TrimEnd('*'), StringComparison.OrdinalIgnoreCase));
     }
 }

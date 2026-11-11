@@ -515,7 +515,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                 }
 
                 // Parse direction: '-' prefix means descending
-                bool isDescending = trimmedField.StartsWith('-');
+                bool isDescending = trimmedField.StartsWith("-", StringComparison.Ordinal);
                 string fieldName = isDescending ? trimmedField.Substring(1) : trimmedField;
                 var sortOrder = isDescending ? Expressions.SortOrder.Descending : Expressions.SortOrder.Ascending;
 

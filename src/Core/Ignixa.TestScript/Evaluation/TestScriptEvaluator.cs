@@ -635,7 +635,7 @@ public sealed class TestScriptEvaluator(
         // FHIR operations ($validate, $expand, ...) are invoked at [type]/$op (type-level) or
         // /$op (system-level), not as a plain POST to the resource type. Without this, a
         // $validate operation would POST the body to /[type] and create the resource instead.
-        if (op.Type.StartsWith('$'))
+        if (op.Type.StartsWith("$", StringComparison.Ordinal))
         {
             var opPath = string.IsNullOrEmpty(resource) ? op.Type : $"{resource}/{op.Type}";
             return $"{opPath}{parameters}";

@@ -26,7 +26,7 @@ public class TransformTimeoutTests
 
         Task run = Task.Run(() => evaluator.Execute(FanOut(depth: 40), context));
 
-        (await Task.WhenAny(run, Task.Delay(NeverStopped))).ShouldBe(run, "the transformation did not stop at its timeout");
+        (await FirstToFinishAsync(run)).ShouldBe(run, "the transformation did not stop at its timeout");
         MappingExecutionException timedOut = await Should.ThrowAsync<MappingExecutionException>(run);
         timedOut.Code.ShouldBe("TRANSFORM_TIMEOUT");
         context.Errors.ShouldBeEmpty();
@@ -47,7 +47,7 @@ public class TransformTimeoutTests
         Task executeGroup = Task.Run(() => new MappingEvaluator(options).ExecuteGroup(FanOut(depth: 40), "G1", groupContext, cancelled));
 
         Task both = Task.WhenAll(execute, executeGroup);
-        (await Task.WhenAny(both, Task.Delay(NeverStopped))).ShouldBe(both, "the transformation did not stop at its cancellation");
+        (await FirstToFinishAsync(both)).ShouldBe(both, "the transformation did not stop at its cancellation");
         await Should.ThrowAsync<OperationCanceledException>(execute);
         await Should.ThrowAsync<OperationCanceledException>(executeGroup);
         context.Errors.ShouldBeEmpty();
@@ -63,6 +63,16 @@ public class TransformTimeoutTests
         evaluator.ExecuteGroup(FanOut(depth: 4), "G1", context, CancellationToken.None);
 
         context.Errors.ShouldBeEmpty();
+    }
+
+    // Completes with the given task if it finishes (however it finishes) before NeverStopped, otherwise with the watchdog delay.
+    // The delay is cancelled afterwards so its timer does not outlive the test.
+    private static async Task<Task> FirstToFinishAsync(Task task)
+    {
+        using var watchdog = new CancellationTokenSource();
+        Task winner = await Task.WhenAny(task, Task.Delay(NeverStopped, watchdog.Token));
+        await watchdog.CancelAsync();
+        return winner;
     }
 
     // G1 to G<depth>, each calling the next twice: 2^depth calls, none of them recursive and none creating an element.

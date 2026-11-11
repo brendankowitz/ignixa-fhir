@@ -171,6 +171,6 @@ public class OperationOutcomeEntryShapeTests
         writer.UnderlyingWriter.Flush();
 
         string json = Encoding.UTF8.GetString(buffer.WrittenSpan);
-        return JsonDocument.Parse(json).RootElement[0];
+        return JsonElement.Parse(json)[0];
     }
 }

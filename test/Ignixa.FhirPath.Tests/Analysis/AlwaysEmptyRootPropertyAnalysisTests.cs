@@ -112,7 +112,7 @@ public class AlwaysEmptyRootPropertyAnalysisTests
 
                 foreach (var property in document.RootElement.EnumerateObject())
                 {
-                    if (property.Name is "resourceType" || property.Name.StartsWith('_'))
+                    if (property.Name is "resourceType" || property.Name.StartsWith("_", StringComparison.Ordinal))
                     {
                         continue;
                     }

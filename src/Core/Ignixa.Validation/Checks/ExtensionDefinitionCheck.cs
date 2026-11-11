@@ -84,7 +84,7 @@ public sealed class ExtensionDefinitionCheck : IValidationCheck, ISingletonCheck
 
             // A "_field" shadow object carries the extensions of a primitive element (e.g. _birthDate).
             // Enforcement is scoped to this position (see WalkArray) so we track the descent into it.
-            var childOnShadow = onPrimitiveShadow || key.StartsWith('_');
+            var childOnShadow = onPrimitiveShadow || key.StartsWith("_", StringComparison.Ordinal);
 
             switch (value)
             {

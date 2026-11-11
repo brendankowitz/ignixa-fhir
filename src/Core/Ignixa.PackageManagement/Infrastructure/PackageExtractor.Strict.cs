@@ -129,10 +129,10 @@ public partial class PackageExtractor
 
     private static string ValidateStrictPath(string path, bool directory, int entry)
     {
-        string normalized = directory && path.EndsWith('/') ? path[..^1] : path;
+        string normalized = directory && path.EndsWith("/", StringComparison.Ordinal) ? path[..^1] : path;
         string[] segments = normalized.Split('/');
         if (path.Length == 0 || path.Contains('\\', StringComparison.Ordinal) || path.Any(c => char.IsControl(c) || c is ':' or '\uFFFD') ||
-            segments.Any(s => s.Length == 0 || s is "." or ".." || s.EndsWith('.') || s.EndsWith(' ')))
+            segments.Any(s => s.Length == 0 || s is "." or ".." || s.EndsWith(".", StringComparison.Ordinal) || s.EndsWith(" ", StringComparison.Ordinal)))
         {
             throw StrictFailure(PackageExtractionError.UnsafePath, entry);
         }

@@ -1562,8 +1562,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         if (leftStr == null || rightStr == null)
             return null;
 
-        leftStr = leftStr.StartsWith('@') ? leftStr.Substring(1) : leftStr;
-        rightStr = rightStr.StartsWith('@') ? rightStr.Substring(1) : rightStr;
+        leftStr = leftStr.StartsWith("@", StringComparison.Ordinal) ? leftStr.Substring(1) : leftStr;
+        rightStr = rightStr.StartsWith("@", StringComparison.Ordinal) ? rightStr.Substring(1) : rightStr;
 
         // Normalize .0, .00, .000 millisecond suffixes - these represent zero milliseconds
         // and are semantically equivalent to no milliseconds per FHIRPath spec
@@ -1607,7 +1607,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             // For Date vs DateTime comparisons (like @1974-12-25 vs @1974-12-25T12:34:00), 
             // the result is uncertain per FHIRPath spec.
             var additionalPart = rightNormalized.Substring(leftNormalized.Length);
-            if (!string.IsNullOrEmpty(additionalPart) && !additionalPart.StartsWith('T'))
+            if (!string.IsNullOrEmpty(additionalPart) && !additionalPart.StartsWith("T", StringComparison.Ordinal))
             {
                 // Additional precision in same type (e.g., seconds vs milliseconds)
                 // If non-zero, they're definitely different
@@ -1672,15 +1672,15 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var workingValue = value;
 
         // Extract timezone if present (Z, +HH:MM, or -HH:MM)
-        if (workingValue.EndsWith('Z'))
+        if (workingValue.EndsWith("Z", StringComparison.Ordinal))
         {
             tzSuffix = "Z";
             workingValue = workingValue.Substring(0, workingValue.Length - 1);
         }
         else
         {
-            var lastPlus = workingValue.LastIndexOf('+');
-            var lastMinus = workingValue.LastIndexOf('-');
+            var lastPlus = workingValue.LastIndexOf("+", StringComparison.Ordinal);
+            var lastMinus = workingValue.LastIndexOf("-", StringComparison.Ordinal);
             // Timezone offset is after T (not a negative year or month separator)
             var tIndex = workingValue.IndexOf('T', StringComparison.Ordinal);
             var tzIndex = Math.Max(lastPlus, lastMinus);
@@ -1692,7 +1692,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         }
 
         // Only normalize if there's a decimal point (milliseconds present)
-        var dotIndex = workingValue.LastIndexOf('.');
+        var dotIndex = workingValue.LastIndexOf(".", StringComparison.Ordinal);
         if (dotIndex < 0)
             return value;
 
@@ -2137,8 +2137,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             }
             else
             {
-                var plusIdx = timePart.LastIndexOf('+');
-                var minusIdx = timePart.LastIndexOf('-');
+                var plusIdx = timePart.LastIndexOf("+", StringComparison.Ordinal);
+                var minusIdx = timePart.LastIndexOf("-", StringComparison.Ordinal);
                 var tzIdx = Math.Max(plusIdx, minusIdx);
                 if (tzIdx >= 0)
                     tzSuffix = timePart.Substring(tzIdx);
@@ -2229,7 +2229,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return false;
 
         // Check for 'Z' suffix
-        if (value.EndsWith('Z'))
+        if (value.EndsWith("Z", StringComparison.Ordinal))
             return true;
 
         // Check for +HH:MM or -HH:MM timezone offset (after 'T' if present)
@@ -2238,8 +2238,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return false; // No time component means no timezone
 
         var timePart = value.Substring(tIndex);
-        var plusIndex = timePart.LastIndexOf('+');
-        var minusIndex = timePart.LastIndexOf('-');
+        var plusIndex = timePart.LastIndexOf("+", StringComparison.Ordinal);
+        var minusIndex = timePart.LastIndexOf("-", StringComparison.Ordinal);
 
         // A + or - after T indicates a timezone offset
         return plusIndex > 0 || minusIndex > 0;
@@ -2251,7 +2251,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return value;
             
         // Remove 'Z' suffix
-        if (value.EndsWith('Z'))
+        if (value.EndsWith("Z", StringComparison.Ordinal))
         {
             value = value.Substring(0, value.Length - 1);
         }
@@ -2261,8 +2261,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return value;
             
         var timePart = value.Substring(tIndex);
-        var plusIndex = timePart.LastIndexOf('+');
-        var minusIndex = timePart.LastIndexOf('-');
+        var plusIndex = timePart.LastIndexOf("+", StringComparison.Ordinal);
+        var minusIndex = timePart.LastIndexOf("-", StringComparison.Ordinal);
         var tzIndex = Math.Max(plusIndex, minusIndex);
         
         if (tzIndex > 0)
@@ -2375,7 +2375,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     {
         // Preserve timezone from original string
         var hasTimeZone = originalStr.Contains('+', StringComparison.Ordinal) ||
-                          (originalStr.Contains('-', StringComparison.Ordinal) && originalStr.LastIndexOf('-') > 10) ||
+                          (originalStr.Contains('-', StringComparison.Ordinal) && originalStr.LastIndexOf("-", StringComparison.Ordinal) > 10) ||
                           originalStr.EndsWith("Z", StringComparison.Ordinal);
 
         var format = precision switch

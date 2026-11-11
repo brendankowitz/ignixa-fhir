@@ -177,7 +177,9 @@ public class SqlRemoteConformanceRefreshTests(ITestOutputHelper output)
 
     private static async Task AssertSignalAsync(Task signal, string reason)
     {
-        var completed = await Task.WhenAny(signal, Task.Delay(TimeSpan.FromSeconds(20)));
+        using var watchdog = new CancellationTokenSource();
+        var completed = await Task.WhenAny(signal, Task.Delay(TimeSpan.FromSeconds(20), watchdog.Token));
+        await watchdog.CancelAsync();
         ReferenceEquals(completed, signal).ShouldBeTrue(reason);
         await signal;
     }

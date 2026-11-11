@@ -403,8 +403,8 @@ public static class DateTimeFunctions
         else
         {
             // Check for ±HH:MM offset
-            var plusIndex = timePart.LastIndexOf('+');
-            var minusIndex = timePart.LastIndexOf('-');
+            var plusIndex = timePart.LastIndexOf("+", StringComparison.Ordinal);
+            var minusIndex = timePart.LastIndexOf("-", StringComparison.Ordinal);
             var offsetIndex = Math.Max(plusIndex, minusIndex);
 
             if (offsetIndex > 0)

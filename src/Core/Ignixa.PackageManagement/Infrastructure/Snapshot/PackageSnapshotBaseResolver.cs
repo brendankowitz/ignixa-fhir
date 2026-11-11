@@ -130,7 +130,7 @@ public sealed class PackageSnapshotBaseResolver : ISnapshotBaseResolver
 
     private static string LastSegment(string url)
     {
-        var slash = url.LastIndexOf('/');
+        var slash = url.LastIndexOf("/", StringComparison.Ordinal);
         return slash < 0 ? url : url[(slash + 1)..];
     }
 }

@@ -110,7 +110,7 @@ internal class JsonElementSourceNode : ISourceNavigator
             return _cachedNodes.SelectMany(x => x.Value.Value);
         }
 
-        if (name.EndsWith(ChoiceTypeSuffix))
+        if (name.Length > 0 && name[^1] == ChoiceTypeSuffix)
         {
             string matchPrefix = name.TrimEnd(ChoiceTypeSuffix);
             return _cachedNodes
@@ -153,8 +153,8 @@ internal class JsonElementSourceNode : ISourceNavigator
                 // Occurs when there is a shadow node, example:
                 // birthDate: "2000-..."
                 // _birthDate: { extension: ... }
-                (string Name, JsonElement Value) innerItem = item.SingleOrDefault(x => !x.Name.StartsWith(_shadowNodePrefix));
-                (string Name, JsonElement Value) shadowItem = item.SingleOrDefault(x => x.Name.StartsWith(_shadowNodePrefix));
+                (string Name, JsonElement Value) innerItem = item.SingleOrDefault(x => !(x.Name.Length > 0 && x.Name[0] == _shadowNodePrefix));
+                (string Name, JsonElement Value) shadowItem = item.SingleOrDefault(x => x.Name.Length > 0 && x.Name[0] == _shadowNodePrefix);
                 (string Name, Lazy<IEnumerable<ISourceNavigator>>) values = (innerItem.Name, new Lazy<IEnumerable<ISourceNavigator>>(() => JsonElementToSourceNodes(innerItem.Name, location, innerItem.Value, shadowItem.Value).ToList()));
                 list.Add(values);
             }
