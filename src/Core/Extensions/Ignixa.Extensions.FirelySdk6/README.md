@@ -89,10 +89,10 @@ IEnumerable<ITypedElement> firelyElements = ignixaElements.ToTypedElements();
 
 1. **IgnixaElementAdapter**: Wraps Firely `ITypedElement` → Implements Ignixa `IElement`
    - Lazy child materialization
-   - Caches the full child list for `Children()` and the result of each named lookup
-   - `Children(name)` asks the wrapped element for that name alone, so an element the Firely model does not define cannot break a lookup of its modelled siblings
+   - Caches the full child list for `Children()` and the result of each named lookup. When both lookups list a name's children at the same `Location`s in the same order, they share adapter instances, so `subsetOf()` and `supersetOf()` match a child reached either way without comparing its children; otherwise each lookup keeps its own adapters with the same values
+   - `Children(name)` always asks the wrapped element for that name alone, whether or not `Children()` ran first, so an element the Firely model does not define cannot break a lookup of a modelled sibling, unless its name starts with a choice name: a `valueFoo` sibling makes `Children("value")` throw
    - Matches names exactly: a choice child is found by its base name (`value`), not a suffixed one (`valueDateTime`)
-   - Follows the wrapped element's own named lookup: with Firely 5.x `TypeErrorMode.Ignore` or `Passthrough`, a child the model does not define, or any child of an element whose type cannot be resolved, is not returned by name, as with native Firely and Firely FHIRPath. It can still be visible through `Children()`
+   - Follows the wrapped element's own named lookup, as native Firely FHIRPath does, so an undefined child behaves differently by version. Firely 5.x never returns it by name, nor, under `Passthrough`, anything inside it. Firely 6.x returns both when no `TypedElementSettings` are passed or under `Passthrough`, and throws under `TypeErrorMode.Report`. `Children()` throws for it under `TypeErrorMode.Report`, the 5.x default, and can return it under `Passthrough`, with Firely 6.x when no settings are passed, or beneath an element whose type cannot be resolved
 
 2. **TypedElementAdapter**: Wraps Ignixa `IElement` → Implements Firely `ITypedElement`
    - Streaming conversion (no upfront materialization)
@@ -126,7 +126,7 @@ IElement back = firely.ToCoreElement();  // Returns original ignixa, not a wrapp
 
 ### Lazy Materialization
 
-CoreElementAdapter (Firely → Ignixa):
+IgnixaElementAdapter (Firely → Ignixa):
 - Children are materialized only on first access
 - `Children()` caches the full child list to avoid repeated Firely enumeration
 - `Children(name)` caches each looked-up name separately and does not enumerate the other children, so an adapter created per evaluation pays only for the names that evaluation asks for

@@ -15,9 +15,8 @@ namespace Ignixa.Extensions.Tests.FirelySdk;
 
 /// <summary>
 /// A named lookup through <see cref="IgnixaElementAdapter"/> is an exact-name match. Firely 6 also
-/// answers <c>Children("valueDateTime")</c> with the <c>value</c> child, which this adapter has never
-/// done, so it filters what the wrapped element returns. Firely 5.11.4 does not resolve suffixed
-/// names, so only a Firely 6 run can pin this.
+/// answers <c>Children("valueDateTime")</c> with the <c>value</c> child, so the adapter filters what
+/// the wrapped element returns. The Firely 5 prefix match is pinned in Ignixa.FhirPath.Tests.
 /// </summary>
 public class IgnixaElementAdapterExactNameLookupTests
 {

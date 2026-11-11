@@ -90,6 +90,12 @@ When you're ready to upgrade to Firely SDK 6.x:
 2. Replace `Ignixa.Extensions.FirelySdk5` with `Ignixa.Extensions.FirelySdk6`
 3. No code changes required (same namespace and API)
 
+The adapter follows Firely's own named lookup, so elements the Firely model does not define behave
+differently after the upgrade. 5.x never returns such an element by name, nor, under `Passthrough`,
+anything inside it. 6.x returns both when no `TypedElementSettings` are passed or under
+`Passthrough`, and throws under `TypeErrorMode.Report`. Without settings, 6.x `Children()` also
+returns the element where 5.x throws.
+
 ```diff
 - <PackageReference Include="Hl7.Fhir.Base" Version="5.11.4" />
 + <PackageReference Include="Hl7.Fhir.Base" Version="6.0.0" />
