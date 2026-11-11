@@ -63,7 +63,7 @@ Describe 'Compatibility runner process ownership' {
             ($LiteralPath -like '*.dll') -or ($Path -like '*.dll') -or $global:IgnixaCompatTest.reportExists
         }
         Mock Get-Content {
-            '<Project><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>'
+            '<Project><PropertyGroup><TargetFramework>net11.0</TargetFramework></PropertyGroup></Project>'
         } -ParameterFilter { ($LiteralPath -like '*.csproj') -or ($Path -like '*.csproj') }
         Mock Get-Content {
             '{"ServerUrl":"http://localhost:65101","TotalTests":1,"Passed":1,"Failed":0,"Skipped":0,"PassRate":1}'

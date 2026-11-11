@@ -2,13 +2,13 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": ".NET Core Launch (Ignixa.Api)",
+      "name": ".NET Core Launch (Ignixa.Web)",
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build",
-      "program": "${workspaceFolder}/src/Ignixa.Api/bin/Debug/net9.0/Ignixa.Api.dll",
+      "program": "${workspaceFolder}/src/Application/Ignixa.Web/bin/Debug/net11.0/Ignixa.Web.dll",
       "args": [],
-      "cwd": "${workspaceFolder}/src/Ignixa.Api",
+      "cwd": "${workspaceFolder}/src/Application/Ignixa.Web",
       "stopAtEntry": false,
       "serverReadyAction": {
         "action": "openExternally",
