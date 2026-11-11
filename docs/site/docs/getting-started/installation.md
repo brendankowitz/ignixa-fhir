@@ -61,6 +61,7 @@ Build custom FHIR applications with standalone NuGet packages. No server require
 dotnet add package Ignixa.Serialization   # JSON parsing
 dotnet add package Ignixa.FhirPath        # FHIRPath evaluation
 dotnet add package Ignixa.Validation      # Resource validation
+dotnet add package Ignixa.FhirFakes       # Test data generation
 ```
 
 The Core SDK packages target `net10.0` and `net11.0`, so consuming projects need .NET 10 or later.
