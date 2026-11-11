@@ -174,7 +174,7 @@ function parseTimestampFromTitle(title: string): Date {
 }
 
 function extractCleanName(displayInfo: string): string {
-  // Extract from BenchmarkDotNet format: "ClassName.'Display Name': .NET 9.0(...)"
+  // Extract from BenchmarkDotNet format: "ClassName.'Display Name': .NET 11.0(...)"
   const match = displayInfo.match(/'([^']+)'/);
   if (match) {
     return match[1];
