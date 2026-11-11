@@ -10,7 +10,7 @@ GitHub Actions supplies build and test evidence. Native Copilot reviews provide 
 
 As verified on 2026-11-06, the active Main ruleset requests Copilot reviews for PRs targeting the default branch and for new pushes, with draft review off. It requires these GitHub Actions checks:
 
-- `Build and Unit Tests (10.0.x)`
+- `Build and Unit Tests (11.0.x)`
 - `Validate Docker Build`
 - `E2E Tests (SQL Server)`
 
@@ -72,7 +72,7 @@ Encapsulates common build, test, and reporting steps used by multiple workflows.
 
 ### Inputs
 
-- `dotnet-version` (default: `10.0.x`) - declared SDK input; the current setup step installs .NET 9 and 10 explicitly alongside `global.json`
+- `dotnet-version` (default: `11.0.x`) - declared SDK input; the current setup step installs .NET 10 and 11 explicitly alongside `global.json`
 - `solution-file` (default: `All.sln`) - Path to solution file
 - `build-configuration` (default: `Release`) - Build configuration
 - `test-filter` (default: empty) - test selection passed by the caller
@@ -92,7 +92,7 @@ Encapsulates common build, test, and reporting steps used by multiple workflows.
 - name: Build and test solution
   uses: ./.github/actions/dotnet-build-and-test
   with:
-    dotnet-version: '10.0.x'
+    dotnet-version: '11.0.x'
     solution-file: 'All.sln'
     build-configuration: 'Release'
 ```
@@ -170,10 +170,10 @@ The build jobs use this matrix:
 ```yaml
 strategy:
   matrix:
-    dotnet-version: [ '10.0.x' ]
+    dotnet-version: [ '11.0.x' ]
 ```
 
-The composite action installs .NET 9 and 10 explicitly. Changing its input or the job matrix alone does not change those installations. Test target frameworks come from the project files; a job name is not proof that every supported FHIR version or storage provider ran.
+The composite action installs .NET 10 and 11 explicitly (multi-targeted test projects need both runtimes). Changing its input or the job matrix alone does not change those installations. `global.json` pins SDK 11.0.x. Test target frameworks come from the project files; a job name is not proof that every supported FHIR version or storage provider ran.
 
 ## Test Results
 
