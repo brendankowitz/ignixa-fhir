@@ -679,7 +679,7 @@ internal static class ValueOrdering
             return false;
         }
 
-        result = (decimal)value;
+        result = DecimalConversion.FromDouble(value);
         return true;
     }
 

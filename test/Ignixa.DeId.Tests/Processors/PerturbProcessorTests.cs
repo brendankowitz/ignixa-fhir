@@ -43,7 +43,8 @@ public class PerturbProcessorTests
         resource.InvalidateCaches();
         var updated = resource.ToElement(_schema);
         var value = updated.Scalar(field == "valueQuantity" ? "valueQuantity.value" : field);
-        Convert.ToDecimal(value).ShouldBe((decimal)expected);
+        // .NET 11 no longer rounds (decimal)double to 15 significant digits, so (decimal)12.34d != 12.34m.
+        Convert.ToDouble(value).ShouldBe(expected);
         if (field == "valueQuantity")
         {
             context.VisitedNodes.ShouldContain(node.Children("value").First().Location);

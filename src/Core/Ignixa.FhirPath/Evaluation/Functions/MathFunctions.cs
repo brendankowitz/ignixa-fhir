@@ -8,6 +8,7 @@
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Attributes;
 using Ignixa.FhirPath.Expressions;
+using Ignixa.FhirPath.Types;
 
 namespace Ignixa.FhirPath.Evaluation.Functions;
 
@@ -86,7 +87,7 @@ internal static class MathFunctions
         // Return empty for NaN (e.g., (-1)^0.5 which is imaginary) or Infinity
         if (double.IsNaN(result) || double.IsInfinity(result))
             return [];
-        return [FunctionHelpers.CreateDecimal((decimal)result)];
+        return [FunctionHelpers.CreateDecimal(DecimalConversion.FromDouble(result))];
     }
 
     /// <summary>
@@ -206,7 +207,7 @@ internal static class MathFunctions
         if (value < 0)
             return [];
 
-        var result = (decimal)Math.Sqrt((double)value);
+        var result = DecimalConversion.FromDouble(Math.Sqrt((double)value));
         return [FunctionHelpers.CreateDecimal(result)];
     }
 
@@ -225,7 +226,7 @@ internal static class MathFunctions
         if (!FunctionHelpers.TryGetSingleNumber(focus, "exp", out var value))
             return [];
 
-        var result = (decimal)Math.Exp((double)value);
+        var result = DecimalConversion.FromDouble(Math.Exp((double)value));
         return [FunctionHelpers.CreateDecimal(result)];
     }
 
@@ -247,7 +248,7 @@ internal static class MathFunctions
         if (value <= 0)
             return [];
 
-        var result = (decimal)Math.Log((double)value);
+        var result = DecimalConversion.FromDouble(Math.Log((double)value));
         return [FunctionHelpers.CreateDecimal(result)];
     }
 
@@ -281,7 +282,7 @@ internal static class MathFunctions
         if (value <= 0 || baseValue <= 0 || baseValue == 1)
             return [];
 
-        var result = (decimal)Math.Log((double)value, (double)baseValue);
+        var result = DecimalConversion.FromDouble(Math.Log((double)value, (double)baseValue));
         return [FunctionHelpers.CreateDecimal(result)];
     }
 }

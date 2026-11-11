@@ -218,8 +218,9 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             // We need: (source_canonical / target_canonical_for_unit_1) = result_in_target_units
             var ratio = canonical.Value / targetInCanonical.Value;
 
-            // Exponential has explicit conversion to decimal
-            return (decimal)ratio;
+            // Exponential has explicit conversion to decimal, but it scales with (decimal)Math.Pow, which
+            // is inexact on .NET 11 (see DecimalConversion).
+            return DecimalConversion.ToDecimal(ratio);
         }
         catch
         {
@@ -291,7 +292,7 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             var result = Fhir.Metrics.Quantity.Multiply(leftCanonical, rightCanonical);
 
             // Extract value and unit
-            var value = (decimal)result.Value;
+            var value = DecimalConversion.ToDecimal(result.Value);
             var unit = result.Symbols;
 
             // Clean up unit representation
@@ -346,7 +347,7 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             var result = Fhir.Metrics.Quantity.Divide(leftCanonical, rightCanonical);
 
             // Extract value and unit
-            var value = (decimal)result.Value;
+            var value = DecimalConversion.ToDecimal(result.Value);
             var unit = result.Symbols;
 
             // Handle dimensionless result (same units cancel out)

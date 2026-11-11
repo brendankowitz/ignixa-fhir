@@ -6,6 +6,7 @@
  */
 
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Types;
 
 namespace Ignixa.FhirPath.Evaluation.Functions;
 
@@ -317,8 +318,8 @@ internal static class FunctionHelpers
             case ushort us: result = us; return true;
             case uint ui: result = ui; return true;
             case ulong ul: result = ul; return true;
-            case float f: result = (decimal)f; return true;
-            case double dbl: result = (decimal)dbl; return true;
+            case float f: result = DecimalConversion.FromSingle(f); return true;
+            case double dbl: result = DecimalConversion.FromDouble(dbl); return true;
             default: result = 0; return false;
         }
     }

@@ -1439,8 +1439,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         long l when l >= int.MinValue && l <= int.MaxValue => CreateInteger(checked(-(int)l)),
         long l => CreateDecimal(-(decimal)l),
         decimal d => CreateDecimal(-d),
-        double d => CreateDecimal(-(decimal)d),
-        float f => CreateDecimal(-(decimal)f),
+        double d => CreateDecimal(-DecimalConversion.FromDouble(d)),
+        float f => CreateDecimal(-DecimalConversion.FromSingle(f)),
         FhirQuantity q => FunctionHelpers.CreateQuantity(new FhirQuantity(-q.Value, q.Unit)),
         _ => throw new UnreachableException($"EnsureNumericUnaryOperand admitted '{DescribeOperandType(operand)}'.")
     };
