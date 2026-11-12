@@ -87,31 +87,104 @@ public class IgnixaElementAdapter : IElement
         : null;
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// A named lookup keeps only children whose <see cref="Name"/> matches exactly. Choice children
+    /// are exposed by their base name, so <c>Children("value")</c> returns a <c>valueQuantity</c>
+    /// child named <c>value</c>, and <c>Children("valueQuantity")</c> returns nothing.
+    /// <para>
+    /// A named lookup always asks the wrapped element for that name only, so an element the model
+    /// does not define does not break a lookup of a modelled sibling, and the result does not depend
+    /// on whether <c>Children()</c> ran first. An undefined sibling that starts with a choice name,
+    /// such as <c>valueFoo</c>, makes a lookup of that choice (<c>Children("value")</c>) throw. The
+    /// undefined element itself follows Firely: 5.x never returns it by name, nor, in Passthrough
+    /// mode, anything inside it; 6.x returns both when no settings are passed or in Passthrough mode,
+    /// and throws in Report mode.
+    /// </para>
+    /// <para>
+    /// Results are cached. A child reached both by name and by enumeration is the same adapter
+    /// instance when both lookups list that name's children at the same <see cref="Location"/>s in
+    /// the same order; otherwise each lookup keeps its own adapters with the same values.
+    /// </para>
+    /// </remarks>
     public IReadOnlyList<IElement> Children(string? name = null)
     {
-        // Materialize all children on first access (lazy)
-        if (_cachedAllChildren == null)
+        if (name == null)
         {
-            _cachedAllChildren = _firelyElement.Children()
-                .Select(child => (IElement)new IgnixaElementAdapter(child))
-                .ToArray();
+            return _cachedAllChildren ??= WrapAllChildren();
         }
 
-        // Filter by name if specified
-        if (name == null)
-            return _cachedAllChildren;
-
-        // Cache filtered children to avoid repeated allocations
         _childrenByName ??= new Dictionary<string, IReadOnlyList<IElement>>();
 
-        if (!_childrenByName.TryGetValue(name, out var filtered))
+        if (!_childrenByName.TryGetValue(name, out var named))
         {
-            filtered = _cachedAllChildren.Where(c => c.Name == name).ToArray();
-            _childrenByName[name] = filtered;
+            named = WrapChildrenNamed(name);
+            _childrenByName[name] = named;
         }
 
-        return filtered;
+        return named;
     }
+
+    private IElement[] WrapChildrenNamed(string name)
+    {
+        // Enumerating every child makes Firely throw in Report mode, the 5.x default, for any element
+        // its model does not define, even when the caller wants a modelled sibling, so ask for this
+        // name alone. The Name check keeps the match exact, because Firely 5 matches choice names by
+        // prefix ("amount" also returns "amountType") and Firely 6 also resolves suffixed choice
+        // names such as "valueDateTime".
+        var children = _firelyElement.Children(name).Where(child => child.Name == name).ToArray();
+
+        if (_cachedAllChildren?.Where(child => child.Name == name).ToArray() is { } enumerated
+            && HaveSameLocations(children, enumerated))
+        {
+            return enumerated;
+        }
+
+        return Array.ConvertAll(children, Wrap);
+    }
+
+    private IElement[] WrapAllChildren()
+    {
+        var children = _firelyElement.Children().ToArray();
+        var reusable = ReusableNamedChildren(children);
+
+        return Array.ConvertAll(children, child =>
+            reusable.TryGetValue(child.Name, out var named) ? named.Dequeue() : Wrap(child));
+    }
+
+    // The cached named lookups that can stand in for these children, queued in document order.
+    private Dictionary<string, Queue<IElement>> ReusableNamedChildren(Hl7.Fhir.ElementModel.ITypedElement[] children)
+    {
+        var reusable = new Dictionary<string, Queue<IElement>>();
+
+        if (_childrenByName is null)
+        {
+            return reusable;
+        }
+
+        var enumeratedByName = children.ToLookup(child => child.Name);
+        foreach (var (name, named) in _childrenByName)
+        {
+            if (HaveSameLocations(enumeratedByName[name], named))
+            {
+                reusable[name] = new Queue<IElement>(named);
+            }
+        }
+
+        return reusable;
+    }
+
+    // subsetOf() and supersetOf() accept the same instance before comparing children, which can throw
+    // for an undefined child, yet Firely wraps children afresh on every call, so a child reached by
+    // name and by enumeration should be one adapter. Both lookups list a name's children in document
+    // order, so they pair up by position, and Location confirms every pair. When the Locations
+    // disagree, for example because Firely numbers a run of siblings split by another element
+    // differently in each, the pairing cannot be confirmed, so nothing is shared.
+    private static bool HaveSameLocations(
+        IEnumerable<Hl7.Fhir.ElementModel.ITypedElement> children,
+        IEnumerable<IElement> adapters) =>
+        children.Select(child => child.Location).SequenceEqual(adapters.Select(adapter => adapter.Location));
+
+    private static IElement Wrap(Hl7.Fhir.ElementModel.ITypedElement child) => new IgnixaElementAdapter(child);
 
     /// <inheritdoc/>
     public T? Meta<T>() where T : class
