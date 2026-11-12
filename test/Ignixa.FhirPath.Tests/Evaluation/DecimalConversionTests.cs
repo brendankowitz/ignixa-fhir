@@ -15,7 +15,8 @@ namespace Ignixa.FhirPath.Tests.Evaluation;
 /// <summary>
 /// .NET 11 made (decimal)double exact. <see cref="DecimalConversion"/> keeps the pre-.NET 11 results on every
 /// runtime; the fixed vectors run on all target frameworks and the differential tests compare against the real
-/// cast wherever it still has the old behaviour.
+/// cast wherever it still has the old behaviour. Binary noise in Fhir.Metrics' unit factors is cleaned on the factor
+/// only (.NET 11+), so UCUM results keep their full 28 digit precision.
 /// </summary>
 public class DecimalConversionTests
 {
@@ -64,16 +65,12 @@ public class DecimalConversionTests
         DecimalConversion.ToDecimal(new Exponential(0.01m)).ShouldBe(0.01m);
     }
 
-    // 1/3 has 28 digits. Where the runtime cast is correctly rounded, Fhir.Metrics' own significands are noisy and are
-    // rounded to 15 significant digits (the accepted .NET 11 precision outcome); before .NET 11 nothing is rounded.
-#if NET11_0_OR_GREATER
-    private const decimal OneThird = 0.333333333333333m;
-#else
+    // Long quotients keep all 28 decimal digits on every runtime: only the noisy unit factors are cleaned, never
+    // a value or a result.
     private const decimal OneThird = 0.3333333333333333333333333333m;
-#endif
 
     [Fact]
-    public void GivenLongQuotient_WhenConvertedToDecimal_ThenPrecisionMatchesRuntimeBehaviour()
+    public void GivenLongQuotient_WhenConvertedToDecimal_ThenAll28DigitsAreKept()
     {
         var third = (Exponential)1m / (Exponential)3m;
 
@@ -81,12 +78,75 @@ public class DecimalConversionTests
     }
 
     [Fact]
-    public void GivenQuantitiesWithLongQuotient_WhenDivided_ThenUcumResultMatchesRuntimeBehaviour()
+    public void GivenQuantitiesWithLongQuotient_WhenDivided_ThenUcumResultKeeps28Digits()
     {
         var result = QuantityUnitConverter.Instance.Divide(new FhirQuantity(1m, "m"), new FhirQuantity(3m, "m"));
 
         result.ShouldNotBeNull();
         result.Value.ShouldBe(OneThird);
+    }
+
+    [Fact]
+    public void GivenNoisyUnitFactors_WhenDividedByLongQuotient_ThenUcumResultKeeps28Digits()
+    {
+        var inchOverThreeFeet = QuantityUnitConverter.Instance.Divide(new FhirQuantity(1m, "[in_i]"), new FhirQuantity(3m, "[ft_i]"));
+        var metreOverThreeCentimetres = QuantityUnitConverter.Instance.Divide(new FhirQuantity(1m, "m"), new FhirQuantity(3m, "cm"));
+
+        inchOverThreeFeet.ShouldNotBeNull();
+        inchOverThreeFeet.Value.ShouldBe(0.0277777777777777777777777778m);
+        metreOverThreeCentimetres.ShouldNotBeNull();
+        Math.Abs(metreOverThreeCentimetres.Value - 100m / 3m).ShouldBeLessThan(0.000000000000000000000001m);
+    }
+
+    [Theory]
+    [InlineData(1, "L", "mL", "1000")]
+    [InlineData(100, "cm", "m", "1")]
+    [InlineData(1, "[in_i]", "cm", "2.54")]
+    [InlineData(1, "[gal_us]", "L", "3.785411784")]
+    [InlineData(1, "[mi_i]", "km", "1.609344")]
+    public void GivenNoisyUnitFactors_WhenConverted_ThenBinaryNoiseIsNormalizedOnEveryRuntime(int value, string from, string to, string expected)
+    {
+        var result = QuantityUnitConverter.Instance.Convert(value, from, to);
+
+        result.ShouldNotBeNull();
+        result.Value.ShouldBe(decimal.Parse(expected, CultureInfo.InvariantCulture));
+    }
+
+    [Fact]
+    public void GivenNoisyUnitFactor_WhenMultiplied_ThenBinaryNoiseIsNormalizedOnEveryRuntime()
+    {
+        var result = QuantityUnitConverter.Instance.Multiply(new FhirQuantity(2.0m, "cm"), new FhirQuantity(2.0m, "m"));
+
+        result.ShouldNotBeNull();
+        result.Value.ShouldBe(0.04m);
+    }
+
+    [Fact]
+    public void GivenNoisyFactor_WhenNoiseIsRemoved_ThenItIsRoundedOnlyOnRuntimesWithCorrectlyRoundedCast()
+    {
+        // 1 cm in metres as Fhir.Metrics 1.3.0 yields it on .NET 11.
+        const decimal noisy = 1.0000000000000000208166817117m;
+
+#if NET11_0_OR_GREATER
+        DecimalConversion.UnitFactorsCarryNoise.ShouldBeTrue();
+        DecimalConversion.RemoveFactorNoise(noisy).ShouldBe(1m);
+#else
+        DecimalConversion.UnitFactorsCarryNoise.ShouldBeFalse();
+        DecimalConversion.RemoveFactorNoise(noisy).ShouldBe(noisy);
+#endif
+    }
+
+    [Theory]
+    [InlineData("0.2777777777777777777777777778")] // 1/3.6, the km/h factor
+    [InlineData("0.3333333333333333333333333333")]
+    [InlineData("1.234567890123456789")]
+    [InlineData("1.5")]
+    [InlineData("0")]
+    public void GivenGenuinelyLongOrShortFactor_WhenNoiseIsRemoved_ThenItIsUnchanged(string factor)
+    {
+        var value = decimal.Parse(factor, CultureInfo.InvariantCulture);
+
+        DecimalConversion.RemoveFactorNoise(value).ShouldBe(value);
     }
 
     [Theory]

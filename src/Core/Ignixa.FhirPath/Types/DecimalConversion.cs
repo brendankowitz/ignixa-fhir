@@ -28,10 +28,11 @@ namespace Ignixa.FhirPath.Types;
 /// </para>
 /// <para>
 /// <see cref="Exponential"/> in Fhir.Metrics computes <c>Significand * (decimal)Math.Pow(10, Exponent)</c>.
-/// <see cref="ToDecimal(Exponential)"/> evaluates the same product with an exact power of ten, which is what the
-/// former cast produced. Where the runtime cast is correctly rounded the library's significands carry binary noise,
-/// which is rounded to 15 significant digits; elsewhere the significand is never rounded, so long quotients keep
-/// all 28 digits.
+/// <see cref="ToDecimal(Exponential, bool)"/> evaluates the same product with an exact power of ten, which is what the
+/// former cast produced. The binary noise that the library's unit factors carry on .NET 11 is removed from the factor
+/// (<see cref="RemoveFactorNoise"/>) and never from a value or a result, so long quotients keep all 28 digits on every
+/// runtime. The only intended difference on .NET 11 is that trailing zeros of a result computed from a cleaned
+/// factor are dropped (<c>2.0 'cm' * 2.0 'm'</c> is <c>0.04</c>, not <c>0.040000</c>).
 /// </para>
 /// </remarks>
 internal static class DecimalConversion
@@ -95,19 +96,20 @@ internal static class DecimalConversion
 
     /// <summary>
     /// Converts a <see cref="Exponential"/> to <see cref="decimal"/>: <c>Significand * 10^Exponent</c> with an exact
-    /// power of ten, matching Fhir.Metrics' own formula before .NET 11.
+    /// power of ten, matching Fhir.Metrics' own formula before .NET 11. The significand is never rounded, so long
+    /// quotients such as <c>1/3</c> keep all 28 digits.
     /// </summary>
-    /// <remarks>
-    /// Where the runtime cast is correctly rounded (.NET 11+), Fhir.Metrics itself builds significands from
-    /// <c>(decimal)double</c> values, so the result carries binary noise (<c>2149.99999999999995836...</c>) that is
-    /// rounded off to 15 significant digits. Earlier runtimes yield noise-free significands, so the result is returned
-    /// untouched and long quotients such as <c>1/3</c> keep all 28 digits.
-    /// </remarks>
+    /// <param name="value">The value to convert.</param>
+    /// <param name="dropTrailingZeros">
+    /// Drops trailing zeros on runtimes where the cast is correctly rounded (.NET 11+), where the operands of the
+    /// calculation had their unit factor cleaned by <see cref="RemoveFactorNoise"/>. Earlier runtimes never produce those
+    /// zeros from a cleaned operand, so the flag has no effect there.
+    /// </param>
     /// <exception cref="OverflowException">The value is outside the range of <see cref="decimal"/>.</exception>
-    public static decimal ToDecimal(Exponential value)
+    public static decimal ToDecimal(Exponential value, bool dropTrailingZeros = false)
     {
         var result = value.Significand * PowerOfTen(value.Exponent);
-        return CastIsCorrectlyRounded ? RemoveNoise(result) : result;
+        return dropTrailingZeros && CastIsCorrectlyRounded ? result / TrailingZeroStripper : result;
     }
 
     // Probed at run time rather than compile time so that the right behaviour is chosen for the runtime
@@ -115,30 +117,60 @@ internal static class DecimalConversion
     private static readonly bool CastIsCorrectlyRounded = (decimal)Math.Pow(10.0, -2) != 0.01m;
 
     /// <summary>
-    /// Rounds to 15 significant digits, and only when that changes the value, so that exact results keep their scale.
+    /// Whether Fhir.Metrics leaves binary noise in the factors of its unit conversions on this runtime
+    /// (.NET 11+), so that canonical quantities need <see cref="RemoveFactorNoise"/>.
     /// </summary>
-    private static decimal RemoveNoise(decimal value)
+    public static bool UnitFactorsCarryNoise => CastIsCorrectlyRounded;
+
+    // A few chained double casts, each with a relative rounding error of at most 1.1e-16. The noisiest factor of
+    // the UCUM units covered by the test sweep (dL, [gal_us], [pt_us]) is 3.1e-16 off.
+    private const decimal FactorNoiseTolerance = 5e-16m;
+
+    /// <summary>
+    /// Removes the binary noise from the significand of a <em>unit factor</em> such as the canonical form of
+    /// <c>1 cm</c> (<c>1.0000000000000000208...e-2</c>), by rounding it to 15 significant digits when that moves
+    /// it by no more than <see cref="FactorNoiseTolerance"/> (relative). Returns the factor unchanged otherwise.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The noise comes from the unit factors (<c>Power</c> in Fhir.Metrics casts a double), so it is cleaned on the
+    /// factor, which is a fixed property of the unit, and never on a user value or on a result. The calculation then
+    /// multiplies the clean factor by the exact value, and the later multiplication or division is exact significand
+    /// arithmetic, so <c>1 'm' / 3 'm'</c> keeps all 28 digits. Factors that genuinely need more than 15 digits,
+    /// such as the 1/3.6 of <c>km/h</c>, lie further from the 15 digit grid than the tolerance and are kept as they are.
+    /// </para>
+    /// <para>
+    /// Residual risk: a unit factor that is genuinely longer than 15 digits and happens to lie within the tolerance of
+    /// a 15 digit value is rounded.
+    /// </para>
+    /// </remarks>
+    public static decimal RemoveFactorNoise(decimal factor)
     {
-        if (value == 0m)
+        if (!CastIsCorrectlyRounded || factor == 0m)
         {
-            return value;
+            return factor;
         }
 
-        var magnitude = (int)Math.Floor(Math.Log10((double)Math.Abs(value)));
+        var magnitude = (int)Math.Floor(Math.Log10((double)Math.Abs(factor)));
         var decimals = Math.Min(DoubleSignificantDigits - 1 - magnitude, MaxDecimalScale);
 
         decimal rounded;
         if (decimals >= 0)
         {
-            rounded = decimal.Round(value, decimals, MidpointRounding.AwayFromZero);
+            rounded = decimal.Round(factor, decimals, MidpointRounding.AwayFromZero);
         }
         else
         {
-            var factor = PowerOfTen(-decimals);
-            rounded = decimal.Round(value / factor, 0, MidpointRounding.AwayFromZero) * factor;
+            var scale = PowerOfTen(-decimals);
+            rounded = decimal.Round(factor / scale, 0, MidpointRounding.AwayFromZero) * scale;
         }
 
-        return rounded == value ? value : rounded / TrailingZeroStripper;
+        if (rounded == factor || Math.Abs(rounded - factor) > Math.Abs(factor) * FactorNoiseTolerance)
+        {
+            return factor;
+        }
+
+        return rounded / TrailingZeroStripper;
     }
 
     /// <summary>

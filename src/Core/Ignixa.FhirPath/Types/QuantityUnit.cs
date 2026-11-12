@@ -197,14 +197,14 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             var sourceQty = new Fhir.Metrics.Quantity(sourceValue, fromMetric);
 
             // Convert to canonical form
-            var canonical = _ucum.Canonical(sourceQty);
+            var canonical = CanonicalWithoutNoise(sourceQty, out var sourceDenoised);
             if (canonical == null)
                 return null;
 
             // Create target quantity in canonical form and convert back
             var targetValue = new Exponential(1m);
             var targetCanonical = new Fhir.Metrics.Quantity(targetValue, toMetric);
-            var targetInCanonical = _ucum.Canonical(targetCanonical);
+            var targetInCanonical = CanonicalWithoutNoise(targetCanonical, out var targetDenoised);
 
             if (targetInCanonical == null)
                 return null;
@@ -218,9 +218,9 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             // We need: (source_canonical / target_canonical_for_unit_1) = result_in_target_units
             var ratio = canonical.Value / targetInCanonical.Value;
 
-            // Exponential has explicit conversion to decimal, but it scales with (decimal)Math.Pow, which
+            // Exponential has an explicit conversion to decimal, but it scales with (decimal)Math.Pow, which
             // is inexact on .NET 11 (see DecimalConversion).
-            return DecimalConversion.ToDecimal(ratio);
+            return DecimalConversion.ToDecimal(ratio, sourceDenoised || targetDenoised);
         }
         catch
         {
@@ -282,8 +282,8 @@ public class QuantityUnitConverter : IQuantityUnitConverter
 
             // Convert both to canonical form (base units) before multiplying
             // This handles cases like cm * m by converting cm to m first
-            var leftCanonical = _ucum.Canonical(leftQty);
-            var rightCanonical = _ucum.Canonical(rightQty);
+            var leftCanonical = CanonicalWithoutNoise(leftQty, out var leftDenoised);
+            var rightCanonical = CanonicalWithoutNoise(rightQty, out var rightDenoised);
             
             if (leftCanonical == null || rightCanonical == null)
                 return null;
@@ -292,7 +292,7 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             var result = Fhir.Metrics.Quantity.Multiply(leftCanonical, rightCanonical);
 
             // Extract value and unit
-            var value = DecimalConversion.ToDecimal(result.Value);
+            var value = DecimalConversion.ToDecimal(result.Value, leftDenoised || rightDenoised);
             var unit = result.Symbols;
 
             // Clean up unit representation
@@ -337,8 +337,8 @@ public class QuantityUnitConverter : IQuantityUnitConverter
 
             // Convert both to canonical form (base units) before dividing
             // This handles cases like kg / g by converting both to base units
-            var leftCanonical = _ucum.Canonical(leftQty);
-            var rightCanonical = _ucum.Canonical(rightQty);
+            var leftCanonical = CanonicalWithoutNoise(leftQty, out var leftDenoised);
+            var rightCanonical = CanonicalWithoutNoise(rightQty, out var rightDenoised);
             
             if (leftCanonical == null || rightCanonical == null)
                 return null;
@@ -347,7 +347,7 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             var result = Fhir.Metrics.Quantity.Divide(leftCanonical, rightCanonical);
 
             // Extract value and unit
-            var value = DecimalConversion.ToDecimal(result.Value);
+            var value = DecimalConversion.ToDecimal(result.Value, leftDenoised || rightDenoised);
             var unit = result.Symbols;
 
             // Handle dimensionless result (same units cancel out)
@@ -363,6 +363,45 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             return null;
         }
     }
+
+    /// <summary>
+    /// Converts a quantity to its canonical form and, on runtimes where Fhir.Metrics leaves binary noise in the
+    /// unit factors (.NET 11+), replaces the noisy factor with its 15 digit value (see
+    /// <see cref="DecimalConversion.RemoveFactorNoise"/>). The quantity's own value is multiplied in unchanged.
+    /// </summary>
+    /// <param name="quantity">The quantity to convert.</param>
+    /// <param name="denoised">Whether the unit factor had to be changed.</param>
+    private Fhir.Metrics.Quantity? CanonicalWithoutNoise(Fhir.Metrics.Quantity quantity, out bool denoised)
+    {
+        denoised = false;
+        var canonical = _ucum.Canonical(quantity);
+        if (canonical == null || !DecimalConversion.UnitFactorsCarryNoise)
+        {
+            return canonical;
+        }
+
+        var factor = _ucum.Canonical(new Fhir.Metrics.Quantity(new Exponential(1m), quantity.Metric))?.Value;
+        if (factor is not { } unitFactor)
+        {
+            return canonical;
+        }
+
+        var cleanFactor = DecimalConversion.RemoveFactorNoise(unitFactor.Significand);
+        if (cleanFactor == unitFactor.Significand)
+        {
+            return canonical;
+        }
+
+        var value = default(Exponential);
+        value.Significand = quantity.Value.Significand * cleanFactor;
+        value.Exponent = quantity.Value.Exponent + unitFactor.Exponent;
+        value.Normalize();
+        value.Error = canonical.Value.Error;
+
+        denoised = true;
+        return new Fhir.Metrics.Quantity(value, canonical.Metric);
+    }
+
 
     /// <summary>
     /// Checks if two quantities have the same dimensionality.
