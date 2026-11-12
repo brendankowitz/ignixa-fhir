@@ -29,10 +29,13 @@ namespace Ignixa.FhirPath.Types;
 /// <para>
 /// <see cref="Exponential"/> in Fhir.Metrics computes <c>Significand * (decimal)Math.Pow(10, Exponent)</c>.
 /// <see cref="ToDecimal(Exponential, bool)"/> evaluates the same product with an exact power of ten, which is what the
-/// former cast produced. The binary noise that the library's unit factors carry on .NET 11 is removed from the factor
-/// (<see cref="RemoveFactorNoise"/>) and never from a value or a result, so long quotients keep all 28 digits on every
-/// runtime. The only intended difference on .NET 11 is that trailing zeros of a result computed from a cleaned
-/// factor are dropped (<c>2.0 'cm' * 2.0 'm'</c> is <c>0.04</c>, not <c>0.040000</c>).
+/// former cast produced. The binary noise that the library's unit factors carry on .NET 11 is removed from the
+/// factor of an operation: each unit factor (<see cref="RemoveFactorNoise"/>) and then the combined source/target
+/// ratio or product (<see cref="RemoveCombinedFactorNoise"/>), never from a value or a result, so long quotients keep
+/// all 28 digits on every runtime. The intended differences on .NET 11 are that trailing zeros of a result computed
+/// from a cleaned factor are dropped (<c>2.0 'cm' * 2.0 'm'</c> is <c>0.04</c>, not <c>0.040000</c>), and that a
+/// result whose factor was noisy on .NET 10 can be more exact (<c>100 'm/s'</c> is <c>360 'km/h'</c>); a factor that
+/// is genuinely longer than 15 digits (<c>km/h</c>) cannot be cleaned and keeps its residual error.
 /// </para>
 /// </remarks>
 internal static class DecimalConversion
@@ -144,33 +147,52 @@ internal static class DecimalConversion
     /// a 15 digit value is rounded.
     /// </para>
     /// </remarks>
-    public static decimal RemoveFactorNoise(decimal factor)
+    public static decimal RemoveFactorNoise(decimal factor) => Snap(factor, FactorNoiseTolerance);
+
+    // What is left in the ratio or product of two factors that were each cleaned: compound units such as mL/min
+    // (1e-6 / 60) have a genuinely long factor that cannot be cleaned on its own, and its binary noise (at most
+    // 3e-17 for the units in the test sweep) shows up again when two such factors are combined. The window is
+    // much tighter than FactorNoiseTolerance because genuinely long combined factors are common (L to [tsp_us]
+    // lies 8e-17 from its 15 digit value, 1/12 of in/ft 4e-16) and must not be snapped.
+    private const decimal CombinedFactorNoiseTolerance = 5e-17m;
+
+    /// <summary>
+    /// Removes the binary noise that remains in the combined factor of an operation, i.e. the ratio of the source and
+    /// target factor of a conversion or division, or the product of the factors of a multiplication. A combined factor
+    /// such as the 1000 between <c>L/min</c> and <c>mL/min</c> must be exact, otherwise <c>1 'L/min'</c> and
+    /// <c>1000 'mL/min'</c> are not equal. Uses a tighter tolerance than <see cref="RemoveFactorNoise"/> (see
+    /// <see cref="CombinedFactorNoiseTolerance"/>) and has the same residual risk.
+    /// </summary>
+    public static decimal RemoveCombinedFactorNoise(decimal factor) => Snap(factor, CombinedFactorNoiseTolerance);
+
+    private static decimal Snap(decimal factor, decimal tolerance)
     {
         if (!CastIsCorrectlyRounded || factor == 0m)
         {
             return factor;
         }
 
-        var magnitude = (int)Math.Floor(Math.Log10((double)Math.Abs(factor)));
-        var decimals = Math.Min(DoubleSignificantDigits - 1 - magnitude, MaxDecimalScale);
-
-        decimal rounded;
-        if (decimals >= 0)
-        {
-            rounded = decimal.Round(factor, decimals, MidpointRounding.AwayFromZero);
-        }
-        else
-        {
-            var scale = PowerOfTen(-decimals);
-            rounded = decimal.Round(factor / scale, 0, MidpointRounding.AwayFromZero) * scale;
-        }
-
-        if (rounded == factor || Math.Abs(rounded - factor) > Math.Abs(factor) * FactorNoiseTolerance)
+        var rounded = RoundToDoubleDigits(factor);
+        if (rounded == factor || Math.Abs(rounded - factor) > Math.Abs(factor) * tolerance)
         {
             return factor;
         }
 
         return rounded / TrailingZeroStripper;
+    }
+
+    private static decimal RoundToDoubleDigits(decimal factor)
+    {
+        var magnitude = (int)Math.Floor(Math.Log10((double)Math.Abs(factor)));
+        var decimals = Math.Min(DoubleSignificantDigits - 1 - magnitude, MaxDecimalScale);
+
+        if (decimals >= 0)
+        {
+            return decimal.Round(factor, decimals, MidpointRounding.AwayFromZero);
+        }
+
+        var scale = PowerOfTen(-decimals);
+        return decimal.Round(factor / scale, 0, MidpointRounding.AwayFromZero) * scale;
     }
 
     /// <summary>

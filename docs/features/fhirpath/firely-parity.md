@@ -276,6 +276,36 @@ against 176 on net10, because `1 'm' + 1 'cm'` no longer agrees on five subjects
 pins once the upstream packages stop adding the noise; the pinned divergences will vanish and the test
 will say so.
 
+*How the noise is removed.* Conversions are linear, so Ignixa cleans the unit **factor**, never the
+result: first each unit factor, then once more the combined factor that is applied to the value (source
+over target for conversion and division, the product for multiplication). The second stage is what
+makes compound units exact (`1000 'mL/min'` converts to exactly `1 'L/min'`, `1 'L/h' = 1000 'mL/h'`
+and `1 'L/h' + 500 'mL/h'` hold, `1 [mi_i]/h` is exactly `1.609344 km/h`, `10 gon` is exactly `9 deg`).
+Results keep their full 28-digit precision (`1 'm' / 3 'm'`), and net10 takes the unchanged Fhir.Metrics
+path, so its results are byte-identical to before.
+
+*Value differences versus net10, beyond trailing zeros.* The two kinds are pinned separately in
+`DecimalConversionTests` (strings, so both a value and a scale change fail):
+
+- **Scale only** (the net11 value is the same number without the trailing zeros): the cases above,
+  `1000 'mL/min'` to `L/min` (`1.000` on net10, `1` on net11), and values near 1e-28 such as
+  `1e-28 [tsp_us]` to `[min_us]`. No natural conversion changes its *value* at that magnitude.
+- **Value changes**: a few net10 results carried the rounding error of the old 15-digit cast and net11 now
+  returns the mathematically correct value. Pinned: `100 m/s` to `km/h` (`359.99999999999856` on net10,
+  `360` on net11), `1 [mi_i]/h` to `m/s` (`0.44704000000000178816` on net10, `0.44704`), `1 [tsp_us]` to
+  `[min_us]` (`79.99999999999976` on net10, `80`) and `0.001 [min_us]` to `[pt_us]` (differs from the
+  third-from-last digit group, about 1e-21). Treat the net11 values as the correct ones.
+
+*Residual limitation.* Only factors that are a short decimal (within 15 significant digits) can be
+cleaned. Factors that are genuinely long - anything involving a division by 3, 7, 9 or pi, such as
+`km/h` to `m/s`, `rad` to `deg`, `deg` to `gon` and the reverse direction of a compound conversion
+(`1.609344 km/h` to `[mi_i]/h`, hence `10 'gon' = 9 'deg'`, which converts `deg` to `gon`) - keep the
+upstream binary error on net11 at about the 16th-17th digit (`1 km/h` is `0.2777777777777777700678956622 m/s`
+on net11 and `0.2777777777777788888888888889` on net10; neither is exact, and the true value is
+`0.27777...`). The combined-factor tolerance (5e-17) is deliberately tight so that such genuine long
+factors are not rounded onto a short decimal; the cost is that a genuinely long factor that happens
+to lie within that tolerance of a 15-digit value would be treated as noise.
+
 ### 10. Time plus a quantity
 
 `@T10:30:00 + 1 hour`: Firely throws `InvalidOperationException`; **Ignixa returns `11:30:00`, which

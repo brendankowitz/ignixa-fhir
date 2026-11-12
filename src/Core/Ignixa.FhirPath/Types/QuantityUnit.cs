@@ -197,14 +197,14 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             var sourceQty = new Fhir.Metrics.Quantity(sourceValue, fromMetric);
 
             // Convert to canonical form
-            var canonical = CanonicalWithoutNoise(sourceQty, out var sourceDenoised);
+            var canonical = _ucum.Canonical(sourceQty);
             if (canonical == null)
                 return null;
 
             // Create target quantity in canonical form and convert back
             var targetValue = new Exponential(1m);
             var targetCanonical = new Fhir.Metrics.Quantity(targetValue, toMetric);
-            var targetInCanonical = CanonicalWithoutNoise(targetCanonical, out var targetDenoised);
+            var targetInCanonical = _ucum.Canonical(targetCanonical);
 
             if (targetInCanonical == null)
                 return null;
@@ -218,9 +218,15 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             // We need: (source_canonical / target_canonical_for_unit_1) = result_in_target_units
             var ratio = canonical.Value / targetInCanonical.Value;
 
+            var denoised = TryRemoveFactorNoise(fromMetric, toMetric, divide: true, out var factor);
+            if (denoised)
+            {
+                ratio = sourceValue * factor;
+            }
+
             // Exponential has an explicit conversion to decimal, but it scales with (decimal)Math.Pow, which
             // is inexact on .NET 11 (see DecimalConversion).
-            return DecimalConversion.ToDecimal(ratio, sourceDenoised || targetDenoised);
+            return DecimalConversion.ToDecimal(ratio, denoised);
         }
         catch
         {
@@ -282,8 +288,8 @@ public class QuantityUnitConverter : IQuantityUnitConverter
 
             // Convert both to canonical form (base units) before multiplying
             // This handles cases like cm * m by converting cm to m first
-            var leftCanonical = CanonicalWithoutNoise(leftQty, out var leftDenoised);
-            var rightCanonical = CanonicalWithoutNoise(rightQty, out var rightDenoised);
+            var leftCanonical = _ucum.Canonical(leftQty);
+            var rightCanonical = _ucum.Canonical(rightQty);
             
             if (leftCanonical == null || rightCanonical == null)
                 return null;
@@ -292,7 +298,14 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             var result = Fhir.Metrics.Quantity.Multiply(leftCanonical, rightCanonical);
 
             // Extract value and unit
-            var value = DecimalConversion.ToDecimal(result.Value, leftDenoised || rightDenoised);
+            var resultValue = result.Value;
+            var denoised = TryRemoveFactorNoise(leftMetric, rightMetric, divide: false, out var factor);
+            if (denoised)
+            {
+                resultValue = leftQty.Value * rightQty.Value * factor;
+            }
+
+            var value = DecimalConversion.ToDecimal(resultValue, denoised);
             var unit = result.Symbols;
 
             // Clean up unit representation
@@ -337,8 +350,8 @@ public class QuantityUnitConverter : IQuantityUnitConverter
 
             // Convert both to canonical form (base units) before dividing
             // This handles cases like kg / g by converting both to base units
-            var leftCanonical = CanonicalWithoutNoise(leftQty, out var leftDenoised);
-            var rightCanonical = CanonicalWithoutNoise(rightQty, out var rightDenoised);
+            var leftCanonical = _ucum.Canonical(leftQty);
+            var rightCanonical = _ucum.Canonical(rightQty);
             
             if (leftCanonical == null || rightCanonical == null)
                 return null;
@@ -347,7 +360,14 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             var result = Fhir.Metrics.Quantity.Divide(leftCanonical, rightCanonical);
 
             // Extract value and unit
-            var value = DecimalConversion.ToDecimal(result.Value, leftDenoised || rightDenoised);
+            var resultValue = result.Value;
+            var denoised = TryRemoveFactorNoise(leftMetric, rightMetric, divide: true, out var factor);
+            if (denoised)
+            {
+                resultValue = leftQty.Value / rightQty.Value * factor;
+            }
+
+            var value = DecimalConversion.ToDecimal(resultValue, denoised);
             var unit = result.Symbols;
 
             // Handle dimensionless result (same units cancel out)
@@ -365,41 +385,50 @@ public class QuantityUnitConverter : IQuantityUnitConverter
     }
 
     /// <summary>
-    /// Converts a quantity to its canonical form and, on runtimes where Fhir.Metrics leaves binary noise in the
-    /// unit factors (.NET 11+), replaces the noisy factor with its 15 digit value (see
-    /// <see cref="DecimalConversion.RemoveFactorNoise"/>). The quantity's own value is multiplied in unchanged.
+    /// On runtimes where Fhir.Metrics leaves binary noise in the factors of its unit conversions (.NET 11+), computes
+    /// the noise free factor that takes the combined values of an operation to the canonical unit: the ratio
+    /// (<paramref name="divide"/>) or product of the factors of the two units. The factor of each unit is cleaned
+    /// first (<see cref="DecimalConversion.RemoveFactorNoise"/>) and the combined factor afterwards
+    /// (<see cref="DecimalConversion.RemoveCombinedFactorNoise"/>), because the factor of a compound unit such as
+    /// <c>mL/min</c> is genuinely long and can only be cleaned once it is combined with another, e.g. into the exact
+    /// 1000 between <c>L/min</c> and <c>mL/min</c>. The factor is applied to the exact operand values, so quotients
+    /// keep all 28 digits.
     /// </summary>
-    /// <param name="quantity">The quantity to convert.</param>
-    /// <param name="denoised">Whether the unit factor had to be changed.</param>
-    private Fhir.Metrics.Quantity? CanonicalWithoutNoise(Fhir.Metrics.Quantity quantity, out bool denoised)
+    /// <returns>
+    /// <see langword="true"/> when the factor differs from the one Fhir.Metrics would use; otherwise the caller keeps
+    /// the Fhir.Metrics result, which is always the case before .NET 11.
+    /// </returns>
+    private bool TryRemoveFactorNoise(Metric left, Metric right, bool divide, out Exponential factor)
     {
-        denoised = false;
-        var canonical = _ucum.Canonical(quantity);
-        if (canonical == null || !DecimalConversion.UnitFactorsCarryNoise)
+        factor = default;
+        if (!DecimalConversion.UnitFactorsCarryNoise)
         {
-            return canonical;
+            return false;
         }
 
-        var factor = _ucum.Canonical(new Fhir.Metrics.Quantity(new Exponential(1m), quantity.Metric))?.Value;
-        if (factor is not { } unitFactor)
+        var leftFactor = _ucum.Canonical(new Fhir.Metrics.Quantity(new Exponential(1m), left))?.Value;
+        var rightFactor = _ucum.Canonical(new Fhir.Metrics.Quantity(new Exponential(1m), right))?.Value;
+        if (leftFactor is not { } rawLeft || rightFactor is not { } rawRight)
         {
-            return canonical;
+            return false;
         }
 
-        var cleanFactor = DecimalConversion.RemoveFactorNoise(unitFactor.Significand);
-        if (cleanFactor == unitFactor.Significand)
-        {
-            return canonical;
-        }
+        var rawFactor = divide ? rawLeft / rawRight : rawLeft * rawRight;
 
-        var value = default(Exponential);
-        value.Significand = quantity.Value.Significand * cleanFactor;
-        value.Exponent = quantity.Value.Exponent + unitFactor.Exponent;
-        value.Normalize();
-        value.Error = canonical.Value.Error;
+        var cleanLeft = RemoveFactorNoise(rawLeft);
+        var cleanRight = RemoveFactorNoise(rawRight);
+        factor = divide ? cleanLeft / cleanRight : cleanLeft * cleanRight;
+        factor.Significand = DecimalConversion.RemoveCombinedFactorNoise(factor.Significand);
+        factor.Normalize();
 
-        denoised = true;
-        return new Fhir.Metrics.Quantity(value, canonical.Metric);
+        return factor.Significand != rawFactor.Significand || factor.Exponent != rawFactor.Exponent;
+    }
+
+    private static Exponential RemoveFactorNoise(Exponential factor)
+    {
+        factor.Significand = DecimalConversion.RemoveFactorNoise(factor.Significand);
+        factor.Normalize();
+        return factor;
     }
 
 

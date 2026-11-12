@@ -178,6 +178,14 @@ public class QuantityOperandTypeTests
     [InlineData("1 'mg' < 1 'g'", true)]
     [InlineData("1 'mg' = 1000 'ug'", true)]
     [InlineData("1 'mg' > 1 'g'", false)]
+    [InlineData("1 'L/h' = 1000 'mL/h'", true)]
+    [InlineData("1 'L/min' = 1000 'mL/min'", true)]
+    [InlineData("1000 'mL/min' = 1 'L/min'", true)]
+    [InlineData("1 'L/h' < 1001 'mL/h'", true)]
+    // The sum is compared rather than rendered: net10 keeps the trailing-zero scale ("1.50 'L/h'"), which is pinned
+    // separately; the value must be exactly 1.5 on every runtime.
+    [InlineData("(1 'L/h' + 500 'mL/h') = 1.5 'L/h'", true)]
+    [InlineData("(1 'L/h' + 500 'mL/h') = 1500 'mL/h'", true)]
     public void GivenQuantitiesWithCompatibleUnits_WhenCompared_ThenTheyAreConverted(string expression, bool expected)
     {
         // Act

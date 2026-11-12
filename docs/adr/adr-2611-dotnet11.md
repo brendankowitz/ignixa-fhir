@@ -49,6 +49,10 @@ Before this change the repository built with the .NET 10 SDK; packable Core libr
 - `TarReader` validates entry checksums, so previously tolerated malformed archives may be rejected.
 - `Math.Round(double, int)` behaviour changed; numeric outputs that depend on rounding need checking.
 
+**Accepted numeric outcome (FHIRPath quantities and decimals):**
+- .NET 11 made `(decimal)double` exact, so Fhir.Metrics unit factors carry binary noise. `net10.0` behaviour is unchanged (byte-identical). On `net11.0` the noise is removed from the unit factor, per factor and then on the combined source/target factor, so equivalent compound units convert, compare and add exactly and full 28-digit precision is kept.
+- Accepted differences on `net11.0`: results lose net10's trailing zeros (scale only), a few results that carried the old 15-digit rounding error now have the correct value (for example `100 m/s` to `km/h` is `360`), and conversions through genuinely long factors (`km/h` to `m/s`, `rad` to `deg`) keep upstream binary error in the 16th-17th digit. All of these are pinned per target framework in tests and described in `docs/features/fhirpath/firely-parity.md`.
+
 ## Implementation Checklist
 
 - [x] `global.json` pins SDK `11.0.100`
