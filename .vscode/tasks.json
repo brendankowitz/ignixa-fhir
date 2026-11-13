@@ -7,7 +7,7 @@
       "type": "process",
       "args": [
         "build",
-        "${workspaceFolder}/src/Ignixa.Api/Ignixa.Api.csproj",
+        "${workspaceFolder}/src/Application/Ignixa.Web/Ignixa.Web.csproj",
         "/property:GenerateFullPaths=true",
         "/consoleloggerparameters:NoSummary;ForceNoAlign"
       ],

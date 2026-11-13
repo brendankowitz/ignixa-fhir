@@ -40,7 +40,7 @@ internal static class TestElementResolver
         }
 
         // Contained reference: #id
-        if (reference.StartsWith('#'))
+        if (reference.StartsWith("#", StringComparison.Ordinal))
         {
             var containedId = reference.Substring(1);
             return ResolveContained(root, containedId);
@@ -1054,7 +1054,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
             long => "integer",
             decimal => "decimal",
             double => "decimal",
-            string str when str.StartsWith('@') => ParseFhirPathTypePrefix(str),
+            string str when str.StartsWith("@", StringComparison.Ordinal) => ParseFhirPathTypePrefix(str),
             string => "string",
             FhirTemporal temporal => temporal.Kind switch
             {
@@ -1077,7 +1077,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         {
             return "time";
         }
-        if (value.StartsWith('@') && value.Length > 1)
+        if (value.StartsWith("@", StringComparison.Ordinal) && value.Length > 1)
         {
             if (value.Contains('T', StringComparison.Ordinal) || value.Contains(':', StringComparison.Ordinal))
             {
@@ -1135,7 +1135,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
             return true;
         }
 
-        if ((expectedType == "date" || expectedType == "dateTime") && actualType == "string" && actualValue is string str && str.StartsWith('@'))
+        if ((expectedType == "date" || expectedType == "dateTime") && actualType == "string" && actualValue is string str && str.StartsWith("@", StringComparison.Ordinal))
         {
             return true;
         }
@@ -1200,7 +1200,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
 
         // For unknown types that look like temporal values, normalize them
         // This handles FHIRPath boundary test cases where expected has @ prefix
-        if (expectedType == "unknown" && expectedValue.StartsWith('@'))
+        if (expectedType == "unknown" && expectedValue.StartsWith("@", StringComparison.Ordinal))
         {
             return NormalizeTemporalValue(expectedValue) == NormalizeTemporalValue(actualStr);
         }
@@ -1213,7 +1213,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         // Strip @ prefix (FHIRPath literal syntax)
         value = value.TrimStart('@');
         // Strip T prefix from time values (FHIRPath syntax, not part of value)
-        if (value.StartsWith('T'))
+        if (value.StartsWith("T", StringComparison.Ordinal))
             value = value.Substring(1);
         return value;
     }

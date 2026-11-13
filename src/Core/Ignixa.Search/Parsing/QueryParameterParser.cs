@@ -58,7 +58,7 @@ public class QueryParameterParser : IQueryParameterParser
         }
 
         // Remove leading '?' if present
-        if (queryString.StartsWith('?'))
+        if (queryString.StartsWith("?", StringComparison.Ordinal))
         {
             queryString = queryString.Substring(1);
         }

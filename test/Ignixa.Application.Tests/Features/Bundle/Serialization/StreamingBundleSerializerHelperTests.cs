@@ -36,7 +36,7 @@ public class StreamingBundleSerializerHelperTests
         var json = await SerializeSearchsetWithIssuesAsync(issues, FhirVersion.R4);
 
         // Assert
-        var locations = JsonDocument.Parse(json).RootElement
+        var locations = JsonElement.Parse(json)
             .GetProperty("entry")[0].GetProperty("resource")
             .GetProperty("issue")[0].GetProperty("location");
         locations.GetArrayLength().ShouldBe(1);
@@ -53,7 +53,7 @@ public class StreamingBundleSerializerHelperTests
         var json = await SerializeSearchsetWithIssuesAsync(issues, FhirVersion.R5);
 
         // Assert
-        var locations = JsonDocument.Parse(json).RootElement
+        var locations = JsonElement.Parse(json)
             .GetProperty("issues")
             .GetProperty("issue")[0].GetProperty("location");
         locations.GetArrayLength().ShouldBe(1);
@@ -70,7 +70,7 @@ public class StreamingBundleSerializerHelperTests
         var json = await SerializeSearchsetWithIssuesAsync(issues, FhirVersion.R4);
 
         // Assert
-        var issue = JsonDocument.Parse(json).RootElement
+        var issue = JsonElement.Parse(json)
             .GetProperty("entry")[0].GetProperty("resource")
             .GetProperty("issue")[0];
         issue.TryGetProperty("location", out _).ShouldBeFalse();
@@ -86,7 +86,7 @@ public class StreamingBundleSerializerHelperTests
         var json = await SerializeSearchsetWithIssuesAsync(issues, FhirVersion.R4);
 
         // Assert
-        var expressions = JsonDocument.Parse(json).RootElement
+        var expressions = JsonElement.Parse(json)
             .GetProperty("entry")[0].GetProperty("resource")
             .GetProperty("issue")[0].GetProperty("expression");
         expressions.GetArrayLength().ShouldBe(1);
@@ -105,7 +105,7 @@ public class StreamingBundleSerializerHelperTests
         var json = await SerializeHistoryWithLinksAsync(links);
 
         // Assert
-        var relations = JsonDocument.Parse(json).RootElement.GetProperty("link")
+        var relations = JsonElement.Parse(json).GetProperty("link")
             .EnumerateArray().Select(l => l.GetProperty("relation").GetString()).ToList();
         relations.ShouldBe(["self"]);
     }
@@ -120,7 +120,7 @@ public class StreamingBundleSerializerHelperTests
         var json = await SerializeSearchsetWithIssuesAsync(issues, FhirVersion.R4);
 
         // Assert
-        var fullUrl = JsonDocument.Parse(json).RootElement.GetProperty("entry")[0].GetProperty("fullUrl").GetString();
+        var fullUrl = JsonElement.Parse(json).GetProperty("entry")[0].GetProperty("fullUrl").GetString();
         fullUrl.ShouldBe("urn:uuid:00000000-0000-0000-0000-0000000000d0");
         Guid.TryParse(fullUrl!["urn:uuid:".Length..], out _).ShouldBeTrue();
     }

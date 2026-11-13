@@ -128,7 +128,7 @@ public sealed partial class GraphQlExecutionService(
         }
 
         var trimmed = query.Trim();
-        if (!trimmed.StartsWith('{') || !trimmed.EndsWith('}'))
+        if (!trimmed.StartsWith("{", StringComparison.Ordinal) || !trimmed.EndsWith("}", StringComparison.Ordinal))
         {
             return (null, GraphQlError(
                 "Instance-level $graphql requires a bare selection set per the FHIR GraphQL spec (e.g., { id name { family } }).",

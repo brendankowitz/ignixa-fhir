@@ -618,7 +618,7 @@ public sealed class StructureDefinitionTypeAdapter
         {
             if (!string.IsNullOrEmpty(t.TargetProfile))
             {
-                var slash = t.TargetProfile.LastIndexOf('/');
+                var slash = t.TargetProfile.LastIndexOf("/", StringComparison.Ordinal);
                 targets.Add(slash >= 0 ? t.TargetProfile[(slash + 1)..] : t.TargetProfile);
             }
         }
@@ -636,7 +636,7 @@ public sealed class StructureDefinitionTypeAdapter
 
     private static string ExtractLocalName(string path)
     {
-        var idx = path.LastIndexOf('.');
+        var idx = path.LastIndexOf(".", StringComparison.Ordinal);
         return idx >= 0 ? path[(idx + 1)..] : path;
     }
 

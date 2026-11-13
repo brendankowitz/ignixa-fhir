@@ -404,7 +404,7 @@ public static class FhirPathGrammar
     private static string UnescapeString(string str)
     {
         // Remove quotes if present
-        if (str.StartsWith('\'') && str.EndsWith('\'') && str.Length >= 2)
+        if (str.StartsWith("'", StringComparison.Ordinal) && str.EndsWith("'", StringComparison.Ordinal) && str.Length >= 2)
         {
             str = str.Substring(1, str.Length - 2);
         }
@@ -489,8 +489,8 @@ public static class FhirPathGrammar
     private static string UnescapeIdentifier(string id)
     {
         // Remove quotes/backticks for delimited identifiers
-        if ((id.StartsWith('`') && id.EndsWith('`')) ||
-            (id.StartsWith('"') && id.EndsWith('"')))
+        if (        (id.StartsWith("`", StringComparison.Ordinal) && id.EndsWith("`", StringComparison.Ordinal)) ||
+            (id.StartsWith("\"", StringComparison.Ordinal) && id.EndsWith("\"", StringComparison.Ordinal)))
         {
             return id.Substring(1, id.Length - 2);
         }

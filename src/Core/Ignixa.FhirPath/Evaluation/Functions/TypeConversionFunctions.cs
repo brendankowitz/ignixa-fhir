@@ -403,11 +403,11 @@ internal static partial class TypeConversionFunctions
             var timePart = parts[1];
             timePart = timePart.TrimEnd('Z');
 
-            if (timePart.Contains('+', StringComparison.Ordinal) || (timePart.LastIndexOf('-') > 0))
+            if (timePart.Contains('+', StringComparison.Ordinal) ||             (timePart.LastIndexOf("-", StringComparison.Ordinal) > 0))
             {
                 var tzIndex = timePart.Contains('+', StringComparison.Ordinal)
-                    ? timePart.LastIndexOf('+')
-                    : timePart.LastIndexOf('-');
+                                ? timePart.LastIndexOf("+", StringComparison.Ordinal)
+                                : timePart.LastIndexOf("-", StringComparison.Ordinal);
                 timePart = timePart.Substring(0, tzIndex);
             }
 

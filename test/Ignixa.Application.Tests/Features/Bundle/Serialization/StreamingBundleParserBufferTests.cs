@@ -38,7 +38,7 @@ public class StreamingBundleParserBufferTests
         var entries = await ParseAllAsync(new MemoryStream(Encoding.UTF8.GetBytes(bundleJson)));
 
         entries.Select(e => e.Index).ShouldBe([0, 1, 2]);
-        JsonDocument.Parse(entries[1].RawJson!).RootElement.GetProperty("data").GetString().ShouldBe(data);
+        JsonElement.Parse(entries[1].RawJson!).GetProperty("data").GetString().ShouldBe(data);
     }
 
     [Theory]
@@ -92,9 +92,9 @@ public class StreamingBundleParserBufferTests
 
         var entries = await ParseAllAsync(new MemoryStream(Encoding.UTF8.GetBytes(bundleJson)));
 
-        var expected = JsonDocument.Parse($"\"{escapedValue}\"").RootElement.GetString();
+        var expected = JsonElement.Parse($"\"{escapedValue}\"").GetString();
         entries.Count.ShouldBe(1);
-        JsonDocument.Parse(entries[0].RawJson!).RootElement
+        JsonElement.Parse(entries[0].RawJson!)
             .GetProperty("code").GetProperty("text").GetString().ShouldBe(expected);
     }
 
@@ -139,7 +139,7 @@ public class StreamingBundleParserBufferTests
         }
 
         entries.Count.ShouldBe(1);
-        JsonDocument.Parse(entries[0].RawJson!).RootElement.GetProperty("data").GetString().ShouldBe(data);
+        JsonElement.Parse(entries[0].RawJson!).GetProperty("data").GetString().ShouldBe(data);
     }
 
     [Fact]

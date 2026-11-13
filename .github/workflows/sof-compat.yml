@@ -44,7 +44,11 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          # SqlOnFhir.Tests multi-targets net10.0 and net11.0 and no --framework is passed,
+          # so both runtimes are required.
+          dotnet-version: |
+            10.0.x
+            11.0.x
 
       - name: Run SoF conformance (non-gating)
         id: sof
@@ -60,7 +64,9 @@ jobs:
       - name: Summarize result
         if: always()
         run: |
-          summary=$(grep -hoE 'Failed:[[:space:]]*[0-9]+, Passed:[[:space:]]*[0-9]+, Skipped:[[:space:]]*[0-9]+, Total:[[:space:]]*[0-9]+' artifacts/sof/run.log 2>/dev/null | head -1)
+          # The test project multi-targets net10.0 and net11.0, so there is one result line per
+          # runtime (each ends with its "(netX.0)" suffix). Keep every line so neither is hidden.
+          summary=$(grep -hE 'Failed:[[:space:]]*[0-9]+, Passed:[[:space:]]*[0-9]+, Skipped:[[:space:]]*[0-9]+, Total:[[:space:]]*[0-9]+' artifacts/sof/run.log 2>/dev/null | sed -E 's/^[[:space:]]+//' | sort -u)
           # A missing result line means the run never reached test execution
           # (build/restore/runner failure) — that is NOT conformance drift.
           if [ -n "$summary" ]; then
@@ -68,14 +74,16 @@ jobs:
           else
             echo "SOF_STATUS=no-result" >> "$GITHUB_ENV"
           fi
-          echo "SOF_SUMMARY=${summary:-no test result captured (likely build or runner failure)}" >> "$GITHUB_ENV"
+          summary="${summary:-no test result captured (likely build or runner failure)}"
+          # GITHUB_ENV values are single-line here; join per-runtime lines for the issue body.
+          echo "SOF_SUMMARY=$(printf '%s\n' "$summary" | paste -sd ';' - | sed 's/;/; /g')" >> "$GITHUB_ENV"
           {
             echo "## SQL-on-FHIR conformance vs upstream \`${UPSTREAM_REF}\`"
             echo ""
             echo "Step outcome: **${{ steps.sof.outcome }}**"
             echo ""
             echo "\`\`\`"
-            echo "${summary:-no test result captured (likely build or runner failure)}"
+            echo "$summary"
             echo "\`\`\`"
             echo ""
             grep -hE "Row [0-9]+ column|Failed Ignixa\.SqlOnFhir|Assert\.|error [A-Z]+[0-9]+|expected '" artifacts/sof/run.log 2>/dev/null | sed 's/^/    /' | head -40

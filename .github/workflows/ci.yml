@@ -27,7 +27,7 @@ jobs:
       checks: write
     strategy:
       matrix:
-        dotnet-version: [ '10.0.x' ]
+        dotnet-version: [ '11.0.x' ]
       fail-fast: true
 
     steps:
@@ -178,7 +178,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '11.0.x'
 
       - name: Start SQL Server container
         run: |
@@ -262,7 +262,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '11.0.x'
 
       - name: Start SQL Server container
         run: |
@@ -373,7 +373,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '11.0.x'
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -386,7 +386,7 @@ jobs:
         run: |
           dotnet test test/Ignixa.SqlOnFhir.Tests/Ignixa.SqlOnFhir.Tests.csproj \
             --configuration Release \
-            --framework net10.0 \
+            --framework net11.0 \
             --filter "FullyQualifiedName~OfficialSqlOnFhirTestRunner" \
             --verbosity minimal \
             || echo "::warning::Conformance suite reported failures; publishing report with recorded results"
@@ -478,9 +478,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: |
-            9.0.x
-            10.0.x
+          dotnet-version: '11.0.x'
 
       - name: Restore dependencies
         run: dotnet restore All.sln

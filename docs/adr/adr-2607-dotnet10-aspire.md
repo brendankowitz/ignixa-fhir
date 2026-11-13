@@ -2,9 +2,9 @@
 
 ## Status
 
-Accepted
+Accepted; TFM policy superseded by [ADR 2611](adr-2611-dotnet11.md)
 
-> Phases 1–2 landed in PR #264. Phases 3–5 remain future work.
+> Phases 1–2 landed in PR #264. Phases 3–4 remain future work. Phase 5's TFM removal was done by [ADR 2611](adr-2611-dotnet11.md); the release-note announcement remains open and is tracked there. ADR 2611 also supersedes the multi-targeting, Application-layer, Docker, CI and package-version decisions below (sections 1, 2, 4, 5, 7, 8). The text below is retained as the historical record.
 
 ## Context
 
@@ -159,10 +159,10 @@ Security posture: all initial `10.0.0` pins were bumped to the serviced `10.0.9`
 - [ ] Document Aspire manifest as alternative deployment path
 - [ ] Update README with new development setup instructions
 
-**Phase 5: .NET 9 Deprecation (future)**
-- [ ] Announce deprecation timeline in release notes
-- [ ] Remove `net9.0` from Core TFMs
-- [ ] Remove `net9.0` conditional compilation blocks (`#if NET10_0_OR_GREATER`) where the guard is no longer needed
+**Phase 5: .NET 9 Deprecation (partially done — see [ADR 2611](adr-2611-dotnet11.md))**
+- [ ] Announce deprecation timeline in release notes (still open; tracked in [ADR 2611](adr-2611-dotnet11.md))
+- [x] Remove `net9.0` from Core TFMs (done by [ADR 2611](adr-2611-dotnet11.md); Core now targets `net10.0;net11.0`)
+- [x] Remove `net9.0` conditional compilation blocks (`#if NET10_0_OR_GREATER`) where the guard is no longer needed (none remaining)
 
 ## References
 

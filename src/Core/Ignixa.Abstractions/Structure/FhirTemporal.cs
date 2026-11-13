@@ -521,7 +521,7 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
 
     private static string Normalize(string wire, FhirPrimitive kind)
     {
-        var value = kind == FhirPrimitive.Time && !wire.StartsWith('T')
+        var value = kind == FhirPrimitive.Time && !wire.StartsWith("T", StringComparison.Ordinal)
             ? "T" + wire
             : wire;
 
@@ -533,7 +533,7 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
         var timeZoneSuffix = string.Empty;
         var working = value;
 
-        if (working.EndsWith('Z'))
+        if (working.EndsWith("Z", StringComparison.Ordinal))
         {
             timeZoneSuffix = "Z";
             working = working[..^1];
@@ -541,7 +541,9 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
         else
         {
             var timeIndex = working.IndexOf('T', StringComparison.Ordinal);
-            var offsetIndex = Math.Max(working.LastIndexOf('+'), working.LastIndexOf('-'));
+            var offsetIndex = Math.Max(
+                working.LastIndexOf("+", StringComparison.Ordinal),
+                working.LastIndexOf("-", StringComparison.Ordinal));
             if (timeIndex >= 0 && offsetIndex > timeIndex)
             {
                 timeZoneSuffix = working[offsetIndex..];
@@ -549,7 +551,7 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
             }
         }
 
-        var fractionIndex = working.LastIndexOf('.');
+        var fractionIndex = working.LastIndexOf(".", StringComparison.Ordinal);
         if (fractionIndex < 0)
         {
             return value;
@@ -568,7 +570,7 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
 
     private static FhirTemporalPrecision GetPrecision(string value)
     {
-        if (value.StartsWith('T'))
+        if (value.StartsWith("T", StringComparison.Ordinal))
         {
             return GetTimePrecision(value[1..]);
         }
@@ -624,7 +626,9 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
     private static string StripTimeZone(string timePart)
     {
         var trimmed = timePart.TrimEnd('Z');
-        var offsetIndex = Math.Max(trimmed.LastIndexOf('+'), trimmed.LastIndexOf('-'));
+        var offsetIndex = Math.Max(
+            trimmed.LastIndexOf("+", StringComparison.Ordinal),
+            trimmed.LastIndexOf("-", StringComparison.Ordinal));
 
         return offsetIndex >= 0 ? trimmed[..offsetIndex] : trimmed;
     }
@@ -722,7 +726,7 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
 
     private static bool TryParseTemporal(string value, out DateTimeOffset result)
     {
-        var parseable = value.StartsWith('T') ? TimeOnlyAnchor + value : value;
+        var parseable = value.StartsWith("T", StringComparison.Ordinal) ? TimeOnlyAnchor + value : value;
 
         return DateTimeOffset.TryParse(
             parseable,

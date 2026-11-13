@@ -367,8 +367,8 @@ internal static class QuantityEvaluator
             decimal d => d,
             int i => i,
             long l => l,
-            double dbl => (decimal)dbl,
-            float f => (decimal)f,
+            double dbl => DecimalConversion.FromDouble(dbl),
+            float f => DecimalConversion.FromSingle(f),
             _ => throw new InvalidOperationException($"Cannot convert {value?.GetType().Name ?? "null"} to decimal")
         };
     }

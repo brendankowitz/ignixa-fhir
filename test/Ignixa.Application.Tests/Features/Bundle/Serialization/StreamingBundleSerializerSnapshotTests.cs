@@ -119,7 +119,7 @@ public class StreamingBundleSerializerSnapshotTests
 
         // Assert
         AssertMatchesSnapshot(json, "stu3-history.json");
-        var entryElements = JsonDocument.Parse(json).RootElement.GetProperty("entry").EnumerateArray().ToList();
+        var entryElements = JsonElement.Parse(json).GetProperty("entry").EnumerateArray().ToList();
         entryElements.Count(e => e.TryGetProperty("response", out _)).ShouldBe(0);
     }
 

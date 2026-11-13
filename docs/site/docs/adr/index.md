@@ -57,6 +57,13 @@ All architectural decisions support the **F5 Developer Experience**: a developer
 |-----|-------|--------|
 | [2607](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/adr/adr-2607-testscript-extensions.md) | Custom TestScript Extensions for Automated Conformance Testing | Accepted |
 
+### Platform & Tooling
+
+| ADR | Title | Status |
+|-----|-------|--------|
+| [2607](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/adr/adr-2607-dotnet10-aspire.md) | .NET 10 Support and ASP.NET Aspire Adoption | Accepted; TFM policy superseded by 2611 |
+| [2611](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/adr/adr-2611-dotnet11.md) | .NET 11 Support and net8/net9 Removal | Accepted |
+
 ## ADR Format
 
 Each ADR follows this structure:

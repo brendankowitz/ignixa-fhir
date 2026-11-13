@@ -105,7 +105,7 @@ class Program
     {
         if (cancellationToken.IsCancellationRequested)
         {
-            await Console.Error.WriteLineAsync("Compatibility run cancelled before execution.");
+            await Console.Error.WriteLineAsync("Compatibility run cancelled before execution.", CancellationToken.None);
             return 130;
         }
         PrintHeader();
@@ -135,7 +135,7 @@ class Program
 
         if (!File.Exists(e2eAssemblyPath))
         {
-            await Console.Error.WriteLineAsync($"{Color.Red}✗ ERROR:{Color.Reset} E2E test assembly not found at: {e2eAssemblyPath}");
+            await Console.Error.WriteLineAsync($"{Color.Red}✗ ERROR:{Color.Reset} E2E test assembly not found at: {e2eAssemblyPath}", CancellationToken.None);
             return 2;
         }
 
@@ -343,25 +343,25 @@ class Program
 
         if (report.Cancelled)
         {
-            await Console.Error.WriteLineAsync($"{Color.Red}✗ Compatibility run cancelled; report may be partial.{Color.Reset}");
+            await Console.Error.WriteLineAsync($"{Color.Red}✗ Compatibility run cancelled; report may be partial.{Color.Reset}", CancellationToken.None);
             return 130;
         }
         if (report.RunnerErrors.Count > 0)
         {
             foreach (var error in report.RunnerErrors)
             {
-                await Console.Error.WriteLineAsync($"{Color.Red}✗ Test runner error: {error}{Color.Reset}");
+                await Console.Error.WriteLineAsync($"{Color.Red}✗ Test runner error: {error}{Color.Reset}", CancellationToken.None);
             }
             return 2;
         }
         if (report.Failed > 0)
         {
-            await Console.Error.WriteLineAsync($"{Color.Red}✗ Required compatibility tests failed.{Color.Reset}");
+            await Console.Error.WriteLineAsync($"{Color.Red}✗ Required compatibility tests failed.{Color.Reset}", CancellationToken.None);
             return 1;
         }
         if (report.Passed == 0)
         {
-            await Console.Error.WriteLineAsync($"{Color.Red}✗ No compatibility tests executed successfully: selection was empty or all tests were skipped.{Color.Reset}");
+            await Console.Error.WriteLineAsync($"{Color.Red}✗ No compatibility tests executed successfully: selection was empty or all tests were skipped.{Color.Reset}", CancellationToken.None);
             return 2;
         }
         return 0;

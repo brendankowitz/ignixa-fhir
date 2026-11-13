@@ -207,7 +207,9 @@ public class SqlServerSearchIndexReferenceDataCacheTests : IAsyncLifetime
 
         // Give the second caller every opportunity to race ahead if it were going to (the pre-fix
         // guard would return here immediately, before the load finishes).
-        var completedEarly = await Task.WhenAny(secondCallerTask, Task.Delay(200)) == secondCallerTask;
+        using var watchdog = new CancellationTokenSource();
+        var completedEarly = await Task.WhenAny(secondCallerTask, Task.Delay(200, watchdog.Token)) == secondCallerTask;
+        await watchdog.CancelAsync();
         completedEarly.ShouldBeFalse(
             "the second caller must block until the first caller's load finishes -- returning early " +
             "here means it would go on to read a partially-populated cache, reproducing the original bug");

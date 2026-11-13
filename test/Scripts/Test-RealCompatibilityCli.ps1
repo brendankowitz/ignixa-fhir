@@ -1,5 +1,5 @@
 param(
-    [string]$CliDirectory = (Join-Path $PSScriptRoot '..\Ignixa.Tests.Compatibility.CLI\bin\Debug\net10.0'),
+    [string]$CliDirectory = (Join-Path $PSScriptRoot '..\Ignixa.Tests.Compatibility.CLI\bin\Debug\net11.0'),
     [Parameter(Mandatory)][string]$OutputDirectory
 )
 

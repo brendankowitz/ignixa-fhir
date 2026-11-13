@@ -64,7 +64,7 @@ public class CodeSystemMappingCensusTests
 
     private static string? Problem(IFhirSchemaProvider schema, string path, string system)
     {
-        int dot = path.LastIndexOf('.');
+        int dot = path.LastIndexOf(".", StringComparison.Ordinal);
         string name = path[(dot + 1)..];
         IType? element = schema.GetTypeDefinition(path[..dot])?.Children.SingleOrDefault(child => child.Info.Name == name);
         if (element is not ITypeExtended { Binding.ValueSet: { } valueSet } || element.Info.Primitive != FhirPrimitive.Code)

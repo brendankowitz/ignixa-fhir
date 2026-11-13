@@ -168,5 +168,5 @@ internal static class SearchIndexTableSeeder
     }
 
     private static SearchParameterInfo Parameter(string url, SearchParamType type) =>
-        new(url[(url.LastIndexOf('/') + 1)..], url[(url.LastIndexOf('/') + 1)..], type, new Uri(url));
+        new(url[(url.LastIndexOf("/", StringComparison.Ordinal) + 1)..], url[(url.LastIndexOf("/", StringComparison.Ordinal) + 1)..], type, new Uri(url));
 }

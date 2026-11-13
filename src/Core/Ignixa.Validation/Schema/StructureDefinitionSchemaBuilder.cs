@@ -835,7 +835,7 @@ public class StructureDefinitionSchemaBuilder
         if (element is ITypeExtended { ContentReference: { Length: > 0 } reference })
         {
             snapshotRoot = _buildContext.Value!.Value.Root;
-            if (reference.StartsWith('#'))
+            if (reference.StartsWith("#", StringComparison.Ordinal))
             {
                 nestedTypeDefinition = FindInlineReference(snapshotRoot, reference[1..]);
                 // Generated backbone metadata may be built directly rather than through its
