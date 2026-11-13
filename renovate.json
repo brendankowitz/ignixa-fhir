@@ -155,6 +155,19 @@
       ]
     },
     {
+      "description": "Keep the net10.0 entries of the TFM-conditional packages in Directory.Packages.props on 10.x so Renovate cannot propose moving them to 11.x (the net11.0 entries are unaffected)",
+      "matchDatasources": [
+        "nuget"
+      ],
+      "matchPackageNames": [
+        "/^Microsoft\\.Extensions\\.(Caching\\.Memory|Configuration(\\.(Abstractions|Binder|Json|CommandLine|EnvironmentVariables))?|DependencyInjection(\\.Abstractions)?|FileSystemGlobbing|Http|Options(\\.ConfigurationExtensions)?|Logging(\\.(Console|Abstractions))?|Hosting\\.Abstractions|Localization\\.Abstractions)$/",
+        "System.Collections.Immutable",
+        "System.Security.Cryptography.Xml"
+      ],
+      "matchCurrentVersion": "/^10\\./",
+      "allowedVersions": "/^10\\./"
+    },
+    {
       "description": "Handle DurableTask framework updates",
       "groupName": "DurableTask Framework",
       "schedule": [

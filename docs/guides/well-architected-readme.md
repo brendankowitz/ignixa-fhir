@@ -494,7 +494,7 @@ The agent is designed to work with this FHIR server project's specific architect
 - **Layer Validation:** Checks dependency rules (API → Application → Domain → DataLayer)
 - **Multi-Tenancy:** Validates partition isolation
 - **FHIR Compliance:** Applies healthcare-specific security patterns
-- **Technology Stack:** Understands .NET 9, EF Core, Autofac, Medino patterns
+- **Technology Stack:** Understands .NET 11 (server) and .NET 10/11 (libraries), EF Core, Autofac, Medino patterns
 
 ### Extending the Agent
 To add custom checks:

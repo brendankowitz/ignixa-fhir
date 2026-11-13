@@ -18,9 +18,12 @@ Before this change the repository built with the .NET 10 SDK; packable Core libr
 |-----------|---------------------|
 | Packable Core libraries (`src/Core/**`, `Ignixa.Sidecar.Contracts`) | `net10.0;net11.0` |
 | Public dotnet tools (`Ignixa.DeId.Cli`, `Ignixa.FhirFakes.Cli`, `Ignixa.SqlOnFhir.Cli`, `Ignixa.Validation.Cli`, `Ignixa.ConformanceMatrix.Cli`) | `net10.0;net11.0` |
-| Server and runtime (`src/Application/**`, `src/DataLayer/**`, `Ignixa.Web`), `Ignixa.SchemaUpgrade.Cli`, perf tools, benchmarks | `net11.0` |
+| Server and runtime (`src/Application/**` except `Ignixa.Sidecar.Contracts`, `src/DataLayer/**`, `Ignixa.Web`), `Ignixa.SchemaUpgrade.Cli`, perf tools, benchmarks | `net11.0` |
 | Code generation (`Ignixa.Specification.Generators`) | `net10.0` (was `net8.0`) |
-| Analyzers and source generators | `netstandard2.0` (unchanged) |
+| Analyzers and source generators (including `Ignixa.TestScript.Suites`) | `netstandard2.0` (unchanged) |
+| Test projects | Match the project under test: `net10.0;net11.0` for tests of multi-targeted libraries and tools, `net11.0` for tests of `net11.0`-only components. Retargeting the `net11.0`-only test projects is deferred. |
+
+`Ignixa.Sidecar.Contracts` lives under `src/Application/` but is a packable contracts library, so it is multi-targeted (`net10.0;net11.0`) as listed in the first row rather than `net11.0` only.
 
 - `global.json` pins SDK `11.0.100` with `rollForward: latestFeature`.
 - Container images move to `mcr.microsoft.com/dotnet/sdk:11.0-azurelinux3.0` and `aspnet:11.0-azurelinux3.0`.

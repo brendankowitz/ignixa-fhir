@@ -353,6 +353,8 @@ Values near the decimal limit of 1e-28 give identical strings on both runtimes (
 to `[min_us]` is `0.0000000000000000000000000080`), and results smaller than that still underflow.
 The committed range tests also pin identical results at the upper and lower decimal bounds, including
 `7922816251426433759354395033.5 cm` to `mm` (`79228162514264337593543950335`).
+Those pinned cases are not a guarantee for every input near `decimal.MaxValue`: net11 can return an exact
+result where net10's noisy legacy narrowing overflows and yields empty (null).
 
 ### 10. Time plus a quantity
 
