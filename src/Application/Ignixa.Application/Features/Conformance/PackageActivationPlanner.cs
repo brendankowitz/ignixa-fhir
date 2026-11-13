@@ -278,7 +278,9 @@ public sealed class PackageActivationPlanner(
                         componentData,
                         sp.Name,
                         sp.Description,
-                        activationVersion));
+                        activationVersion,
+                        VectorConfig: sp.VectorConfig,
+                        HasInvalidVectorConfig: sp.HasInvalidVectorConfig));
                 if (staged.ApplyProposedEvent(proposed) is { } issue)
                 {
                     return (events, issue);

@@ -139,4 +139,17 @@ public interface IExpressionVisitor<in TContext, out TOutput>
     /// </remarks>
     TOutput VisitCompositeComponent(CompositeComponentExpression expression, TContext context)
         => throw new NotSupportedException($"{GetType().Name} does not implement {nameof(VisitCompositeComponent)}.");
+
+    /// <summary>
+    /// Visits a <see cref="VectorSearchExpression"/>.
+    /// </summary>
+    /// <param name="expression">The expression to visit.</param>
+    /// <param name="context">The input.</param>
+    /// <remarks>
+    /// Same binary-compatibility rationale as <see cref="VisitSearchParameterPredicate"/>. Also: no
+    /// backend lowers this yet (query-time SQL lowering is Task 7 in the slice-1 plan), so throwing by
+    /// default is the correct behavior for every existing implementor, not just a migration shim.
+    /// </remarks>
+    TOutput VisitVectorSearch(VectorSearchExpression expression, TContext context)
+        => throw new NotSupportedException($"{GetType().Name} does not implement {nameof(VisitVectorSearch)}.");
 }

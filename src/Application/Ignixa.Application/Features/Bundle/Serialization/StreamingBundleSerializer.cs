@@ -133,7 +133,8 @@ public static class StreamingBundleSerializer
         // CA1308 suppressed: JSON requires lowercase values for FHIR compliance
 #pragma warning disable CA1308
         entryWriter.WriteObject("search", w => w
-            .WriteString("mode", resource.SearchMode.ToString().ToLowerInvariant()));
+            .WriteString("mode", resource.SearchMode.ToString().ToLowerInvariant())
+            .WriteOptionalNumber("score", resource.Score));
 #pragma warning restore CA1308
 
         entryWriter.WriteEndObject();
@@ -386,7 +387,8 @@ public static class StreamingBundleSerializer
 
 #pragma warning disable CA1308
         entryWriter.WriteObject("search", w => w
-            .WriteString("mode", resource.SearchMode.ToString().ToLowerInvariant()));
+            .WriteString("mode", resource.SearchMode.ToString().ToLowerInvariant())
+            .WriteOptionalNumber("score", resource.Score));
 #pragma warning restore CA1308
 
         entryWriter.WriteEndObject();

@@ -434,6 +434,8 @@ public sealed class ConformanceState : IDisposable
             Components = sp.Components,
             Name = sp.Name,
             Description = sp.Description,
+            VectorConfig = sp.VectorConfig,
+            HasInvalidVectorConfig = sp.HasInvalidVectorConfig,
             ActivationEventId = eventId,
             PendingSinceEventId = eventId,
             PreviousActivationEventId = outgoing is not null ? latest?.ActivationEventId : null,

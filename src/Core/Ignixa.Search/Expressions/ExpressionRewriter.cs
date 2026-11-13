@@ -111,6 +111,11 @@ public abstract class ExpressionRewriter<TContext> : IExpressionVisitor<TContext
         return new CompositeComponentExpression(expression.ComponentSearchParameter, expression.Position, visitedExpression) { Span = expression.Span };
     }
 
+    public virtual Expression VisitVectorSearch(VectorSearchExpression expression, TContext context)
+    {
+        return expression;
+    }
+
     protected IReadOnlyList<TExpression> VisitArray<TExpression>(IReadOnlyList<TExpression> inputArray, TContext context)
         where TExpression : Expression
     {

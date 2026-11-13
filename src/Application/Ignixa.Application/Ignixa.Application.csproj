@@ -30,6 +30,14 @@
     <PackageReference Include="HotChocolate.AspNetCore" />
     <PackageReference Include="HotChocolate.Execution" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <!-- Semantic vector search (ADR-2610) -->
+    <PackageReference Include="Microsoft.Extensions.AI" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
+    <PackageReference Include="Azure.AI.OpenAI" />
+    <PackageReference Include="Azure.Identity" />
+    <PackageReference Include="Microsoft.ML.Tokenizers" />
+    <PackageReference Include="Microsoft.ML.Tokenizers.Data.O200kBase" />
+    <PackageReference Include="Microsoft.ML.Tokenizers.Data.Cl100kBase" />
   </ItemGroup>
 
   <PropertyGroup>

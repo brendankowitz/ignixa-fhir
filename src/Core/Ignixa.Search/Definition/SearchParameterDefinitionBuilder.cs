@@ -17,6 +17,7 @@ using Ignixa.Abstractions;
 using Ignixa.Search.Exceptions;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
+using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Search.Definition;
 
@@ -26,7 +27,8 @@ internal static class SearchParameterDefinitionBuilder
         IReadOnlyCollection<IElement> searchParameters,
         ConcurrentDictionary<Uri, SearchParameterInfo> uriDictionary,
         ConcurrentDictionary<string, ConcurrentDictionary<string, SearchParameterInfo>> resourceTypeDictionary,
-        IFhirSchemaProvider modelInfoProvider)
+        IFhirSchemaProvider modelInfoProvider,
+        ILogger logger = null)
     {
         EnsureArg.IsNotNull(searchParameters, nameof(searchParameters));
         EnsureArg.IsNotNull(uriDictionary, nameof(uriDictionary));
@@ -36,7 +38,8 @@ internal static class SearchParameterDefinitionBuilder
         ILookup<string, SearchParameterInfo> searchParametersLookup = ValidateAndGetFlattenedList(
             searchParameters,
             uriDictionary,
-            modelInfoProvider).ToLookup(
+            modelInfoProvider,
+            logger).ToLookup(
             entry => entry.ResourceType,
             entry => entry.SearchParameter);
 
@@ -65,18 +68,19 @@ internal static class SearchParameterDefinitionBuilder
                resourceType == "DataElement" && (searchParameterName == "objectClass" || searchParameterName == "objectClassProperty");
     }
 
-    private static SearchParameterInfo GetOrCreateSearchParameterInfo(SearchParameterNavigator searchParameter, IDictionary<Uri, SearchParameterInfo> uriDictionary)
+    private static SearchParameterInfo GetOrCreateSearchParameterInfo(SearchParameterNavigator searchParameter, IDictionary<Uri, SearchParameterInfo> uriDictionary, ILogger logger)
     {
         // Return SearchParameterInfo that has already been created for this Uri
         if (uriDictionary.TryGetValue(new Uri(searchParameter.Url, UriKind.RelativeOrAbsolute), out SearchParameterInfo spi)) return spi;
 
-        return new SearchParameterInfo(searchParameter);
+        return new SearchParameterInfo(searchParameter, logger);
     }
 
     private static List<(string ResourceType, SearchParameterInfo SearchParameter)> ValidateAndGetFlattenedList(
         IReadOnlyCollection<IElement> searchParamCollection,
         IDictionary<Uri, SearchParameterInfo> uriDictionary,
-        IFhirSchemaProvider modelInfoProvider)
+        IFhirSchemaProvider modelInfoProvider,
+        ILogger logger)
     {
         var issues = new List<Ignixa.Models.OperationOutcomeIssue>();
         var searchParameters = searchParamCollection.Select((x, entryIndex) =>
@@ -108,7 +112,7 @@ internal static class SearchParameterDefinitionBuilder
                     continue;
                 }
 
-                SearchParameterInfo searchParameterInfo = GetOrCreateSearchParameterInfo(searchParameter, uriDictionary);
+                SearchParameterInfo searchParameterInfo = GetOrCreateSearchParameterInfo(searchParameter, uriDictionary, logger);
                 uriDictionary.Add(new Uri(searchParameter.Url), searchParameterInfo);
             }
             catch (FormatException)
@@ -146,7 +150,7 @@ internal static class SearchParameterDefinitionBuilder
                     continue;
                 }
 
-                SearchParameterInfo compositeSearchParameter = GetOrCreateSearchParameterInfo(searchParameter, uriDictionary);
+                SearchParameterInfo compositeSearchParameter = GetOrCreateSearchParameterInfo(searchParameter, uriDictionary, logger);
 
                 for (int componentIndex = 0; componentIndex < composites.Count; componentIndex++)
                 {
@@ -214,7 +218,7 @@ internal static class SearchParameterDefinitionBuilder
                     }
                 }
 
-                validatedSearchParameters.Add((baseResourceType, GetOrCreateSearchParameterInfo(searchParameter, uriDictionary)));
+                validatedSearchParameters.Add((baseResourceType, GetOrCreateSearchParameterInfo(searchParameter, uriDictionary, logger)));
             }
         }
 

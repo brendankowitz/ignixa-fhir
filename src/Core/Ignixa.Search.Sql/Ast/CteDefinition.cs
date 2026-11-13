@@ -127,6 +127,32 @@ public abstract record CteDefinition
     public sealed record MatchPage(MatchPageSpec Spec) : CteDefinition;
 
     /// <summary>
+    /// The semantic-search gate: distinct (type, surrogate id) rows of <c>dbo.VectorSearchParam</c> for one
+    /// parameter and embedding model with at least one chunk within <paramref name="MaxDistance"/> (cosine) of
+    /// the query embedding, restricted to resource rows the plan's visibility admits. A gate, not a ranking: it
+    /// composes through Intersect like a <see cref="ParamSource"/>, so filters and authorization apply before
+    /// <see cref="VectorRankSpec"/> orders what survives.
+    /// </summary>
+    /// <param name="ResourceTypeId">The type scope, or null for a system-level (cross-type) search.</param>
+    /// <param name="SearchParamId">The semantic parameter's id.</param>
+    /// <param name="EmbeddingModelId">
+    /// The model the query was embedded with. A schema surrogate inlined as a literal like
+    /// <paramref name="SearchParamId"/>: it is stable per deployment, so it costs no plan-cache entries.
+    /// </param>
+    /// <param name="Embedding">
+    /// The query embedding as the JSON array text <c>CAST(… AS vector(n))</c> accepts (see
+    /// <see cref="Builders.SqlVectorText"/>). Always bound, never inlined, so the statement text does not vary
+    /// with the query.
+    /// </param>
+    /// <param name="MaxDistance">The inclusive cosine-distance threshold, a <see cref="double"/>.</param>
+    public sealed record VectorMatchSource(
+        short? ResourceTypeId,
+        short SearchParamId,
+        short EmbeddingModelId,
+        SqlParameterRef Embedding,
+        SqlParameterRef MaxDistance) : CteDefinition;
+
+    /// <summary>
     /// Removes a has-more probe row from a materialized <see cref="MatchPage"/> before it seeds include stages.
     /// The specification is the exact instance owned by the containing <see cref="QueryPlan"/>.
     /// </summary>

@@ -34,7 +34,7 @@ public class DeferredWriteCoordinatorBarrierTests
 
         var queued = coordinator.QueueWriteAsync(Patient("retry", 11), entryIndex: 7);
         await coordinator.WaitToReadAsync();
-        var errors = await coordinator.ProcessBatchAsync(batchSize: 1, CancellationToken.None);
+        var errors = await coordinator.ProcessBatchAsync(batchSize: 1, Versions(definitionsEventId: 29, _indexer), CancellationToken.None);
 
         errors.ShouldBeEmpty();
         (await queued).Id.ShouldBe("retry");
@@ -54,7 +54,7 @@ public class DeferredWriteCoordinatorBarrierTests
         var second = coordinator.QueueWriteAsync(Patient("second", 11));
         await coordinator.WaitToReadAsync();
 
-        await Should.ThrowAsync<ConformanceStaleException>(() => coordinator.ProcessBatchAsync(batchSize: 2, CancellationToken.None));
+        await Should.ThrowAsync<ConformanceStaleException>(() => coordinator.ProcessBatchAsync(batchSize: 2, Versions(definitionsEventId: 29, _indexer), CancellationToken.None));
         await Should.ThrowAsync<ConformanceStaleException>(() => first);
         await Should.ThrowAsync<ConformanceStaleException>(() => second.WaitAsync(TimeSpan.FromSeconds(10)));
     }
@@ -75,7 +75,7 @@ public class DeferredWriteCoordinatorBarrierTests
         await coordinator.QueueWriteAsync(Patient("first", 11), entryIndex: 0);
         await coordinator.QueueWriteAsync(Patient("second", 11), entryIndex: 1);
 
-        await coordinator.CommitAsync(CancellationToken.None);
+        await coordinator.CommitAsync(Versions(definitionsEventId: 29, _indexer), CancellationToken.None);
 
         attempts.Select(attempt => attempt.Select(write => write.DefinitionsEventId).ToArray()).ShouldBe([[11L, 11L], [29L, 29L]]);
         _indexer.Received(2).Extract(Arg.Any<IElement>());

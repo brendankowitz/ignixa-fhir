@@ -6,6 +6,7 @@
 using System.Runtime.CompilerServices;
 using Medino;
 using Microsoft.Extensions.Logging;
+using Ignixa.Application.Features.SemanticSearch;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
@@ -30,9 +31,10 @@ public class IncludesResourceHandler(
     IPartitionStrategy partitionStrategy,
     IQueryExecutionStrategy executionStrategy,
     IFhirRequestContextAccessor contextAccessor,
-    ILogger<IncludesResourceHandler> logger) : IRequestHandler<IncludesResourceQuery, SearchResourcesResult>
+    ILogger<IncludesResourceHandler> logger,
+    SemanticQueryPreparer? semanticQueryPreparer = null) : IRequestHandler<IncludesResourceQuery, SearchResourcesResult>
 {
-    public Task<SearchResourcesResult> HandleAsync(
+    public async Task<SearchResourcesResult> HandleAsync(
         IncludesResourceQuery request,
         CancellationToken cancellationToken)
     {
@@ -89,6 +91,16 @@ public class IncludesResourceHandler(
             currentOffset,
             pageSize);
 
+        // $includes rebuilds SearchOptions from the request's own query string (above), independently of
+        // whatever search produced the page being paged through -- so a semantic parameter here needs its
+        // own preparation, same as any other search entry point. The embedding cache (keyed by model and
+        // verbatim query text) is what keeps this call's query vector identical to the original search's,
+        // rather than a second, possibly different, embedding of the same text.
+        if (semanticQueryPreparer is not null)
+        {
+            searchOptionsForIncludes = await semanticQueryPreparer.PrepareAsync(searchOptionsForIncludes, cancellationToken);
+        }
+
         var resourceStream = executionStrategy.SearchStreamAsync(
             partition,
             searchOptionsForIncludes,
@@ -105,9 +117,9 @@ public class IncludesResourceHandler(
             Total: null,
             ContinuationToken: null,
             HasMore: false,
-            SearchOptions: request.SearchOptions);
+            SearchOptions: searchOptionsForIncludes); // Prepared instance, same MaxItemCount as the request
 
-        return Task.FromResult(result);
+        return result;
     }
 
     private static async IAsyncEnumerable<SearchEntryResult> FilterIncludesWithPaginationAsync(

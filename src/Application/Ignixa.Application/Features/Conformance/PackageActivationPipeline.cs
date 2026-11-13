@@ -56,7 +56,7 @@ public class PackageActivationPipeline(
         ArgumentNullException.ThrowIfNull(version);
         var leaseStart = conformanceLease.CaptureStart();
         var packageResources = await packageRepo.GetResourcesForActivationAsync(packageId, version, cancellationToken);
-        var resources = PackageResourceMapper.MapToPackageResources(packageResources);
+        var resources = PackageResourceMapper.MapToPackageResources(packageResources, logger);
         var fhirVersion = packageResources.Length > 0 ? packageResources[0].FhirVersion : null;
         logger.LogInformation(
             "Activating package {PackageId}@{Version}: {SearchParamCount} SearchParameters, {StructureDefCount} StructureDefinitions",

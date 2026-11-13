@@ -5,6 +5,7 @@
 
 using EnsureThat;
 using Microsoft.Extensions.Logging;
+using Ignixa.Application.Features.SemanticSearch;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Features.Conformance;
@@ -34,6 +35,7 @@ public class BundleProcessor
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<BundleProcessor> _logger;
     private readonly IFhirVersionContext _fhirVersionContext;
+    private readonly SemanticIndexer? _semanticIndexer;
     private readonly ConformanceBarrierRetryPolicy _barrierRetryPolicy;
 
     public BundleProcessor(
@@ -46,7 +48,8 @@ public class BundleProcessor
         ILoggerFactory loggerFactory,
         ILogger<BundleProcessor> logger,
         IFhirVersionContext fhirVersionContext,
-        ConformanceBarrierRetryPolicy barrierRetryPolicy)
+        ConformanceBarrierRetryPolicy barrierRetryPolicy,
+        SemanticIndexer? semanticIndexer = null)
     {
         _referencePreProcessor = EnsureArg.IsNotNull(referencePreProcessor, nameof(referencePreProcessor));
         _channelExecutor = EnsureArg.IsNotNull(channelExecutor, nameof(channelExecutor));
@@ -57,8 +60,10 @@ public class BundleProcessor
         _loggerFactory = EnsureArg.IsNotNull(loggerFactory, nameof(loggerFactory));
         _logger = EnsureArg.IsNotNull(logger, nameof(logger));
         _fhirVersionContext = EnsureArg.IsNotNull(fhirVersionContext, nameof(fhirVersionContext));
+        _semanticIndexer = semanticIndexer;
         _barrierRetryPolicy = EnsureArg.IsNotNull(barrierRetryPolicy, nameof(barrierRetryPolicy));
     }
+
 
     /// <summary>
     /// Processes a FHIR bundle (transaction or batch) using two-phase streaming.
@@ -106,7 +111,8 @@ public class BundleProcessor
                 fhirVersionContext: _fhirVersionContext,
                 barrierRetryPolicy: _barrierRetryPolicy,
                 logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
-                cancellationToken: cancellationToken);
+                cancellationToken: cancellationToken,
+                semanticIndexer: _semanticIndexer);
 
             // Start background batch processor for Phase 1
             phase1BatchProcessor = StartBatchProcessor(phase1Coordinator, cancellationToken);
@@ -176,7 +182,7 @@ public class BundleProcessor
                 await phase1BatchProcessor!;
 
                 // Commit Phase 1 transaction
-                await phase1Coordinator.CommitAsync(cancellationToken);
+                await phase1Coordinator.CommitAsync(_fhirVersionContext, cancellationToken);
             }
         }
         catch (Exception ex)
@@ -215,7 +221,8 @@ public class BundleProcessor
                     fhirVersionContext: _fhirVersionContext,
                     barrierRetryPolicy: _barrierRetryPolicy,
                     logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
-                    cancellationToken: cancellationToken);
+                    cancellationToken: cancellationToken,
+                    semanticIndexer: _semanticIndexer);
 
                 var phase2BatchProcessor = StartBatchProcessor(phase2Coordinator, cancellationToken);
 
@@ -247,7 +254,7 @@ public class BundleProcessor
                 await phase2BatchProcessor;
 
                 // Commit Phase 2 transaction
-                await phase2Coordinator.CommitAsync(cancellationToken);
+                await phase2Coordinator.CommitAsync(_fhirVersionContext, cancellationToken);
 
                 _logger.LogInformation("Phase 2 complete: {Count} buffered entries processed", bufferedEntries.Count);
             }
@@ -380,7 +387,8 @@ public class BundleProcessor
             ? await DeferredWriteCoordinator.CreateAsync(options.ChannelCapacity,
                 _repositoryFactory, _partitionStrategy, _contextAccessor,
                 _fhirVersionContext, _barrierRetryPolicy,
-                _loggerFactory.CreateLogger<DeferredWriteCoordinator>(), atomic: true, cancellationToken)
+                _loggerFactory.CreateLogger<DeferredWriteCoordinator>(), atomic: true,
+                semanticIndexer: _semanticIndexer, cancellationToken: cancellationToken)
             : null;
         var responses = new Dictionary<int, BundleEntryResponse>();
         var referenceAliases = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -416,7 +424,7 @@ public class BundleProcessor
         cancellationToken.ThrowIfCancellationRequested();
         if (coordinator != null)
         {
-            await coordinator.CommitAtomicAsync(cancellationToken);
+            await coordinator.CommitAtomicAsync(_fhirVersionContext, cancellationToken);
         }
         return _responseBuilder.BuildResponse(responses.OrderBy(r => r.Key)
             .Select(r => coordinator?.CompleteResponse(r.Key, r.Value, referenceAliases) ?? r.Value).ToList(), BundleType.Transaction);
@@ -473,7 +481,8 @@ public class BundleProcessor
                 fhirVersionContext: _fhirVersionContext,
                 barrierRetryPolicy: _barrierRetryPolicy,
                 logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
-                cancellationToken: cancellationToken);
+                cancellationToken: cancellationToken,
+                semanticIndexer: _semanticIndexer);
 
             // Start background batch processor
             batchProcessorTask = StartBatchProcessor(coordinator, cancellationToken);
@@ -494,7 +503,7 @@ public class BundleProcessor
             await batchProcessorTask;
 
             // Commit transaction (rename lock file → committed file)
-            await coordinator.CommitAsync(cancellationToken);
+            await coordinator.CommitAsync(_fhirVersionContext, cancellationToken);
 
             _logger.LogInformation("All deferred writes committed successfully");
         }
@@ -558,7 +567,8 @@ public class BundleProcessor
                 fhirVersionContext: _fhirVersionContext,
                 barrierRetryPolicy: _barrierRetryPolicy,
                 logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
-                cancellationToken: cancellationToken);
+                cancellationToken: cancellationToken,
+                semanticIndexer: _semanticIndexer);
 
             // Start background batch processor
             batchProcessorTask = StartBatchProcessor(coordinator, cancellationToken);
@@ -580,7 +590,7 @@ public class BundleProcessor
             await batchProcessorTask;
 
             // Commit transaction (rename lock file → committed file)
-            await coordinator.CommitAsync(cancellationToken);
+            await coordinator.CommitAsync(_fhirVersionContext, cancellationToken);
 
             _logger.LogInformation("All deferred writes committed successfully");
         }
@@ -642,7 +652,7 @@ public class BundleProcessor
                     // Only process batch if there are actually operations queued
                     if (coordinator.PendingOperationCount > 0)
                     {
-                        var errors = await coordinator.ProcessBatchAsync(batchSize, cancellationToken);
+                        var errors = await coordinator.ProcessBatchAsync(batchSize, _fhirVersionContext, cancellationToken);
                         allErrors.AddRange(errors);
 
                         if (errors.Count > 0)
@@ -753,7 +763,8 @@ public class BundleProcessor
             fhirVersionContext: _fhirVersionContext,
             barrierRetryPolicy: _barrierRetryPolicy,
             logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken,
+            semanticIndexer: _semanticIndexer);
 
         _logger.LogDebug("Created DeferredWriteCoordinator for streaming batch bundle");
 
@@ -772,7 +783,7 @@ public class BundleProcessor
                     // Only process batch if there are actually operations queued
                     if (coordinator.PendingOperationCount > 0)
                     {
-                        var errors = await coordinator.ProcessBatchAsync(batchSize, cancellationToken);
+                        var errors = await coordinator.ProcessBatchAsync(batchSize, _fhirVersionContext, cancellationToken);
 
                         if (errors.Count > 0)
                         {

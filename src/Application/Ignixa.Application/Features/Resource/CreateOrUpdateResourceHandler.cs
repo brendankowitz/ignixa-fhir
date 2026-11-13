@@ -7,6 +7,7 @@ using Ignixa.Abstractions;
 using Medino;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Bundle;
+using Ignixa.Application.Features.SemanticSearch;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -46,6 +47,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
     private readonly ResourceElementOrdering _elementOrdering;
     private readonly ConformanceBarrierRetryPolicy _barrierRetryPolicy;
     private readonly ILogger<CreateOrUpdateResourceHandler> _logger;
+    private readonly SemanticIndexer? _semanticIndexer;
 
     public CreateOrUpdateResourceHandler(
         IPartitionStrategy partitionStrategy,
@@ -55,7 +57,8 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         Func<FhirVersion, IValidationSchemaResolver> schemaResolverFactory,
         ResourceElementOrdering elementOrdering,
         ConformanceBarrierRetryPolicy barrierRetryPolicy,
-        ILogger<CreateOrUpdateResourceHandler> logger)
+        ILogger<CreateOrUpdateResourceHandler> logger,
+        SemanticIndexer? semanticIndexer = null)
     {
         _partitionStrategy = partitionStrategy ?? throw new ArgumentNullException(nameof(partitionStrategy));
         _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
@@ -65,6 +68,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         _elementOrdering = elementOrdering ?? throw new ArgumentNullException(nameof(elementOrdering));
         _barrierRetryPolicy = barrierRetryPolicy ?? throw new ArgumentNullException(nameof(barrierRetryPolicy));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _semanticIndexer = semanticIndexer;
     }
 
     public async Task<UpdateResult> HandleAsync(CreateOrUpdateResourceCommand command, CancellationToken cancellationToken)
@@ -183,11 +187,19 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
                 async ct =>
                 {
                     var wrapper = CreateResourceWrapper(command, fhirVersionEnum, schemaProvider, tenantId);
+                    if (_semanticIndexer is not null)
+                    {
+                        var hasSemanticSearchParameter = BuildSemanticParameterPredicate(fhirVersionEnum, tenantId);
+                        wrapper = (await _semanticIndexer.IndexAsync(
+                            [wrapper],
+                            hasSemanticSearchParameter,
+                            ct))[0];
+                    }
                     return await repository.CreateOrUpdateAsync(wrapper, ct);
                 },
                 cancellationToken);
 
-            // 6. Process X-Provenance header if provided (only for standalone operations)
+            // 7. Process X-Provenance header if provided (only for standalone operations)
             // Provenance cannot be processed in bundle/deferred context because the main resource isn't persisted yet
             if (command.ProvenanceResource != null)
             {
@@ -432,6 +444,19 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             provenanceResult.Key.VersionId,
             mainResourceResult.Key.ResourceType,
             mainResourceResult.Key.Id);
+    }
+
+    /// <summary>
+    /// Builds the predicate <see cref="SemanticIndexer.IndexAsync"/> uses to decide, per resource type,
+    /// whether to evaluate it at all (see that method's remarks): true when the type carries at least one
+    /// active (<c>IsSemantic &amp;&amp; IsSupported</c>) semantic search parameter in this tenant's
+    /// version-scoped definition manager -- the same manager <see cref="CreateResourceWrapper"/> already
+    /// resolves its indexer from for <paramref name="fhirVersion"/>/<paramref name="tenantId"/>.
+    /// </summary>
+    private Func<string, bool> BuildSemanticParameterPredicate(FhirVersion fhirVersion, int? tenantId)
+    {
+        var definitionManager = _fhirVersionContext.GetSearchParameterDefinitionManager(fhirVersion, tenantId);
+        return resourceType => definitionManager.GetSearchParameters(resourceType).Any(p => p.IsSemantic && p.IsSupported);
     }
 
     /// <summary>

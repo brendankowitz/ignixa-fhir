@@ -795,5 +795,11 @@ internal static class CompilationFixtures
             cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult<int?>(null);
         }
+
+        public Task<short?> GetEmbeddingModelIdAsync(string modelKey, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<short?>(null);
+        }
     }
 }

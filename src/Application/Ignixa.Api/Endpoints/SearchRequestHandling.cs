@@ -37,7 +37,11 @@ internal static class SearchRequestHandling
                 "Unsupported search modifier(s) found: {UnsupportedModifierParams}",
                 string.Join(", ", searchOptions.UnsupportedModifierParams.Select(parameter => parameter.SanitizeForLog())));
 
-            return BuildUnsupportedParametersResult(searchOptions.UnsupportedModifierParams, resourceType, isModifierRejection: true);
+            return BuildUnsupportedParametersResult(
+                searchOptions.UnsupportedModifierParams,
+                resourceType,
+                isModifierRejection: true,
+                reasons: searchOptions.UnsupportedModifierReasons);
         }
 
         if (!PreferHeaderParser.IsStrictHandling(context.Request.Headers) ||
@@ -56,15 +60,18 @@ internal static class SearchRequestHandling
     private static IResult BuildUnsupportedParametersResult(
         IReadOnlyList<string> unsupportedParams,
         string? resourceType,
-        bool isModifierRejection)
+        bool isModifierRejection,
+        IReadOnlyDictionary<string, string>? reasons = null)
     {
         var operationOutcome = new OperationOutcome();
         foreach (var parameter in unsupportedParams)
         {
-            var diagnostics = isModifierRejection
-                ? (resourceType is not null
-                    ? $"Search parameter '{parameter}' uses a modifier that is not supported for resource type '{resourceType}'"
-                    : $"Search parameter '{parameter}' uses a modifier that is not supported")
+            var diagnostics = isModifierRejection && reasons is not null && reasons.TryGetValue(parameter, out string? reason)
+                ? $"Search parameter '{parameter}': {reason}"
+                : isModifierRejection
+                    ? (resourceType is not null
+                        ? $"Search parameter '{parameter}' uses a modifier that is not supported for resource type '{resourceType}'"
+                        : $"Search parameter '{parameter}' uses a modifier that is not supported")
                 : (resourceType is not null
                     ? $"Search parameter '{parameter}' is not supported for resource type '{resourceType}'"
                     : $"Search parameter '{parameter}' is not supported");
