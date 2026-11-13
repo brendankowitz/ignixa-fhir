@@ -50,8 +50,11 @@ Before this change the repository built with the .NET 10 SDK; packable Core libr
 - `Math.Round(double, int)` behaviour changed; numeric outputs that depend on rounding need checking.
 
 **Accepted numeric outcome (FHIRPath quantities and decimals):**
-- .NET 11 made `(decimal)double` exact, so Fhir.Metrics unit factors carry binary noise. `net10.0` behaviour is unchanged (byte-identical). On `net11.0` the noise is removed from the unit factor, per factor and then on the combined source/target factor, so equivalent compound units convert, compare and add exactly and full 28-digit precision is kept.
-- Accepted differences on `net11.0`: results lose net10's trailing zeros (scale only), a few results that carried the old 15-digit rounding error now have the correct value (for example `100 m/s` to `km/h` is `360`), and conversions through genuinely long factors (`km/h` to `m/s`, `rad` to `deg`) keep upstream binary error in the 16th-17th digit. All of these are pinned per target framework in tests and described in `docs/features/fhirpath/firely-parity.md`.
+- .NET 11 made `(decimal)double` exact, so Fhir.Metrics unit factors carry binary noise. `net10.0` behaviour is unchanged (byte-identical). On `net11.0` Ignixa does not use the noisy factor. It rebuilds the conversion factor in `decimal` from the unit definitions: prefixes and units shared by both sides cancel, and the value is divided once at the end. Nothing is rounded to a tolerance, and 28-digit quotients are kept. A one-off sweep of 49 common units (2352 ordered pairs) found no net11 conversion further than the last decimal place from an exact reference built from the Fhir.Metrics unit table (which truncates `[pi]`), and no equality, equivalence or addition that is true on net10 but false on net11 in either operand order.
+- Accepted differences on `net11.0`, described in `docs/features/fhirpath/firely-parity.md` and pinned per target framework as exact strings for representative cases:
+  - **Scale only:** results lose net10's trailing zeros.
+  - **Corrected values:** results that carried the old 15-digit rounding error are now correct, for example `100 m/s` to `km/h` is `360` and `2.5 'm/s' = 9 'km/h'` is true.
+  - **Still inexact on both runtimes, with a different value:** units defined by division (`[tsp_us]`, `[min_us]`), the `gon`/`deg` ratio, and angles through the truncated `[pi]` of Fhir.Metrics. Here net11 is usually closer to the true value, but not always: `1 rad` to `deg` is slightly further.
 
 ## Implementation Checklist
 

@@ -29,19 +29,14 @@ namespace Ignixa.FhirPath.Types;
 /// <para>
 /// <see cref="Exponential"/> in Fhir.Metrics computes <c>Significand * (decimal)Math.Pow(10, Exponent)</c>.
 /// <see cref="ToDecimal(Exponential, bool)"/> evaluates the same product with an exact power of ten, which is what the
-/// former cast produced. The binary noise that the library's unit factors carry on .NET 11 is removed from the
-/// factor of an operation: each unit factor (<see cref="RemoveFactorNoise"/>) and then the combined source/target
-/// ratio or product (<see cref="RemoveCombinedFactorNoise"/>), never from a value or a result, so long quotients keep
-/// all 28 digits on every runtime. The intended differences on .NET 11 are that trailing zeros of a result computed
-/// from a cleaned factor are dropped (<c>2.0 'cm' * 2.0 'm'</c> is <c>0.04</c>, not <c>0.040000</c>), and that a
-/// result whose factor was noisy on .NET 10 can be more exact (<c>100 'm/s'</c> is <c>360 'km/h'</c>); a factor that
-/// is genuinely longer than 15 digits (<c>km/h</c>) cannot be cleaned and keeps its residual error.
+/// former cast produced. Fhir.Metrics also raises unit factors to their exponent through a double, so on .NET 11 the
+/// factors of its unit conversions carry binary noise (<see cref="UnitFactorsCarryNoise"/>); <see cref="QuantityUnitConverter"/>
+/// recomputes those factors from the exact unit definitions instead of rounding them.
 /// </para>
 /// </remarks>
 internal static class DecimalConversion
 {
     private const int MaxDecimalScale = 28;
-    private const int DoubleSignificantDigits = 15;
 
     // 1.000...0 with 28 zeros: dividing by it drops trailing zeros without changing the value.
     private const decimal TrailingZeroStripper = 1.0000000000000000000000000000m;
@@ -104,9 +99,8 @@ internal static class DecimalConversion
     /// </summary>
     /// <param name="value">The value to convert.</param>
     /// <param name="dropTrailingZeros">
-    /// Drops trailing zeros on runtimes where the cast is correctly rounded (.NET 11+), where the operands of the
-    /// calculation had their unit factor cleaned by <see cref="RemoveFactorNoise"/>. Earlier runtimes never produce those
-    /// zeros from a cleaned operand, so the flag has no effect there.
+    /// Drops trailing zeros on runtimes where the cast is correctly rounded (.NET 11+). Used for results that
+    /// <see cref="QuantityUnitConverter"/> recomputes from exact unit factors there; the flag has no effect on earlier runtimes.
     /// </param>
     /// <exception cref="OverflowException">The value is outside the range of <see cref="decimal"/>.</exception>
     public static decimal ToDecimal(Exponential value, bool dropTrailingZeros = false)
@@ -121,79 +115,9 @@ internal static class DecimalConversion
 
     /// <summary>
     /// Whether Fhir.Metrics leaves binary noise in the factors of its unit conversions on this runtime
-    /// (.NET 11+), so that canonical quantities need <see cref="RemoveFactorNoise"/>.
+    /// (.NET 11+), so that <see cref="QuantityUnitConverter"/> recomputes conversion factors from the exact unit definitions.
     /// </summary>
     public static bool UnitFactorsCarryNoise => CastIsCorrectlyRounded;
-
-    // A few chained double casts, each with a relative rounding error of at most 1.1e-16. The noisiest factor of
-    // the UCUM units covered by the test sweep (dL, [gal_us], [pt_us]) is 3.1e-16 off.
-    private const decimal FactorNoiseTolerance = 5e-16m;
-
-    /// <summary>
-    /// Removes the binary noise from the significand of a <em>unit factor</em> such as the canonical form of
-    /// <c>1 cm</c> (<c>1.0000000000000000208...e-2</c>), by rounding it to 15 significant digits when that moves
-    /// it by no more than <see cref="FactorNoiseTolerance"/> (relative). Returns the factor unchanged otherwise.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The noise comes from the unit factors (<c>Power</c> in Fhir.Metrics casts a double), so it is cleaned on the
-    /// factor, which is a fixed property of the unit, and never on a user value or on a result. The calculation then
-    /// multiplies the clean factor by the exact value, and the later multiplication or division is exact significand
-    /// arithmetic, so <c>1 'm' / 3 'm'</c> keeps all 28 digits. Factors that genuinely need more than 15 digits,
-    /// such as the 1/3.6 of <c>km/h</c>, lie further from the 15 digit grid than the tolerance and are kept as they are.
-    /// </para>
-    /// <para>
-    /// Residual risk: a unit factor that is genuinely longer than 15 digits and happens to lie within the tolerance of
-    /// a 15 digit value is rounded.
-    /// </para>
-    /// </remarks>
-    public static decimal RemoveFactorNoise(decimal factor) => Snap(factor, FactorNoiseTolerance);
-
-    // What is left in the ratio or product of two factors that were each cleaned: compound units such as mL/min
-    // (1e-6 / 60) have a genuinely long factor that cannot be cleaned on its own, and its binary noise (at most
-    // 3e-17 for the units in the test sweep) shows up again when two such factors are combined. The window is
-    // much tighter than FactorNoiseTolerance because genuinely long combined factors are common (L to [tsp_us]
-    // lies 8e-17 from its 15 digit value, 1/12 of in/ft 4e-16) and must not be snapped.
-    private const decimal CombinedFactorNoiseTolerance = 5e-17m;
-
-    /// <summary>
-    /// Removes the binary noise that remains in the combined factor of an operation, i.e. the ratio of the source and
-    /// target factor of a conversion or division, or the product of the factors of a multiplication. A combined factor
-    /// such as the 1000 between <c>L/min</c> and <c>mL/min</c> must be exact, otherwise <c>1 'L/min'</c> and
-    /// <c>1000 'mL/min'</c> are not equal. Uses a tighter tolerance than <see cref="RemoveFactorNoise"/> (see
-    /// <see cref="CombinedFactorNoiseTolerance"/>) and has the same residual risk.
-    /// </summary>
-    public static decimal RemoveCombinedFactorNoise(decimal factor) => Snap(factor, CombinedFactorNoiseTolerance);
-
-    private static decimal Snap(decimal factor, decimal tolerance)
-    {
-        if (!CastIsCorrectlyRounded || factor == 0m)
-        {
-            return factor;
-        }
-
-        var rounded = RoundToDoubleDigits(factor);
-        if (rounded == factor || Math.Abs(rounded - factor) > Math.Abs(factor) * tolerance)
-        {
-            return factor;
-        }
-
-        return rounded / TrailingZeroStripper;
-    }
-
-    private static decimal RoundToDoubleDigits(decimal factor)
-    {
-        var magnitude = (int)Math.Floor(Math.Log10((double)Math.Abs(factor)));
-        var decimals = Math.Min(DoubleSignificantDigits - 1 - magnitude, MaxDecimalScale);
-
-        if (decimals >= 0)
-        {
-            return decimal.Round(factor, decimals, MidpointRounding.AwayFromZero);
-        }
-
-        var scale = PowerOfTen(-decimals);
-        return decimal.Round(factor / scale, 0, MidpointRounding.AwayFromZero) * scale;
-    }
 
     /// <summary>
     /// Port of <c>Decimal.DecCalc.VarDecFromR8</c>/<c>VarDecFromR4</c> from .NET 10. <paramref name="exp"/> is the

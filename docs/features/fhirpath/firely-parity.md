@@ -268,7 +268,8 @@ which normalises decimal scale on storage.
 double's binary representation error (`2.0 'cm' * 2.0 'm'` gives `0.0400000000000000024980018052 'm2'`,
 `1 'm' + 1 'cm'` gives `1.0100000000000000004163336342 'm'`); the Firely SDK's own decimal boundary
 calculation does the same (`1.5.lowBoundary()` gives `1.4499999999999999989591659145`). The root cause
-is upstream and is not an Ignixa defect. Ignixa strips the noise (`DecimalConversion`) and returns
+is upstream and is not an Ignixa defect. Ignixa avoids the noise (see below, and `DecimalConversion` for
+the boundary functions) and returns
 `0.04 'm2'` and `1.01 'm'` - the right values, but without the trailing zeros net10 kept (`0.040000`,
 `1.0100`), which is accepted. `KnownDivergences` therefore pins different signatures per TFM
 (`#if NET11_0_OR_GREATER`), and the construct sweep's agreements-on-values floor is 171 on net11
@@ -276,35 +277,78 @@ against 176 on net10, because `1 'm' + 1 'cm'` no longer agrees on five subjects
 pins once the upstream packages stop adding the noise; the pinned divergences will vanish and the test
 will say so.
 
-*How the noise is removed.* Conversions are linear, so Ignixa cleans the unit **factor**, never the
-result: first each unit factor, then once more the combined factor that is applied to the value (source
-over target for conversion and division, the product for multiplication). The second stage is what
-makes compound units exact (`1000 'mL/min'` converts to exactly `1 'L/min'`, `1 'L/h' = 1000 'mL/h'`
-and `1 'L/h' + 500 'mL/h'` hold, `1 [mi_i]/h` is exactly `1.609344 km/h`, `10 gon` is exactly `9 deg`).
-Results keep their full 28-digit precision (`1 'm' / 3 'm'`), and net10 takes the unchanged Fhir.Metrics
-path, so its results are byte-identical to before.
+*How the noise is avoided.* The noise enters where Fhir.Metrics raises a prefix or unit factor to its
+exponent through `Math.Pow` and a `(decimal)double` cast. On net11 Ignixa therefore does not use the
+factor Fhir.Metrics computes, and it does not round or snap anything. It walks both unit expressions down
+to their base units. Each prefix and each defined unit becomes one factor with a net exponent: positive
+for the source (or the left operand of a product), negative for the target (or a divisor). Factors that
+occur on both sides cancel exactly. That is why `mg/kg/min` to `ug/kg/min` never touches `kg` or `min`.
+The remaining factors are multiplied in `decimal` into one numerator and one denominator, and the value is
+divided once at the end (`QuantityUnitConverter.TryGetExactFactor`). Short factors stay exact, and a
+quotient keeps all 28 digits (`1 'm' / 3 'm'`). net10 takes the unchanged Fhir.Metrics path, so its results
+are byte-identical to before.
 
-*Value differences versus net10, beyond trailing zeros.* The two kinds are pinned separately in
-`DecimalConversionTests` (strings, so both a value and a scale change fail):
+A one-off sweep (not part of the test suite) covered all 2352 ordered pairs of 49 common SI, clinical,
+customary, compound and angle units, plus 1532 equality/equivalence/addition pairs. Each result was compared
+with an exact rational reference built from the same unit table, which truncates `[pi]`. Against net10, no
+net11 conversion moved further from that reference than the last decimal place (see `1 deg` to `gon` below), and
+none started or stopped returning null or throwing; 621 moved closer. No `=`, `~` or addition check that is true on net10
+is false on net11 in either operand order; 759 that were false on net10 are now true. In particular, these
+hold on both runtimes in both orders:
+- `1 'mg/kg/min' = 1000 'ug/kg/min'`
+- `1 '[mi_i]/h' = 5280 '[ft_i]/h'`
+- `1 '[mi_i]/h' = 1.609344 'km/h'`
+- `10 'gon' = 9 'deg'` and `1 'gon' = 0.9 'deg'`
+- `(1 'mg/kg/min' + 1000 'ug/kg/min') = 2 'mg/kg/min'`
 
-- **Scale only** (the net11 value is the same number without the trailing zeros): the cases above,
-  `1000 'mL/min'` to `L/min` (`1.000` on net10, `1` on net11), and values near 1e-28 such as
-  `1e-28 [tsp_us]` to `[min_us]`. No natural conversion changes its *value* at that magnitude.
-- **Value changes**: a few net10 results carried the rounding error of the old 15-digit cast and net11 now
-  returns the mathematically correct value. Pinned: `100 m/s` to `km/h` (`359.99999999999856` on net10,
-  `360` on net11), `1 [mi_i]/h` to `m/s` (`0.44704000000000178816` on net10, `0.44704`), `1 [tsp_us]` to
-  `[min_us]` (`79.99999999999976` on net10, `80`) and `0.001 [min_us]` to `[pt_us]` (differs from the
-  third-from-last digit group, about 1e-21). Treat the net11 values as the correct ones.
+These equalities are true on net11 only:
+- `2.5 'm/s' = 9 'km/h'`
+- `1 'mg/kg/min' = 60 'mg/kg/h'`
+- `(1 'mL/min' * 1 'min') = 1 'mL'`
 
-*Residual limitation.* Only factors that are a short decimal (within 15 significant digits) can be
-cleaned. Factors that are genuinely long - anything involving a division by 3, 7, 9 or pi, such as
-`km/h` to `m/s`, `rad` to `deg`, `deg` to `gon` and the reverse direction of a compound conversion
-(`1.609344 km/h` to `[mi_i]/h`, hence `10 'gon' = 9 'deg'`, which converts `deg` to `gon`) - keep the
-upstream binary error on net11 at about the 16th-17th digit (`1 km/h` is `0.2777777777777777700678956622 m/s`
-on net11 and `0.2777777777777788888888888889` on net10; neither is exact, and the true value is
-`0.27777...`). The combined-factor tolerance (5e-17) is deliberately tight so that such genuine long
-factors are not rounded onto a short decimal; the cost is that a genuinely long factor that happens
-to lie within that tolerance of a 15-digit value would be treated as noise.
+They are covered by `QuantityOperandTypeTests`.
+
+*Differences versus net10.* `DecimalConversionTests` pins each kind separately as exact strings per target
+framework, so a change in value or scale, or the disappearance of a difference, fails the test:
+
+- **Scale only**: the net11 value is the same number without net10's trailing zeros. Examples are the cases
+  above, `1000 'mL/min'` to `L/min` (`1.000` on net10, `1` on net11), `1000 'ug/kg/min'` to `mg/kg/min`
+  (`1.000` and `1`), and `10 'gon'` to `deg` (`9.0` and `9`). Accepted.
+- **Value differences, net11 correct**: these net10 results carried the rounding error of the old 15-digit
+  cast. Examples:
+
+  | Conversion | net10 | net11 |
+  |---|---|---|
+  | `100 m/s` to `km/h` | `359.99999999999856000` | `360` |
+  | `1 km/h` to `m/s` | `0.2777777777777788888888888889` | `0.2777777777777777777777777778` |
+  | `1 [mi_i]/h` to `m/s` | `0.4470400000000017881600000000` | `0.44704` |
+  | `1 mg/kg/min` to `mg/kg/h` | `59.9999999999998800` | `60` |
+  | `1 [tsp_us]` to `[tbs_us]` | `0.333333333333333` | `0.3333333333333333333333333333` |
+  | `1 'mL/min' * 1 'min'` | `0.0000010000000000000020000000 'm3'` | `0.000001 'm3'` |
+
+- **Value differences, neither runtime exact**: net11 is still inexact in the cases below, and its result
+  differs from net10's. There are three causes. First, units *defined by a division*: Fhir.Metrics keeps only
+  the compiled factor, so `[tsp_us]` = `[tbs_us]/3` and `[min_us]` = `[fdr_us]/60` are rounded to 28
+  significant digits. Second, `gon` = `0.9 deg`, whose reciprocal does not terminate. Third, the angle units:
+  Fhir.Metrics truncates `[pi]` to `3.14159265358979`.
+
+  | Conversion | net10 | net11 |
+  |---|---|---|
+  | `1 [tsp_us]` to `[min_us]` | `79.9999999999997600` | `79.99999999999999999999999997` |
+  | `1 [foz_us]` to `[min_us]` | `479.99999999999904000` | `479.9999999999999999999999999` |
+  | `1 [gal_us]` to `[tsp_us]` | `768.000000000000768000` | `768.0000000000000000000000001` |
+  | `1 deg` to `gon` | `1.1111111111111111111111111111` | `1.111111111111111111111111111` |
+  | `1 rad` to `deg` | `57.295779513082334102650821990` | `57.29577951308237993927443245` |
+  | `1 deg` to `rad` | `0.0174532925199432917404117937` | `0.0174532925199432777777777778` |
+
+  In the first three rows net11 is closer to the true value. `1 deg` to `gon` is 10/9 on both runtimes, rounded
+  to 28 decimal places on net10 and 27 on net11, so net10 is closer by about 1e-28. The other two angle rows
+  differ from 16 significant digits onward. net11 is exact for the truncated `[pi]` that both runtimes use, but
+  `1 rad` to `deg` is therefore slightly further from the true 180/pi than net10's result. Neither runtime can
+  do better without a longer `[pi]` upstream.
+
+Values near the decimal limit of 1e-28 give identical strings on both runtimes (for example `1e-28 [tsp_us]`
+to `[min_us]` is `0.0000000000000000000000000080`), and results smaller than that still underflow.
 
 ### 10. Time plus a quantity
 

@@ -15,10 +15,12 @@ namespace Ignixa.FhirPath.Tests.Evaluation;
 /// <summary>
 /// .NET 11 made (decimal)double exact. <see cref="DecimalConversion"/> keeps the pre-.NET 11 results on every
 /// runtime; the fixed vectors run on all target frameworks and the differential tests compare against the real
-/// cast wherever it still has the old behaviour. Binary noise in Fhir.Metrics' unit factors is cleaned on the factor
-/// only (.NET 11+): per unit factor, then once more on the combined source/target ratio (or product) that is applied
-/// to the value, so compound units such as L/min convert exactly and UCUM results keep their full 28 digit precision.
-/// Remaining value differences between runtimes are pinned strictly per target framework.
+/// cast wherever it still has the old behaviour. Fhir.Metrics derives its unit factors through that cast, so on
+/// .NET 11 they carry binary noise; there <see cref="QuantityUnitConverter"/> recomputes the factor between the two
+/// unit expressions symbolically (shared factors cancel, the rest is multiplied in decimal) and applies it with one
+/// final division, so equivalent units convert exactly and UCUM results keep their full 28 digit precision.
+/// Remaining differences between runtimes, value and trailing-zero scale alike, are pinned strictly per target
+/// framework.
 /// </summary>
 public class DecimalConversionTests
 {
@@ -67,8 +69,8 @@ public class DecimalConversionTests
         DecimalConversion.ToDecimal(new Exponential(0.01m)).ShouldBe(0.01m);
     }
 
-    // Long quotients keep all 28 decimal digits on every runtime: only the noisy unit factors are cleaned, never
-    // a value or a result.
+    // Long quotients keep all 28 decimal digits on every runtime: unit factors are combined exactly and applied with
+    // a single final division, never rounded to fewer digits.
     private const decimal OneThird = 0.3333333333333333333333333333m;
 
     [Fact]
@@ -123,17 +125,28 @@ public class DecimalConversionTests
         result.Value.ShouldBe(0.04m);
     }
 
-    // Compound units combine several noisy factors (L/min is m3 over s). The noise of the combined source/target
-    // ratio is removed as a whole, so conversions between equivalent compound units are exact and equality holds.
+    // Compound units combine several factors (mg/kg/min is kg over kg over s). On .NET 11 the factors shared by both
+    // units cancel symbolically instead of numerically, so equivalent units convert exactly in both directions; on
+    // .NET 10 these happen to be exact because the old cast rounds the noise away. Compared as decimals: trailing-zero
+    // scale differs between runtimes and is pinned separately.
     [Theory]
     [InlineData("1000", "mL/min", "L/min", "1")]
     [InlineData("1", "L/min", "mL/min", "1000")]
     [InlineData("1000", "mL/h", "L/h", "1")]
     [InlineData("1", "L/h", "mL/h", "1000")]
+    [InlineData("1", "mg/kg/min", "ug/kg/min", "1000")]
+    [InlineData("1000", "ug/kg/min", "mg/kg/min", "1")]
+    [InlineData("1", "mmol/L", "umol/L", "1000")]
+    [InlineData("1000", "umol/L", "mmol/L", "1")]
+    [InlineData("1", "[mi_i]/h", "[ft_i]/h", "5280")]
+    [InlineData("5280", "[ft_i]/h", "[mi_i]/h", "1")]
     [InlineData("1", "[mi_i]/h", "km/h", "1.609344")]
+    [InlineData("1.609344", "km/h", "[mi_i]/h", "1")]
     [InlineData("10", "gon", "deg", "9")]
+    [InlineData("9", "deg", "gon", "10")]
     [InlineData("1", "gon", "deg", "0.9")]
-    public void GivenCompoundOrAngleUnits_WhenConverted_ThenResultIsExactOnEveryRuntime(string value, string from, string to, string expected)
+    [InlineData("0.9", "deg", "gon", "1")]
+    public void GivenEquivalentCompoundOrAngleUnits_WhenConvertedInEitherDirection_ThenResultIsExactOnEveryRuntime(string value, string from, string to, string expected)
     {
         var result = QuantityUnitConverter.Instance.Convert(decimal.Parse(value, CultureInfo.InvariantCulture), from, to);
 
@@ -166,8 +179,8 @@ public class DecimalConversionTests
         speed.Unit.ShouldBe("m.s-1");
     }
 
-    // Values at the edge of decimal range must neither overflow nor change between runtimes because of the noise
-    // cleaning: the cleaned factor has a significand below 10, so value * factor cannot overflow before scaling.
+    // Values at the edge of decimal range must neither overflow nor change between runtimes: factors are combined as
+    // Fhir.Metrics exponentials (significand and power of ten), so only a result that itself exceeds decimal is empty.
     [Theory]
     [InlineData("79228162514264337593543950335", "mm", "m", "79228162514264337593543950.335")]
     [InlineData("1000000000000000000000000000", "mm", "m", "1000000000000000000000000")]
@@ -190,22 +203,81 @@ public class DecimalConversionTests
         QuantityUnitConverter.Instance.Convert(decimal.Parse(value, CultureInfo.InvariantCulture), from, to).ShouldBeNull();
     }
 
-    // Representative value divergences between runtimes. Fhir.Metrics derives unit factors with (decimal)Math.Pow:
-    // before .NET 11 that rounds to about 15 digits, so a few results carried the rounding error of the *old* cast
-    // (the left column). On .NET 11 the cast is exact and the cleaned factors give the mathematically correct value.
-    // These are VALUE differences; the trailing-zero scale differences are pinned separately below. Strings (not
-    // decimal equality) are asserted so both a value and a scale change fail the pin.
+    // Value differences where .NET 10 is wrong. Fhir.Metrics derives unit factors with (decimal)Math.Pow: before
+    // .NET 11 that rounds to about 15 digits, so these results carried the rounding error of the *old* cast (the
+    // net10 column). On .NET 11 the exact factor gives the correct value, rounded to 28 digits where it does not
+    // terminate (1/3.6, 1/3). The trailing-zero scale differences are pinned separately below. Strings (not decimal
+    // equality) are asserted so both a value and a scale change fail the pin.
     [Theory]
     [InlineData("100", "m/s", "km/h", "359.99999999999856000", "360")]
+    [InlineData("2.5", "m/s", "km/h", "8.9999999999999640", "9")]
+    [InlineData("1", "km/h", "m/s", "0.2777777777777788888888888889", "0.2777777777777777777777777778")]
+    [InlineData("9", "km/h", "m/s", "2.5000000000000100000000000000", "2.5")]
     [InlineData("1", "[mi_i]/h", "m/s", "0.4470400000000017881600000000", "0.44704")]
-    [InlineData("1", "[tsp_us]", "[min_us]", "79.9999999999997600", "80")]
+    [InlineData("1", "[in_i]/s", "[ft_i]/h", "299.9999999999988000", "300")]
+    [InlineData("1", "mg/kg/min", "mg/kg/h", "59.9999999999998800", "60")]
+    [InlineData("1", "[tsp_us]", "[tbs_us]", "0.333333333333333", "0.3333333333333333333333333333")]
     [InlineData("0.001", "[min_us]", "[pt_us]", "0.00000013020833333333359375", "0.0000001302083333333333333333")]
+    [InlineData("0.001", "[min_us]", "[gal_us]", "0.0000000162760416666666992188", "0.0000000162760416666666666667")]
+    [InlineData("0.001", "mL/h", "L/min", "0.0000000166666666666667", "0.0000000166666666666666666667")]
+    [InlineData("0.001", "[ft_i]/h", "m/s", "0.0000000846666666666670053333", "0.0000000846666666666666666667")]
     public void GivenUnitFactorsWithPreNet11RoundingError_WhenConverted_ThenValueDiffersBetweenRuntimes(string value, string from, string to, string net10, string net11)
     {
         var result = QuantityUnitConverter.Instance.Convert(decimal.Parse(value, CultureInfo.InvariantCulture), from, to);
 
         result.ShouldNotBeNull();
         result.Value.ToString(CultureInfo.InvariantCulture).ShouldBe(ForTargetFramework(net10, net11));
+    }
+
+    // Remaining .NET 11 value differences where neither runtime gives the exact value, kept by approval and pinned:
+    // - A UCUM definition that divides ([min_us] is [fdr_us]/60, [tsp_us] is [tbs_us]/3) is a 28 digit factor, so a
+    //   conversion through it can be off in the 28th significant digit (exact: 80, 480 and 768). .NET 11 is still
+    //   about 13 digits closer than .NET 10, but not exact, so these are not equal to the exact value.
+    // - 10/9 is rounded to 28 significant digits on .NET 11 but 29 on .NET 10 (deg to gon).
+    // - Fhir.Metrics truncates definition values to 16 characters ([pi] is 3.14159265358979). .NET 11 is exact for
+    //   that truncated [pi]; .NET 10's rounding error happens to land closer to the true 180/pi.
+    [Theory]
+    [InlineData("1", "[tsp_us]", "[min_us]", "79.9999999999997600", "79.99999999999999999999999997")]
+    [InlineData("1", "[foz_us]", "[min_us]", "479.99999999999904000", "479.9999999999999999999999999")]
+    [InlineData("1", "[gal_us]", "[tsp_us]", "768.000000000000768000", "768.0000000000000000000000001")]
+    [InlineData("1", "deg", "gon", "1.1111111111111111111111111111", "1.111111111111111111111111111")]
+    [InlineData("1", "rad", "deg", "57.295779513082334102650821990", "57.29577951308237993927443245")]
+    [InlineData("1", "deg", "rad", "0.0174532925199432917404117937", "0.0174532925199432777777777778")]
+    public void GivenDivisionDefinedOrTruncatedUnitFactors_WhenConverted_ThenRemainingValueDifferenceIsPinned(string value, string from, string to, string net10, string net11)
+    {
+        var result = QuantityUnitConverter.Instance.Convert(decimal.Parse(value, CultureInfo.InvariantCulture), from, to);
+
+        result.ShouldNotBeNull();
+        result.Value.ToString(CultureInfo.InvariantCulture).ShouldBe(ForTargetFramework(net10, net11));
+    }
+
+    // Multiplication applies the product of both unit factors, with the same exact factor walk on .NET 11. The
+    // product is expressed in base units.
+    [Theory]
+    [InlineData("1", "mL/min", "1", "min", "m3", "0.0000010000000000000020000000", "0.000001")]
+    [InlineData("1", "[mi_i]/h", "2", "h", "m", "3218.6880000000128747520000000", "3218.688")]
+    [InlineData("2", "km", "3", "[mi_i]", "m2", "9656064.00000000", "9656064")]
+    public void GivenCompoundUnitFactors_WhenMultiplied_ThenResultIsPinnedPerRuntime(string leftValue, string leftUnit, string rightValue, string rightUnit, string unit, string net10, string net11)
+    {
+        var result = QuantityUnitConverter.Instance.Multiply(
+            new FhirQuantity(decimal.Parse(leftValue, CultureInfo.InvariantCulture), leftUnit),
+            new FhirQuantity(decimal.Parse(rightValue, CultureInfo.InvariantCulture), rightUnit));
+
+        result.ShouldNotBeNull();
+        result.Unit.ShouldBe(unit);
+        result.Value.ToString(CultureInfo.InvariantCulture).ShouldBe(ForTargetFramework(net10, net11));
+    }
+
+    // The smallest magnitude decimal can hold converts to the same value and scale on every runtime.
+    [Theory]
+    [InlineData("0.0000000000000000000000000001", "[tsp_us]", "[min_us]", "0.0000000000000000000000000080")]
+    [InlineData("0.0000000000000000000000000001", "L/min", "mL/min", "0.0000000000000000000000001000")]
+    public void GivenSmallestDecimalInput_WhenConverted_ThenResultIsIdenticalOnEveryRuntime(string value, string from, string to, string expected)
+    {
+        var result = QuantityUnitConverter.Instance.Convert(decimal.Parse(value, CultureInfo.InvariantCulture), from, to);
+
+        result.ShouldNotBeNull();
+        result.Value.ToString(CultureInfo.InvariantCulture).ShouldBe(expected);
     }
 
     private static string ForTargetFramework(string net10, string net11)
@@ -218,11 +290,12 @@ public class DecimalConversionTests
     }
 
     // Scale-only differences: the value is identical, .NET 11 simply drops trailing zeros that the net10 factor
-    // arithmetic left behind. Includes a 1e-28 input, the smallest magnitude decimal can hold.
+    // arithmetic left behind.
     [Theory]
-    [InlineData("0.0000000000000000000000000001", "[tsp_us]", "[min_us]", "0.0000000000000000000000000080", "0.000000000000000000000000008")]
-    [InlineData("0.0000000000000000000000000001", "L/min", "mL/min", "0.0000000000000000000000001000", "0.0000000000000000000000001")]
     [InlineData("1000", "mL/min", "L/min", "1.000", "1")]
+    [InlineData("1000", "ug/kg/min", "mg/kg/min", "1.000", "1")]
+    [InlineData("10", "gon", "deg", "9.0", "9")]
+    [InlineData("1", "gon", "deg", "0.90", "0.9")]
     public void GivenTrailingZeroScale_WhenConverted_ThenValueIsEqualAndOnlyScaleDiffersBetweenRuntimes(string value, string from, string to, string net10, string net11)
     {
         var result = QuantityUnitConverter.Instance.Convert(decimal.Parse(value, CultureInfo.InvariantCulture), from, to);
@@ -233,31 +306,13 @@ public class DecimalConversionTests
     }
 
     [Fact]
-    public void GivenNoisyFactor_WhenNoiseIsRemoved_ThenItIsRoundedOnlyOnRuntimesWithCorrectlyRoundedCast()
+    public void GivenRuntime_WhenProbed_ThenUnitFactorsCarryNoiseOnlyWithCorrectlyRoundedCast()
     {
-        // 1 cm in metres as Fhir.Metrics 1.3.0 yields it on .NET 11.
-        const decimal noisy = 1.0000000000000000208166817117m;
-
 #if NET11_0_OR_GREATER
         DecimalConversion.UnitFactorsCarryNoise.ShouldBeTrue();
-        DecimalConversion.RemoveFactorNoise(noisy).ShouldBe(1m);
 #else
         DecimalConversion.UnitFactorsCarryNoise.ShouldBeFalse();
-        DecimalConversion.RemoveFactorNoise(noisy).ShouldBe(noisy);
 #endif
-    }
-
-    [Theory]
-    [InlineData("0.2777777777777777777777777778")] // 1/3.6, the km/h factor
-    [InlineData("0.3333333333333333333333333333")]
-    [InlineData("1.234567890123456789")]
-    [InlineData("1.5")]
-    [InlineData("0")]
-    public void GivenGenuinelyLongOrShortFactor_WhenNoiseIsRemoved_ThenItIsUnchanged(string factor)
-    {
-        var value = decimal.Parse(factor, CultureInfo.InvariantCulture);
-
-        DecimalConversion.RemoveFactorNoise(value).ShouldBe(value);
     }
 
     [Theory]

@@ -197,6 +197,80 @@ public class QuantityOperandTypeTests
     }
 
     /// <summary>
+    /// Equivalent clinical, compound and angle quantities: each pair is compared in both orders, with <c>=</c>
+    /// and <c>~</c>, and summed in both orders. Fhir.Metrics' unit factors carry binary noise on .NET 11, which
+    /// made several of these false there (in one direction only for some) while they were true on .NET 10.
+    /// </summary>
+    public static TheoryData<string> EquivalentQuantityExpressions()
+    {
+        (string Left, string Right, string LeftDoubled, string RightDoubled)[] pairs =
+        [
+            ("1 'mg/kg/min'", "1000 'ug/kg/min'", "2 'mg/kg/min'", "2000 'ug/kg/min'"),
+            ("1 '[mi_i]/h'", "5280 '[ft_i]/h'", "2 '[mi_i]/h'", "10560 '[ft_i]/h'"),
+            ("1 '[mi_i]/h'", "1.609344 'km/h'", "2 '[mi_i]/h'", "3.218688 'km/h'"),
+            ("10 'gon'", "9 'deg'", "20 'gon'", "18 'deg'"),
+            ("1 'gon'", "0.9 'deg'", "2 'gon'", "1.8 'deg'"),
+            ("1 'L/min'", "1000 'mL/min'", "2 'L/min'", "2000 'mL/min'"),
+            ("1 'L/h'", "1000 'mL/h'", "2 'L/h'", "2000 'mL/h'"),
+            ("1 'mmol/L'", "1000 'umol/L'", "2 'mmol/L'", "2000 'umol/L'"),
+        ];
+
+        var data = new TheoryData<string>();
+        foreach (var (left, right, leftDoubled, rightDoubled) in pairs)
+        {
+            data.Add($"{left} = {right}");
+            data.Add($"{right} = {left}");
+            data.Add($"{left} ~ {right}");
+            data.Add($"{right} ~ {left}");
+            data.Add($"({left} + {right}) = {leftDoubled}");
+            data.Add($"({right} + {left}) = {rightDoubled}");
+        }
+
+        return data;
+    }
+
+    [Theory]
+    [MemberData(nameof(EquivalentQuantityExpressions))]
+    public void GivenEquivalentQuantities_WhenComparedOrAddedInEitherOrder_ThenTheyAreEqualOnEveryRuntime(string expression)
+    {
+        // Act
+        var result = Evaluate(expression);
+
+        // Assert
+        result.Count.ShouldBe(1);
+        result[0].Value.ShouldBe(true);
+    }
+
+    /// <summary>
+    /// Equal quantities that .NET 10 reports unequal: Fhir.Metrics' factors were rounded to about 15 digits there
+    /// (2.5 'm/s' converts to 8.9999999999999640 'km/h'). They are exact on .NET 11. Pinned per runtime so a change
+    /// on either side fails.
+    /// </summary>
+    [Theory]
+    [InlineData("2.5 'm/s' = 9 'km/h'")]
+    [InlineData("9 'km/h' = 2.5 'm/s'")]
+    [InlineData("1 'mg/kg/min' = 60 'mg/kg/h'")]
+    [InlineData("60 'mg/kg/h' = 1 'mg/kg/min'")]
+    [InlineData("1 '[in_i]/s' = 300 '[ft_i]/h'")]
+    [InlineData("300 '[ft_i]/h' = 1 '[in_i]/s'")]
+    [InlineData("1 '[mi_i]/h' = 0.44704 'm/s'")]
+    [InlineData("0.44704 'm/s' = 1 '[mi_i]/h'")]
+    [InlineData("(1 'mL/min' * 1 'min') = 1 'mL'")]
+    public void GivenQuantitiesUnequalOnlyThroughPreNet11FactorRounding_WhenCompared_ThenTheyAreEqualFromNet11(string expression)
+    {
+        // Act
+        var result = Evaluate(expression);
+
+        // Assert
+        result.Count.ShouldBe(1);
+#if NET11_0_OR_GREATER
+        result[0].Value.ShouldBe(true);
+#else
+        result[0].Value.ShouldBe(false);
+#endif
+    }
+
+    /// <summary>
     /// Empty propagation still wins over the type rule, on both operators.
     /// </summary>
     [Theory]
