@@ -221,13 +221,12 @@ public class QuantityUnitConverter : IQuantityUnitConverter
 
             // Exponential has an explicit conversion to decimal, but it scales with (decimal)Math.Pow, which
             // is inexact on .NET 11 (see DecimalConversion).
-            var result = DecimalConversion.ToDecimal(ratio);
             if (TryGetExactFactor(fromMetric, toMetric, divide: true, out var numerator, out var denominator))
             {
-                result = PreferExact(result, sourceValue * numerator / denominator);
+                return PreferExact(ratio, sourceValue * numerator / denominator);
             }
 
-            return result;
+            return DecimalConversion.ToDecimal(ratio);
         }
         catch
         {
@@ -299,11 +298,9 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             var result = Fhir.Metrics.Quantity.Multiply(leftCanonical, rightCanonical);
 
             // Extract value and unit
-            var value = DecimalConversion.ToDecimal(result.Value);
-            if (TryGetExactFactor(leftMetric, rightMetric, divide: false, out var numerator, out var denominator))
-            {
-                value = PreferExact(value, leftQty.Value * rightQty.Value * numerator / denominator);
-            }
+            var value = TryGetExactFactor(leftMetric, rightMetric, divide: false, out var numerator, out var denominator)
+                ? PreferExact(result.Value, leftQty.Value * rightQty.Value * numerator / denominator)
+                : DecimalConversion.ToDecimal(result.Value);
 
             var unit = result.Symbols;
 
@@ -359,11 +356,9 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             var result = Fhir.Metrics.Quantity.Divide(leftCanonical, rightCanonical);
 
             // Extract value and unit
-            var value = DecimalConversion.ToDecimal(result.Value);
-            if (TryGetExactFactor(leftMetric, rightMetric, divide: true, out var numerator, out var denominator))
-            {
-                value = PreferExact(value, leftQty.Value * numerator / (rightQty.Value * denominator));
-            }
+            var value = TryGetExactFactor(leftMetric, rightMetric, divide: true, out var numerator, out var denominator)
+                ? PreferExact(result.Value, leftQty.Value * numerator / (rightQty.Value * denominator))
+                : DecimalConversion.ToDecimal(result.Value);
 
             var unit = result.Symbols;
 
@@ -451,10 +446,19 @@ public class QuantityUnitConverter : IQuantityUnitConverter
     // Keeps the Fhir.Metrics result, trailing zeros included, when it already has the exact value. Otherwise the exact
     // value is used with its trailing zeros dropped: their number depends on the arithmetic path, not on the operands,
     // and does not match what .NET 10 produced from the noisy factors either (2.0 'cm' * 2.0 'm' = 0.040000 'm2').
-    private static decimal PreferExact(decimal fhirMetricsResult, Exponential exact)
+    private static decimal PreferExact(Exponential fhirMetricsResult, Exponential exact)
     {
         var exactResult = DecimalConversion.ToDecimal(exact, dropTrailingZeros: true);
-        return exactResult == fhirMetricsResult ? fhirMetricsResult : exactResult;
+
+        // Above this magnitude only scale zero is representable, so there is no legacy scale to preserve.
+        // Do not narrow the noisy legacy result here: it can exceed decimal range even when the exact value fits.
+        if (Math.Abs(exactResult) > decimal.MaxValue / 10m)
+        {
+            return exactResult;
+        }
+
+        var legacyResult = DecimalConversion.ToDecimal(fhirMetricsResult);
+        return exactResult == legacyResult ? legacyResult : exactResult;
     }
 
     // UCUM definitions are a few levels deep ([mi_i] -> [ft_i] -> [in_i] -> cm); the bound only stops a cyclic table.

@@ -194,6 +194,47 @@ public class DecimalConversionTests
         result.Value.ShouldBe(decimal.Parse(expected, CultureInfo.InvariantCulture));
     }
 
+    // Multiplying by ten reaches scale zero and fills the decimal range. Narrowing the noisy legacy result before
+    // the exact one must not turn these representable results into null, including decimal.MaxValue and MinValue.
+    [Theory]
+    [InlineData("7922816251426433759354395033", "cm", "mm", "79228162514264337593543950330")]
+    [InlineData("7922816251426433759354395033.4", "cm", "mm", "79228162514264337593543950334")]
+    [InlineData("7922816251426433759354395033.5", "cm", "mm", "79228162514264337593543950335")]
+    [InlineData("-7922816251426433759354395033.5", "cm", "mm", "-79228162514264337593543950335")]
+    [InlineData("7922816251426433759354395033", "cg", "mg", "79228162514264337593543950330")]
+    [InlineData("7922816251426433759354395033", "cL", "mL", "79228162514264337593543950330")]
+    [InlineData("7922816251426433759354395033", "cs", "ms", "79228162514264337593543950330")]
+    [InlineData("7922816251426433759354395033", "dm", "cm", "79228162514264337593543950330")]
+    [InlineData("7922816251426433759354395033", "dg", "cg", "79228162514264337593543950330")]
+    [InlineData("7922816251426433759354395033", "dL", "cL", "79228162514264337593543950330")]
+    [InlineData("7922816251426433759354395033", "ds", "cs", "79228162514264337593543950330")]
+    public void GivenConversionAtDecimalLimit_WhenConverted_ThenExactStringIsIdenticalOnEveryRuntime(string value, string from, string to, string expected)
+    {
+        var result = QuantityUnitConverter.Instance.Convert(decimal.Parse(value, CultureInfo.InvariantCulture), from, to);
+
+        result.ShouldNotBeNull();
+        result.Value.ToString(CultureInfo.InvariantCulture).ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("7922816251426433759354395033", "79228162514264337593543950330")]
+    [InlineData("7922816251426433759354395033.5", "79228162514264337593543950335")]
+    [InlineData("-7922816251426433759354395033.5", "-79228162514264337593543950335")]
+    public void GivenQuantitiesAtDecimalLimit_WhenMultipliedOrDivided_ThenExactStringIsIdenticalOnEveryRuntime(string value, string expected)
+    {
+        var quantity = new FhirQuantity(decimal.Parse(value, CultureInfo.InvariantCulture), "cm");
+
+        var product = QuantityUnitConverter.Instance.Multiply(quantity, new FhirQuantity(1000m, "m"));
+        var quotient = QuantityUnitConverter.Instance.Divide(quantity, new FhirQuantity(0.001m, "m"));
+
+        product.ShouldNotBeNull();
+        product.Unit.ShouldBe("m2");
+        product.Value.ToString(CultureInfo.InvariantCulture).ShouldBe(expected);
+        quotient.ShouldNotBeNull();
+        quotient.Unit.ShouldBe("1");
+        quotient.Value.ToString(CultureInfo.InvariantCulture).ShouldBe(expected);
+    }
+
     [Theory]
     [InlineData("79228162514264337593543950335", "m", "mm")]
     [InlineData("1000000000000000000000000000", "km", "m")]
@@ -230,9 +271,8 @@ public class DecimalConversionTests
     }
 
     // Remaining .NET 11 value differences where neither runtime gives the exact value, kept by approval and pinned:
-    // - A UCUM definition that divides ([min_us] is [fdr_us]/60, [tsp_us] is [tbs_us]/3) is a 28 digit factor, so a
-    //   conversion through it can be off in the 28th significant digit (exact: 80, 480 and 768). .NET 11 is still
-    //   about 13 digits closer than .NET 10, but not exact, so these are not equal to the exact value.
+    // - Units defined by division in the Fhir.Metrics table (e.g. [tsp_us] = [tbs_us]/3, [ft_us] = 1200 m/3937)
+    //   retain rounded factors. These examples are closer on .NET 11, but not exact (e.g. 80, 480 and 768).
     // - 10/9 is rounded to 28 significant digits on .NET 11 but 29 on .NET 10 (deg to gon).
     // - Fhir.Metrics truncates definition values to 16 characters ([pi] is 3.14159265358979). .NET 11 is exact for
     //   that truncated [pi]; .NET 10's rounding error happens to land closer to the true 180/pi.
@@ -240,6 +280,7 @@ public class DecimalConversionTests
     [InlineData("1", "[tsp_us]", "[min_us]", "79.9999999999997600", "79.99999999999999999999999997")]
     [InlineData("1", "[foz_us]", "[min_us]", "479.99999999999904000", "479.9999999999999999999999999")]
     [InlineData("1", "[gal_us]", "[tsp_us]", "768.000000000000768000", "768.0000000000000000000000001")]
+    [InlineData("1", "[ft_us]", "m", "0.3048006096012190", "0.3048006096012192024384048768")]
     [InlineData("1", "deg", "gon", "1.1111111111111111111111111111", "1.111111111111111111111111111")]
     [InlineData("1", "rad", "deg", "57.295779513082334102650821990", "57.29577951308237993927443245")]
     [InlineData("1", "deg", "rad", "0.0174532925199432917404117937", "0.0174532925199432777777777778")]

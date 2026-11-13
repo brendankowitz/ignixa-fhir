@@ -213,6 +213,7 @@ public class QuantityOperandTypeTests
             ("1 'L/min'", "1000 'mL/min'", "2 'L/min'", "2000 'mL/min'"),
             ("1 'L/h'", "1000 'mL/h'", "2 'L/h'", "2000 'mL/h'"),
             ("1 'mmol/L'", "1000 'umol/L'", "2 'mmol/L'", "2000 'umol/L'"),
+            ("1 'cm2'", "100 'mm2'", "2 'cm2'", "200 'mm2'"),
         ];
 
         var data = new TheoryData<string>();

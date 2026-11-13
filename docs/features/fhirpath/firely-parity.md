@@ -288,17 +288,16 @@ divided once at the end (`QuantityUnitConverter.TryGetExactFactor`). Short facto
 quotient keeps all 28 digits (`1 'm' / 3 'm'`). net10 takes the unchanged Fhir.Metrics path, so its results
 are byte-identical to before.
 
-A one-off sweep (not part of the test suite) covered all 2352 ordered pairs of 49 common SI, clinical,
-customary, compound and angle units, plus 1532 equality/equivalence/addition pairs. Each result was compared
-with an exact rational reference built from the same unit table, which truncates `[pi]`. Against net10, no
-net11 conversion moved further from that reference than the last decimal place (see `1 deg` to `gon` below), and
-none started or stopped returning null or throwing; 621 moved closer. No `=`, `~` or addition check that is true on net10
-is false on net11 in either operand order; 759 that were false on net10 are now true. In particular, these
-hold on both runtimes in both orders:
+A one-off exploratory sweep of SI, clinical, customary, compound and angle units informed this change.
+Its inputs and tool were not retained, so it is not reproducible repository evidence and does not establish
+the absence of regressions across all conversions. The reproducible evidence is the committed cases in
+`DecimalConversionTests` and `QuantityOperandTypeTests`, not the exploratory sweep.
+In particular, the tests assert these hold on both runtimes in both orders:
 - `1 'mg/kg/min' = 1000 'ug/kg/min'`
 - `1 '[mi_i]/h' = 5280 '[ft_i]/h'`
 - `1 '[mi_i]/h' = 1.609344 'km/h'`
 - `10 'gon' = 9 'deg'` and `1 'gon' = 0.9 'deg'`
+- `1 'cm2' = 100 'mm2'` (also equivalence and addition in both orders)
 - `(1 'mg/kg/min' + 1000 'ug/kg/min') = 2 'mg/kg/min'`
 
 These equalities are true on net11 only:
@@ -327,21 +326,24 @@ framework, so a change in value or scale, or the disappearance of a difference, 
   | `1 'mL/min' * 1 'min'` | `0.0000010000000000000020000000 'm3'` | `0.000001 'm3'` |
 
 - **Value differences, neither runtime exact**: net11 is still inexact in the cases below, and its result
-  differs from net10's. There are three causes. First, units *defined by a division*: Fhir.Metrics keeps only
-  the compiled factor, so `[tsp_us]` = `[tbs_us]/3` and `[min_us]` = `[fdr_us]/60` are rounded to 28
-  significant digits. Second, `gon` = `0.9 deg`, whose reciprocal does not terminate. Third, the angle units:
-  Fhir.Metrics truncates `[pi]` to `3.14159265358979`.
+  differs from net10's. There are three causes. First, *units defined by division in the Fhir.Metrics table*:
+  the library keeps only the compiled decimal factor, so non-terminating definitions are rounded before
+  conversion. Examples include `[tsp_us]` = `[tbs_us]/3`, `[min_us]` = `[fdr_us]/60` and
+  `[ft_us]` = `1200 m/3937`; this is a class of units, not an exhaustive list. Second, `gon` = `0.9 deg`,
+  whose reciprocal does not terminate. Third, the angle units: Fhir.Metrics truncates `[pi]` to
+  `3.14159265358979`.
 
   | Conversion | net10 | net11 |
   |---|---|---|
   | `1 [tsp_us]` to `[min_us]` | `79.9999999999997600` | `79.99999999999999999999999997` |
   | `1 [foz_us]` to `[min_us]` | `479.99999999999904000` | `479.9999999999999999999999999` |
   | `1 [gal_us]` to `[tsp_us]` | `768.000000000000768000` | `768.0000000000000000000000001` |
+  | `1 [ft_us]` to `m` | `0.3048006096012190` | `0.3048006096012192024384048768` |
   | `1 deg` to `gon` | `1.1111111111111111111111111111` | `1.111111111111111111111111111` |
   | `1 rad` to `deg` | `57.295779513082334102650821990` | `57.29577951308237993927443245` |
   | `1 deg` to `rad` | `0.0174532925199432917404117937` | `0.0174532925199432777777777778` |
 
-  In the first three rows net11 is closer to the true value. `1 deg` to `gon` is 10/9 on both runtimes, rounded
+  In the first four rows net11 is closer to the true value. `1 deg` to `gon` is 10/9 on both runtimes, rounded
   to 28 decimal places on net10 and 27 on net11, so net10 is closer by about 1e-28. The other two angle rows
   differ from 16 significant digits onward. net11 is exact for the truncated `[pi]` that both runtimes use, but
   `1 rad` to `deg` is therefore slightly further from the true 180/pi than net10's result. Neither runtime can
@@ -349,6 +351,8 @@ framework, so a change in value or scale, or the disappearance of a difference, 
 
 Values near the decimal limit of 1e-28 give identical strings on both runtimes (for example `1e-28 [tsp_us]`
 to `[min_us]` is `0.0000000000000000000000000080`), and results smaller than that still underflow.
+The committed range tests also pin identical results at the upper and lower decimal bounds, including
+`7922816251426433759354395033.5 cm` to `mm` (`79228162514264337593543950335`).
 
 ### 10. Time plus a quantity
 
