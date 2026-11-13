@@ -45,8 +45,6 @@
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="11.0.0" />
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="11.0.0" />
     <PackageVersion Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.9" />
-    <!-- Transitive from Microsoft.AspNetCore.Http (resolves 2.3.0); pinned to 2.3.14 to clear GHSA-6527-9fp8-r4x6 -->
-    <PackageVersion Include="Microsoft.AspNetCore.WebUtilities" Version="2.3.14" />
     <!-- Model Context Protocol (MCP) - AI Integration -->
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.4.0-preview.3" />
     <!-- Microsoft.Health legacy dependencies - using 7.1.5 from Directory.Build.props -->
@@ -116,8 +114,12 @@
        every other TFM (net10.0, netstandard2.0, ...) keeps 10.0.10 so net10.0 consumers of the multi-targeted libraries
        are not forced onto 11.x. The condition is evaluated per target framework at restore, and
        CentralPackageTransitivePinning applies the version selected for each TFM.
-       System.Security.Cryptography.Xml is also a security pin (see the Security group above). -->
+       System.Security.Cryptography.Xml is also a security pin (see the Security group above).
+       Microsoft.AspNetCore.WebUtilities is a security pin on every non-net11.0 TFM: it is transitive from
+       Microsoft.AspNetCore.Http (resolves 2.3.0) and is pinned to 2.3.14 to clear GHSA-6527-9fp8-r4x6. net11.0 uses
+       11.0.0 because Microsoft.AspNetCore.OpenApi 11 requires >= 11.0.0 and the advisory covers only the 2.3.x line. -->
   <ItemGroup Condition="'$(TargetFramework)' == 'net11.0'">
+    <PackageVersion Include="Microsoft.AspNetCore.WebUtilities" Version="11.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="11.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="11.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="11.0.0" />
@@ -140,6 +142,7 @@
     <PackageVersion Include="System.Security.Cryptography.Xml" Version="11.0.0" />
   </ItemGroup>
   <ItemGroup Condition="'$(TargetFramework)' != 'net11.0'">
+    <PackageVersion Include="Microsoft.AspNetCore.WebUtilities" Version="2.3.14" />
     <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.10" />

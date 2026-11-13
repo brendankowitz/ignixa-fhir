@@ -168,6 +168,17 @@
       "allowedVersions": "/^10\\./"
     },
     {
+      "description": "Keep the non-net11.0 Microsoft.AspNetCore.WebUtilities security pin (GHSA-6527-9fp8-r4x6) on the 2.x line; WebUtilities 11.x targets net11.0 only and would break netstandard2.0 and net10.0 restores",
+      "matchDatasources": [
+        "nuget"
+      ],
+      "matchPackageNames": [
+        "Microsoft.AspNetCore.WebUtilities"
+      ],
+      "matchCurrentVersion": "/^2\\./",
+      "allowedVersions": "/^2\\./"
+    },
+    {
       "description": "Handle DurableTask framework updates",
       "groupName": "DurableTask Framework",
       "schedule": [
