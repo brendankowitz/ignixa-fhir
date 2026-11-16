@@ -439,7 +439,7 @@ internal static class FhirPathParseTreeGrammar
 
     private static string UnescapeIdentifier(string id)
     {
-        if (        (id.StartsWith("`", StringComparison.Ordinal) && id.EndsWith("`", StringComparison.Ordinal)) ||
+        if ((id.StartsWith("`", StringComparison.Ordinal) && id.EndsWith("`", StringComparison.Ordinal)) ||
             (id.StartsWith("\"", StringComparison.Ordinal) && id.EndsWith("\"", StringComparison.Ordinal)))
         {
             return id.Substring(1, id.Length - 2);

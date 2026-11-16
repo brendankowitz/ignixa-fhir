@@ -80,7 +80,8 @@ internal static class DecimalConversion
         {
             // Carries scale -n, like the 15 digit (decimal)Math.Pow(10, n) it replaces, so that multiplying
             // by it keeps the same trailing zeros as before.
-            return -n > MaxDecimalScale ? 0m : new decimal(1, 0, 0, false, (byte)-n);
+            // Compared before negating: -int.MinValue overflows.
+            return n < -MaxDecimalScale ? 0m : new decimal(1, 0, 0, false, (byte)-n);
         }
 
         var result = 1m;

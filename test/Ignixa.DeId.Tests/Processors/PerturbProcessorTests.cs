@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 using System.Collections.Immutable;
+using System.Globalization;
 using Ignixa.DeId.Models;
 using Ignixa.DeId.Processors;
 using Ignixa.FhirPath.Evaluation;
@@ -17,12 +18,12 @@ public class PerturbProcessorTests
     private readonly R4CoreSchemaProvider _schema = new();
 
     [Theory]
-    [InlineData("""{"resourceType":"Observation","valueDecimal":12.345}""", "valueDecimal", 2, 12.34)]
-    [InlineData("""{"resourceType":"Observation","valueDecimal":12.345}""", "valueDecimal", 0, 12)]
-    [InlineData("""{"resourceType":"Observation","valueInteger":13}""", "valueInteger", 2, 13)]
-    [InlineData("""{"resourceType":"Observation","valueQuantity":{"value":12.345,"unit":"mg"}}""", "valueQuantity", 2, 12.34)]
+    [InlineData("""{"resourceType":"Observation","valueDecimal":12.345}""", "valueDecimal", 2, "12.34")]
+    [InlineData("""{"resourceType":"Observation","valueDecimal":12.345}""", "valueDecimal", 0, "12")]
+    [InlineData("""{"resourceType":"Observation","valueInteger":13}""", "valueInteger", 2, "13")]
+    [InlineData("""{"resourceType":"Observation","valueQuantity":{"value":12.345,"unit":"mg"}}""", "valueQuantity", 2, "12.34")]
     public async Task GivenZeroSpan_WhenPerturbing_ThenValueIsRoundedAndPathsAreTracked(
-        string json, string field, int roundTo, double expected)
+        string json, string field, int roundTo, string expected)
     {
         var resource = ResourceJsonNode.Parse(json);
         var node = resource.ToElement(_schema).Children(field).First();
@@ -43,8 +44,7 @@ public class PerturbProcessorTests
         resource.InvalidateCaches();
         var updated = resource.ToElement(_schema);
         var value = updated.Scalar(field == "valueQuantity" ? "valueQuantity.value" : field);
-        // .NET 11 no longer rounds (decimal)double to 15 significant digits, so (decimal)12.34d != 12.34m.
-        Convert.ToDouble(value).ShouldBe(expected);
+        Convert.ToDecimal(value, CultureInfo.InvariantCulture).ShouldBe(decimal.Parse(expected, CultureInfo.InvariantCulture));
         if (field == "valueQuantity")
         {
             context.VisitedNodes.ShouldContain(node.Children("value").First().Location);

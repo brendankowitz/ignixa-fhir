@@ -56,6 +56,8 @@ public class DecimalConversionTests
     [InlineData(-1, "0.1")]
     [InlineData(0, "1")]
     [InlineData(3, "1000")]
+    [InlineData(-29, "0")]
+    [InlineData(int.MinValue, "0")]
     public void GivenExponent_WhenPowerOfTenRequested_ThenValueIsExact(int exponent, string expected)
     {
         var result = DecimalConversion.PowerOfTen(exponent);
@@ -371,6 +373,9 @@ public class DecimalConversionTests
     [InlineData(1d / 3d, "0.333333333333333")]
     [InlineData(123456789.123456789d, "123456789.123457")]
     [InlineData(2.5e-5d, "0.000025")]
+    [InlineData(999999999999999.5d, "1000000000000000")] // rounding carries into a 16th digit
+    [InlineData(99999999999999.5d, "99999999999999.5")]
+    [InlineData(-double.Epsilon, "0")]
     public void GivenDouble_WhenNarrowed_ThenResultMatchesPreNet11Cast(double input, string expected)
     {
         var result = DecimalConversion.FromDouble(input);
@@ -385,11 +390,27 @@ public class DecimalConversionTests
     [InlineData(16777216f, "16777220")]
     [InlineData(1e-28f, "0.0000000000000000000000000001")]
     [InlineData(1e-30f, "0")]
+    [InlineData(1000000.5f, "1000000")] // ties round to even
+    [InlineData(1000001.5f, "1000002")]
+    [InlineData(float.Epsilon, "0")]
+    [InlineData(-float.Epsilon, "0")]
     public void GivenSingle_WhenNarrowed_ThenResultMatchesPreNet11Cast(float input, string expected)
     {
         var result = DecimalConversion.FromSingle(input);
 
         BitsOf(result).ShouldBe(BitsOf(decimal.Parse(expected, CultureInfo.InvariantCulture)));
+    }
+
+    [Fact]
+    public void GivenLargestMagnitudeBelowTwoToThe96_WhenNarrowed_ThenResultMatchesPreNet11Cast()
+    {
+        var largestDouble = Math.BitDecrement(Math.ScaleB(1d, 96));
+        var largestSingle = MathF.BitDecrement(MathF.ScaleB(1f, 96));
+
+        BitsOf(DecimalConversion.FromDouble(largestDouble)).ShouldBe(BitsOf(79228162514264300000000000000m));
+        BitsOf(DecimalConversion.FromDouble(-largestDouble)).ShouldBe(BitsOf(-79228162514264300000000000000m));
+        BitsOf(DecimalConversion.FromSingle(largestSingle)).ShouldBe(BitsOf(79228160000000000000000000000m));
+        BitsOf(DecimalConversion.FromSingle(-largestSingle)).ShouldBe(BitsOf(-79228160000000000000000000000m));
     }
 
     [Fact]

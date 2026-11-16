@@ -164,7 +164,8 @@ class Program
 
         var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        using (var runner = AssemblyRunner.WithoutAppDomain(e2eAssemblyPath))
+        var runner = AssemblyRunner.WithoutAppDomain(e2eAssemblyPath);
+        try
         {
             runner.OnErrorMessage = info => runnerErrors.Enqueue($"{info.ExceptionType}: {info.ExceptionMessage}");
 
@@ -313,7 +314,19 @@ class Program
             }
 
             // xUnit publishes Idle only after the completion callback returns.
-            SpinWait.SpinUntil(() => runner.Status == AssemblyRunnerStatus.Idle, TimeSpan.FromSeconds(10));
+            var idleTimeout = TimeSpan.FromSeconds(10);
+            if (!SpinWait.SpinUntil(() => runner.Status == AssemblyRunnerStatus.Idle, idleTimeout))
+            {
+                runnerErrors.Enqueue($"xUnit runner still '{runner.Status}' {idleTimeout.TotalSeconds:F0}s after completion; not disposed.");
+            }
+        }
+        finally
+        {
+            // AssemblyRunner.Dispose throws unless the runner is idle; that would lose the report and exit code.
+            if (runner.Status == AssemblyRunnerStatus.Idle)
+            {
+                runner.Dispose();
+            }
         }
 
         report.Results = results.ToList();

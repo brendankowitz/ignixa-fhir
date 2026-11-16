@@ -195,17 +195,43 @@ public class ArithmeticOperandTypeTests
         result[0].Value.ShouldBe(expected);
     }
 
-    private List<IElement> Evaluate(string expression)
+    /// <summary>
+    /// Element values can arrive as binary floating point. .NET 11 made <c>(decimal)double</c> exact, so these
+    /// pin the evaluator's conversion to the shortest decimal on every runtime.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(BinaryFloatingPointOperands))]
+    public void GivenABinaryFloatingPointValue_WhenUsedInArithmetic_ThenItBehavesAsItsShortestDecimal(object value, string expression, decimal expected)
     {
-        var parsed = _parser.Parse(expression);
-        return _evaluator.Evaluate(new ScalarRoot(), parsed).ToList();
+        // Act
+        var result = Evaluate(expression, new ScalarRoot("decimal", value));
+
+        // Assert
+        result.Count.ShouldBe(1);
+        result[0].Value.ShouldBe(expected);
     }
 
-    private sealed class ScalarRoot : IElement
+    public static TheoryData<object, string, decimal> BinaryFloatingPointOperands() => new()
+    {
+        { 0.1d, "-$this", -0.1m },
+        { 1.1f, "-$this", -1.1m },
+        { 0.1d, "$this + 0.2", 0.3m },
+        { 1.1f, "$this * 2", 2.2m },
+    };
+
+    private List<IElement> Evaluate(string expression) => Evaluate(expression, new ScalarRoot("integer", 0));
+
+    private List<IElement> Evaluate(string expression, IElement root)
+    {
+        var parsed = _parser.Parse(expression);
+        return _evaluator.Evaluate(root, parsed).ToList();
+    }
+
+    private sealed class ScalarRoot(string instanceType, object value) : IElement
     {
         public string Name => string.Empty;
-        public string InstanceType => "integer";
-        public object Value => 0;
+        public string InstanceType => instanceType;
+        public object Value => value;
         public string Location => string.Empty;
         public IType? Type => null;
         public bool HasPrimitiveValue => true;

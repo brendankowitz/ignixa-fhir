@@ -10,7 +10,7 @@ using Xunit;
 namespace Ignixa.RepoGuards.Tests;
 
 /// <summary>
-/// Guards for ADR 2607 (.NET runtime support with Core multi-targeting). Shippable Core libraries
+/// Guards for ADR 2611 (.NET runtime support with Core multi-targeting). Shippable Core libraries
 /// must run on both supported runtimes, so any <c>src/Core/**</c> project that targets one of
 /// {net10.0, net11.0} must target both. The netstandard2.0 analyzer projects do not intersect
 /// that set and are therefore exempt without special-casing.
@@ -29,7 +29,7 @@ public class RuntimeMultiTargetingGuardTests
             .ToList();
 
         violations.ShouldBeEmpty(
-            "Core libraries must multi-target both net10.0 and net11.0 (ADR 2607). " +
+            "Core libraries must multi-target both net10.0 and net11.0 (ADR 2611). " +
             "A project that targets one supported runtime must target both so it ships for each.");
     }
 

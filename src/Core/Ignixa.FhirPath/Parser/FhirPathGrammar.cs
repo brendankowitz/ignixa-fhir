@@ -489,7 +489,7 @@ public static class FhirPathGrammar
     private static string UnescapeIdentifier(string id)
     {
         // Remove quotes/backticks for delimited identifiers
-        if (        (id.StartsWith("`", StringComparison.Ordinal) && id.EndsWith("`", StringComparison.Ordinal)) ||
+        if ((id.StartsWith("`", StringComparison.Ordinal) && id.EndsWith("`", StringComparison.Ordinal)) ||
             (id.StartsWith("\"", StringComparison.Ordinal) && id.EndsWith("\"", StringComparison.Ordinal)))
         {
             return id.Substring(1, id.Length - 2);

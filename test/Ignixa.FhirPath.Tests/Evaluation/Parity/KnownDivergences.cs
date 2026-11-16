@@ -177,8 +177,8 @@ internal static class KnownDivergences
         // UCUM) both convert doubles with that cast. Firely therefore reports decimals carrying the
         // binary representation error of the double (28 digits, e.g. 0.0400000000000000024980018052
         // for the true 0.04); that is an upstream issue, not an Ignixa defect. Ignixa strips the same
-        // noise in DecimalConversion, so the engines agree on the value
-        // and the divergence is Firely's noise. The Firely digits are exact IEEE-754 expansions and so
+        // noise in DecimalConversion, so both engines compute the same true value and the divergence is
+        // only Firely's binary noise. The Firely digits are exact IEEE-754 expansions and so
         // deterministic; if an upstream release stops adding the noise, these pins vanish and the
         // test fails, which is the signal to delete this block and use the net10 pins for both TFMs.
 
