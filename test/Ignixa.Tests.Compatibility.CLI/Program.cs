@@ -311,6 +311,9 @@ class Program
                 // xUnit cannot abort a currently executing test. Finish its cleanup before disposing the runner.
                 await finished.Task;
             }
+
+            // xUnit publishes Idle only after the completion callback returns.
+            SpinWait.SpinUntil(() => runner.Status == AssemblyRunnerStatus.Idle, TimeSpan.FromSeconds(10));
         }
 
         report.Results = results.ToList();
