@@ -6,24 +6,15 @@
 
 using Ignixa.FhirPath.Expressions;
 using Ignixa.FhirPath.Parser;
-using Superpower;
 
 namespace Ignixa.FhirPath.Tests;
 
 public class FhirPathQuantityTests
 {
-    private readonly Tokenizer<FhirPathTokenKind> _tokenizer = FhirPathTokenizer.Create();
+    private readonly FhirPathParser _parser = new();
 
-    private QuantityExpression ParseQuantity(string input)
-    {
-        var tokenizeResult = _tokenizer.TryTokenize(input);
-        Assert.True(tokenizeResult.HasValue, $"Tokenization failed: {tokenizeResult}");
-
-        var parseResult = FhirPathGrammar.Quantity.TryParse(tokenizeResult.Value);
-        Assert.True(parseResult.HasValue, $"Parsing failed: {parseResult}");
-
-        return parseResult.Value;
-    }
+    private QuantityExpression ParseQuantity(string input) =>
+        Assert.IsType<QuantityExpression>(_parser.Parse(input));
 
     [Fact]
     public void GivenIntegerQuantity_WhenParsing_ThenReturnsQuantityExpression()
