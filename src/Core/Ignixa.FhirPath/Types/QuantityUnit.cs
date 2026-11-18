@@ -129,7 +129,7 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             // Check if both have the same canonical form metric (same dimensionality)
             return AreSameDimension(canonical1, canonical2);
         }
-        catch
+        catch (Exception ex) when (IsUnitAlgebraFailure(ex))
         {
             // If parsing or conversion fails, units are not compatible
             return false;
@@ -221,7 +221,7 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             // Exponential has explicit conversion to decimal
             return (decimal)ratio;
         }
-        catch
+        catch (Exception ex) when (IsUnitAlgebraFailure(ex))
         {
             // Conversion failed (incompatible units or invalid unit codes)
             return null;
@@ -247,7 +247,7 @@ public class QuantityUnitConverter : IQuantityUnitConverter
 
             return canonical?.Symbols;
         }
-        catch
+        catch (Exception ex) when (IsUnitAlgebraFailure(ex))
         {
             return null;
         }
@@ -300,7 +300,7 @@ public class QuantityUnitConverter : IQuantityUnitConverter
 
             return new FhirQuantity(value, unit);
         }
-        catch
+        catch (Exception ex) when (IsUnitAlgebraFailure(ex))
         {
             return null;
         }
@@ -357,11 +357,32 @@ public class QuantityUnitConverter : IQuantityUnitConverter
 
             return new FhirQuantity(value, unit);
         }
-        catch
+        catch (Exception ex) when (IsUnitAlgebraFailure(ex))
         {
             return null;
         }
     }
+
+    /// <summary>
+    /// The exceptions Fhir.Metrics 1.3.1 raises for a unit it cannot parse or a value it cannot represent,
+    /// each of which this converter answers with "not compatible" / <see langword="null"/>.
+    /// </summary>
+    /// <remarks>
+    /// Established from the decompiled package and by experiment, not assumed:
+    /// <list type="bullet">
+    /// <item><see cref="ArgumentException"/>: unknown unit or prefix (<c>xyz</c>, <c>[foo]</c>), whitespace
+    /// (<c>m s</c>), malformed annotation (<c>m{a}b</c>).</item>
+    /// <item><see cref="InvalidCastException"/>: a unit with no path to base units (<c>Cel</c>, <c>[degF]</c>,
+    /// <c>[pH]</c>), from <c>Conversions.Canonical</c>.</item>
+    /// <item><see cref="FormatException"/>: an exponent written in non-ASCII digits (<c>m&#x0662;</c>), which the
+    /// tokenizer's <c>\d</c> accepts and <c>Convert.ToInt16</c> then rejects.</item>
+    /// <item><see cref="OverflowException"/>: an exponent beyond <see cref="short"/> (<c>m40000</c>), or a magnitude
+    /// beyond <see cref="decimal"/> (<c>km30000</c>, or multiplying two large canonical values).</item>
+    /// </list>
+    /// Anything else - cancellation, memory or stack exhaustion, a defect - propagates.
+    /// </remarks>
+    private static bool IsUnitAlgebraFailure(Exception ex) =>
+        ex is ArgumentException or InvalidCastException or FormatException or OverflowException;
 
     /// <summary>
     /// Checks if two quantities have the same dimensionality.
