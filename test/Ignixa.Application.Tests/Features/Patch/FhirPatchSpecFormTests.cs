@@ -107,7 +107,7 @@ public sealed class FhirPatchSpecFormTests : IDisposable
 
         // Act & Assert
         var exception = Should.Throw<FhirPatchException>(() =>
-            FhirPatchOperationResolver.Resolve(patient, operation, _versionContext.GetBaseSchemaProvider(FhirVersion.R4)));
+            FhirPatchOperationResolver.Resolve(patient, operation, _versionContext.GetBaseSchemaProvider(FhirVersion.R4), CancellationToken.None));
         exception.Message.ShouldContain("only valid on an add operation");
     }
 

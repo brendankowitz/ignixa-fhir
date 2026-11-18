@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Nodes;
+using System.Threading;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization.SourceNodes;
@@ -25,7 +26,9 @@ public static class FhirPatchOperationResolver
     /// <exception cref="FhirPatchException">
     /// The path is not valid FHIRPath, or the operation cannot be bound to the resource schema.
     /// </exception>
-    public static FhirPatchOperation Resolve(ResourceJsonNode resource, FhirPatchOperation operation, ISchema schema)
+    /// <exception cref="FhirPathResourceLimitExceededException">Evaluating the path exceeded an evaluation limit.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public static FhirPatchOperation Resolve(ResourceJsonNode resource, FhirPatchOperation operation, ISchema schema, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(resource);
         ArgumentNullException.ThrowIfNull(operation);
@@ -48,10 +51,10 @@ public static class FhirPatchOperationResolver
 
         if (operation.Name != null)
         {
-            return ResolveNamedAdd(resource, operation, schema);
+            return ResolveNamedAdd(resource, operation, schema, cancellationToken);
         }
 
-        var targetType = ResolveTargetType(resource, schema, operation.Path);
+        var targetType = ResolveTargetType(resource, schema, operation.Path, cancellationToken);
         return operation with
         {
             Value = BuildObject(schema, targetType, operation.ValueParts!),
@@ -59,9 +62,9 @@ public static class FhirPatchOperationResolver
         };
     }
 
-    private static FhirPatchOperation ResolveNamedAdd(ResourceJsonNode resource, FhirPatchOperation operation, ISchema schema)
+    private static FhirPatchOperation ResolveNamedAdd(ResourceJsonNode resource, FhirPatchOperation operation, ISchema schema, CancellationToken cancellationToken)
     {
-        var matches = Evaluate(resource, schema, operation.Path!);
+        var matches = Evaluate(resource, schema, operation.Path!, cancellationToken);
         if (matches.Count != 1)
         {
             throw new FhirPatchException(
@@ -94,16 +97,16 @@ public static class FhirPatchOperationResolver
         };
     }
 
-    private static string ResolveTargetType(ResourceJsonNode resource, ISchema schema, string path)
+    private static string ResolveTargetType(ResourceJsonNode resource, ISchema schema, string path, CancellationToken cancellationToken)
     {
-        var matches = Evaluate(resource, schema, path);
+        var matches = Evaluate(resource, schema, path, cancellationToken);
         if (matches.Count > 1)
         {
             throw new FhirPatchException(
                 $"Path '{path}' must resolve to a single element to build a value from nested parts, but matched {matches.Count}");
         }
 
-        return matches.Count == 1 ? matches[0].InstanceType : ResolveAbsentTargetType(resource, schema, path);
+        return matches.Count == 1 ? matches[0].InstanceType : ResolveAbsentTargetType(resource, schema, path, cancellationToken);
     }
 
     /// <summary>
@@ -111,7 +114,7 @@ public static class FhirPatchOperationResolver
     /// the value[x] form, where the executor creates the missing element. Whether the operation may create
     /// it (add, insert) or requires it to exist (replace) is left to the executor.
     /// </summary>
-    private static string ResolveAbsentTargetType(ResourceJsonNode resource, ISchema schema, string path)
+    private static string ResolveAbsentTargetType(ResourceJsonNode resource, ISchema schema, string path, CancellationToken cancellationToken)
     {
         var lastDot = path.LastIndexOf('.');
         var name = lastDot > 0 ? path[(lastDot + 1)..] : string.Empty;
@@ -121,7 +124,7 @@ public static class FhirPatchOperationResolver
         }
 
         var parentPath = path[..lastDot];
-        var parents = Evaluate(resource, schema, parentPath);
+        var parents = Evaluate(resource, schema, parentPath, cancellationToken);
         if (parents.Count != 1)
         {
             throw new FhirPatchException(
@@ -136,15 +139,21 @@ public static class FhirPatchOperationResolver
     private static bool IsSimpleIdentifier(string name) =>
         name.Length > 0 && char.IsAsciiLetter(name[0]) && name.All(c => char.IsAsciiLetterOrDigit(c) || c == '_');
 
-    private static List<IElement> Evaluate(ResourceJsonNode resource, ISchema schema, string path)
+    private static List<IElement> Evaluate(ResourceJsonNode resource, ISchema schema, string path, CancellationToken cancellationToken)
     {
         try
         {
-            return resource.ToElement(schema).Select(path).ToList();
+            return resource.ToElement(schema).Select(path, new EvaluationContext { CancellationToken = cancellationToken }).ToList();
         }
         catch (FormatException ex)
         {
             throw new FhirPatchException($"Path '{path}' is not a valid FHIRPath expression: {ex.Message}", ex);
+        }
+        catch (FhirPathResourceLimitExceededException)
+        {
+            // Not an invalid patch: the path asked for more than an evaluation allows. FhirPatchEngine reports
+            // it as too costly, which a FhirPatchException wrapper would have turned into a bad request.
+            throw;
         }
         catch (FhirPathEvaluationException ex)
         {

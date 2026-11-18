@@ -100,14 +100,23 @@ public class FhirPathQueryCapabilityStatementTool : TenantAwareMcpTool
             // Convert CapabilityStatement to IElement for evaluation
             var typedElement = capabilityStatement.ToElement(structureProvider);
 
-            // Evaluate FHIRPath expression against the CapabilityStatement
-            var evalResults = _evaluator.Evaluate((IElement)typedElement, expression);
+            // Evaluate FHIRPath expression against the CapabilityStatement. The expression is the caller's, so it
+            // runs under the default evaluation limits and stops when the request is cancelled.
+            var evalResults = _evaluator.Evaluate(
+                (IElement)typedElement,
+                expression,
+                new EvaluationContext { CancellationToken = cancellationToken });
 
             // Convert results to serializable objects
             foreach (var resultElement in evalResults)
             {
                 results.Add(ConvertElementToSerializable((IElement)resultElement));
             }
+        }
+        catch (OperationCanceledException)
+        {
+            // The request was cancelled; that is not an evaluation error to report back to it.
+            throw;
         }
         catch (Exception ex)
         {

@@ -33,7 +33,7 @@ public partial class GeneralizeProcessor : IDeIdProcessor
             EnsureArg.IsNotNull(context.Settings, nameof(context.Settings));
 
             var settings = context.Settings.ToDictionary(kv => kv.Key, kv => kv.Value);
-            var wasModified = ProcessCore(node, context.VisitedNodes, settings);
+            var wasModified = ProcessCore(node, context.VisitedNodes, settings, cancellationToken);
 
             var newResult = new ProcessorResult
             {
@@ -44,7 +44,7 @@ public partial class GeneralizeProcessor : IDeIdProcessor
 
             return ValueTask.FromResult(Result<ProcessorResult>.Success(newResult));
         }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
+        catch (Exception ex) when (ex is not (OutOfMemoryException or OperationCanceledException))
         {
             return ValueTask.FromResult(Result<ProcessorResult>.Failure(new DeIdError(
                 "PROCESSOR_ERROR",
@@ -54,7 +54,7 @@ public partial class GeneralizeProcessor : IDeIdProcessor
         }
     }
 
-    private static bool ProcessCore(IElement node, HashSet<string> visitedNodes, Dictionary<string, object> settings)
+    private static bool ProcessCore(IElement node, HashSet<string> visitedNodes, Dictionary<string, object> settings, CancellationToken cancellationToken)
     {
         var isPrimitive = node.IsPrimitiveElement();
         if (!isPrimitive)
@@ -73,14 +73,14 @@ public partial class GeneralizeProcessor : IDeIdProcessor
         {
             try
             {
-                if (node.Predicate(eachCase.Key))
+                if (node.Predicate(eachCase.Key, cancellationToken))
                 {
-                    var newValue = node.Scalar(eachCase.Value.ToString()!);
+                    var newValue = node.Scalar(eachCase.Value.ToString()!, cancellationToken);
                     ElementMutationTool.SetValue(node, newValue);
                     return true;
                 }
             }
-            catch (Exception ex) when (ex is not OutOfMemoryException)
+            catch (Exception ex) when (ex is not (OutOfMemoryException or OperationCanceledException))
             {
                 throw new ProcessingException($"Generalize failed when processing {eachCase}.", ex);
             }

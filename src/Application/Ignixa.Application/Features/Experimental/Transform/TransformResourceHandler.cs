@@ -117,12 +117,12 @@ public class TransformResourceHandler(
                 return conceptMapService.Translate(sourceCode, sourceSystem, conceptMapUrl, targetSystem: null);
             },
             Logger = msg => logger.LogDebug("Mapping execution: {Message}", msg),
-            FhirPathEvaluator = (expression, element) =>
-            {
-                // Use synchronous Evaluate method which internally uses async with timeout
-                return fhirPathEvaluatorWithTimeout.Evaluate(expression, element);
-            }
         };
+
+        // The context's token is the request's linked with the transform timeout, published by MappingEvaluator while
+        // it runs, so either one stops an expression mid-evaluation.
+        context.FhirPathEvaluator = (expression, element) =>
+            fhirPathEvaluatorWithTimeout.Evaluate(expression, element, context.CancellationToken);
 
         // Set source and target elements
         context.SetSource("src", sourceElement);
@@ -147,8 +147,9 @@ public class TransformResourceHandler(
             fhirPathParser,
             () => schemaProvider);
 
+        // Experimental:Transform:TimeoutSeconds bounds the whole transformation, not only each expression.
         var evaluator = new MappingEvaluator(
-            MappingEvaluatorOptions.Default,
+            new MappingEvaluatorOptions { TransformTimeout = fhirPathEvaluatorWithTimeout.Timeout },
             mutator);
 
         try
@@ -162,6 +163,13 @@ public class TransformResourceHandler(
                 targetType);
 
             return target;
+        }
+        catch (FhirPathResourceLimitExceededException ex)
+        {
+            // An expression in the map asked for more than an evaluation allows: too costly, like a timeout.
+            logger.LogWarning(ex, "A FHIRPath expression in the map exceeded an evaluation limit");
+
+            throw new Domain.Exceptions.RequestTooCostlyException(ex.Message, ex);
         }
         catch (MappingExecutionException ex) when (ex.Code == "TRANSFORM_TIMEOUT")
         {

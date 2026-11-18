@@ -74,7 +74,7 @@ internal static class FieldResolver
         {
             var fhirVersion = context.Service<IFhirRequestContextAccessor>().RequestContext?.FhirVersion ?? FhirVersion.R4;
             var schemaProvider = context.Service<Func<FhirVersion, IFhirSchemaProvider>>()(fhirVersion);
-            items = ApplyFhirPathFilter(items, fhirpathOpt.Value, schemaProvider, instanceType);
+            items = ApplyFhirPathFilter(items, fhirpathOpt.Value, schemaProvider, instanceType, context.RequestAborted);
         }
 
         // Apply sub-property filters (e.g., name(use: "official"))
@@ -106,8 +106,17 @@ internal static class FieldResolver
         return items.ToList();
     }
 
+    /// <remarks>
+    /// The expression comes from the request, so each evaluation runs under the default FHIRPath evaluation limits
+    /// and observes the request's <paramref name="cancellationToken"/>. A limit is reported as its own error code
+    /// rather than as an invalid expression, because the expression is valid and only too costly.
+    /// </remarks>
     internal static IEnumerable<JsonElement> ApplyFhirPathFilter(
-        IEnumerable<JsonElement> items, string expression, IFhirSchemaProvider schemaProvider, string? instanceType)
+        IEnumerable<JsonElement> items,
+        string expression,
+        IFhirSchemaProvider schemaProvider,
+        string? instanceType,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(expression))
             return items;
@@ -135,11 +144,20 @@ internal static class FieldResolver
 
                 var sourceNode = JsonNodeSourceNode.Create(node, instanceType ?? "root");
                 var element = sourceNode.ToElement(schemaProvider);
-                return element.IsTrue(expression);
+                return element.IsTrue(expression, new EvaluationContext { CancellationToken = cancellationToken });
             }
             catch (OperationCanceledException)
             {
                 throw;
+            }
+            catch (FhirPathResourceLimitExceededException ex)
+            {
+                throw new GraphQLException(
+                    ErrorBuilder.New()
+                        .SetMessage($"FHIRPath expression '{expression}' exceeded an evaluation limit: {ex.Message}")
+                        .SetCode("FHIRPATH_TOO_COSTLY")
+                        .SetException(ex)
+                        .Build());
             }
             catch (Exception ex)
             {

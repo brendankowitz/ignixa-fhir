@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Ignixa.FhirMappingLanguage.Mutator;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
 
@@ -51,7 +52,7 @@ public class AddOperationExecutor(
             if (lastDot > 0)
             {
                 var parentPath = operation.Path[..lastDot];
-                var parentMatches = mutator.Evaluate(resource, parentPath).ToList();
+                var parentMatches = mutator.Evaluate(resource, parentPath, cancellationToken).ToList();
                 if (parentMatches.Count == 0)
                 {
                     throw new FhirPatchException($"Parent path '{parentPath}' not found");
@@ -59,7 +60,7 @@ public class AddOperationExecutor(
             }
 
             // Path-only add: cardinality is unknown, so infer it from the existing JSON and reject single-valued targets.
-            var matches = mutator.Evaluate(resource, operation.Path).ToList();
+            var matches = mutator.Evaluate(resource, operation.Path, cancellationToken).ToList();
             if (matches.Count > 0)
             {
                 var existingNode = matches[0];
@@ -71,9 +72,15 @@ public class AddOperationExecutor(
             }
 
             // Append mode creates the array when the path is absent and appends when it exists.
-            mutator.SetProperty(resource, operation.Path, valueNode, PropertyMutationMode.Append);
+            mutator.SetProperty(resource, operation.Path, valueNode, PropertyMutationMode.Append, cancellationToken);
 
             logger.LogDebug("Added value to {Path}", operation.Path);
+        }
+        catch (FhirPathResourceLimitExceededException)
+        {
+            // Derives from InvalidOperationException, but is not an invalid patch: FhirPatchEngine reports it as
+            // too costly.
+            throw;
         }
         catch (InvalidOperationException ex)
         {

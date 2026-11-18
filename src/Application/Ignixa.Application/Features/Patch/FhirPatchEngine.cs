@@ -4,6 +4,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Ignixa.Application.Features.Patch.Executors;
+using Ignixa.Domain.Exceptions;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
 using ISchema = Ignixa.Abstractions.ISchema;
@@ -33,6 +35,13 @@ public class FhirPatchEngine
     /// Spec-form operations ('name' part, anonymous-type values) are resolved against <paramref name="schema"/>
     /// immediately before each one runs, so they see the result of the preceding operations.
     /// </summary>
+    /// <remarks>
+    /// Every path is evaluated under the default FHIRPath evaluation limits and observes
+    /// <paramref name="cancellationToken"/>. A path that exceeds a limit is reported as
+    /// <see cref="RequestTooCostlyException"/>: the request is well-formed but asks for more work than the server
+    /// allows, which is neither a bad patch nor a server fault.
+    /// </remarks>
+    /// <exception cref="RequestTooCostlyException">A path exceeded a FHIRPath evaluation limit.</exception>
     public async Task<ResourceJsonNode> ApplyPatchAsync(
         ResourceJsonNode resource,
         FhirPatchOperation[] operations,
@@ -50,10 +59,19 @@ public class FhirPatchEngine
                 throw new FhirPatchException($"Unknown operation type: {operation.Type}");
             }
 
-            var resolved = FhirPatchOperationResolver.Resolve(resource, operation, schema);
+            try
+            {
+                var resolved = FhirPatchOperationResolver.Resolve(resource, operation, schema, cancellationToken);
 
-            // Executor mutates resource in-place and returns the same instance
-            resource = await executor.ExecuteAsync(resource, resolved, cancellationToken);
+                // Executor mutates resource in-place and returns the same instance
+                resource = await executor.ExecuteAsync(resource, resolved, cancellationToken);
+            }
+            catch (FhirPathResourceLimitExceededException ex)
+            {
+                throw new RequestTooCostlyException(
+                    $"The {operation.Type} operation's path exceeded a FHIRPath evaluation limit: {ex.Message}",
+                    ex);
+            }
 
             // Cached element views must not hide this operation's writes from the next one.
             resource.InvalidateCaches();

@@ -40,6 +40,7 @@ public class TransformResourceHandlerTests
     private readonly IFhirVersionContext _versionContext;
     private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly ConceptMapResolverService _conceptMapService;
+    private readonly MapRegistryCache _mapCache;
     private readonly TransformResourceHandler _handler;
 
     public TransformResourceHandlerTests()
@@ -71,11 +72,16 @@ public class TransformResourceHandlerTests
             NullLogger<ConceptMapResolverService>.Instance);
 
         // TransformResourceHandler now uses MapRegistryCache
-        var mockMapCache = Substitute.For<MapRegistryCache>(
+        _mapCache = Substitute.For<MapRegistryCache>(
             _repository,
             _structureMapParser,
             NullLogger<MapRegistryCache>.Instance);
 
+        _handler = CreateHandler(TimeSpan.FromSeconds(30));
+    }
+
+    private TransformResourceHandler CreateHandler(TimeSpan timeout)
+    {
         // FhirPathEvaluatorWithTimeout needs real instances (can't mock due to constructor)
         var fhirPathParser = new Ignixa.FhirPath.Parser.FhirPathParser();
         var expressionCache = new FhirPathExpressionCache(
@@ -85,10 +91,11 @@ public class TransformResourceHandlerTests
         var fhirPathEvaluatorWithTimeout = new FhirPathEvaluatorWithTimeout(
             expressionCache,
             fhirPathEvaluator,
-            NullLogger<FhirPathEvaluatorWithTimeout>.Instance);
+            NullLogger<FhirPathEvaluatorWithTimeout>.Instance,
+            timeout);
 
-        _handler = new TransformResourceHandler(
-            mockMapCache,
+        return new TransformResourceHandler(
+            _mapCache,
             _mappingParser,
             _structureMapParser,
             _conceptMapService,
@@ -173,6 +180,30 @@ public class TransformResourceHandlerTests
         // Act & Assert
         await Should.ThrowAsync<OperationCanceledException>(
             async () => await _handler.HandleAsync(command, new CancellationToken(canceled: true)));
+    }
+
+    [Fact]
+    public async Task GivenAMapWhoseFhirPathRunsAway_WhenTransforming_ThenTheConfiguredTimeoutStopsItAsTooCostly()
+    {
+        // Arrange - regression for #531: the map is the request's, and its where() clause is nine nested projections
+        // over ten items (10^9 of pure CPU). Experimental:Transform:TimeoutSeconds was never read, and the evaluator
+        // could not be interrupted once it started, so this ran to completion.
+        const string tenItems = "(1|2|3|4|5|6|7|8|9|10)";
+        var crossProduct = string.Concat(Enumerable.Repeat(tenItems + ".select(", 8)) + tenItems + new string(')', 8);
+        var fml = $$"""
+            map 'http://example.org/Runaway' = 'Runaway'
+            uses 'http://hl7.org/fhir/StructureDefinition/Patient' alias Patient as source
+            uses 'http://hl7.org/fhir/StructureDefinition/Patient' alias Patient as target
+            group Transform(source src : Patient, target tgt : Patient) {
+              src.id as v where ({{crossProduct}}.count() > 0) -> tgt.id = v;
+            }
+            """;
+        var command = new TransformResourceCommand(SrcMaps: [fml], Content: CreatePatient("patient-123", "Doe", "John", "male", "1990-01-15"));
+        var handler = CreateHandler(TimeSpan.FromMilliseconds(100));
+
+        // Act & Assert
+        await Should.ThrowAsync<Ignixa.Domain.Exceptions.RequestTooCostlyException>(
+            async () => await handler.HandleAsync(command, CancellationToken.None));
     }
 
     #endregion

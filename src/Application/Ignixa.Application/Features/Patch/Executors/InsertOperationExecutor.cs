@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Ignixa.FhirMappingLanguage.Mutator;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
 
@@ -43,8 +44,14 @@ public class InsertOperationExecutor(
             var valueNode = JsonNodeMutator.SerializeValue(operation.Value)
                 ?? throw new FhirPatchException("Failed to serialize value");
 
-            mutator.InsertIntoArray(resource, operation.Path, valueNode, operation.Index.Value);
+            mutator.InsertIntoArray(resource, operation.Path, valueNode, operation.Index.Value, cancellationToken);
             logger.LogDebug("Inserted value at {Path}[{Index}]", operation.Path, operation.Index.Value);
+        }
+        catch (FhirPathResourceLimitExceededException)
+        {
+            // Derives from InvalidOperationException, but is not an invalid patch: FhirPatchEngine reports it as
+            // too costly.
+            throw;
         }
         catch (InvalidOperationException ex)
         {

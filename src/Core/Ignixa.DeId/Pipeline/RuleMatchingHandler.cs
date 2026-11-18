@@ -49,7 +49,7 @@ internal sealed class RuleMatchingHandler(ILogger<RuleMatchingHandler> logger) :
             IReadOnlyList<IElement> matchedElements;
             try
             {
-                matchedElements = rootElement.Select(rule.Path);
+                matchedElements = rootElement.Select(rule.Path, cancellationToken);
             }
             catch (Exception ex) when (ex is not (OperationCanceledException or OutOfMemoryException))
             {
