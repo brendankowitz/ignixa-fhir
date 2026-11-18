@@ -305,7 +305,7 @@ blanket-discard null `ResourceType` entries. The generic library has no
 SearchParameter-specific import, compatibility or activation policy and never runs scripts.
 
 Local consumers can use project references or a coherently pinned local Ignixa package
-closure matching net9/net10. Map host `long` byte limits by checked conversion and reject
+closure matching net10/net11. Map host `long` byte limits by checked conversion and reject
 values beyond the supported positive `int` capacity. Source registration, durable status,
 SQL, installed inventory and activation belong to the host, not this library.
 

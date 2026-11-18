@@ -11,8 +11,8 @@ public sealed record NpmPackageIdentity
         ArgumentNullException.ThrowIfNull(version);
         Name = name.Trim();
         Version = version.Trim();
-        string[] segments = Name.StartsWith('@') ? Name[1..].Split('/') : [Name];
-        if (Name.Length is < 1 or > 214 || segments.Length != (Name.StartsWith('@') ? 2 : 1) ||
+        string[] segments = Name.StartsWith("@", StringComparison.Ordinal) ? Name[1..].Split('/') : [Name];
+        if (Name.Length is < 1 or > 214 || segments.Length != (Name.StartsWith("@", StringComparison.Ordinal) ? 2 : 1) ||
             segments.Any(segment => !ValidSegment(segment, allowUppercase: false)))
         {
             throw new ArgumentException("An exact lowercase NPM name is required.", nameof(name));

@@ -54,7 +54,7 @@ internal static class SnapshotJson
     /// </summary>
     public static string ParentPath(string path)
     {
-        var lastDot = path.LastIndexOf('.');
+        var lastDot = path.LastIndexOf(".", StringComparison.Ordinal);
         return lastDot < 0 ? string.Empty : path[..lastDot];
     }
 }

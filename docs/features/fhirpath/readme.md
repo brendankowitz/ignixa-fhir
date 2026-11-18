@@ -35,7 +35,7 @@ Measured 2026-08-28 on .NET 10.0.11 (AMD EPYC 7763, 16 vCPU, Hyper-V) with Bench
 Reproduce with:
 
 ```
-dotnet run -c Release --project bench/Ignixa.Benchmarks --framework net10.0 -- --filter '*FhirPathBenchmarks*'
+dotnet run -c Release --project bench/Ignixa.Benchmarks --framework net11.0 -- --filter '*FhirPathBenchmarks*'
 ```
 
 **The comparison to quote is `Eval-*`**: both engines pre-compiled, model materialized once, evaluation

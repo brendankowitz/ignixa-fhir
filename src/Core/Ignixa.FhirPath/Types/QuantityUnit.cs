@@ -6,6 +6,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using Fhir.Metrics;
 using Ignixa.Abstractions;
@@ -218,8 +219,14 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             // We need: (source_canonical / target_canonical_for_unit_1) = result_in_target_units
             var ratio = canonical.Value / targetInCanonical.Value;
 
-            // Exponential has explicit conversion to decimal
-            return (decimal)ratio;
+            // Exponential has an explicit conversion to decimal, but it scales with (decimal)Math.Pow, which
+            // is inexact on .NET 11 (see DecimalConversion).
+            if (TryGetExactFactor(fromMetric, toMetric, divide: true, out var numerator, out var denominator))
+            {
+                return PreferExact(ratio, sourceValue * numerator / denominator);
+            }
+
+            return DecimalConversion.ToDecimal(ratio);
         }
         catch
         {
@@ -291,7 +298,10 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             var result = Fhir.Metrics.Quantity.Multiply(leftCanonical, rightCanonical);
 
             // Extract value and unit
-            var value = (decimal)result.Value;
+            var value = TryGetExactFactor(leftMetric, rightMetric, divide: false, out var numerator, out var denominator)
+                ? PreferExact(result.Value, leftQty.Value * rightQty.Value * numerator / denominator)
+                : DecimalConversion.ToDecimal(result.Value);
+
             var unit = result.Symbols;
 
             // Clean up unit representation
@@ -346,7 +356,10 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             var result = Fhir.Metrics.Quantity.Divide(leftCanonical, rightCanonical);
 
             // Extract value and unit
-            var value = (decimal)result.Value;
+            var value = TryGetExactFactor(leftMetric, rightMetric, divide: true, out var numerator, out var denominator)
+                ? PreferExact(result.Value, leftQty.Value * numerator / (rightQty.Value * denominator))
+                : DecimalConversion.ToDecimal(result.Value);
+
             var unit = result.Symbols;
 
             // Handle dimensionless result (same units cancel out)
@@ -361,6 +374,137 @@ public class QuantityUnitConverter : IQuantityUnitConverter
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// On runtimes where Fhir.Metrics computes unit factors inexactly (.NET 11+), computes the exact factor that takes
+    /// the combined operand values of an operation to the result unit: the ratio (<paramref name="divide"/>) or the
+    /// product of the factors of the two units, as <paramref name="numerator"/> / <paramref name="denominator"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Fhir.Metrics raises unit and prefix factors to their exponent with <c>Exponential.Power</c>, which goes through
+    /// <c>(decimal)Math.Pow</c>. On .NET 11 that cast is correctly rounded and keeps the binary error of the double
+    /// (up to a few 1e-15 relative for compound units), so the canonical factors of equivalent units no longer cancel:
+    /// <c>1 'mg/kg/min'</c> converts to <c>1000.000000000000066 'ug/kg/min'</c> and is not equal to
+    /// <c>1000 'ug/kg/min'</c>.
+    /// </para>
+    /// <para>
+    /// The factors themselves do not go through <c>Math.Pow</c>: each prefix factor, and the value of one unit in the
+    /// units of its UCUM definition, which Fhir.Metrics evaluates with decimal multiplication and division only. This
+    /// method walks both unit expressions down to base units, collects every such factor with its net exponent, so that
+    /// factors shared by both sides (the <c>min</c> and <c>kg</c> of <c>mg/kg/min</c> and <c>ug/kg/min</c>) cancel
+    /// exactly instead of numerically, and multiplies what remains with decimal arithmetic. The caller applies the
+    /// factor with a single final division, so the quotient of <c>1 'm' / 3 'm'</c> keeps all 28 digits. Factors that
+    /// remain after cancellation are genuine, e.g. the 3.6 of <c>km/h</c> to <c>m/s</c>, so those results stay long.
+    /// </para>
+    /// <para>
+    /// Exact here means exact for the table Fhir.Metrics loads, with two known limits. A definition that itself divides
+    /// (<c>[min_us]</c> is <c>[fdr_us]/60</c>) yields a factor rounded to 28 significant digits, so
+    /// <c>1 '[foz_us]'</c> converts to <c>479.9999999999999999999999999 '[min_us]'</c>; Fhir.Metrics keeps only the
+    /// compiled definition, not its formula, so the division cannot be deferred. And Fhir.Metrics truncates definition
+    /// values to 16 characters (<c>[pi]</c> is 3.14159265358979), which the exact walk reproduces faithfully.
+    /// </para>
+    /// </remarks>
+    /// <returns>
+    /// <see langword="false"/> before .NET 11, where the Fhir.Metrics result is kept unchanged, and when a unit has no
+    /// factor to walk (a special unit such as <c>Cel</c>), in which case the Fhir.Metrics result is used as well.
+    /// </returns>
+    private bool TryGetExactFactor(Metric left, Metric right, bool divide, out Exponential numerator, out Exponential denominator)
+    {
+        numerator = Exponential.One;
+        denominator = Exponential.One;
+        if (!DecimalConversion.UnitFactorsCarryNoise)
+        {
+            return false;
+        }
+
+        var factors = new Dictionary<string, (Exponential Value, int Exponent)>(StringComparer.Ordinal);
+        if (!CollectFactors(left, 1, factors, 0) || !CollectFactors(right, divide ? -1 : 1, factors, 0))
+        {
+            return false;
+        }
+
+        foreach (var (value, exponent) in factors.Values)
+        {
+            for (var i = 0; i < Math.Abs(exponent); i++)
+            {
+                if (exponent > 0)
+                {
+                    numerator *= value;
+                }
+                else
+                {
+                    denominator *= value;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    // Keeps the Fhir.Metrics result, trailing zeros included, when it already has the exact value. Otherwise the exact
+    // value is used with its trailing zeros dropped: their number depends on the arithmetic path, not on the operands,
+    // and does not match what .NET 10 produced from the noisy factors either (2.0 'cm' * 2.0 'm' = 0.040000 'm2').
+    private static decimal PreferExact(Exponential fhirMetricsResult, Exponential exact)
+    {
+        var exactResult = DecimalConversion.ToDecimal(exact, dropTrailingZeros: true);
+
+        // Above this magnitude only scale zero is representable, so there is no legacy scale to preserve.
+        // Do not narrow the noisy legacy result here: it can exceed decimal range even when the exact value fits.
+        if (Math.Abs(exactResult) > decimal.MaxValue / 10m)
+        {
+            return exactResult;
+        }
+
+        var legacyResult = DecimalConversion.ToDecimal(fhirMetricsResult);
+        return exactResult == legacyResult ? legacyResult : exactResult;
+    }
+
+    // UCUM definitions are a few levels deep ([mi_i] -> [ft_i] -> [in_i] -> cm); the bound only stops a cyclic table.
+    private const int MaxDefinitionDepth = 32;
+
+    private bool CollectFactors(Metric metric, int exponent, Dictionary<string, (Exponential Value, int Exponent)> factors, int depth)
+    {
+        if (depth > MaxDefinitionDepth)
+        {
+            return false;
+        }
+
+        foreach (var axis in metric.Axes)
+        {
+            var axisExponent = axis.Exponent * exponent;
+            if (axis.Prefix is { } prefix)
+            {
+                AddFactor(factors, "p:" + prefix.Symbol, prefix.Factor, axisExponent);
+            }
+
+            if (axis.Unit.IsBase)
+            {
+                continue;
+            }
+
+            var definition = _ucum.Conversions.Find(axis.Unit);
+            if (definition is null)
+            {
+                return false;
+            }
+
+            AddFactor(factors, "u:" + axis.Unit.Symbol, definition.Convert(Exponential.One).Value, axisExponent);
+            if (!CollectFactors(definition.To, axisExponent, factors, depth + 1))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static void AddFactor(Dictionary<string, (Exponential Value, int Exponent)> factors, string key, Exponential value, int exponent)
+    {
+        factors[key] = factors.TryGetValue(key, out var existing)
+            ? (existing.Value, existing.Exponent + exponent)
+            : (value, exponent);
     }
 
     /// <summary>

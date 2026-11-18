@@ -7,7 +7,7 @@ ARG BUILD_DATE
 ARG VCS_REF
 
 # Stage 1: Build
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0-azurelinux3.0 AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:11.0-azurelinux3.0 AS build
 ARG VERSION
 ARG ASSEMBLY_VERSION
 ARG INFORMATIONAL_VERSION
@@ -115,7 +115,7 @@ RUN dotnet publish Ignixa.Web.csproj \
     /p:InformationalVersion=${INFORMATIONAL_VERSION}
 
 # Stage 2: Runtime
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-azurelinux3.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:11.0-azurelinux3.0 AS runtime
 ARG VERSION
 ARG BUILD_DATE
 ARG VCS_REF

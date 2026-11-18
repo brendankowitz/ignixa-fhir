@@ -162,7 +162,7 @@ public partial class EmbeddedPackageLoader : IPackageLoader
 
         // Replace dots with slashes, but keep the file extension intact
         // "package.package.json" -> "package/package.json"
-        var lastDotIndex = relativePart.LastIndexOf('.');
+        var lastDotIndex = relativePart.LastIndexOf(".", StringComparison.Ordinal);
         if (lastDotIndex > 0)
         {
             var pathPart = relativePart.Substring(0, lastDotIndex).Replace('.', '/');

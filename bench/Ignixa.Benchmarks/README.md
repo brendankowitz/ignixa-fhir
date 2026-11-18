@@ -134,7 +134,7 @@ BenchmarkDotNet outputs include:
 
 ### Ignixa Strengths
 
-- **Fast JSON parsing** - Uses System.Text.Json (optimized for .NET 9)
+- **Fast JSON parsing** - Uses System.Text.Json (benchmarks run on .NET 11)
 - **Low memory allocation** - JsonNode-based architecture avoids POCO overhead
 - **Direct property access** - MutableNode["property"] is very fast
 - **FHIRPath integration** - Tight integration with IAnnotated pattern

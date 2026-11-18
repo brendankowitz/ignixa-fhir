@@ -16,24 +16,22 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Shared framework supplies Http/Http.Abstractions; the legacy 2.3.x packages dragged in a vulnerable Microsoft.AspNetCore.WebUtilities (GHSA-6527-9fp8-r4x6). -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Autofac" />
     <PackageReference Include="Medino" />
-    <PackageReference Include="Microsoft.AspNetCore.Http" />
-    <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
-    <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" />
     <PackageReference Include="HotChocolate.AspNetCore" />
     <PackageReference Include="HotChocolate.Execution" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
   </ItemGroup>
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>

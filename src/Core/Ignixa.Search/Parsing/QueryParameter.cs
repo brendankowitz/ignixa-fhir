@@ -64,7 +64,7 @@ public record QueryParameter(string Name, string Value)
             _ when baseName.StartsWith("_has", StringComparison.Ordinal) => ParameterCategory.Search,
 
             // Other underscore parameters are control parameters
-            _ when baseName.StartsWith('_') => ParameterCategory.Control,
+            _ when baseName.StartsWith("_", StringComparison.Ordinal) => ParameterCategory.Control,
 
             // Everything else is a search parameter
             _ => ParameterCategory.Search,

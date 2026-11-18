@@ -20,7 +20,7 @@ public class MappingTokenizerTests
     /// </summary>
     private static string UnescapeStringToken(string tokenValue)
     {
-        if (tokenValue.StartsWith('\'') && tokenValue.EndsWith('\''))
+        if (tokenValue.StartsWith("'", StringComparison.Ordinal) && tokenValue.EndsWith("'", StringComparison.Ordinal))
         {
             tokenValue = tokenValue.Substring(1, tokenValue.Length - 2);
             tokenValue = tokenValue.Replace("''", "'", StringComparison.Ordinal);

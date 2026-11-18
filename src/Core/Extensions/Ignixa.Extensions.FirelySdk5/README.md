@@ -12,8 +12,8 @@ This package provides **legacy support** for users still on **Firely SDK 5.x** (
 
 | Package | Firely SDK Version | Target Framework |
 |---------|-------------------|------------------|
-| `Ignixa.Extensions.FirelySdk5` | 5.11.4 | net9.0 |
-| `Ignixa.Extensions.FirelySdk6` | 6.0.0 | net9.0 |
+| `Ignixa.Extensions.FirelySdk5` | 5.11.4 | net10.0; net11.0 |
+| `Ignixa.Extensions.FirelySdk6` | 6.0.0 | net10.0; net11.0 |
 
 ## Why Two Packages?
 

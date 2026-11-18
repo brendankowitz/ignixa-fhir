@@ -1393,7 +1393,7 @@ public static class StreamingBundleSerializer
         }
 
         // Remove leading '?' if present, we'll add it back later
-        bool hasLeadingQuestionMark = queryString.StartsWith('?');
+        bool hasLeadingQuestionMark = queryString.StartsWith("?", StringComparison.Ordinal);
         string queryWithoutPrefix = hasLeadingQuestionMark ? queryString[1..] : queryString;
 
         if (string.IsNullOrWhiteSpace(queryWithoutPrefix))

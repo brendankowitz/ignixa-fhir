@@ -219,7 +219,7 @@ public sealed class SourceNodeInstanceFactory(ISchema schema)
     /// </summary>
     private static string LocalTypeName(string instanceType)
     {
-        var separator = instanceType.LastIndexOf('.');
+        var separator = instanceType.LastIndexOf(".", StringComparison.Ordinal);
         return separator >= 0 ? instanceType[(separator + 1)..] : instanceType;
     }
 }

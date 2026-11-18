@@ -113,7 +113,7 @@ public static class FhirPatchOperationResolver
     /// </summary>
     private static string ResolveAbsentTargetType(ResourceJsonNode resource, ISchema schema, string path)
     {
-        var lastDot = path.LastIndexOf('.');
+        var lastDot = path.LastIndexOf(".", StringComparison.Ordinal);
         var name = lastDot > 0 ? path[(lastDot + 1)..] : string.Empty;
         if (!IsSimpleIdentifier(name))
         {

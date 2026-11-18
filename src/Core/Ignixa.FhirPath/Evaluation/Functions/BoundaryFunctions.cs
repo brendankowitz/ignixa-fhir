@@ -256,7 +256,7 @@ internal static class BoundaryFunctions
         {
             // Numeric types - get input precision from value, use outputPrecision for formatting
             decimal d => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundaryWithPrecisions(d, GetDecimalPrecision(d), outputPrecision)),
-            double d => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundaryWithPrecisions((decimal)d, GetDecimalPrecision((decimal)d), outputPrecision)),
+            double d => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundaryWithPrecisions(DecimalConversion.FromDouble(d), GetDecimalPrecision(DecimalConversion.FromDouble(d)), outputPrecision)),
             int i => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundaryWithPrecisions((decimal)i, 0, outputPrecision)),  // integers have 0 precision
             long l => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundaryWithPrecisions((decimal)l, 0, outputPrecision)),
 
@@ -317,7 +317,7 @@ internal static class BoundaryFunctions
         {
             // Numeric types - get input precision from value, use outputPrecision for formatting
             decimal d => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundaryWithPrecisions(d, GetDecimalPrecision(d), outputPrecision)),
-            double d => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundaryWithPrecisions((decimal)d, GetDecimalPrecision((decimal)d), outputPrecision)),
+            double d => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundaryWithPrecisions(DecimalConversion.FromDouble(d), GetDecimalPrecision(DecimalConversion.FromDouble(d)), outputPrecision)),
             int i => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundaryWithPrecisions((decimal)i, 0, outputPrecision)),  // integers have 0 precision
             long l => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundaryWithPrecisions((decimal)l, 0, outputPrecision)),
 
@@ -365,7 +365,7 @@ internal static class BoundaryFunctions
     private static decimal CalculateNumericLowBoundaryWithPrecisions(decimal value, int inputPrecision, int outputPrecision)
     {
         // Calculate boundary using input precision (the precision of the incoming value)
-        var boundaryAdjustment = 0.5m * (decimal)Math.Pow(10, -inputPrecision);
+        var boundaryAdjustment = 0.5m * DecimalConversion.PowerOfTen(-inputPrecision);
         var result = value - boundaryAdjustment;
 
         // Special case: output precision 0 means return an integer
@@ -374,7 +374,7 @@ internal static class BoundaryFunctions
             return Math.Floor(result);
         }
         
-        var multiplier = (decimal)Math.Pow(10, outputPrecision);
+        var multiplier = DecimalConversion.PowerOfTen(outputPrecision);
         var scaled = result * multiplier;
         
         // Special case for small negative values close to zero (like -0.00345)
@@ -403,7 +403,7 @@ internal static class BoundaryFunctions
     private static decimal CalculateNumericHighBoundaryWithPrecisions(decimal value, int inputPrecision, int outputPrecision)
     {
         // Calculate boundary using input precision (the precision of the incoming value)
-        var boundaryAdjustment = 0.5m * (decimal)Math.Pow(10, -inputPrecision);
+        var boundaryAdjustment = 0.5m * DecimalConversion.PowerOfTen(-inputPrecision);
         var result = value + boundaryAdjustment;
 
         // Special case: output precision 0 means return an integer
@@ -423,7 +423,7 @@ internal static class BoundaryFunctions
         else
         {
             // For negative values, truncate toward zero (ceiling behavior)
-            var multiplier = (decimal)Math.Pow(10, outputPrecision);
+            var multiplier = DecimalConversion.PowerOfTen(outputPrecision);
             rounded = Math.Truncate(result * multiplier) / multiplier;
         }
         

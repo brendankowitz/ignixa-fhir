@@ -14,14 +14,14 @@ public sealed class BackgroundServicesRegistrationTests
     [Theory]
     [InlineData(null, 30, 240)]
     [InlineData("5", 5, 165)]
-    public void GivenASyncInterval_WhenOptionsAreResolved_ThenOneMissedPollKeepsTheLeaseValidAndTheTimingsValidate(
+    public async Task GivenASyncInterval_WhenOptionsAreResolved_ThenOneMissedPollKeepsTheLeaseValidAndTheTimingsValidate(
         string? syncIntervalSeconds,
         int expectedSyncIntervalSeconds,
         int expectedGraceSeconds)
     {
         using var provider = syncIntervalSeconds is null ? BuildProvider() : BuildProvider(("Conformance:SyncIntervalSeconds", syncIntervalSeconds));
 
-        provider.GetRequiredService<IStartupValidator>().Validate();
+        await provider.GetRequiredService<IAsyncStartupValidator>().ValidateAsync(CancellationToken.None);
         var conformance = provider.GetRequiredService<IOptions<ConformanceTransitionOptions>>().Value;
 
         var staleness = TimeSpan.FromSeconds(3 * expectedSyncIntervalSeconds);
@@ -31,11 +31,12 @@ public sealed class BackgroundServicesRegistrationTests
     }
 
     [Fact]
-    public void GivenReindexEnabledAndTransactionWatcherDisabled_WhenStartingOptionsValidation_ThenStartupFails()
+    public async Task GivenReindexEnabledAndTransactionWatcherDisabled_WhenStartingOptionsValidation_ThenStartupFails()
     {
         using var provider = BuildProvider(("Reindex:Enabled", "true"), ("TransactionWatcher:Enabled", "false"));
 
-        var error = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+        var error = await Should.ThrowAsync<OptionsValidationException>(
+            async () => await provider.GetRequiredService<IAsyncStartupValidator>().ValidateAsync(CancellationToken.None));
 
         error.Message.ShouldContain("TransactionWatcher:Enabled must be true when Reindex:Enabled is true.");
     }

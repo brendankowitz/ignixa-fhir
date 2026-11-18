@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
@@ -12,13 +12,8 @@
     <PackageReference Include="Microsoft.Data.SqlClient" />
     <PackageReference Include="Polly" />
 
-    <!-- Logging -->
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
-
     <!-- Schema deployment (SQL Database Project + DacFx-based deployer) -->
     <PackageReference Include="Microsoft.SqlServer.DacFx" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
-    <PackageReference Include="Microsoft.Extensions.Options" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
   </ItemGroup>
 

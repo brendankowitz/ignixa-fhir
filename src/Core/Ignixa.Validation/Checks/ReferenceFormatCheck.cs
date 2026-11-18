@@ -98,7 +98,7 @@ public class ReferenceFormatCheck : IValidationCheck
 
     private static bool IsValidReferenceFormat(string reference)
     {
-        if (reference.StartsWith('#'))
+        if (reference.StartsWith("#", StringComparison.Ordinal))
         {
             return true;
         }

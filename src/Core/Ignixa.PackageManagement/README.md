@@ -142,7 +142,7 @@ to their own policy. The generic library neither installs transitive dependencie
 executes scripts nor imports/activates resources.
 
 For local SDK integration, reference this project or consume a coherently pinned
-locally built Ignixa dependency closure for the consumer's net9/net10 target. Adapt
+locally built Ignixa dependency closure for the consumer's net10/net11 target. Adapt
 host `long` byte policies with checked conversion/rejection above `Int32.MaxValue`;
 do not silently clamp to fit in-memory extraction. No host-specific source registration,
 database, inventory or activation API is provided.

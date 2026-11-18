@@ -47,7 +47,7 @@ public class AddOperationExecutor(
         try
         {
             // Validate parent path exists (FHIR PATCH requires parent to exist for Add)
-            var lastDot = operation.Path.LastIndexOf('.');
+            var lastDot = operation.Path.LastIndexOf(".", StringComparison.Ordinal);
             if (lastDot > 0)
             {
                 var parentPath = operation.Path[..lastDot];

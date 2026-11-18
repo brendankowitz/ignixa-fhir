@@ -136,7 +136,7 @@ Artifacts are retained for 90 days.
 
 ### Ignixa Strengths
 
-- **Fast JSON parsing**: Uses System.Text.Json (optimized for .NET 9)
+- **Fast JSON parsing**: Uses System.Text.Json (optimized for .NET 11)
 - **Low memory allocation**: JsonNode-based architecture avoids POCO overhead
 - **Direct property access**: `MutableNode["property"]` is very fast
 - **FHIRPath integration**: Evaluates directly over the native `IElement` model with AST + delegate compilation caching — no per-call conversion between element models. See the `Eval-*` dashboard categories for the apples-to-apples engine comparison.

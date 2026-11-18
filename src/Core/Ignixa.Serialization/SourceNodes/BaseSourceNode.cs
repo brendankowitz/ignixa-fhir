@@ -60,7 +60,7 @@ public abstract class BaseSourceNode<T> : ISourceNavigator
             return _cachedNodes.SelectMany(x => x.Value.Value);
         }
 
-        if (name.EndsWith(JsonNodeSourceNode.ChoiceTypeSuffix))
+        if (name.Length > 0 && name[^1] == JsonNodeSourceNode.ChoiceTypeSuffix)
         {
             // e.g. value* which should return valueString etc.
             string matchPrefix = name.TrimEnd(JsonNodeSourceNode.ChoiceTypeSuffix);

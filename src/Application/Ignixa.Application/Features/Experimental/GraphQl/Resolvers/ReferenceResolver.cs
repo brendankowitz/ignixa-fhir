@@ -52,7 +52,7 @@ internal static class ReferenceResolver
         ArgumentNullException.ThrowIfNull(loadAsync);
 
         if (string.IsNullOrEmpty(reference)
-            || reference.StartsWith('#')
+            || reference.StartsWith("#", StringComparison.Ordinal)
             || reference.StartsWith("urn:", StringComparison.OrdinalIgnoreCase))
         {
             return new ReferenceResolution(Outcome.NotSupported, null);
@@ -95,7 +95,7 @@ internal static class ReferenceResolver
         if (string.IsNullOrEmpty(reference))
             return "the reference is empty";
 
-        if (reference.StartsWith('#'))
+        if (reference.StartsWith("#", StringComparison.Ordinal))
             return "contained reference resolution is not supported";
 
         if (reference.StartsWith("urn:", StringComparison.OrdinalIgnoreCase))

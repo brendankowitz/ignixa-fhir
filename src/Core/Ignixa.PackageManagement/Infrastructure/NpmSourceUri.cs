@@ -9,7 +9,7 @@ internal static class NpmSourceUri
     internal static void ValidatePrefix(Uri? uri, string parameterName)
     {
         if (uri is null || !IsUnambiguousHttps(uri) || uri.OriginalString.Contains('?', StringComparison.Ordinal) ||
-            !uri.OriginalString.EndsWith('/'))
+            !uri.OriginalString.EndsWith("/", StringComparison.Ordinal))
         {
             throw new ArgumentException("An unambiguous absolute HTTPS directory prefix is required.", parameterName);
         }
@@ -92,10 +92,10 @@ internal static class NpmSourceUri
         {
             string absolute = reference.StartsWith("//", StringComparison.Ordinal)
                 ? $"{origin.Scheme}:{reference}"
-                : reference.StartsWith('/') ? origin.GetLeftPart(UriPartial.Authority) + reference
-                : reference.StartsWith('?') ? origin.GetLeftPart(UriPartial.Authority) + origin.AbsolutePath + reference
+                : reference.StartsWith("/", StringComparison.Ordinal) ? origin.GetLeftPart(UriPartial.Authority) + reference
+                : reference.StartsWith("?", StringComparison.Ordinal) ? origin.GetLeftPart(UriPartial.Authority) + origin.AbsolutePath + reference
                 : origin.GetLeftPart(UriPartial.Authority) +
-                    origin.AbsolutePath[..(origin.AbsolutePath.LastIndexOf('/') + 1)] + reference;
+                    origin.AbsolutePath[..(origin.AbsolutePath.LastIndexOf("/", StringComparison.Ordinal) + 1)] + reference;
             if (!Uri.TryCreate(absolute, UriKind.Absolute, out destination))
             {
                 return false;

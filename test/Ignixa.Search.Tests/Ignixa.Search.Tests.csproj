@@ -14,7 +14,7 @@
     infrastructure already lives.
   -->
   <PropertyGroup>
-    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <TargetFrameworks>net10.0;net11.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>

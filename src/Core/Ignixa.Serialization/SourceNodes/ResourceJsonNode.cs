@@ -63,7 +63,7 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
             if (type.Contains('/', StringComparison.Ordinal))
             {
                 // get last part of the type
-                return type.Substring(type.LastIndexOf('/') + 1);
+                return type.Substring(type.LastIndexOf("/", StringComparison.Ordinal) + 1);
             }
             
             return type;

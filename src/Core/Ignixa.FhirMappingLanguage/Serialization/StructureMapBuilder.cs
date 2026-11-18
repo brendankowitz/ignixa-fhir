@@ -550,7 +550,7 @@ public class StructureMapBuilder
     private static ResourceJsonNode BuildConceptMapResource(ConceptMapDeclarationExpression conceptMap, string structureMapUrl)
     {
         // Extract ID from the identifier (remove leading # if present)
-        var id = conceptMap.Identifier.StartsWith('#')
+        var id = conceptMap.Identifier.StartsWith("#", StringComparison.Ordinal)
             ? conceptMap.Identifier.Substring(1)
             : conceptMap.Identifier;
 

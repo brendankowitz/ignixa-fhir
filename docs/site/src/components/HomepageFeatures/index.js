@@ -18,7 +18,7 @@ const FeatureList = [
     emoji: '⚡',
     description: (
       <>
-        Built on .NET 9 with streaming-first architecture, zero-copy serialization,
+        Built on .NET 11 with streaming-first architecture, zero-copy serialization,
         and compiled FHIRPath expressions for minimal memory footprint.
       </>
     ),

@@ -41,9 +41,9 @@ public sealed class TemporalConstantExpression : ConstantExpression
     {
         Literal = literal;
 
-        var body = literal.StartsWith('@') ? literal[1..] : literal;
+        var body = literal.StartsWith("@", StringComparison.Ordinal) ? literal[1..] : literal;
 
-        if (body.StartsWith('T'))
+        if (body.StartsWith("T", StringComparison.Ordinal))
         {
             TemporalTypeName = "time";
             ElementValue = body[1..];

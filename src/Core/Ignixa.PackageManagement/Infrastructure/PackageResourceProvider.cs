@@ -102,7 +102,7 @@ public class PackageResourceProvider : IPackageResourceProvider
                 qualifiedName += "." + segment;
                 if (child is ITypeExtended { ContentReference: { Length: > 0 } reference })
                 {
-                    string target = reference.StartsWith('#') ? rootKey + reference : reference;
+                    string target = reference.StartsWith("#", StringComparison.Ordinal) ? rootKey + reference : reference;
                     int targetFragment = target.IndexOf('#', StringComparison.Ordinal);
                     if (targetFragment > 0 && rootKey.Contains(':', StringComparison.Ordinal)
                         && target[..targetFragment] == rootKey.Split('|')[0])

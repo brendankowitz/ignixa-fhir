@@ -170,7 +170,7 @@ public class InMemoryTerminologyService : ITerminologyService
         }
 
         var normalizedUrl = valueSetUrl.Contains('|', StringComparison.Ordinal)
-            ? valueSetUrl[..valueSetUrl.LastIndexOf('|')]
+            ? valueSetUrl[..valueSetUrl.LastIndexOf("|", StringComparison.Ordinal)]
             : valueSetUrl;
 
         if (!_valueSets.TryGetValue(normalizedUrl, out var membership))
