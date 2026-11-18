@@ -1,5 +1,5 @@
 ---
-applyTo: "src/Application/Ignixa.Api/**,src/Application/Ignixa.Api.OpenIddict/**,src/Application/Ignixa.Application/Features/Authorization/**,src/Application/Ignixa.Application/Features/Experimental/**,src/Application/Ignixa.Application/Features/Metadata/**,src/Application/Ignixa.Web/**"
+applyTo: "src/Application/**"
 excludeAgent: "cloud-agent"
 ---
 
