@@ -6,6 +6,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using EnsureThat;
+using Ignixa.FhirPath;
 using Microsoft.Extensions.Logging;
 using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.FhirPath.Evaluation;
@@ -192,11 +193,11 @@ public partial class ElementSearchIndexer : ISearchIndexer
         }
         catch (Exception ex) when (IsExpectedEvaluationFailure(ex))
         {
-            Log.FailedToExtractValues(_logger, ex, ForLog(searchParameter.Expression), resource.InstanceType, searchParameter.Url.ToString(), resourceIdentity);
+            Log.FailedToExtractValues(_logger, ex, LogSafeText.Sanitize(searchParameter.Expression)!, resource.InstanceType, searchParameter.Url.ToString(), resourceIdentity);
         }
         catch (Exception ex)
         {
-            Log.UnexpectedExtractionFailure(_logger, ex, ForLog(searchParameter.Expression), resource.InstanceType, searchParameter.Url.ToString(), resourceIdentity);
+            Log.UnexpectedExtractionFailure(_logger, ex, LogSafeText.Sanitize(searchParameter.Expression)!, resource.InstanceType, searchParameter.Url.ToString(), resourceIdentity);
         }
 
         foreach (IElement rootObject in rootObjects)
@@ -313,11 +314,11 @@ public partial class ElementSearchIndexer : ISearchIndexer
         }
         catch (Exception ex) when (IsExpectedEvaluationFailure(ex))
         {
-            Log.FailedToExtractValues(_logger, ex, ForLog(fhirPathExpression), element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
+            Log.FailedToExtractValues(_logger, ex, LogSafeText.Sanitize(fhirPathExpression)!, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
         }
         catch (Exception ex)
         {
-            Log.UnexpectedExtractionFailure(_logger, ex, ForLog(fhirPathExpression), element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
+            Log.UnexpectedExtractionFailure(_logger, ex, LogSafeText.Sanitize(fhirPathExpression)!, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
         }
 
         Debug.Assert(extractedValues != null, "The extracted values should not be null.");
@@ -421,11 +422,11 @@ public partial class ElementSearchIndexer : ISearchIndexer
         }
         catch (Exception ex) when (IsExpectedEvaluationFailure(ex))
         {
-            Log.FailedToExtractValues(_logger, ex, ForLog(fhirPathExpression), element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
+            Log.FailedToExtractValues(_logger, ex, LogSafeText.Sanitize(fhirPathExpression)!, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
         }
         catch (Exception ex)
         {
-            Log.UnexpectedExtractionFailure(_logger, ex, ForLog(fhirPathExpression), element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
+            Log.UnexpectedExtractionFailure(_logger, ex, LogSafeText.Sanitize(fhirPathExpression)!, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
         }
 
         Debug.Assert(extractedValues != null, "The extracted values should not be null.");
@@ -578,7 +579,7 @@ public partial class ElementSearchIndexer : ISearchIndexer
         }
         catch (Exception ex) when (IsExpectedEvaluationFailure(ex))
         {
-            Log.ConverterFailed(_logger, ex, converter.GetType().Name, ForLog(fhirPathExpression), searchParameterDefinitionUrl, resourceIdentity);
+            Log.ConverterFailed(_logger, ex, converter.GetType().Name, LogSafeText.Sanitize(fhirPathExpression)!, searchParameterDefinitionUrl, resourceIdentity);
             return [];
         }
         catch (Exception ex)
@@ -591,7 +592,7 @@ public partial class ElementSearchIndexer : ISearchIndexer
             // stays contained. But it must not be logged identically to an expected miss: Error, not
             // Warning, so it surfaces to whatever is watching Error-level logs instead of blending into
             // routine "this literal didn't parse" noise.
-            Log.UnexpectedConverterFailure(_logger, ex, converter.GetType().Name, ForLog(fhirPathExpression), searchParameterDefinitionUrl, resourceIdentity);
+            Log.UnexpectedConverterFailure(_logger, ex, converter.GetType().Name, LogSafeText.Sanitize(fhirPathExpression)!, searchParameterDefinitionUrl, resourceIdentity);
             return [];
         }
     }
@@ -665,17 +666,6 @@ public partial class ElementSearchIndexer : ISearchIndexer
             default:
                 throw new ArgumentOutOfRangeException(nameof(searchParamType), searchParamType, null);
         }
-    }
-
-    private const int MaxLoggedExpressionLength = 200;
-
-    /// <summary>Strips line breaks and truncates expression text, which a tenant's custom search parameter controls.</summary>
-    private static string ForLog(string expression)
-    {
-        var singleLine = expression.ReplaceLineEndings(" ");
-        return singleLine.Length <= MaxLoggedExpressionLength
-            ? singleLine
-            : $"{singleLine.AsSpan(0, MaxLoggedExpressionLength)}...[{singleLine.Length - MaxLoggedExpressionLength} more characters]";
     }
 
     private static partial class Log

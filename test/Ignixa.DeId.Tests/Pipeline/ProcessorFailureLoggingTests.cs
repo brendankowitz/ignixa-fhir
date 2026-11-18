@@ -52,6 +52,29 @@ public class ProcessorFailureLoggingTests
         logs.Exceptions.ShouldBeEmpty();
     }
 
+    [Fact]
+    public async Task GivenRulePathWithLineBreak_WhenRuleCannotBeEvaluated_ThenNoLogLineIsForgedAndTypeAndStackAreLogged()
+    {
+        // Arrange
+        var logs = new CapturingLoggerProvider();
+        var options = new DeIdOptions
+        {
+            FhirVersion = "R4",
+            Rules = [new FhirPathRule { Path = "Patient.name.where(\nFORGED-LOG-LINE", Method = "REDACT" }]
+        };
+        var engine = DeIdTestHelpers.CreateEngine(options, configureServices: services =>
+            services.AddLogging(builder => builder.AddProvider(logs)));
+
+        // Act
+        await engine.DeidentifyAsync(Patient);
+
+        // Assert
+        var lines = logs.Messages.SelectMany(message => message.Split('\n')).ToList();
+        lines.ShouldNotContain(line => line.StartsWith("FORGED-LOG-LINE", StringComparison.Ordinal));
+        logs.Messages.ShouldContain(message => message.Contains("Failed to evaluate FHIRPath rule") && message.Contains("   at "));
+        logs.Exceptions.ShouldBeEmpty();
+    }
+
     private sealed class ThrowingProcessor : IDeIdProcessor
     {
         public ValueTask<Result<ProcessorResult>> ProcessAsync(

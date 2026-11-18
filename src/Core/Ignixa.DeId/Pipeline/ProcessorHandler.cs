@@ -10,6 +10,7 @@ using Ignixa.DeId.Models;
 using Ignixa.DeId.Processors;
 using Ignixa.DeId.Tools;
 using Microsoft.Extensions.DependencyInjection;
+using Ignixa.FhirPath;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -90,7 +91,7 @@ internal sealed class ProcessorHandler : DeIdPipelineHandler
                     _logger.LogError(
                         "No processor registered for method '{Method}' required by rule {Path}",
                         method,
-                        matchedRule.Rule.Path);
+                        LogSafeText.Sanitize(matchedRule.Rule.Path));
 
                     return Result<DeIdResult>.Failure(new DeIdError(
                         "PROCESSOR_NOT_FOUND",
@@ -116,7 +117,7 @@ internal sealed class ProcessorHandler : DeIdPipelineHandler
                         // returned as a success.
                         _logger.LogError(
                             "Processor failed for rule {Path} ({ErrorCode}, {CauseType}). Stopping further rule processing.",
-                            matchedRule.Rule.Path,
+                            LogSafeText.Sanitize(matchedRule.Rule.Path),
                             processorResult.Error.Code,
                             processorResult.Error.Exception?.GetType().Name);
                         return Result<DeIdResult>.Failure(processorResult.Error);
@@ -125,7 +126,7 @@ internal sealed class ProcessorHandler : DeIdPipelineHandler
                     case ErrorHandlingMode.LogAndContinue:
                         _logger.LogWarning(
                             "Processor failed for rule {Path} ({ErrorCode}, {CauseType})",
-                            matchedRule.Rule.Path,
+                            LogSafeText.Sanitize(matchedRule.Rule.Path),
                             processorResult.Error.Code,
                             processorResult.Error.Exception?.GetType().Name);
                         context.AddWarning($"Processor failed for rule '{matchedRule.Rule.Path}': {processorResult.Error.Message}");
@@ -158,7 +159,7 @@ internal sealed class ProcessorHandler : DeIdPipelineHandler
 
         _logger.LogDebug(
             "Processing rule {Path} with method {Method} for {ElementCount} elements",
-            matchedRule.Rule.Path,
+            LogSafeText.Sanitize(matchedRule.Rule.Path),
             method,
             matchedRule.MatchedElements.Count);
 
@@ -257,13 +258,15 @@ internal sealed class ProcessorHandler : DeIdPipelineHandler
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            // The exception travels in the returned error. It is not logged as an object because processors parse
+            // The exception travels in the returned error. Only its type and stack are logged, because processors parse
             // element values, and a parse failure's message quotes the value being parsed.
             _logger.LogError(
-                "Processor {Method} failed for element at {Location} ({CauseType})",
+                "Processor {Method} failed for element at {Location} ({CauseType}){NewLine}{StackTrace}",
                 method,
                 location,
-                ex.GetType().Name);
+                ex.GetType().Name,
+                Environment.NewLine,
+                ex.StackTrace);
 
             return Result<bool>.Failure(new DeIdError(
                 "PROCESSOR_ERROR",

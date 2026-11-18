@@ -31,6 +31,8 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Ignixa.SqlOnFhir" />
     <InternalsVisibleTo Include="Ignixa.Search" />
+    <InternalsVisibleTo Include="Ignixa.Application" />
+    <InternalsVisibleTo Include="Ignixa.FhirMappingLanguage" />
     <InternalsVisibleTo Include="Ignixa.FhirPath.Tests" />
     <InternalsVisibleTo Include="Ignixa.RepoGuards.Tests" />
     <InternalsVisibleTo Include="Ignixa.Validation.Tests" />

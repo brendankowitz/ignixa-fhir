@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
+using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Validation.Abstractions;
 using Microsoft.Extensions.Logging;
@@ -339,12 +340,12 @@ public sealed class SlicingCheck : IValidationCheck
             return candidate.Select(path, context).ToList();
         }
         catch (Exception ex) when (ex is not FhirPathResourceLimitExceededException
-            && ex is FhirPathEvaluationException or ArgumentException or NotSupportedException or FormatException or OverflowException)
+            && ex is FhirPathEvaluationException or ArgumentException or NotSupportedException or FormatException)
         {
             _logger?.LogWarning(
                 ex,
                 "Discriminator path '{Path}' on '{SlicedName}' could not be evaluated against '{Location}'; slice assignment for this candidate is indeterminate and the whole slicing will be deferred.",
-                path,
+                LogSafeText.Sanitize(path),
                 _slicedName,
                 candidate.Location ?? $"{_slicedName}[?]");
             return null;

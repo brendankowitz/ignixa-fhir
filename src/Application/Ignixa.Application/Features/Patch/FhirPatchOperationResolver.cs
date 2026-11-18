@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Nodes;
 using System.Threading;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization.SourceNodes;
@@ -147,7 +148,7 @@ public static class FhirPatchOperationResolver
         }
         catch (FormatException ex)
         {
-            throw new FhirPatchException($"Path '{path}' is not a valid FHIRPath expression: {ex.Message}", ex);
+            throw new FhirPatchException($"Path '{path.SanitizeExpressionForLog()}' is not a valid FHIRPath expression: {ex.Message}", ex);
         }
         catch (FhirPathResourceLimitExceededException)
         {
@@ -157,7 +158,7 @@ public static class FhirPatchOperationResolver
         }
         catch (FhirPathEvaluationException ex)
         {
-            throw new FhirPatchException($"Path '{path}' could not be evaluated: {ex.Message}", ex);
+            throw new FhirPatchException($"Path '{path.SanitizeExpressionForLog()}' could not be evaluated: {ex.Message}", ex);
         }
     }
 

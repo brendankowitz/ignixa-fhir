@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Ignixa.Application.Infrastructure;
 using Ignixa.FhirMappingLanguage.Mutator;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization.SourceNodes;
@@ -58,7 +59,7 @@ public class MoveOperationExecutor(
             };
             resource = await addExecutor.ExecuteAsync(resource, addOp, cancellationToken);
 
-            logger.LogDebug("Moved value from {Source} to {Destination}", operation.Source, operation.Destination);
+            logger.LogDebug("Moved value from {Source} to {Destination}", operation.Source.SanitizeExpressionForLog(), operation.Destination.SanitizeExpressionForLog());
         }
         catch (FhirPathResourceLimitExceededException)
         {

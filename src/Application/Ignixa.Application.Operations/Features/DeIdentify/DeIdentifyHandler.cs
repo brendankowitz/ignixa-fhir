@@ -84,7 +84,11 @@ public class DeIdentifyHandler : IRequestHandler<DeIdentifyCommand, DeIdentifyRe
 
         if (!result.IsSuccess)
         {
-            _logger.LogWarning("De-identification failed: {Error}", result.Error.Message);
+            // The message can quote resource values; the caller still receives it in the result.
+            _logger.LogWarning(
+                "De-identification failed ({ErrorCode}, {CauseType})",
+                result.Error.Code,
+                result.Error.Exception?.GetType().Name);
             return new DeIdentifyResult(false, null, result.Error.Message);
         }
 

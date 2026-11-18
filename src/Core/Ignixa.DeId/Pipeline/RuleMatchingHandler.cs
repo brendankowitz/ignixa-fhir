@@ -5,6 +5,7 @@
 using Ignixa.Abstractions;
 using Ignixa.DeId.Extensions;
 using Ignixa.DeId.Models;
+using Ignixa.FhirPath;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.DeId.Pipeline;
@@ -40,7 +41,7 @@ internal sealed class RuleMatchingHandler(ILogger<RuleMatchingHandler> logger) :
             {
                 logger.LogTrace(
                     "Skipping rule {RulePath} - resource type filter {RuleType} does not match {ResourceType}",
-                    rule.Path,
+                    LogSafeText.Sanitize(rule.Path),
                     rule.ResourceType,
                     resourceType);
                 continue;
@@ -60,7 +61,13 @@ internal sealed class RuleMatchingHandler(ILogger<RuleMatchingHandler> logger) :
                 // InsufficientExecutionStackException from an over-deep path. OutOfMemoryException is
                 // process-critical and deliberately not caught.
                 // Fail closed: skipping an unevaluable rule would return the data it targets in clear.
-                logger.LogError(ex, "Failed to evaluate FHIRPath rule '{Path}'", rule.Path);
+                // Logged by type and stack only: an evaluation message can quote resource values.
+                logger.LogError(
+                    "Failed to evaluate FHIRPath rule '{Path}' ({CauseType}){NewLine}{StackTrace}",
+                    LogSafeText.Sanitize(rule.Path),
+                    ex.GetType().Name,
+                    Environment.NewLine,
+                    ex.StackTrace);
 
                 return Result<DeIdResult>.Failure(new DeIdError(
                     "RULE_EVALUATION_FAILED",
@@ -72,13 +79,13 @@ internal sealed class RuleMatchingHandler(ILogger<RuleMatchingHandler> logger) :
             // An empty match is legitimate (the element is absent); only an evaluation failure is an error.
             if (matchedElements.Count == 0)
             {
-                logger.LogTrace("Rule {RulePath} matched no elements", rule.Path);
+                logger.LogTrace("Rule {RulePath} matched no elements", LogSafeText.Sanitize(rule.Path));
                 continue;
             }
 
             logger.LogDebug(
                 "Rule {RulePath} matched {MatchCount} elements",
-                rule.Path,
+                LogSafeText.Sanitize(rule.Path),
                 matchedElements.Count);
 
             context.MatchedRules.Add(new MatchedRule

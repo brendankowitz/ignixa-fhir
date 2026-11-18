@@ -163,7 +163,7 @@ internal static class FieldResolver
             {
                 throw new GraphQLException(
                     ErrorBuilder.New()
-                        .SetMessage($"Error evaluating FHIRPath expression '{expression}': {ex.Message}")
+                        .SetMessage($"Error evaluating FHIRPath expression '{expression.SanitizeExpressionForLog()}': {ex.Message}")
                         .SetCode("FHIRPATH_INVALID")
                         .SetException(ex)
                         .Build());
@@ -177,7 +177,7 @@ internal static class FieldResolver
         {
             throw new GraphQLException(
                 ErrorBuilder.New()
-                    .SetMessage($"Invalid FHIRPath expression '{expression}': {errorMessage}")
+                    .SetMessage($"Invalid FHIRPath expression '{expression.SanitizeExpressionForLog()}': {errorMessage}")
                     .SetCode("FHIRPATH_INVALID")
                     .Build());
         }

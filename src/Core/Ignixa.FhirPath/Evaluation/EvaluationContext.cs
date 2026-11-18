@@ -210,11 +210,17 @@ public record EvaluationContext
     public Action<TraceEntry>? TraceHandler { get; init; }
 
     /// <summary>
-    /// Marks the expression being evaluated as text an API caller supplied (a de-identification rule, a GraphQL
-    /// filter, a FHIRPath Patch path). Such expressions are compiled into a small cache tier separate from the
-    /// server's own expressions, so a caller cannot evict search parameters or invariants by submitting many
-    /// distinct expressions. Leave unset for expressions the server owns.
+    /// Marks the expression being evaluated as text an API caller supplies with the request being served (a
+    /// de-identification rule, a GraphQL filter, a FHIRPath Patch path). Such expressions are compiled into a small
+    /// cache tier separate from the server's own expressions, so a caller cannot evict search parameters by
+    /// submitting many distinct expressions.
     /// </summary>
+    /// <remarks>
+    /// The default is the server tier. Text a tenant authored earlier and the server persisted (custom
+    /// SearchParameter expressions, discriminators in uploaded profiles) deliberately uses the server tier: it is
+    /// bounded by what the tenant may register, is evaluated on every write, and is the working set the tier exists
+    /// to hold. Only text arriving with the request being served is tiered.
+    /// </remarks>
     public bool ExpressionIsRequestSupplied { get; init; }
 
     /// <summary>

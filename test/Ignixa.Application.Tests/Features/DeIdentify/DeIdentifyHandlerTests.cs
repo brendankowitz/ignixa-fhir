@@ -8,6 +8,7 @@ using Ignixa.Abstractions;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Operations.Features.DeIdentify;
+using Ignixa.Application.Tests.TestDoubles;
 using Ignixa.DeId.Configuration;
 using Ignixa.DeId.Darts.Configuration;
 using Ignixa.DeId.Models;
@@ -115,6 +116,28 @@ public class DeIdentifyHandlerTests
         result.IsSuccess.ShouldBeFalse();
         result.ErrorMessage.ShouldBe("Rule evaluation failed");
         result.OutputResource.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GivenPipelineFailureWhoseMessageQuotesData_WhenDeIdentifying_ThenLogOmitsTheMessageAndCallerStillReceivesIt()
+    {
+        // Arrange
+        const string sensitive = "Zebra-Sensitive-Value";
+        var logger = new CapturingLogger<DeIdentifyHandler>();
+        var handler = new DeIdentifyHandler(_pipeline, _configLoader, _contextAccessor, logger);
+        var resource = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"patient-123"}""");
+        var library = LibraryConfigurationLoader.CreateLibraryResource("lib-3", "SAFE_HARBOR", CreateSafeHarborOptions());
+        var command = new DeIdentifyCommand(1, resource, "SAFE_HARBOR", library);
+        SetupFhirContext();
+        SetupPipelineFailure($"The value '{sensitive}' was not recognized");
+
+        // Act
+        var result = await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert
+        logger.Messages.ShouldNotBeEmpty();
+        logger.Messages.ShouldAllBe(message => !message.Contains(sensitive));
+        result.ErrorMessage.ShouldContain(sensitive);
     }
 
     [Fact]

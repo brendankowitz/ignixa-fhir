@@ -16,8 +16,15 @@ namespace Ignixa.FhirPath.Tests.Evaluation;
 /// Expressions an API caller supplies are cached apart from the server's own, so a caller submitting many
 /// distinct expressions can neither grow memory without bound nor evict the server's expressions.
 /// </summary>
+[Collection(NonParallelCollection)]
 public class ExpressionCacheTierTests
 {
+    // Exceeds two generations of the server tier (4096 each), so a flood that reached it would evict the entry.
+    private const int FloodCount = 9000;
+
+    // Other tests insert into the shared server tier; running alone keeps the eviction assertions deterministic.
+    private const string NonParallelCollection = "SharedExpressionCache";
+
     private static readonly IFhirSchemaProvider Schema = FhirVersion.R4.GetSchemaProvider();
 
     private static readonly IElement Patient = ResourceJsonNode
@@ -33,7 +40,7 @@ public class ExpressionCacheTierTests
         var requestContext = new EvaluationContext { ExpressionIsRequestSupplied = true };
 
         // Act
-        for (var i = 0; i < 5000; i++)
+        for (var i = 0; i < FloodCount; i++)
         {
             _ = Patient.Select($"Patient.id | Patient.active | {i}", requestContext).ToList();
         }

@@ -35,7 +35,7 @@ namespace Ignixa.FhirPath.Evaluation;
 /// already allows.
 /// </para>
 /// </remarks>
-public sealed class BoundedExpressionCache<TValue>
+internal sealed class BoundedExpressionCache<TValue>
 {
     private readonly int _capacity;
     private readonly object _rotationLock = new();

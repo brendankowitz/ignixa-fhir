@@ -3,6 +3,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.FhirPath;
+
 namespace Ignixa.Application.Infrastructure;
 
 /// <summary>
@@ -12,7 +14,7 @@ namespace Ignixa.Application.Infrastructure;
 public static class LogSanitizationExtensions
 {
     /// <summary>The most expression text a log record carries.</summary>
-    public const int MaxExpressionLogLength = 200;
+    public const int MaxExpressionLogLength = LogSafeText.DefaultMaxLength;
 
     /// <summary>
     /// Returns a copy of <paramref name="value"/> safe to pass as a structured log argument, by
@@ -48,28 +50,18 @@ public static class LogSanitizationExtensions
     }
 
     /// <summary>
-    /// Sanitizes <paramref name="value"/> as <see cref="SanitizeForLog(string?)"/> does, then truncates it to at most
-    /// <paramref name="maxLength"/> characters so a caller-chosen string cannot dominate a log record.
+    /// Replaces every control character in <paramref name="value"/> and truncates it to at most
+    /// <paramref name="maxLength"/> characters, without splitting a surrogate pair, so a caller-chosen string
+    /// cannot forge log lines or dominate a record. See <see cref="LogSafeText.Sanitize"/>.
     /// </summary>
     /// <param name="value">The value to sanitize; <see langword="null"/> is returned unchanged.</param>
-    /// <param name="maxLength">The longest text to keep, which must be positive. A longer value keeps this many
-    /// characters followed by a marker naming how many were dropped.</param>
-    public static string? SanitizeForLog(this string? value, int maxLength)
-    {
-        ArgumentOutOfRangeException.ThrowIfLessThan(maxLength, 1);
-
-        var sanitized = value.SanitizeForLog();
-        if (sanitized is null || sanitized.Length <= maxLength)
-        {
-            return sanitized;
-        }
-
-        return $"{sanitized.AsSpan(0, maxLength)}...[{sanitized.Length - maxLength} more characters]";
-    }
+    /// <param name="maxLength">The longest text to keep, which must be positive.</param>
+    public static string? SanitizeForLog(this string? value, int maxLength) =>
+        LogSafeText.Sanitize(value, maxLength);
 
     /// <summary>
-    /// Sanitizes and truncates FHIRPath expression text for logging, to <see cref="MaxExpressionLogLength"/> characters.
+    /// Sanitizes and truncates FHIRPath expression or path text for logging, to <see cref="MaxExpressionLogLength"/> characters.
     /// </summary>
     public static string? SanitizeExpressionForLog(this string? expression) =>
-        expression.SanitizeForLog(MaxExpressionLogLength);
+        LogSafeText.Sanitize(expression, MaxExpressionLogLength);
 }
