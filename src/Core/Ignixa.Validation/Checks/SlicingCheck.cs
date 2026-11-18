@@ -23,7 +23,9 @@ namespace Ignixa.Validation.Checks;
 /// slicing that uses one (or whose slices could not be resolved to determinate match values) is
 /// skipped with an informational issue rather than risk falsely rejecting a valid resource. The same
 /// skip-with-Information deferral applies at runtime when a discriminator expression cannot be
-/// evaluated against a candidate (an INDETERMINATE result, never a non-match).
+/// evaluated against a candidate (an INDETERMINATE result, never a non-match). The exception is a
+/// discriminator stopped at an engine limit (<see cref="FhirPathResourceLimitExceededException"/>, such
+/// as a regex match timeout), which fails the slicing with an Error because the data can trigger it.
 /// </remarks>
 public sealed class SlicingCheck : IValidationCheck
 {
@@ -87,7 +89,25 @@ public sealed class SlicingCheck : IValidationCheck
         var candidates = element.Children(_slicedName);
         var context = BuildContext(state);
 
-        var assignments = AssignSlices(candidates, context, out var issues);
+        Dictionary<string, List<int>>? assignments;
+        List<ValidationIssue> issues;
+        try
+        {
+            assignments = AssignSlices(candidates, context, out issues);
+        }
+        catch (FhirPathResourceLimitExceededException ex)
+        {
+            // Evaluation was stopped at an engine limit (a regex match timeout) that the data can trigger.
+            // Deferring, as for an unevaluable discriminator, would let a crafted candidate switch the
+            // slicing off, so the slicing fails instead.
+            _logger?.LogWarning(ex, "A discriminator on '{SlicedName}' exceeded an evaluation limit; failing the slicing.", _slicedName);
+            return ValidationResult.Failure(new ValidationIssue(
+                IssueSeverity.Error,
+                "slicing-limit-exceeded",
+                $"{location}.{_slicedName}",
+                $"Slicing on '{_slicedName}' could not be enforced: a discriminator expression exceeded an evaluation limit ({ex.Message})."));
+        }
+
         if (assignments is null)
         {
             // A discriminator expression could not be evaluated against this resource, so slice
@@ -303,6 +323,9 @@ public sealed class SlicingCheck : IValidationCheck
     /// ambiguous slice. A bare <see cref="InvalidOperationException"/> (an internal engine invariant
     /// violation — <see cref="FhirPathEvaluationException"/> derives from it but is caught above and
     /// never reaches this filter) and cancellation are not caught here and propagate as defects.
+    /// <see cref="FhirPathResourceLimitExceededException"/> is not indeterminate either: the data can
+    /// trigger it, so deferring would let a crafted candidate switch the slicing off. It propagates to
+    /// <see cref="Validate"/>, which fails the slicing.
     /// </summary>
     private IReadOnlyList<IElement>? SelectPath(IElement candidate, string path, EvaluationContext context)
     {
@@ -315,7 +338,8 @@ public sealed class SlicingCheck : IValidationCheck
         {
             return candidate.Select(path, context).ToList();
         }
-        catch (Exception ex) when (ex is FhirPathEvaluationException or ArgumentException or NotSupportedException or FormatException or OverflowException)
+        catch (Exception ex) when (ex is not FhirPathResourceLimitExceededException
+            && ex is FhirPathEvaluationException or ArgumentException or NotSupportedException or FormatException or OverflowException)
         {
             _logger?.LogWarning(
                 ex,

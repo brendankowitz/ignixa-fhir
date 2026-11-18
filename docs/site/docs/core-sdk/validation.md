@@ -283,15 +283,19 @@ an invalid regular expression) or `NotSupportedException` (a function the engine
 is reported as a non-failing `Warning` naming the constraint key, whatever severity the constraint declares. This
 follows the Firely validator, which degrades any invariant evaluation exception to a warning.
 
+The consequence is that such an invariant is not enforced for that instance. R4's `tim-9`, for example, applies `in`
+to `Timing.repeat.when`, which can repeat; an instance with two `when` values makes the expression an error, so the
+resource passes with a warning instead of being checked. Treat a `Warning` that says a constraint was not evaluated as
+"not checked", not as "conformant".
+
 The exception is an evaluation stopped at an engine limit, `FhirPathResourceLimitExceededException` - today a regular
 expression that exceeds its match timeout. The data can trigger that (the same constraint finishes on ordinary input),
 so excusing it would let an instance crafted to exhaust the limit pass the invariant. It fails the resource with an
 `Error` instead, whatever severity the constraint declares.
 
-The consequence is that such an invariant is not enforced for that instance. R4's `tim-9`, for example, applies `in`
-to `Timing.repeat.when`, which can repeat; an instance with two `when` values makes the expression an error, so the
-resource passes with a warning instead of being checked. Treat a `Warning` that says a constraint was not evaluated as
-"not checked", not as "conformant".
+Slicing follows the same split. A discriminator path the engine cannot evaluate against a candidate makes slice
+assignment indeterminate, so the slicing is not enforced and is reported as `slicing-deferred` (Information). A
+discriminator stopped at an engine limit fails the slicing with a `slicing-limit-exceeded` Error instead.
 
 ### dateTime timezone leniency
 

@@ -5,6 +5,7 @@
 
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Evaluation.Functions;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
@@ -322,6 +323,29 @@ public sealed class SlicingCheckTests
         result.IsValid.ShouldBeTrue();
         result.Issues.ShouldNotBeEmpty();
         result.Issues.ShouldAllBe(i => i.Severity == IssueSeverity.Information && i.Code == "slicing-deferred");
+    }
+
+    [Fact]
+    public void GivenADiscriminatorWhoseRegexTimesOutOnTheData_WhenValidating_ThenTheSlicingFailsWithAnError()
+    {
+        // The lookahead forces the backtracking engine and (a+)+ inside it is exponential on a run of 'a'
+        // with no 'b', so this candidate exhausts the match timeout. Unlike an unevaluable discriminator,
+        // that must not defer: the data triggers it, and deferring would let a crafted candidate switch
+        // the slicing off.
+        const string Path = "valueString.matches('(?=(a+)+b)')";
+        var element = PatientWith($$"""[{"url":"http://x/race","valueString":"{{new string('a', 40)}}"}]""");
+        var metadata = new SlicingMetadata(
+            new[] { new DiscriminatorDefinition(DiscriminatorType.Value, Path) },
+            SlicingRules.Closed,
+            ordered: false,
+            new[] { new SliceDefinition("race", 0, 1, new[] { new SliceDiscriminatorValue(DiscriminatorType.Value, Path, "true") }) });
+        var check = new SlicingCheck("extension", metadata);
+        using var scope = new FhirPathRegex.TimeoutScope(TimeSpan.FromMilliseconds(50));
+
+        var result = check.Validate(element, FullDepth, ValidationState.ForRoot(element));
+
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldContain(i => i.Severity == IssueSeverity.Error && i.Code == "slicing-limit-exceeded");
     }
 
     [Fact]
