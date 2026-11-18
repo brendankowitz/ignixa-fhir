@@ -364,8 +364,8 @@ internal static class StringFunctions
             return [];
 
         // FHIRPath uses single-line mode where '.' matches any character including newlines
-        var regex = FhirPathRegex.Get(pattern, RegexOptions.Singleline, "matches");
-        return FunctionHelpers.ReturnBoolean(FhirPathRegex.IsMatch(regex, pattern, str, "matches"));
+        var regex = FhirPathRegex.Get(pattern, RegexOptions.Singleline, "matches", context.Budget);
+        return FunctionHelpers.ReturnBoolean(FhirPathRegex.IsMatch(regex, pattern, str, "matches", context.Budget));
     }
 
     /// <summary>
@@ -406,8 +406,8 @@ internal static class StringFunctions
             }
         }
 
-        var regex = FhirPathRegex.GetAnchored(pattern, options, "matchesFull");
-        return FunctionHelpers.ReturnBoolean(FhirPathRegex.IsMatch(regex, pattern, str, "matchesFull"));
+        var regex = FhirPathRegex.GetAnchored(pattern, options, "matchesFull", context.Budget);
+        return FunctionHelpers.ReturnBoolean(FhirPathRegex.IsMatch(regex, pattern, str, "matchesFull", context.Budget));
     }
 
     private static RegexOptions ParseRegexFlags(string flags)
@@ -469,7 +469,7 @@ internal static class StringFunctions
                 $"replaceMatches() with a reference in its substitution accepts at most {budget.Limits.MaxRegexCaptureInputLength} characters of input, but was given {str.Length}."));
         }
 
-        var regex = FhirPathRegex.Get(pattern, RegexOptions.None, "replaceMatches");
+        var regex = FhirPathRegex.Get(pattern, RegexOptions.None, "replaceMatches", budget);
         var result = FhirPathRegex.Replace(regex, pattern, str, substitution, "replaceMatches", budget);
         return [FunctionHelpers.CreateString(result)];
     }
@@ -541,6 +541,9 @@ internal static class StringFunctions
             return [];
         }
 
+        // Each item costs a step on top of the characters it contributes: a million one-character items cost far
+        // more than a million-character string.
+        context.Budget.Charge(focusElements.Count);
         var joinedLength = strings.Sum(text => (long)text.Length) + (long)separator.Length * Math.Max(0, strings.Count - 1);
         context.Budget.EnsureStringLength(joinedLength, "join()");
 

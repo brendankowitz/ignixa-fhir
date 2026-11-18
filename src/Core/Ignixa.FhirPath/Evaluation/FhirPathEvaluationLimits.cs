@@ -28,8 +28,8 @@ namespace Ignixa.FhirPath.Evaluation;
 /// </para>
 /// <para>
 /// The defaults are sized to leave the shipped search-parameter and invariant corpus untouched while stopping
-/// each known amplification within about a second and a few hundred megabytes; see the FHIRPath limits page
-/// in the documentation for the measurements.
+/// each known amplification within about three seconds of CPU and a few hundred megabytes; see the FHIRPath
+/// limits page in the documentation for the measurements.
 /// </para>
 /// </remarks>
 public sealed record FhirPathEvaluationLimits
@@ -40,6 +40,7 @@ public sealed record FhirPathEvaluationLimits
     private readonly int _maxRegexCaptureInputLength = 16 * 1024;
     private readonly TimeSpan? _timeout;
     private readonly int _maxRepeatIterations = 10_000;
+    private readonly int _maxRepeatAllIterations = 100_000;
     private readonly long _maxRepeatComparisons = 15_000_000;
 
     /// <summary>
@@ -52,8 +53,10 @@ public sealed record FhirPathEvaluationLimits
     /// </summary>
     /// <remarks>
     /// A step is charged for every expression node evaluated, every item a projection yields, every equality
-    /// comparison a collection operation makes, and every 16 characters of string an operator builds. Roughly a
-    /// hundred nanoseconds of work each, so the default bounds a runaway expression at about a second of CPU.
+    /// comparison a collection operation makes, and every 16 characters of string an operator builds; work whose
+    /// cost its input does not predict - UCUM unit conversion, regular expressions - is charged its elapsed time
+    /// at 250 nanoseconds a step. Measured warm in a Release build, a step is 250-450 nanoseconds of work, so the
+    /// default bounds a runaway expression at about two to three seconds of CPU.
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is not positive.</exception>
     public long MaxSteps
@@ -145,6 +148,16 @@ public sealed record FhirPathEvaluationLimits
     {
         get => _maxRepeatIterations;
         init => _maxRepeatIterations = Positive(value);
+    }
+
+    /// <summary>
+    /// The most items <c>repeatAll()</c> may dequeue. Larger than <see cref="MaxRepeatIterations"/> because
+    /// <c>repeatAll()</c> does not deduplicate, so a finite tree it walks is dequeued once per path to each node.
+    /// </summary>
+    internal int MaxRepeatAllIterations
+    {
+        get => _maxRepeatAllIterations;
+        init => _maxRepeatAllIterations = Positive(value);
     }
 
     /// <summary>

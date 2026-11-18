@@ -540,7 +540,7 @@ internal static partial class TypeConversionFunctions
             var unitResult = evaluateExpression(list, arguments[0], context).ToList();
             if (unitResult.Count == 1 && unitResult[0].Value is string targetUnit)
             {
-                var converted = ConvertQuantityToUnit(quantity, targetUnit);
+                var converted = ConvertQuantityToUnit(quantity, targetUnit, context.Budget.Units);
                 if (converted == null)
                     return []; // Conversion not possible
                 return [FunctionHelpers.CreateQuantity(converted)];
@@ -555,7 +555,7 @@ internal static partial class TypeConversionFunctions
     /// Converts a quantity to the specified target unit.
     /// Supports calendar duration conversions (year/month/day/hour/minute/second).
     /// </summary>
-    private static FhirQuantity? ConvertQuantityToUnit(FhirQuantity source, string targetUnit)
+    private static FhirQuantity? ConvertQuantityToUnit(FhirQuantity source, string targetUnit, IQuantityUnitConverter units)
     {
         // Normalize target unit (handle calendar keywords like 'year' → 'a')
         var normalizedTarget = CalendarDuration.GetUcumUnit(targetUnit) ?? targetUnit;
@@ -574,8 +574,7 @@ internal static partial class TypeConversionFunctions
         }
 
         // Try UCUM conversion via the unit converter
-        var converter = QuantityUnitConverter.Instance;
-        var convertedValue = converter.Convert(source.Value, normalizedSource, normalizedTarget);
+        var convertedValue = units.Convert(source.Value, normalizedSource, normalizedTarget);
         if (convertedValue.HasValue)
             return new FhirQuantity(convertedValue.Value, targetUnit);
 

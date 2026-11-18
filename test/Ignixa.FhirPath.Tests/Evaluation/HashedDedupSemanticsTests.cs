@@ -166,7 +166,7 @@ public class HashedDedupSemanticsTests
     [Fact]
     public void GivenQuantityShapedChildrenWhoseValueIsAYearInOneAndItsTextInTheOther_WhenUnioned_ThenTheyAreOneItem()
     {
-        // Arrange - regression: in a quantity-shaped child, a String value that reads as a number was keyed as a
+        // Arrange - guard (passes at the base too): in a quantity-shaped child, a String value that reads as a number was keyed as a
         // possible magnitude and a date value was not, although "2012" equals @2012; the index kept both parents.
         FhirTemporal.TryParse("2012", FhirPrimitive.Date, out var year).ShouldBeTrue();
         var root = Node("root", "Root", null,
@@ -181,19 +181,21 @@ public class HashedDedupSemanticsTests
     }
 
     [Fact]
-    public void GivenQuantitiesInManySpellingsOfOneUnit_WhenUnioned_ThenEachConversionIsChargedForWhatItCosts()
+    public void GivenQuantitiesInManySpellingsOfOneUnit_WhenUnioned_ThenEachSpellingIsReadOnceAndAllItemsRemain()
     {
-        // Arrange - regression: g.{a1}, g.{a2}, ... are one compatibility class, and each UCUM conversion between two
-        // spellings takes a millisecond or more, but was charged 64 steps; sixty spellings fit a million steps while
-        // taking seconds. A conversion is now charged 12,000 steps.
+        // Arrange - guard: g.{a1}, g.{a2}, ... are one compatibility class. Each UCUM reading is metered by the clock
+        // (MeteredUnitConverterTests pins that) and memoised per evaluation and per process, so sixty spellings fit
+        // well inside the default budget and none of the sixty distinct values is merged away.
         var root = Node("root", "Root", null, Enumerable.Range(1, 60)
             .Select(i => Node("item", "Quantity", null, Node("value", "decimal", (decimal)i), Node("code", "code", $"g.{{a{i}}}")))
             .ToArray());
-        var context = new EvaluationContext { Limits = FhirPathEvaluationLimits.Default with { MaxSteps = 1_000_000 } };
+        var context = new EvaluationContext();
 
-        // Act & Assert
-        Should.Throw<FhirPathResourceLimitExceededException>(
-            () => _evaluator.Evaluate(root, _parser.Parse("(item | item).count()"), context).ToList());
+        // Act
+        var result = _evaluator.Evaluate(root, _parser.Parse("(item | item).count()"), context).ToList();
+
+        // Assert
+        result.Single().Value.ShouldBe(60);
     }
 
     [Fact]
@@ -249,7 +251,7 @@ public class HashedDedupSemanticsTests
     [Fact]
     public void GivenQuantitiesEqualOnlyAtDecimalsScaleLimit_WhenUnioned_ThenTheyDedupeAsEqualityDoes()
     {
-        // Arrange - regression: 1.2346e-16 m expressed in Gm rounds to 1.235e-25 at decimal's 28 places, so equality
+        // Arrange - guard (passes at the base too): 1.2346e-16 m expressed in Gm rounds to 1.235e-25 at decimal's 28 places, so equality
         // (which expresses the right operand in the left's unit) holds while the magnitudes are about 3e-4 apart -
         // about 300,000 buckets. Values that small are now compared directly.
         var root = Node("root", "Root", null,
@@ -270,10 +272,11 @@ public class HashedDedupSemanticsTests
     {
         // Arrange - combo-value-quantity over components whose units all differ (m1, m2, ... m1000 are a thousand
         // dimensions). Grouped by unit alone, every lookup tested every unit: about 500,000 probes, each a UCUM
-        // parse. Grouped by compatibility class, each unit is parsed once (3,000 steps) and a lookup tests only its
-        // own class, so a thousand units fit in four million steps.
+        // parse of hundreds of microseconds. Grouped by compatibility class, each unit is read once (charged by
+        // elapsed time) and a lookup tests only its own class, so a thousand units fit the default budget with a wide
+        // margin even on a loaded machine.
         var root = Parse(ObservationWithDistinctUnits(1_000));
-        var context = new EvaluationContext { Limits = FhirPathEvaluationLimits.Default with { MaxSteps = 4_000_000 } };
+        var context = new EvaluationContext();
 
         // Act
         var result = _evaluator.Evaluate(root, _parser.Parse("(component.value | component.value).count()"), context).ToList();

@@ -5,6 +5,7 @@
  * Provides primitive element creation, equality comparers, and utility methods.
  */
 
+using System.Runtime.CompilerServices;
 using Ignixa.Abstractions;
 
 namespace Ignixa.FhirPath.Evaluation.Functions;
@@ -159,8 +160,12 @@ internal static class FunctionHelpers
     /// only in their last leaf walks both subtrees. Charging the descent makes the budget track that cost, so
     /// near-equal deep elements cannot make each step arbitrarily expensive.
     /// </remarks>
+    /// <exception cref="InsufficientExecutionStackException">The elements nest deeper than the thread's stack allows.</exception>
     internal static bool AreElementsEqual(IElement? left, IElement? right, EvaluationBudget? budget)
     {
+        // Recurses once per level of nesting; a host-built tree can be far deeper than any parsed resource.
+        RuntimeHelpers.EnsureSufficientExecutionStack();
+
         if (left == null && right == null) return true;
         if (left == null || right == null) return false;
 
@@ -173,7 +178,7 @@ internal static class FunctionHelpers
         }
 
         if ((ValueOrdering.IsQuantity(left) || ValueOrdering.IsQuantity(right))
-            && ValueOrdering.AreQuantitiesEqual(left, right) is { } quantitiesEqual)
+            && ValueOrdering.AreQuantitiesEqual(left, right, budget?.Units ?? Types.QuantityUnitConverter.Instance) is { } quantitiesEqual)
         {
             return quantitiesEqual;
         }
@@ -197,7 +202,9 @@ internal static class FunctionHelpers
         if (leftChildren.Count != rightChildren.Count)
             return false;
 
-        budget?.Charge(leftChildren.Count);
+        // Two steps a child pair: sorting and listing both child sets measured at about 470 ns a pair warm in a
+        // Release build (deep elements equal down to their last leaf), against the budget's nominal 250 ns a step.
+        budget?.Charge(2L * leftChildren.Count);
 
         for (int i = 0; i < leftChildren.Count; i++)
         {

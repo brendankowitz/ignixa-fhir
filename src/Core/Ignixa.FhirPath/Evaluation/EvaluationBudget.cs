@@ -8,6 +8,7 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Expressions;
+using Ignixa.FhirPath.Types;
 
 namespace Ignixa.FhirPath.Evaluation;
 
@@ -39,12 +40,21 @@ internal sealed class EvaluationBudget
     /// </summary>
     internal const int CharactersPerStep = 16;
 
+    /// <summary>
+    /// The time one step stands for, used to charge work metered by the clock rather than counted: a library call
+    /// whose cost its input does not predict is charged its elapsed time at this rate. Measured warm in a Release
+    /// build, 10,000,000 steps of nested <c>select()</c> took 2.74 s, about 274 ns a step; timed work is charged
+    /// slightly faster than that so it never drains the budget more slowly than counted work.
+    /// </summary>
+    internal const long NanosecondsPerStep = 250;
+
     private const int CheckShift = 10;
 
     private readonly CancellationToken _cancellationToken;
     private readonly long _deadline;
     private long _steps;
     private Dictionary<Expression, List<IElement>>? _invariantResults;
+    private MeteredUnitConverter? _units;
 
     /// <summary>
     /// Starts metering an evaluation.
@@ -67,6 +77,12 @@ internal sealed class EvaluationBudget
 
     /// <summary>The steps charged so far.</summary>
     public long StepsTaken => _steps;
+
+    /// <summary>
+    /// The unit converter for this evaluation: UCUM work it does is charged here, and repeated conversions are
+    /// answered from a per-evaluation memo.
+    /// </summary>
+    public IQuantityUnitConverter Units => _units ??= new MeteredUnitConverter(this, QuantityUnitConverter.Instance);
 
     /// <summary>
     /// Charges one step.
@@ -119,6 +135,18 @@ internal sealed class EvaluationBudget
     }
 
     /// <summary>
+    /// Charges the time elapsed since <paramref name="startTimestamp"/> at <see cref="NanosecondsPerStep"/>, at
+    /// least one step.
+    /// </summary>
+    /// <param name="startTimestamp">A <see cref="Stopwatch.GetTimestamp"/> reading taken before the work.</param>
+    /// <exception cref="FhirPathResourceLimitExceededException">The step budget or the deadline is exhausted.</exception>
+    public void ChargeElapsed(long startTimestamp)
+    {
+        var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
+        Charge(Math.Max(1, (long)(elapsed.Ticks * (1_000_000_000d / TimeSpan.TicksPerSecond) / NanosecondsPerStep)));
+    }
+
+    /// <summary>
     /// Charges for scanning or transforming <paramref name="length"/> characters of existing text - case mapping,
     /// searching, splitting, decoding - at the same rate as building it.
     /// </summary>
@@ -131,7 +159,8 @@ internal sealed class EvaluationBudget
     /// </summary>
     /// <remarks>
     /// Held per evaluation, so nothing outlives the <see cref="FhirPathEvaluator.Evaluate"/> call that computed it. A
-    /// reuse is charged a step per sixteen items, so even a cached collection costs something to hand out again.
+    /// reuse is charged a step per item: most consumers of a collection (sort, aggregates, type tests, paging) walk it
+    /// without evaluating a node per item, so the reuse is charged as if the collection were built again.
     /// </remarks>
     public List<IElement> GetOrAddInvariant(Expression expression, Func<List<IElement>> compute)
     {
@@ -139,7 +168,7 @@ internal sealed class EvaluationBudget
 
         if (_invariantResults.TryGetValue(expression, out var cached))
         {
-            Charge(cached.Count / CharactersPerStep);
+            Charge(cached.Count);
             return cached;
         }
 
@@ -175,6 +204,19 @@ internal sealed class EvaluationBudget
         {
             Step();
             EnsureCollectionSize(++count, site);
+            yield return item;
+        }
+    }
+
+    /// <summary>
+    /// Yields <paramref name="source"/> unchanged, charging a step per item, for functions that walk their input
+    /// without evaluating a node per item.
+    /// </summary>
+    public IEnumerable<IElement> PerItem(IEnumerable<IElement> source)
+    {
+        foreach (var item in source)
+        {
+            Step();
             yield return item;
         }
     }

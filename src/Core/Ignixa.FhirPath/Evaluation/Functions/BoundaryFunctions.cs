@@ -21,6 +21,12 @@ namespace Ignixa.FhirPath.Evaluation.Functions;
 /// </summary>
 internal static class BoundaryFunctions
 {
+    /// <summary>
+    /// Steps charged per input item: computing a boundary formats and re-parses the value, measured at about 0.9 us an
+    /// item in a Release build, or three to four steps at the budget's rate.
+    /// </summary>
+    private const int BoundaryStepsPerItem = 4;
+
     private const int DefaultDecimalPrecision = 8;  // Default precision is 8 for decimals when no argument given
     private const int DefaultDateTimePrecision = 17;  // Default precision for date/dateTime (full millisecond precision)
     private const int DefaultTimePrecision = 9;  // Default precision for time (full millisecond precision)
@@ -78,13 +84,15 @@ internal static class BoundaryFunctions
 
         foreach (var element in focus)
         {
+            context.Budget.Charge(BoundaryStepsPerItem);
+
             if (element.Value == null)
             {
                 continue;
             }
 
             var precision = explicitPrecision ?? GetDefaultPrecisionForElement(element);
-            var result = CalculateLowBoundary(element, precision);
+            var result = Bounded(() => CalculateLowBoundary(element, precision));
             if (result != null)
             {
                 yield return result;
@@ -143,13 +151,15 @@ internal static class BoundaryFunctions
 
         foreach (var element in focus)
         {
+            context.Budget.Charge(BoundaryStepsPerItem);
+
             if (element.Value == null)
             {
                 continue;
             }
 
             var precision = explicitPrecision ?? GetDefaultPrecisionForElement(element);
-            var result = CalculateHighBoundary(element, precision);
+            var result = Bounded(() => CalculateHighBoundary(element, precision));
             if (result != null)
             {
                 yield return result;
@@ -158,6 +168,22 @@ internal static class BoundaryFunctions
     }
 
     #region Helper Methods
+
+    /// <summary>
+    /// A boundary whose value <see cref="decimal"/> cannot hold - a precision that scales a value near
+    /// <see cref="decimal.MaxValue"/> past it - is empty, as FHIRPath answers any arithmetic overflow.
+    /// </summary>
+    private static IElement? Bounded(Func<IElement?> calculate)
+    {
+        try
+        {
+            return calculate();
+        }
+        catch (OverflowException)
+        {
+            return null;
+        }
+    }
 
     private static int GetDefaultPrecisionForElement(IElement element)
     {
@@ -517,7 +543,7 @@ internal static class BoundaryFunctions
     private static (int year, int month, int day, int hour, int minute, int second, int millisecond, string? timezone)? ParseDateTimeString(string dateTimeStr)
     {
         // Parse FHIR date/dateTime format: YYYY[-MM[-DD[Thh[:mm[:ss[.fff]]]][+/-hh:mm]]]]
-        var match = Regex.Match(dateTimeStr, @"^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?(?:[T ](\d{2})(?::(\d{2}))?(?::(\d{2}))?(?:\.(\d+))?)?([+-]\d{2}:\d{2}|Z)?$");
+        var match = Regex.Match(dateTimeStr, @"^([0-9]{4})(?:-([0-9]{2}))?(?:-([0-9]{2}))?(?:[T ]([0-9]{2})(?::([0-9]{2}))?(?::([0-9]{2}))?(?:\.([0-9]+))?)?([+-][0-9]{2}:[0-9]{2}|Z)?$");
         
         if (!match.Success) return null;
 
@@ -546,7 +572,7 @@ internal static class BoundaryFunctions
         // Remove @T prefix if present
         timeStr = timeStr.TrimStart('@').TrimStart('T');
 
-        var match = Regex.Match(timeStr, @"^(\d{2})(?::(\d{2}))?(?::(\d{2}))?(?:\.(\d+))?$");
+        var match = Regex.Match(timeStr, @"^([0-9]{2})(?::([0-9]{2}))?(?::([0-9]{2}))?(?:\.([0-9]+))?$");
         
         if (!match.Success) return null;
 
@@ -819,7 +845,7 @@ internal static class BoundaryFunctions
     {
         // Check if looks like a time (hh:mm or @Thh:mm)
         value = value.TrimStart('@').TrimStart('T');
-        return Regex.IsMatch(value, @"^\d{2}(:\d{2})?");
+        return Regex.IsMatch(value, @"^[0-9]{2}(:[0-9]{2})?");
     }
 
     #endregion

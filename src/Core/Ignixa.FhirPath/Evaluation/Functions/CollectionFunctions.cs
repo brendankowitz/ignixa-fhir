@@ -202,9 +202,9 @@ internal static class CollectionFunctions
         MaxArguments = 0,
         Category = "Collection",
         Description = "Returns all elements except the first")]
-    public static IEnumerable<IElement> Tail(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> Tail(IEnumerable<IElement> focus, EvaluationContext context)
     {
-        return focus.Skip(1);
+        return context.Budget.PerItem(focus).Skip(1);
     }
 
     /// <summary>
@@ -232,7 +232,7 @@ internal static class CollectionFunctions
         if (numResult?.Value is not int num)
             return [];
 
-        return num <= 0 ? focus : focus.Skip(num);
+        return context.Budget.PerItem(num <= 0 ? focus : focus.Skip(num));
     }
 
     /// <summary>
@@ -260,7 +260,7 @@ internal static class CollectionFunctions
         if (numResult?.Value is not int num)
             return [];
 
-        return num <= 0 ? [] : focus.Take(num);
+        return num <= 0 ? [] : context.Budget.PerItem(focus.Take(num));
     }
 
     /// <summary>
@@ -457,7 +457,8 @@ internal static class CollectionFunctions
     /// termination; it is a data-headroom figure, not a cost one. The control test
     /// (<c>RemainingCoverageTests</c>, nested-Questionnaire case) genuinely dequeues about 1,093 times, so a
     /// 1,000 cap would reject legitimate data and 10,000 gives about 9x headroom. <see cref="RepeatAll"/>'s cap
-    /// is 100,000; do not harmonise the two, because this function deduplicates and that one does not.
+    /// (<see cref="FhirPathEvaluationLimits.MaxRepeatAllIterations"/>) is 100,000; do not harmonise the two, because
+    /// this function deduplicates and that one does not.
     /// </para>
     /// <para>
     /// <b>Dedup cost (#533):</b> membership in the processed and result sets goes through
@@ -629,7 +630,7 @@ internal static class CollectionFunctions
         var result = new List<IElement>();
         var queue = new Queue<IElement>(focus);
 
-        const int maxIterations = 100_000;
+        var maxIterations = budget.Limits.MaxRepeatAllIterations;
         var iterations = 0;
 
         while (queue.Count > 0)
@@ -731,7 +732,7 @@ internal static class CollectionFunctions
 
         TypeMatcher.EnsureTypeIdentifierResolves(typeName, context.Schema, "ofType()");
 
-        return TypeMatcher.FilterByType(focus, typeName, context.Schema);
+        return TypeMatcher.FilterByType(context.Budget.PerItem(focus), typeName, context.Schema);
     }
 
     /// <summary>
@@ -1022,9 +1023,9 @@ internal static class CollectionFunctions
         MaxArguments = 0,
         Category = "Collection",
         Description = "Returns the type information of each element")]
-    public static IEnumerable<IElement> Type(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> Type(IEnumerable<IElement> focus, EvaluationContext context)
     {
-        foreach (var element in focus)
+        foreach (var element in context.Budget.PerItem(focus))
         {
             var typeName = element.InstanceType ?? "unknown";
             string ns = "FHIR";
@@ -1124,7 +1125,7 @@ internal static class CollectionFunctions
                 ChargeSortKey(element, comparisonsPerItem, budget);
             }
 
-            return RunSort(list.OrderBy(e => (IElement?)e, ValueOrdering.SortComparer.NullsLow));
+            return RunSort(list.OrderBy(e => (IElement?)e, ValueOrdering.SortComparer.NullsLow(budget.Units)));
         }
 
         // Extract sort key info (expression and direction) for all arguments
@@ -1149,8 +1150,8 @@ internal static class CollectionFunctions
         // Apply first sort key
         var firstKey = sortKeys[0];
         var firstComparer = firstKey.IsDescending
-            ? ValueOrdering.SortComparer.NullsHigh
-            : ValueOrdering.SortComparer.NullsLow;
+            ? ValueOrdering.SortComparer.NullsHigh(budget.Units)
+            : ValueOrdering.SortComparer.NullsLow(budget.Units);
         IOrderedEnumerable<IElement> orderedList = firstKey.IsDescending
             ? list.OrderByDescending(createKeySelector(firstKey.Expression), firstComparer)
             : list.OrderBy(createKeySelector(firstKey.Expression), firstComparer);
@@ -1161,8 +1162,8 @@ internal static class CollectionFunctions
             var key = sortKeys[i];
             var keySelector = createKeySelector(key.Expression);
             var keyComparer = key.IsDescending
-                ? ValueOrdering.SortComparer.NullsHigh
-                : ValueOrdering.SortComparer.NullsLow;
+                ? ValueOrdering.SortComparer.NullsHigh(budget.Units)
+                : ValueOrdering.SortComparer.NullsLow(budget.Units);
             orderedList = key.IsDescending
                 ? orderedList.ThenByDescending(keySelector, keyComparer)
                 : orderedList.ThenBy(keySelector, keyComparer);
@@ -1173,6 +1174,10 @@ internal static class CollectionFunctions
 
     private static void ChargeSortKey(IElement? key, int comparisonsPerItem, EvaluationBudget budget)
     {
+        // Every key takes part in about log2(n) comparisons whatever its type; a String key also costs its length
+        // in each.
+        budget.Charge(comparisonsPerItem);
+
         if (WireValue.AsWireString(key?.Value) is { } text)
         {
             budget.ChargeText((long)text.Length * comparisonsPerItem);

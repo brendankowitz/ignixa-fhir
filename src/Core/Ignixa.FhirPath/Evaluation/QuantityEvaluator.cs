@@ -23,7 +23,6 @@ namespace Ignixa.FhirPath.Evaluation;
 /// </summary>
 internal static class QuantityEvaluator
 {
-    private static readonly IQuantityUnitConverter UnitConverter = QuantityUnitConverter.Instance;
 
     /// <summary>
     /// Evaluates a QuantityExpression to an IElement.
@@ -69,7 +68,8 @@ internal static class QuantityEvaluator
     public static IEnumerable<IElement> EvaluateArithmetic(
         IReadOnlyList<IElement> left,
         string op,
-        IReadOnlyList<IElement> right)
+        IReadOnlyList<IElement> right,
+        IQuantityUnitConverter units)
     {
         ArgumentNullException.ThrowIfNull(left);
         ArgumentNullException.ThrowIfNull(right);
@@ -91,10 +91,10 @@ internal static class QuantityEvaluator
         {
             return op switch
             {
-                "+" => EvaluateQuantityAddition(leftQty, rightQty),
-                "-" => EvaluateQuantitySubtraction(leftQty, rightQty),
-                "*" => EvaluateQuantityMultiplication(leftQty, rightQty),
-                "/" => EvaluateQuantityDivision(leftQty, rightQty),
+                "+" => EvaluateQuantityAddition(leftQty, rightQty, units),
+                "-" => EvaluateQuantitySubtraction(leftQty, rightQty, units),
+                "*" => EvaluateQuantityMultiplication(leftQty, rightQty, units),
+                "/" => EvaluateQuantityDivision(leftQty, rightQty, units),
                 _ => throw FhirPathEvaluator.UndefinedForOperandTypes(left[0], right[0], op)
             };
         }
@@ -148,7 +148,8 @@ internal static class QuantityEvaluator
     public static bool? EvaluateComparison(
         IReadOnlyList<IElement> left,
         string op,
-        IReadOnlyList<IElement> right)
+        IReadOnlyList<IElement> right,
+        IQuantityUnitConverter units)
     {
         ArgumentNullException.ThrowIfNull(left);
         ArgumentNullException.ThrowIfNull(right);
@@ -174,7 +175,7 @@ internal static class QuantityEvaluator
         }
 
         // Incompatible units are the spec's own empty result rather than an ordering.
-        if (Functions.ValueOrdering.CompareQuantityValues(leftQty, rightQty) is not { } order)
+        if (Functions.ValueOrdering.CompareQuantityValues(leftQty, rightQty, units) is not { } order)
             return null;
 
         return op switch
@@ -309,25 +310,25 @@ internal static class QuantityEvaluator
 
     #region Private Helpers
 
-    private static IEnumerable<IElement> EvaluateQuantityAddition(FhirQuantity left, FhirQuantity right)
+    private static IEnumerable<IElement> EvaluateQuantityAddition(FhirQuantity left, FhirQuantity right, IQuantityUnitConverter units)
     {
-        var result = left.Add(right, UnitConverter);
+        var result = left.Add(right, units);
         return result != null
             ? [Functions.FunctionHelpers.CreateQuantity(result)]
             : [];
     }
 
-    private static IEnumerable<IElement> EvaluateQuantitySubtraction(FhirQuantity left, FhirQuantity right)
+    private static IEnumerable<IElement> EvaluateQuantitySubtraction(FhirQuantity left, FhirQuantity right, IQuantityUnitConverter units)
     {
-        var result = left.Subtract(right, UnitConverter);
+        var result = left.Subtract(right, units);
         return result != null
             ? [Functions.FunctionHelpers.CreateQuantity(result)]
             : [];
     }
 
-    private static IEnumerable<IElement> EvaluateQuantityMultiplication(FhirQuantity left, FhirQuantity right)
+    private static IEnumerable<IElement> EvaluateQuantityMultiplication(FhirQuantity left, FhirQuantity right, IQuantityUnitConverter units)
     {
-        var result = UnitConverter.Multiply(left, right);
+        var result = units.Multiply(left, right);
         return result != null
             ? [Functions.FunctionHelpers.CreateQuantity(result)]
             : [];
@@ -347,9 +348,9 @@ internal static class QuantityEvaluator
             : [];
     }
 
-    private static IEnumerable<IElement> EvaluateQuantityDivision(FhirQuantity left, FhirQuantity right)
+    private static IEnumerable<IElement> EvaluateQuantityDivision(FhirQuantity left, FhirQuantity right, IQuantityUnitConverter units)
     {
-        var result = UnitConverter.Divide(left, right);
+        var result = units.Divide(left, right);
         return result != null
             ? [Functions.FunctionHelpers.CreateQuantity(result)]
             : [];

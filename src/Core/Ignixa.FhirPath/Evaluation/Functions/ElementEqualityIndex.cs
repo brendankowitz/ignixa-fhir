@@ -56,30 +56,9 @@ internal sealed class ElementEqualityIndex
     private readonly List<IElement> _quantities = [];
     private int _numberCount;
 
-    // The unit costs below were measured warm in a Release build, where the step budget runs at about 3,650 steps
-    // a millisecond (10,000,000 steps of nested select() took 2.74 s). Each charge is set at or above the worst
-    // measured case, so a collection built to make the index do UCUM work exhausts the budget no slower than any
-    // other expression.
-
-    /// <summary>
-    /// Steps charged for computing the compatibility class of a unit UCUM can read: one parse, measured at 0.50 ms
-    /// (<c>m2</c>, <c>m3</c>, ...) to 0.65 ms (annotated spellings such as <c>g.{a1}</c>), about 1,800-2,400 steps.
-    /// </summary>
-    private const int UnitParseSteps = 3_000;
-
-    /// <summary>
-    /// Steps charged for computing the class of a unit UCUM cannot read, which the parser rejects early: measured at
-    /// 0.012-0.11 ms (<c>widget1</c>, <c>[foo1]</c>, <c>m/zz1</c>), at most about 400 steps.
-    /// </summary>
-    private const int UnreadableUnitSteps = 1_000;
-
-    /// <summary>
-    /// Steps charged for converting a value between two different units, which parses both: measured at 1.2 ms
-    /// (<c>mg</c> to <c>kg</c>), 2.2 ms (<c>[lb_av]</c> to <c>g</c>, or between annotated spellings) and 0.5 ms
-    /// for a conversion that fails - about 4,400-8,000 steps. Conversions are made once per unit to give it a
-    /// scale, for each comparison of quantities in different units, and per unit without a scale on every lookup.
-    /// </summary>
-    private const int UnitConversionSteps = 12_000;
+    // UCUM work - reading a unit's class, converting between units - goes through the evaluation's metered converter
+    // (EvaluationBudget.Units), which charges it by elapsed time and memoises repeats, so the index adds no unit
+    // charges of its own beyond a step per probe.
 
     /// <summary>
     /// The relative width of a magnitude bucket. Magnitudes of equal quantities differ only by decimal rounding
@@ -92,6 +71,8 @@ internal sealed class ElementEqualityIndex
     /// compared directly rather than by magnitude.
     /// </summary>
     private const decimal PreciseMagnitude = 1e-13m;
+
+    private const int ClassifySteps = 2;
 
     /// <param name="budget">The evaluation budget charged for each key and comparison.</param>
     /// <param name="beforeComparison">Called before each comparison, for a caller enforcing its own comparison limit.</param>
@@ -131,7 +112,9 @@ internal sealed class ElementEqualityIndex
 
     private Entry Classify(IElement element)
     {
-        _budget.Step();
+        // Two steps: classifying and hashing an element measured at about 410 ns warm in a Release build (a union
+        // grown one item at a time by aggregate()), against the budget's nominal 250 ns a step.
+        _budget.Charge(ClassifySteps);
 
         if (ValueOrdering.IsQuantity(element))
         {
@@ -260,7 +243,7 @@ internal sealed class ElementEqualityIndex
                 return AnyQuantityEqual(entry.Quantity!, candidate)
                     || (_numberCount > 0
                         && string.Equals(ClassOf(entry.Quantity!.Unit), ClassOf("1"), StringComparison.Ordinal)
-                        && ValueOrdering.TryExpressIn(entry.Quantity!, "1", out var asNumber)
+                        && ValueOrdering.TryExpressIn(entry.Quantity!, "1", _budget.Units, out var asNumber)
                         && BucketContains(ElementEqualityKey.NumberKey(asNumber), candidate))
                     || AnyEqual(_quantityShaped, candidate)
                     || AnyEqual(_unkeyed, candidate);
@@ -339,9 +322,9 @@ internal sealed class ElementEqualityIndex
         foreach (var unit in units)
         {
             var byValue = members.ByUnit[unit];
-            _budget.Charge(string.Equals(unit, quantity.Unit, StringComparison.Ordinal) ? 1 : UnitConversionSteps);
+            _budget.Step();
 
-            if (ValueOrdering.TryExpressIn(quantity, unit, out var converted))
+            if (ValueOrdering.TryExpressIn(quantity, unit, _budget.Units, out var converted))
             {
                 if (byValue.TryGetValue(converted, out var aligned) && AnyEqual(aligned, candidate))
                 {
@@ -368,7 +351,7 @@ internal sealed class ElementEqualityIndex
         foreach (var (member, unit) in near)
         {
             _beforeComparison?.Invoke();
-            _budget.Charge(string.Equals(unit, candidateUnit, StringComparison.Ordinal) ? 1 : UnitConversionSteps);
+            _budget.Step();
 
             if (FunctionHelpers.AreElementsEqual(member, candidate, _budget))
             {
@@ -398,15 +381,13 @@ internal sealed class ElementEqualityIndex
         }
         else
         {
-            _budget.Charge(UnitConversionSteps);
-            if (ValueOrdering.TryExpressIn(new FhirQuantity(1m, unit), members.Representative, out var one)
+            if (ValueOrdering.TryExpressIn(new FhirQuantity(1m, unit), members.Representative, _budget.Units, out var one)
                 && one != 0m
                 && !IsNearTheScaleLimit(one))
             {
                 // A second point rules out an offset (Cel to K, should a converter support it): only a linear
                 // conversion makes magnitudes comparable.
-                _budget.Charge(UnitConversionSteps);
-                if (ValueOrdering.TryExpressIn(new FhirQuantity(2m, unit), members.Representative, out var two) && two == 2m * one)
+                if (ValueOrdering.TryExpressIn(new FhirQuantity(2m, unit), members.Representative, _budget.Units, out var two) && two == 2m * one)
                 {
                     scale = (double)one;
                 }
@@ -432,8 +413,7 @@ internal sealed class ElementEqualityIndex
     {
         if (!_classByUnit.TryGetValue(unit, out var compatibilityClass))
         {
-            compatibilityClass = ValueOrdering.CompatibilityClass(unit);
-            _budget.Charge(compatibilityClass.StartsWith("unit:", StringComparison.Ordinal) ? UnreadableUnitSteps : UnitParseSteps);
+            compatibilityClass = ValueOrdering.CompatibilityClass(unit, _budget.Units);
             _classByUnit[unit] = compatibilityClass;
         }
 

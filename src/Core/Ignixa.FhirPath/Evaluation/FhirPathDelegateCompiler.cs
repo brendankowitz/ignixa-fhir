@@ -288,7 +288,8 @@ public class FhirPathDelegateCompiler
                 return _fallbackEvaluator.CompareEquality(
                     leftFunc(item, ctx).ToList(),
                     rightFunc(item, ctx).ToList(),
-                    equals: true) == true;
+                    equals: true,
+                    ctx.Budget) == true;
             });
         };
     }
@@ -516,13 +517,13 @@ public class FhirPathDelegateCompiler
         return binary.Operator.ToLowerInvariant() switch
 #pragma warning restore CA1308 // Normalize strings to uppercase
         {
-            "=" => CompileComparison(leftFunc, rightFunc, (l, r) => _fallbackEvaluator.CompareEquality(l, r, equals: true)),
-            "!=" => CompileComparison(leftFunc, rightFunc, (l, r) => _fallbackEvaluator.CompareEquality(l, r, equals: false)),
+            "=" => CompileComparison(leftFunc, rightFunc, (l, r, budget) => _fallbackEvaluator.CompareEquality(l, r, equals: true, budget)),
+            "!=" => CompileComparison(leftFunc, rightFunc, (l, r, budget) => _fallbackEvaluator.CompareEquality(l, r, equals: false, budget)),
 
-            "<" => CompileComparison(leftFunc, rightFunc, (l, r) => _fallbackEvaluator.CompareOrder(l, r, greater: false, orEqual: false)),
-            ">" => CompileComparison(leftFunc, rightFunc, (l, r) => _fallbackEvaluator.CompareOrder(l, r, greater: true, orEqual: false)),
-            "<=" => CompileComparison(leftFunc, rightFunc, (l, r) => _fallbackEvaluator.CompareOrder(l, r, greater: false, orEqual: true)),
-            ">=" => CompileComparison(leftFunc, rightFunc, (l, r) => _fallbackEvaluator.CompareOrder(l, r, greater: true, orEqual: true)),
+            "<" => CompileComparison(leftFunc, rightFunc, (l, r, budget) => _fallbackEvaluator.CompareOrder(l, r, greater: false, orEqual: false, budget)),
+            ">" => CompileComparison(leftFunc, rightFunc, (l, r, budget) => _fallbackEvaluator.CompareOrder(l, r, greater: true, orEqual: false, budget)),
+            "<=" => CompileComparison(leftFunc, rightFunc, (l, r, budget) => _fallbackEvaluator.CompareOrder(l, r, greater: false, orEqual: true, budget)),
+            ">=" => CompileComparison(leftFunc, rightFunc, (l, r, budget) => _fallbackEvaluator.CompareOrder(l, r, greater: true, orEqual: true, budget)),
 
             _ => null
         };
@@ -616,10 +617,10 @@ public class FhirPathDelegateCompiler
     private static Func<IElement, EvaluationContext, IEnumerable<IElement>> CompileComparison(
         Func<IElement, EvaluationContext, IEnumerable<IElement>> leftFunc,
         Func<IElement, EvaluationContext, IEnumerable<IElement>> rightFunc,
-        Func<List<IElement>, List<IElement>, bool?> comparer)
+        Func<List<IElement>, List<IElement>, EvaluationBudget, bool?> comparer)
     {
         return (input, ctx) => FunctionHelpers.ReturnBoolean(
-            comparer(leftFunc(input, ctx).ToList(), rightFunc(input, ctx).ToList()));
+            comparer(leftFunc(input, ctx).ToList(), rightFunc(input, ctx).ToList(), ctx.Budget));
     }
 
     /// <summary>

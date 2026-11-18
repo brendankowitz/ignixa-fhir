@@ -416,8 +416,7 @@ internal static class FhirSpecificFunctions
         }
 
         // Check compatibility using the UCUM converter
-        var converter = QuantityUnitConverter.Instance;
-        var areCompatible = converter.IsCompatible(inputUnit, argUnit);
+        var areCompatible = context.Budget.Units.IsCompatible(inputUnit, argUnit);
         
         yield return FunctionHelpers.CreateBoolean(areCompatible);
     }

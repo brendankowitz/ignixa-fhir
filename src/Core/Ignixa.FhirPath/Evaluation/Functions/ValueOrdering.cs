@@ -46,14 +46,13 @@ namespace Ignixa.FhirPath.Evaluation.Functions;
 /// </remarks>
 internal static class ValueOrdering
 {
-    private static readonly IQuantityUnitConverter UnitConverter = QuantityUnitConverter.Instance;
-
     /// <summary>
     /// Compares two values using FHIRPath ordering semantics.
     /// </summary>
     /// <param name="left">The left operand.</param>
     /// <param name="right">The right operand.</param>
     /// <param name="function">The FHIRPath function requesting the comparison, for diagnostics.</param>
+    /// <param name="units">The converter that relates quantity units.</param>
     /// <returns>
     /// A negative value, zero, a positive value, or <see langword="null"/> when the ordering is
     /// indeterminate - incompatible quantity units, or temporals whose precision or timezone presence
@@ -72,12 +71,12 @@ internal static class ValueOrdering
     /// §min()'s definition, so it is not what this delegation rests on.)
     /// <paramref name="function"/> exists only so the resulting error names the caller.
     /// </remarks>
-    public static int? CompareValues(IElement left, IElement right, string function)
+    public static int? CompareValues(IElement left, IElement right, string function, IQuantityUnitConverter units)
     {
         ArgumentNullException.ThrowIfNull(left);
         ArgumentNullException.ThrowIfNull(right);
 
-        return Compare(left, right, function, totalOrder: false);
+        return Compare(left, right, function, totalOrder: false, units);
     }
 
     /// <summary>
@@ -86,16 +85,17 @@ internal static class ValueOrdering
     /// <param name="left">The left operand.</param>
     /// <param name="right">The right operand.</param>
     /// <param name="function">The FHIRPath function requesting the comparison, for diagnostics.</param>
+    /// <param name="units">The converter that relates quantity units.</param>
     /// <returns>A negative value, zero, or a positive value.</returns>
     /// <exception cref="FhirPathEvaluationException">
     /// The operands are of types no conversion relates, or of a type FHIRPath defines no ordering for.
     /// </exception>
-    public static int CompareForSort(IElement left, IElement right, string function)
+    public static int CompareForSort(IElement left, IElement right, string function, IQuantityUnitConverter units)
     {
         ArgumentNullException.ThrowIfNull(left);
         ArgumentNullException.ThrowIfNull(right);
 
-        return Compare(left, right, function, totalOrder: true)!.Value;
+        return Compare(left, right, function, totalOrder: true, units)!.Value;
     }
 
     /// <summary>
@@ -103,6 +103,7 @@ internal static class ValueOrdering
     /// </summary>
     /// <param name="left">The left operand.</param>
     /// <param name="right">The right operand.</param>
+    /// <param name="units">The converter that relates quantity units.</param>
     /// <returns>
     /// <see langword="true"/> or <see langword="false"/> when equality is decidable, and
     /// <see langword="null"/> when it is not: the units are incompatible, or an operand is not a value
@@ -123,7 +124,7 @@ internal static class ValueOrdering
     /// returned two elements, and <c>1 'wk' in (7 'd')</c> was <see langword="false"/>.
     /// </para>
     /// </remarks>
-    public static bool? AreQuantitiesEqual(IElement left, IElement right)
+    public static bool? AreQuantitiesEqual(IElement left, IElement right, IQuantityUnitConverter units)
     {
         ArgumentNullException.ThrowIfNull(left);
         ArgumentNullException.ThrowIfNull(right);
@@ -136,7 +137,7 @@ internal static class ValueOrdering
             return null;
         }
 
-        return CompareQuantityValues(leftQuantity, rightQuantity) is { } order ? order == 0 : null;
+        return CompareQuantityValues(leftQuantity, rightQuantity, units) is { } order ? order == 0 : null;
     }
 
     /// <summary>
@@ -144,13 +145,14 @@ internal static class ValueOrdering
     /// </summary>
     /// <param name="left">The left quantity.</param>
     /// <param name="right">The right quantity.</param>
+    /// <param name="units">The converter that relates the units.</param>
     /// <returns>
     /// A negative value, zero, a positive value, or <see langword="null"/> when the units are
     /// incompatible, which the spec answers with empty rather than with an ordering.
     /// </returns>
-    public static int? CompareQuantityValues(FhirQuantity left, FhirQuantity right)
+    public static int? CompareQuantityValues(FhirQuantity left, FhirQuantity right, IQuantityUnitConverter units)
     {
-        return TryAlignUnits(left, right, out var leftValue, out var rightValue)
+        return TryAlignUnits(left, right, units, out var leftValue, out var rightValue)
             ? leftValue.CompareTo(rightValue)
             : null;
     }
@@ -160,6 +162,7 @@ internal static class ValueOrdering
     /// </summary>
     /// <param name="left">The left quantity, whose unit both values are expressed in.</param>
     /// <param name="right">The right quantity.</param>
+    /// <param name="units">The converter that relates the units.</param>
     /// <param name="leftValue">The left value.</param>
     /// <param name="rightValue">The right value in the left's unit.</param>
     /// <returns><see langword="false"/> when no conversion relates the two units.</returns>
@@ -169,13 +172,18 @@ internal static class ValueOrdering
     /// value to some of them and two to others. Equivalence needs the aligned values rather than the
     /// comparison result, because it rounds them to their stated precision first.
     /// </remarks>
-    public static bool TryAlignUnits(FhirQuantity left, FhirQuantity right, out decimal leftValue, out decimal rightValue)
+    public static bool TryAlignUnits(
+        FhirQuantity left,
+        FhirQuantity right,
+        IQuantityUnitConverter units,
+        out decimal leftValue,
+        out decimal rightValue)
     {
         ArgumentNullException.ThrowIfNull(left);
         ArgumentNullException.ThrowIfNull(right);
 
         leftValue = left.Value;
-        return TryExpressIn(right, left.Unit, out rightValue);
+        return TryExpressIn(right, left.Unit, units, out rightValue);
     }
 
     /// <summary>
@@ -189,7 +197,7 @@ internal static class ValueOrdering
     /// <see cref="ElementEqualityIndex"/> look a quantity up among compatible units only, instead of testing every
     /// unit it holds.
     /// </remarks>
-    internal static string CompatibilityClass(string unit)
+    internal static string CompatibilityClass(string unit, IQuantityUnitConverter units)
     {
         ArgumentNullException.ThrowIfNull(unit);
 
@@ -201,7 +209,7 @@ internal static class ValueOrdering
             return string.Concat("variable:", ucum, isKeyword ? ":keyword" : ":ucum");
         }
 
-        return UnitConverter.GetDimensionality(ucum) is { } dimension
+        return units.GetDimensionality(ucum) is { } dimension
             ? "dimension:" + dimension
             : "unit:" + unit;
     }
@@ -215,16 +223,16 @@ internal static class ValueOrdering
     /// compare, without a second implementation of the conversion that could drift from this one.
     /// </remarks>
     /// <returns><see langword="false"/> when no conversion relates the two units.</returns>
-    internal static bool TryExpressIn(FhirQuantity quantity, string unit, out decimal value)
+    internal static bool TryExpressIn(FhirQuantity quantity, string unit, IQuantityUnitConverter units, out decimal value)
     {
         value = 0m;
 
-        if (!UnitConverter.IsCompatible(unit, quantity.Unit))
+        if (!units.IsCompatible(unit, quantity.Unit))
         {
             return false;
         }
 
-        var converted = quantity.ConvertTo(unit, UnitConverter);
+        var converted = quantity.ConvertTo(unit, units);
 
         if (converted is null)
         {
@@ -407,7 +415,7 @@ internal static class ValueOrdering
             $"{function} cannot order operands of type '{Describe(left)}' and '{Describe(right)}'.");
     }
 
-    private static int? Compare(IElement left, IElement right, string function, bool totalOrder)
+    private static int? Compare(IElement left, IElement right, string function, bool totalOrder, IQuantityUnitConverter units)
     {
         if (TemporalOperand.IsTemporal(left.Value, left.InstanceType)
             || TemporalOperand.IsTemporal(right.Value, right.InstanceType))
@@ -425,7 +433,7 @@ internal static class ValueOrdering
 
         if (IsQuantity(left) || IsQuantity(right))
         {
-            return CompareQuantities(left, right, function, totalOrder);
+            return CompareQuantities(left, right, function, totalOrder, units);
         }
 
         if (TryCompareNumbers(left, right, out var numeric))
@@ -524,7 +532,12 @@ internal static class ValueOrdering
         return string.Compare(left.Value?.ToString(), right.Value?.ToString(), StringComparison.Ordinal);
     }
 
-    private static int? CompareQuantities(IElement left, IElement right, string function, bool totalOrder)
+    private static int? CompareQuantities(
+        IElement left,
+        IElement right,
+        string function,
+        bool totalOrder,
+        IQuantityUnitConverter units)
     {
         var leftQuantity = AsQuantity(left);
         var rightQuantity = AsQuantity(right);
@@ -535,8 +548,8 @@ internal static class ValueOrdering
         }
 
         return totalOrder
-            ? CompareQuantityKeys(leftQuantity, rightQuantity)
-            : CompareQuantityValues(leftQuantity, rightQuantity);
+            ? CompareQuantityKeys(leftQuantity, rightQuantity, units)
+            : CompareQuantityValues(leftQuantity, rightQuantity, units);
     }
 
     /// <summary>
@@ -567,10 +580,10 @@ internal static class ValueOrdering
     /// form. A tie at 1e-28 is a better failure than an inversion at 1.
     /// </para>
     /// </remarks>
-    private static int CompareQuantityKeys(FhirQuantity left, FhirQuantity right)
+    private static int CompareQuantityKeys(FhirQuantity left, FhirQuantity right, IQuantityUnitConverter units)
     {
-        var leftKey = CanonicalKey(left);
-        var rightKey = CanonicalKey(right);
+        var leftKey = CanonicalKey(left, units);
+        var rightKey = CanonicalKey(right, units);
 
         if (leftKey.IsCanonical != rightKey.IsCanonical)
         {
@@ -606,11 +619,11 @@ internal static class ValueOrdering
     /// still share one because they share both the code and the form.
     /// </para>
     /// </remarks>
-    private static (bool IsCanonical, string Bucket, decimal Magnitude) CanonicalKey(FhirQuantity quantity)
+    private static (bool IsCanonical, string Bucket, decimal Magnitude) CanonicalKey(FhirQuantity quantity, IQuantityUnitConverter units)
     {
         var ucum = CalendarDuration.NormalizeToUcum(quantity.Unit);
-        var dimension = UnitConverter.GetDimensionality(ucum);
-        var scale = dimension is null ? null : UnitConverter.Convert(1m, ucum, dimension);
+        var dimension = units.GetDimensionality(ucum);
+        var scale = dimension is null ? null : units.Convert(1m, ucum, dimension);
 
         return scale is null
             ? (false, CalendarDuration.IsCalendarKeyword(quantity.Unit) ? ucum + " calendar" : ucum, quantity.Value)
@@ -779,19 +792,21 @@ internal static class ValueOrdering
     internal sealed class SortComparer : IComparer<IElement?>
     {
         private readonly bool _nullsHigh;
+        private readonly IQuantityUnitConverter _units;
 
-        private SortComparer(bool nullsHigh)
+        private SortComparer(bool nullsHigh, IQuantityUnitConverter units)
         {
             _nullsHigh = nullsHigh;
+            _units = units;
         }
 
         /// <summary>
-        /// Gets the comparer that treats a missing key as less than any value.
+        /// Creates the comparer that treats a missing key as less than any value.
         /// </summary>
-        public static SortComparer NullsLow { get; } = new(nullsHigh: false);
+        public static SortComparer NullsLow(IQuantityUnitConverter units) => new(nullsHigh: false, units);
 
         /// <summary>
-        /// Gets the comparer that treats a missing key as greater than any value, so that a descending sort
+        /// Creates the comparer that treats a missing key as greater than any value, so that a descending sort
         /// - which negates this comparer's result - places missing keys first.
         /// </summary>
         /// <remarks>
@@ -816,7 +831,7 @@ internal static class ValueOrdering
         /// continuous build off <c>master</c> and <c>FHIR/fhir-test-cases</c>.
         /// </para>
         /// </remarks>
-        public static SortComparer NullsHigh { get; } = new(nullsHigh: true);
+        public static SortComparer NullsHigh(IQuantityUnitConverter units) => new(nullsHigh: true, units);
 
         /// <summary>
         /// Orders two sort keys.
@@ -847,7 +862,7 @@ internal static class ValueOrdering
                 return _nullsHigh ? -1 : 1;
             }
 
-            return CompareForSort(x!, y!, Function);
+            return CompareForSort(x!, y!, Function, _units);
         }
 
         /// <summary>

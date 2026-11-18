@@ -368,14 +368,14 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             "in" => FunctionHelpers.ReturnBoolean(EvaluateMembership(leftResult, rightResult, isIn: true, context.Budget)),
             "contains" => FunctionHelpers.ReturnBoolean(EvaluateMembership(leftResult, rightResult, isIn: false, context.Budget)),
 
-            "=" => FunctionHelpers.ReturnBoolean(CompareEquality(leftResult, rightResult, equals: true)),
-            "!=" => FunctionHelpers.ReturnBoolean(CompareEquality(leftResult, rightResult, equals: false)),
+            "=" => FunctionHelpers.ReturnBoolean(CompareEquality(leftResult, rightResult, equals: true, context.Budget)),
+            "!=" => FunctionHelpers.ReturnBoolean(CompareEquality(leftResult, rightResult, equals: false, context.Budget)),
             "~" => FunctionHelpers.ReturnBoolean(CompareEquivalence(leftResult, rightResult, equivalent: true, context.Budget)),
             "!~" => FunctionHelpers.ReturnBoolean(CompareEquivalence(leftResult, rightResult, equivalent: false, context.Budget)),
-            ">" => FunctionHelpers.ReturnBoolean(CompareOrder(leftResult, rightResult, greater: true, orEqual: false)),
-            ">=" => FunctionHelpers.ReturnBoolean(CompareOrder(leftResult, rightResult, greater: true, orEqual: true)),
-            "<" => FunctionHelpers.ReturnBoolean(CompareOrder(leftResult, rightResult, greater: false, orEqual: false)),
-            "<=" => FunctionHelpers.ReturnBoolean(CompareOrder(leftResult, rightResult, greater: false, orEqual: true)),
+            ">" => FunctionHelpers.ReturnBoolean(CompareOrder(leftResult, rightResult, greater: true, orEqual: false, context.Budget)),
+            ">=" => FunctionHelpers.ReturnBoolean(CompareOrder(leftResult, rightResult, greater: true, orEqual: true, context.Budget)),
+            "<" => FunctionHelpers.ReturnBoolean(CompareOrder(leftResult, rightResult, greater: false, orEqual: false, context.Budget)),
+            "<=" => FunctionHelpers.ReturnBoolean(CompareOrder(leftResult, rightResult, greater: false, orEqual: true, context.Budget)),
 
             "xor" => EvaluateXor(GetBooleanValue(leftResult, "xor"), GetBooleanValue(rightResult, "xor")),
 
@@ -657,9 +657,9 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return operatorName switch
             {
                 "+" => EvaluateAddition(left, right, budget),
-                "-" => EvaluateSubtraction(left, right),
-                "*" => EvaluateMultiplication(left, right),
-                "/" => EvaluateDivision(left, right),
+                "-" => EvaluateSubtraction(left, right, budget),
+                "*" => EvaluateMultiplication(left, right, budget),
+                "/" => EvaluateDivision(left, right, budget),
                 "div" => EvaluateIntegerDivision(left, right),
                 _ => EvaluateModulo(left, right)
             };
@@ -692,7 +692,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         if (leftValue is FhirQuantity || rightValue is FhirQuantity)
         {
-            return QuantityEvaluator.EvaluateArithmetic(left, "+", right);
+            return QuantityEvaluator.EvaluateArithmetic(left, "+", right, budget.Units);
         }
 
         ThrowIfTemporalWithoutQuantity(left[0], right[0], "+");
@@ -716,7 +716,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         throw UndefinedForOperandTypes(left[0], right[0], "+");
     }
 
-    private IEnumerable<IElement> EvaluateSubtraction(List<IElement> left, List<IElement> right)
+    private IEnumerable<IElement> EvaluateSubtraction(List<IElement> left, List<IElement> right, EvaluationBudget budget)
     {
         if (left.Count != 1 || right.Count != 1)
             return [];
@@ -732,7 +732,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         if (leftValue is FhirQuantity || rightValue is FhirQuantity)
         {
-            return QuantityEvaluator.EvaluateArithmetic(left, "-", right);
+            return QuantityEvaluator.EvaluateArithmetic(left, "-", right, budget.Units);
         }
 
         ThrowIfTemporalWithoutQuantity(left[0], right[0], "-");
@@ -748,7 +748,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         throw UndefinedForOperandTypes(left[0], right[0], "-");
     }
 
-    private IEnumerable<IElement> EvaluateMultiplication(List<IElement> left, List<IElement> right)
+    private IEnumerable<IElement> EvaluateMultiplication(List<IElement> left, List<IElement> right, EvaluationBudget budget)
     {
         if (left.Count != 1 || right.Count != 1)
             return [];
@@ -758,7 +758,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         if (leftValue is FhirQuantity || rightValue is FhirQuantity)
         {
-            return QuantityEvaluator.EvaluateArithmetic(left, "*", right);
+            return QuantityEvaluator.EvaluateArithmetic(left, "*", right, budget.Units);
         }
 
         if (FunctionHelpers.TryConvertToDecimal(leftValue, out var leftDecimal) && FunctionHelpers.TryConvertToDecimal(rightValue, out var rightDecimal))
@@ -772,7 +772,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         throw UndefinedForOperandTypes(left[0], right[0], "*");
     }
 
-    private IEnumerable<IElement> EvaluateDivision(List<IElement> left, List<IElement> right)
+    private IEnumerable<IElement> EvaluateDivision(List<IElement> left, List<IElement> right, EvaluationBudget budget)
     {
         if (left.Count != 1 || right.Count != 1)
             return [];
@@ -782,7 +782,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         if (leftValue is FhirQuantity || rightValue is FhirQuantity)
         {
-            return QuantityEvaluator.EvaluateArithmetic(left, "/", right);
+            return QuantityEvaluator.EvaluateArithmetic(left, "/", right, budget.Units);
         }
 
         if (FunctionHelpers.TryConvertToDecimal(leftValue, out var leftDecimal) && FunctionHelpers.TryConvertToDecimal(rightValue, out var rightDecimal))
@@ -1206,7 +1206,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             // Incompatible units are false here rather than empty: equivalence has no third state, and
             // the conversion itself is ValueOrdering's so that ~, = and < cannot disagree about which
             // units relate.
-            if (!ValueOrdering.TryAlignUnits(leftQty, rightQty, out var leftValue, out var rightValue))
+            if (!ValueOrdering.TryAlignUnits(leftQty, rightQty, budget.Units, out var leftValue, out var rightValue))
                 return false;
 
             // For quantities, equivalence (~) uses precision-based comparison per FHIRPath 3.0 spec:
@@ -1576,7 +1576,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// the full argument.
     /// </para>
     /// </remarks>
-    internal bool? CompareEquality(List<IElement> left, List<IElement> right, bool equals)
+    internal bool? CompareEquality(List<IElement> left, List<IElement> right, bool equals, EvaluationBudget budget)
     {
         // Per FHIRPath official tests: {} = {} and {} != {} both return empty
         // Any comparison involving empty collection returns empty (three-valued logic)
@@ -1600,7 +1600,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             if (leftVal is FhirQuantity || rightVal is FhirQuantity ||
                 IsQuantityType(leftType) || IsQuantityType(rightType))
             {
-                var result = QuantityEvaluator.EvaluateComparison(left, equals ? "=" : "!=", right);
+                var result = QuantityEvaluator.EvaluateComparison(left, equals ? "=" : "!=", right, budget.Units);
                 return result;
             }
 
@@ -1622,7 +1622,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         for (int i = 0; i < left.Count; i++)
         {
-            var isEqual = FunctionHelpers.AreElementsEqual(left[i], right[i]);
+            var isEqual = FunctionHelpers.AreElementsEqual(left[i], right[i], budget);
             if (isEqual != equals) return false;
         }
 
@@ -1823,7 +1823,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         /// undecidable (<c>@2012 &gt; @2012-01</c>), and FHIRPath requires that to surface as an empty
         /// collection rather than as <c>false</c>.
         /// </remarks>
-        internal bool? CompareOrder(List<IElement> left, List<IElement> right, bool greater, bool orEqual)
+        internal bool? CompareOrder(List<IElement> left, List<IElement> right, bool greater, bool orEqual, EvaluationBudget budget)
         {
             if (left.Count == 0 || right.Count == 0)
                 return null;
@@ -1850,7 +1850,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                     (false, false) => "<",
                     (false, true) => "<="
                 };
-                return QuantityEvaluator.EvaluateComparison(left, op, right);
+                return QuantityEvaluator.EvaluateComparison(left, op, right, budget.Units);
             }
     
             var leftIsTemporal = IsTemporalOperand(leftValue, leftType);
