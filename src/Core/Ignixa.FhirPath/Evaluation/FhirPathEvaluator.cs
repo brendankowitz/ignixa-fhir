@@ -1398,12 +1398,22 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         if (value is null)
             return [];
 
+        // A variable holds a collection computed once and handed out on every read, so a read costs a step per item
+        // as a memoised subexpression's reuse does: otherwise a large collection defined once and read inside a
+        // loop is walked by every function the read feeds, for one step a read.
         return value switch
         {
             IElement singleElement => [singleElement],
-            IEnumerable<IElement> elementCollection => elementCollection,
+            IReadOnlyCollection<IElement> collection => ChargedRead(collection, context.Budget),
+            IEnumerable<IElement> elementCollection => context.Budget.PerItem(elementCollection),
             _ => []
         };
+    }
+
+    private static IReadOnlyCollection<IElement> ChargedRead(IReadOnlyCollection<IElement> collection, EvaluationBudget budget)
+    {
+        budget.Charge(collection.Count);
+        return collection;
     }
 
     /// <summary>

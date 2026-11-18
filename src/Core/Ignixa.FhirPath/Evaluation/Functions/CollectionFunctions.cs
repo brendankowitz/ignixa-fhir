@@ -91,8 +91,9 @@ internal static class CollectionFunctions
         MaxArguments = 0,
         Category = "Collection",
         Description = "Returns the number of elements in the collection")]
-    public static IEnumerable<IElement> Count(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> Count(IEnumerable<IElement> focus, EvaluationContext context)
     {
+        focus = context.Budget.PerItem(focus);
         var count = focus.Count();
         return [(IElement)FunctionHelpers.CreateInteger(count)];
     }
@@ -162,8 +163,9 @@ internal static class CollectionFunctions
         MaxArguments = 0,
         Category = "Collection",
         Description = "Returns the last element in the collection")]
-    public static IEnumerable<IElement> Last(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> Last(IEnumerable<IElement> focus, EvaluationContext context)
     {
+        focus = context.Budget.PerItem(focus);
         var last = focus.LastOrDefault();
         return last != null ? [last] : [];
     }
@@ -179,8 +181,9 @@ internal static class CollectionFunctions
         MaxArguments = 0,
         Category = "Collection",
         Description = "Returns the single element in the collection")]
-    public static IEnumerable<IElement> Single(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> Single(IEnumerable<IElement> focus, EvaluationContext context)
     {
+        focus = context.Budget.PerItem(focus);
         var list = focus.ToList();
         if (list.Count == 0)
             return [];

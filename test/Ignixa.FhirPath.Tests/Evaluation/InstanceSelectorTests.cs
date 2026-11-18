@@ -18,7 +18,7 @@ public class InstanceSelectorTests
 
     // The evaluator has no built-in object model, so every construction test needs a creator wired.
     private List<IElement> EvaluateCreating(IElement focus, Ignixa.FhirPath.Expressions.Expression ast) =>
-        ast.AcceptVisitor(_evaluator, InstanceCreationTestContext.For(focus)).ToList();
+        ast.AcceptVisitor(_evaluator, InstanceCreationTestContext.For(focus).StartBudget()).ToList();
 
     #region Simple Instance Selector Tests
 
@@ -308,7 +308,7 @@ public class InstanceSelectorTests
         // and the message is asserted so the singleton-input rule is what is actually covered.
         var context = InstanceCreationTestContext.For(CreateIntegerElement(1)) with { Focus = multiItemCollection };
         var ex = Assert.Throws<FhirPathEvaluationException>(() =>
-            ast.AcceptVisitor(_evaluator, context).ToList());
+            ast.AcceptVisitor(_evaluator, context.StartBudget()).ToList());
         Assert.Contains("single input item", ex.Message, StringComparison.Ordinal);
     }
 
@@ -340,7 +340,7 @@ public class InstanceSelectorTests
         var emptyContext = new EvaluationContext { Focus = System.Collections.Immutable.ImmutableList<IElement>.Empty };
 
         // Act
-        var result = ast.AcceptVisitor(_evaluator, emptyContext).ToList();
+        var result = ast.AcceptVisitor(_evaluator, emptyContext.StartBudget()).ToList();
 
         // Assert
         Assert.Empty(result);
@@ -513,7 +513,7 @@ public class InstanceSelectorTests
             .WithInstanceCreator(recorder.Create);
 
         // Act
-        var result = ast.AcceptVisitor(_evaluator, context).ToList();
+        var result = ast.AcceptVisitor(_evaluator, context.StartBudget()).ToList();
 
         // Assert - the engine handed construction to the delegate with the right inputs
         Assert.Equal(1, recorder.CallCount);
@@ -539,7 +539,7 @@ public class InstanceSelectorTests
             .WithInstanceCreator(_ => null);
 
         // Act
-        var result = ast.AcceptVisitor(_evaluator, context).ToList();
+        var result = ast.AcceptVisitor(_evaluator, context.StartBudget()).ToList();
 
         // Assert
         Assert.Empty(result);
@@ -556,7 +556,7 @@ public class InstanceSelectorTests
             .WithInstanceCreator(recorder.Create);
 
         // Act
-        _ = ast.AcceptVisitor(_evaluator, context).ToList();
+        _ = ast.AcceptVisitor(_evaluator, context.StartBudget()).ToList();
 
         // Assert
         Assert.Equal("Coding", recorder.LastRequest?.TypeName);

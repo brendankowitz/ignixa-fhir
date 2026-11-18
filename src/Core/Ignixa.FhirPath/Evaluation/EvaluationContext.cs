@@ -74,6 +74,8 @@ namespace Ignixa.FhirPath.Evaluation;
 /// </remarks>
 public record EvaluationContext
 {
+    private readonly EvaluationBudget? _budget;
+
     protected EvaluationContext(
         ImmutableList<IElement> focus,
         ImmutableStack<IElement> thisStack,
@@ -280,12 +282,23 @@ public record EvaluationContext
     public CancellationToken CancellationToken { get; init; }
 
     /// <summary>
-    /// The meter for the evaluation in progress. Replaced by <see cref="FhirPathEvaluator.Evaluate"/> on every
-    /// call, so a context reused across evaluations never carries one evaluation's count into the next; like
-    /// <see cref="ReferenceIndexCache"/>, a <c>with</c> copy shares it. The initial value only serves code that
-    /// evaluates without going through <see cref="FhirPathEvaluator.Evaluate"/>.
+    /// The meter for the evaluation in progress. Started by <see cref="StartBudget"/> at every evaluation entry
+    /// point - <see cref="FhirPathEvaluator.Evaluate"/> and the compiled-delegate path - so a context reused across
+    /// evaluations never carries one evaluation's count into the next; like <see cref="ReferenceIndexCache"/>, a
+    /// <c>with</c> copy shares it.
     /// </summary>
-    internal EvaluationBudget Budget { get; init; } = new(FhirPathEvaluationLimits.Default, CancellationToken.None);
+    /// <remarks>
+    /// There is deliberately no default meter. One created with the context would be shared by every evaluation
+    /// that reused the context, under limits and a token other than the context's, and charged from several threads
+    /// at once; a path that evaluates without starting a budget fails here instead.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">No evaluation has started on this context.</exception>
+    internal EvaluationBudget Budget
+    {
+        get => _budget ?? throw new InvalidOperationException(
+            "No FHIRPath evaluation has started on this context; evaluation entry points call StartBudget().");
+        init => _budget = value;
+    }
 
     /// <summary>
     /// Returns a copy of this context with a fresh <see cref="Budget"/> built from <see cref="Limits"/> and

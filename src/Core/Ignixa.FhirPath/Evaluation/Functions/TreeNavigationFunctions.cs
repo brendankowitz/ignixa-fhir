@@ -65,6 +65,8 @@ internal static class TreeNavigationFunctions
 
         while (queue.Count > 0)
         {
+            // A step per node visited, leaf or not: a focus of many primitives has no children to charge for.
+            budget.Step();
             var current = queue.Dequeue();
             foreach (var child in current.Children())
             {
@@ -89,9 +91,9 @@ internal static class TreeNavigationFunctions
         MaxArguments = 0,
         Category = "TreeNavigation",
         Description = "Returns true if the element has a primitive value")]
-    public static IEnumerable<IElement> HasValue(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> HasValue(IEnumerable<IElement> focus, EvaluationContext context)
     {
-        var focusList = focus.ToList();
+        var focusList = context.Budget.PerItem(focus).ToList();
 
         if (focusList.Count == 0)
         {

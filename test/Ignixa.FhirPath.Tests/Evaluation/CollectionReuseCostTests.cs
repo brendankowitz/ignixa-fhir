@@ -33,6 +33,12 @@ public class CollectionReuseCostTests
     [InlineData("%s.take(2000).count()")]
     [InlineData("%s.ofType(Integer).count()")]
     [InlineData("%s.type().count()")]
+    [InlineData("%s.hasValue()")]
+    [InlineData("%s.descendants().count()")]
+    [InlineData("%s.count()")]
+    [InlineData("%s.last()")]
+    [InlineData("%s.empty()")]
+    [InlineData("%s")]
     public void GivenALargeCollectionReusedManyTimes_WhenAFunctionWalksIt_ThenEachItemIsCharged(string walk)
     {
         // Arrange: 2,000 numbers built once, then walked 50 times - 100,000 items, more than the limit allows.
