@@ -56,7 +56,7 @@ public partial class JsonNodeMutator : IMappingTargetMutator
         if (serializedValue is null)
         {
             throw new InvalidOperationException(
-                $"Failed to serialize IElement to JsonNode for path '{fhirPathExpression}'");
+                $"Failed to serialize IElement to JsonNode for path '{LogSafeText.Sanitize(fhirPathExpression)}'");
         }
 
         // Delegate to JsonNode overload
@@ -157,7 +157,7 @@ public partial class JsonNodeMutator : IMappingTargetMutator
         if (parts.Length < 2)
         {
             throw new ArgumentException(
-                $"FHIRPath expression must contain at least resource type and property: '{fhirPathExpression}'",
+                $"FHIRPath expression must contain at least resource type and property: '{LogSafeText.Sanitize(fhirPathExpression)}'",
                 nameof(fhirPathExpression));
         }
 
@@ -179,7 +179,7 @@ public partial class JsonNodeMutator : IMappingTargetMutator
             if (currentObj is null)
             {
                 throw new InvalidOperationException(
-                    $"Path segment '{parts[i - 1]}' in '{fhirPathExpression}' is not a JsonObject");
+                    $"Path segment '{LogSafeText.Sanitize(parts[i - 1])}' in '{LogSafeText.Sanitize(fhirPathExpression)}' is not a JsonObject");
             }
 
             // Create intermediate object if missing
@@ -248,7 +248,7 @@ public partial class JsonNodeMutator : IMappingTargetMutator
             // Existing property is not an array - need to find parent and convert to array
             var (parentObj, propertyName) = GetParentAndProperty(firstNode, resource.MutableNode)
                 ?? throw new InvalidOperationException(
-                    $"Cannot find parent for FHIRPath '{fhirPathExpression}' to convert to array");
+                    $"Cannot find parent for FHIRPath '{LogSafeText.Sanitize(fhirPathExpression)}' to convert to array");
 
             // Convert single value to array with both old and new values
             var clonedExisting = JsonNode.Parse(firstNode.ToJsonString());
@@ -284,7 +284,7 @@ public partial class JsonNodeMutator : IMappingTargetMutator
             var targetNode = existingNodes[0];
             var (parentObj, propertyName) = GetParentAndProperty(targetNode, resource.MutableNode)
                 ?? throw new InvalidOperationException(
-                    $"Cannot find parent for FHIRPath '{fhirPathExpression}' to replace value");
+                    $"Cannot find parent for FHIRPath '{LogSafeText.Sanitize(fhirPathExpression)}' to replace value");
 
             // Deep clone to avoid "node already has a parent" error
             var clonedValue = JsonNode.Parse(value.ToJsonString());
@@ -445,7 +445,7 @@ public partial class JsonNodeMutator : IMappingTargetMutator
             else
             {
                 throw new InvalidOperationException(
-                    $"Cannot find element in array at path '{fhirPathExpression}'");
+                    $"Cannot find element in array at path '{LogSafeText.Sanitize(fhirPathExpression)}'");
             }
         }
         else
@@ -455,7 +455,7 @@ public partial class JsonNodeMutator : IMappingTargetMutator
             if (parentInfo is null)
             {
                 throw new InvalidOperationException(
-                    $"Cannot find parent for path '{fhirPathExpression}'");
+                    $"Cannot find parent for path '{LogSafeText.Sanitize(fhirPathExpression)}'");
             }
 
             var (parent, propertyName) = parentInfo.Value;
@@ -488,7 +488,7 @@ public partial class JsonNodeMutator : IMappingTargetMutator
             if (lastDot < 0)
             {
                 throw new InvalidOperationException(
-                    $"Path '{fhirPathExpression}' not found and cannot determine parent");
+                    $"Path '{LogSafeText.Sanitize(fhirPathExpression)}' not found and cannot determine parent");
             }
 
             var parentPath = fhirPathExpression[..lastDot];
@@ -498,7 +498,7 @@ public partial class JsonNodeMutator : IMappingTargetMutator
             if (parentMatches.Count != 1 || parentMatches[0] is not JsonObject parentObj)
             {
                 throw new InvalidOperationException(
-                    $"Parent path '{parentPath}' not found or is not an object");
+                    $"Parent path '{LogSafeText.Sanitize(parentPath)}' not found or is not an object");
             }
 
             targetParent = parentObj;
@@ -512,7 +512,7 @@ public partial class JsonNodeMutator : IMappingTargetMutator
             if (parentInfo is null)
             {
                 throw new InvalidOperationException(
-                    $"Cannot find parent for path '{fhirPathExpression}'");
+                    $"Cannot find parent for path '{LogSafeText.Sanitize(fhirPathExpression)}'");
             }
 
             (targetParent, propertyName) = parentInfo.Value;
@@ -534,7 +534,7 @@ public partial class JsonNodeMutator : IMappingTargetMutator
         else
         {
             throw new InvalidOperationException(
-                $"Cannot insert into non-array property '{propertyName}'");
+                $"Cannot insert into non-array property '{LogSafeText.Sanitize(propertyName)}'");
         }
 
         // Validate index and insert
@@ -566,14 +566,14 @@ public partial class JsonNodeMutator : IMappingTargetMutator
         if (targetNode.Parent is not JsonArray parentArray)
         {
             throw new InvalidOperationException(
-                $"Path '{fhirPathExpression}' does not reference an array element");
+                $"Path '{LogSafeText.Sanitize(fhirPathExpression)}' does not reference an array element");
         }
 
         var index = parentArray.IndexOf(targetNode);
         if (index < 0)
         {
             throw new InvalidOperationException(
-                $"Cannot find index of target element in array at path '{fhirPathExpression}'");
+                $"Cannot find index of target element in array at path '{LogSafeText.Sanitize(fhirPathExpression)}'");
         }
 
         // Deep clone to avoid "node already has a parent" error
@@ -601,13 +601,13 @@ public partial class JsonNodeMutator : IMappingTargetMutator
         if (matches.Count == 0)
         {
             throw new InvalidOperationException(
-                $"FHIRPath expression '{fhirPathExpression}' did not match any elements");
+                $"FHIRPath expression '{LogSafeText.Sanitize(fhirPathExpression)}' did not match any elements");
         }
 
         if (matches.Count > 1)
         {
             throw new InvalidOperationException(
-                $"FHIRPath expression '{fhirPathExpression}' matched {matches.Count} elements (expected 1)");
+                $"FHIRPath expression '{LogSafeText.Sanitize(fhirPathExpression)}' matched {matches.Count} elements (expected 1)");
         }
 
         return matches[0];

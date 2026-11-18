@@ -9,6 +9,9 @@ using Ignixa.DeId.Configuration;
 using Ignixa.DeId.Darts.Configuration;
 using Ignixa.DeId.Models;
 using Ignixa.DeId.Pipeline;
+using Ignixa.Domain.Exceptions;
+using Ignixa.FhirPath;
+using Ignixa.FhirPath.Evaluation;
 using Medino;
 using Microsoft.Extensions.Logging;
 
@@ -44,7 +47,7 @@ public class DeIdentifyHandler : IRequestHandler<DeIdentifyCommand, DeIdentifyRe
         _logger.LogInformation(
             "Executing $de-identify for tenant {TenantId} with policy {Policy}",
             request.TenantId,
-            request.Policy);
+            LogSafeText.Sanitize(request.Policy));
 
         DeIdOptions options;
         try
@@ -53,7 +56,10 @@ public class DeIdentifyHandler : IRequestHandler<DeIdentifyCommand, DeIdentifyRe
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to load de-identification configuration from Library resource.");
+            // Logged by type: the message can quote rule paths from the request's configuration.
+            _logger.LogError(
+                "Failed to load de-identification configuration from Library resource ({ExceptionType}).",
+                ex.GetType().Name);
             return new DeIdentifyResult(
                 false,
                 null,
@@ -82,6 +88,15 @@ public class DeIdentifyHandler : IRequestHandler<DeIdentifyCommand, DeIdentifyRe
 
         var result = await _pipeline.ExecuteAsync(deIdContext, cancellationToken);
 
+        if (!result.IsSuccess && IsResourceLimit(result.Error.Exception))
+        {
+            // A rule's FHIRPath asked for more than an evaluation allows: too costly, as for $patch and $transform.
+            _logger.LogWarning("De-identification exceeded a FHIRPath evaluation limit ({ErrorCode})", result.Error.Code);
+            throw new RequestTooCostlyException(
+                $"De-identification exceeded a FHIRPath evaluation limit: {LogSafeText.Sanitize(result.Error.Message)}",
+                result.Error.Exception!);
+        }
+
         if (!result.IsSuccess)
         {
             // The message can quote resource values; the caller still receives it in the result.
@@ -100,5 +115,18 @@ public class DeIdentifyHandler : IRequestHandler<DeIdentifyCommand, DeIdentifyRe
         }
 
         return new DeIdentifyResult(true, result.Value.Resource, null, result.Value.Warnings);
+    }
+
+    private static bool IsResourceLimit(Exception? exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is FhirPathResourceLimitExceededException)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

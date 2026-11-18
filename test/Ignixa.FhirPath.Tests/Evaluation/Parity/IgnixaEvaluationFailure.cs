@@ -66,6 +66,7 @@ internal sealed record IgnixaEvaluationFailure(
     private const string ExpressionKey = "FhirPathExpression";
     private const string ElementTypeKey = "ElementType";
     private const string FhirElementTypeKey = "FhirElementType";
+    private const string ExceptionTypeKey = "ExceptionType";
 
     public static IgnixaEvaluationFailure From<TState>(EventId eventId, TState state, Exception? exception)
     {
@@ -80,7 +81,9 @@ internal sealed record IgnixaEvaluationFailure(
             Read(fields, ElementTypeKey) is { Length: > 0 } elementType
                 ? elementType
                 : Read(fields, FhirElementTypeKey),
-            exception?.GetType().Name ?? string.Empty);
+            // The indexer logs its contained failures by exception type rather than with the exception, whose
+            // message can quote resource values.
+            exception?.GetType().Name ?? Read(fields, ExceptionTypeKey));
     }
 
     /// <summary>

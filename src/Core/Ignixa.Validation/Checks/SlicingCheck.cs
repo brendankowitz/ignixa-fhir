@@ -101,7 +101,11 @@ public sealed class SlicingCheck : IValidationCheck
             // Evaluation was stopped at an engine limit (a regex match timeout) that the data can trigger.
             // Deferring, as for an unevaluable discriminator, would let a crafted candidate switch the
             // slicing off, so the slicing fails instead.
-            _logger?.LogWarning(ex, "A discriminator on '{SlicedName}' exceeded an evaluation limit; failing the slicing.", _slicedName);
+            // Logged by type: the message can quote the discriminator's pattern or the instance's values.
+            _logger?.LogWarning(
+                "A discriminator on '{SlicedName}' exceeded an evaluation limit ({ExceptionType}); failing the slicing.",
+                _slicedName,
+                ex.GetType().Name);
             return ValidationResult.Failure(new ValidationIssue(
                 IssueSeverity.Error,
                 "slicing-limit-exceeded",
@@ -342,12 +346,13 @@ public sealed class SlicingCheck : IValidationCheck
         catch (Exception ex) when (ex is not FhirPathResourceLimitExceededException
             && ex is FhirPathEvaluationException or ArgumentException or NotSupportedException or FormatException)
         {
+            // Logged by type: an evaluation error's message can quote the instance's values.
             _logger?.LogWarning(
-                ex,
-                "Discriminator path '{Path}' on '{SlicedName}' could not be evaluated against '{Location}'; slice assignment for this candidate is indeterminate and the whole slicing will be deferred.",
+                "Discriminator path '{Path}' on '{SlicedName}' could not be evaluated against '{Location}' ({ExceptionType}); slice assignment for this candidate is indeterminate and the whole slicing will be deferred.",
                 LogSafeText.Sanitize(path),
                 _slicedName,
-                candidate.Location ?? $"{_slicedName}[?]");
+                candidate.Location ?? $"{_slicedName}[?]",
+                ex.GetType().Name);
             return null;
         }
     }

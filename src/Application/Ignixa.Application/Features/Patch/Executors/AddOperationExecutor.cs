@@ -56,7 +56,7 @@ public class AddOperationExecutor(
                 var parentMatches = mutator.Evaluate(resource, parentPath, cancellationToken).ToList();
                 if (parentMatches.Count == 0)
                 {
-                    throw new FhirPatchException($"Parent path '{parentPath}' not found");
+                    throw new FhirPatchException($"Parent path '{parentPath.SanitizeExpressionForLog()}' not found");
                 }
             }
 
@@ -68,7 +68,7 @@ public class AddOperationExecutor(
                 if (existingNode.Parent is not JsonArray && existingNode is not JsonArray)
                 {
                     var propertyName = operation.Path.Split('.')[^1];
-                    throw new FhirPatchException($"Cannot add to non-array property '{propertyName}'");
+                    throw new FhirPatchException($"Cannot add to non-array property '{propertyName.SanitizeExpressionForLog()}'");
                 }
             }
 

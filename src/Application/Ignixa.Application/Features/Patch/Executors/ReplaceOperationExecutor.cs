@@ -40,7 +40,7 @@ public class ReplaceOperationExecutor(
         // Check for immutable properties
         if (ImmutablePathChecker.IsImmutablePath(operation.Path))
         {
-            throw new FhirPatchException($"Cannot replace immutable property '{operation.Path}'");
+            throw new FhirPatchException($"Cannot replace immutable property '{operation.Path.SanitizeExpressionForLog()}'");
         }
 
         try

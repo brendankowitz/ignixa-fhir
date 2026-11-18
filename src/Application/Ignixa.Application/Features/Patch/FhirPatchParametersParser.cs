@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text.Json.Nodes;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Models;
 using Ignixa.Serialization.SourceNodes;
 
@@ -33,7 +34,7 @@ public class FhirPatchParametersParser
         if (parameters.ResourceType != "Parameters")
         {
             throw new FhirPatchException(
-                $"Expected resourceType 'Parameters', got '{parameters.ResourceType}'");
+                $"Expected resourceType 'Parameters', got '{parameters.ResourceType.SanitizeExpressionForLog()}'");
         }
 
         if (parameters.Parameter == null || parameters.Parameter.Count == 0)
@@ -59,7 +60,7 @@ public class FhirPatchParametersParser
         {
             // Debug: Build diagnostic message with parameter names found
             var parameterNames = string.Join(", ", parameters.Parameter.Select(p => p.Name ?? "[null]"));
-            throw new FhirPatchException($"Parameters resource must contain at least one 'operation' parameter. Found parameters: {parameterNames}");
+            throw new FhirPatchException($"Parameters resource must contain at least one 'operation' parameter. Found parameters: {parameterNames.SanitizeExpressionForLog()}");
         }
 
         return operations.ToArray();
@@ -179,11 +180,11 @@ public class FhirPatchParametersParser
                 throw new FhirPatchException("Every nested part of an operation 'value' must have a name");
             }
 
-            var (value, valueType) = ReadValue(child, $"Nested value part '{child.Name}'");
+            var (value, valueType) = ReadValue(child, $"Nested value part '{child.Name.SanitizeExpressionForLog()}'");
             var nested = value == null ? ReadValueParts(child) : [];
             if (value == null && nested.Count == 0)
             {
-                throw new FhirPatchException($"Nested value part '{child.Name}' must have a value[x] or nested parts");
+                throw new FhirPatchException($"Nested value part '{child.Name.SanitizeExpressionForLog()}' must have a value[x] or nested parts");
             }
 
             parts.Add(new FhirPatchValuePart(child.Name, valueType, value, nested));
@@ -203,7 +204,7 @@ public class FhirPatchParametersParser
             "replace" => FhirPatchOperationType.Replace,
             "move" => FhirPatchOperationType.Move,
             _ => throw new FhirPatchException(
-                $"Unknown operation type '{typeCode}'. Must be one of: add, insert, delete, replace, move"),
+                $"Unknown operation type '{typeCode.SanitizeExpressionForLog()}'. Must be one of: add, insert, delete, replace, move"),
         };
     }
 

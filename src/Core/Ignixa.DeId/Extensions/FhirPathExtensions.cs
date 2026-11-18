@@ -25,9 +25,20 @@ public static class FhirPathExtensions
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     /// <exception cref="Exception">The expression cannot be parsed or evaluated against this element. The
     /// library reports these with several exception types, so callers treat any failure as an unevaluable expression.</exception>
-    public static IReadOnlyList<IElement> Select(this IElement element, string expression, CancellationToken cancellationToken)
+    public static IReadOnlyList<IElement> Select(this IElement element, string expression, CancellationToken cancellationToken) =>
+        element.Select(expression, requestSupplied: true, cancellationToken);
+
+    /// <summary>
+    /// Selects nodes matching a FHIRPath expression, evaluated in the request-supplied expression tier or, for an
+    /// expression the server itself defines, the server tier.
+    /// </summary>
+    /// <param name="element">The node to evaluate against.</param>
+    /// <param name="expression">The FHIRPath expression.</param>
+    /// <param name="requestSupplied">Whether the expression came from the request rather than the server.</param>
+    /// <param name="cancellationToken">Stops the evaluation, which also runs under the default evaluation limits.</param>
+    public static IReadOnlyList<IElement> Select(this IElement element, string expression, bool requestSupplied, CancellationToken cancellationToken)
     {
-        return TypedElementExtensions.Select(element, expression, new EvaluationContext { CancellationToken = cancellationToken, ExpressionIsRequestSupplied = true }).ToList();
+        return TypedElementExtensions.Select(element, expression, new EvaluationContext { CancellationToken = cancellationToken, ExpressionIsRequestSupplied = requestSupplied }).ToList();
     }
 
     /// <summary>

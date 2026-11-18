@@ -435,12 +435,12 @@ internal class SqlOnFhirEvaluationVisitor
         void Traverse(IElement element, int depth)
         {
             if (depth > MaxRepeatDepth)
-                throw new InvalidOperationException(
+                throw new FhirPathResourceLimitExceededException(
                     $"repeat went deeper than {MaxRepeatDepth} levels; a repeat path must lead to child elements");
 
             // Depth alone does not bound the work: ["item", "item"] over a 30-deep tree visits ~2^30 nodes. Same cap as FhirPath repeat().
             if (result.Count >= context.Limits.MaxRepeatIterations)
-                throw new InvalidOperationException(
+                throw new FhirPathResourceLimitExceededException(
                     $"repeat produced more than {context.Limits.MaxRepeatIterations} nodes; a repeat path must lead to child elements");
 
             result.Add(element);

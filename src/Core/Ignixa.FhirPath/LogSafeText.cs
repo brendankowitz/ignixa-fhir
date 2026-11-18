@@ -8,8 +8,9 @@ using System.Text;
 namespace Ignixa.FhirPath;
 
 /// <summary>
-/// Makes caller-controlled text (expression text, paths) safe to write to a log: control characters
-/// cannot forge log lines and the length is bounded.
+/// Makes caller-controlled text (expression text, paths) safe to write to a log: control characters, line and
+/// paragraph separators and bidirectional formatting characters cannot forge or disguise log lines, and the length
+/// is bounded.
 /// </summary>
 /// <remarks>
 /// Lives in the lowest assembly every logging library (Search, Validation, DeId, Application) already
@@ -21,7 +22,7 @@ public static class LogSafeText
     public const int DefaultMaxLength = 200;
 
     /// <summary>
-    /// Replaces every control character with a space and truncates to <paramref name="maxLength"/> UTF-16 units
+    /// Replaces every unsafe character (see <see cref="IsUnsafe"/>) with a space and truncates to <paramref name="maxLength"/> UTF-16 units
     /// without splitting a surrogate pair. A truncated value ends with a marker naming how many units were dropped.
     /// </summary>
     /// <param name="value">The text; <see langword="null"/> is returned unchanged.</param>
@@ -47,7 +48,7 @@ public static class LogSafeText
         var builder = new StringBuilder(keep + 32);
         for (var i = 0; i < keep; i++)
         {
-            builder.Append(char.IsControl(value[i]) ? ' ' : value[i]);
+            builder.Append(IsUnsafe(value[i]) ? ' ' : value[i]);
         }
 
         if (keep < value.Length)
@@ -57,4 +58,15 @@ public static class LogSafeText
 
         return builder.ToString();
     }
+
+    /// <summary>
+    /// True for characters that can break or disguise a log line: C0/C1 controls, the Unicode line and paragraph
+    /// separators (U+2028, U+2029), and the bidirectional formatting characters (U+061C, U+200E, U+200F,
+    /// U+202A-U+202E, U+2066-U+2069), which reorder how the rest of the line displays.
+    /// </summary>
+    public static bool IsUnsafe(char c) =>
+        char.IsControl(c)
+        || c is '\u2028' or '\u2029' or '\u061C' or '\u200E' or '\u200F'
+        || c is >= '\u202A' and <= '\u202E'
+        || c is >= '\u2066' and <= '\u2069';
 }

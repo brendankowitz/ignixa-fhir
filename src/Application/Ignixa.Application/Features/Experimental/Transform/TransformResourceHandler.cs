@@ -11,6 +11,7 @@ using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Registry;
 using Ignixa.FhirMappingLanguage.Mutator;
+using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Models;
@@ -109,15 +110,13 @@ public class TransformResourceHandler(
         {
             ErrorMode = ErrorMode.Strict, // Fail fast on errors
             ResourceCreator = CreateResourceElement,
-            ConceptMapResolver = (conceptMapUrl, sourceSystem, sourceCode) =>
-            {
-                // Synchronous wrapper for async ConceptMapResolverService
-                // FML signature: (conceptMapUrl, sourceSystem, sourceCode)
-                // Service signature: (sourceCode, sourceSystem, mapUrl, targetSystem)
-                return conceptMapService.Translate(sourceCode, sourceSystem, conceptMapUrl, targetSystem: null);
-            },
-            Logger = msg => logger.LogDebug("Mapping execution: {Message}", msg),
+            Logger = msg => logger.LogDebug("Mapping execution: {Message}", msg.SanitizeForLog()),
         };
+
+        // FML signature: (conceptMapUrl, sourceSystem, sourceCode); the service's: (sourceCode, sourceSystem, mapUrl,
+        // targetSystem). The context's token is the request's linked with the transform timeout (see below).
+        context.ConceptMapResolver = (conceptMapUrl, sourceSystem, sourceCode) =>
+            conceptMapService.Translate(sourceCode, sourceSystem, conceptMapUrl, targetSystem: null, context.CancellationToken);
 
         // The context's token is the request's linked with the transform timeout, published by MappingEvaluator while
         // it runs, so either one stops an expression mid-evaluation.
@@ -167,9 +166,19 @@ public class TransformResourceHandler(
         catch (FhirPathResourceLimitExceededException ex)
         {
             // An expression in the map asked for more than an evaluation allows: too costly, like a timeout.
-            logger.LogWarning(ex, "A FHIRPath expression in the map exceeded an evaluation limit");
+            logger.LogWarning("A FHIRPath expression in the map exceeded an evaluation limit");
 
-            throw new Domain.Exceptions.RequestTooCostlyException(ex.Message, ex);
+            throw new Domain.Exceptions.RequestTooCostlyException(LogSafeText.Sanitize(ex.Message)!, ex);
+        }
+        catch (FormatException ex)
+        {
+            // The FHIRPath parser's contract for an expression it cannot parse or that exceeds its size limits: the
+            // map the request supplied is invalid.
+            logger.LogWarning("A FHIRPath expression in the map is not valid FHIRPath");
+
+            throw new Domain.Exceptions.BadRequestException(
+                $"A FHIRPath expression in the map is not valid: {LogSafeText.Sanitize(ex.Message)}",
+                ex);
         }
         catch (MappingExecutionException ex) when (ex.Code == "TRANSFORM_TIMEOUT")
         {
@@ -180,15 +189,14 @@ public class TransformResourceHandler(
         }
         catch (MappingExecutionException ex)
         {
-            logger.LogError(
-                ex,
-                "Mapping execution failed: {Message} (Location: {Location}, Code: {Code})",
-                ex.Message,
-                ex.Location,
+            // Logged without the message, which can quote source values and map text.
+            logger.LogWarning(
+                "Mapping execution failed (Location: {Location}, Code: {Code})",
+                LogSafeText.Sanitize(ex.Location),
                 ex.Code);
 
             throw new InvalidOperationException(
-                $"StructureMap transformation failed: {ex.Message}",
+                $"StructureMap transformation failed: {LogSafeText.Sanitize(ex.Message)}",
                 ex);
         }
     }
@@ -212,8 +220,9 @@ public class TransformResourceHandler(
             }
             catch (ParseException ex)
             {
-                logger.LogError(ex, "Failed to parse FML text: {Message}", ex.Message);
-                throw new InvalidOperationException($"Invalid FML text: {ex.Message}", ex);
+                // A client error, logged without the message, which quotes the request's map text.
+                logger.LogWarning("Failed to parse FML text at line {Line}, column {Column}", ex.Position.Line, ex.Position.Column);
+                throw new Domain.Exceptions.BadRequestException($"Invalid FML text: {LogSafeText.Sanitize(ex.Message)}", ex);
             }
         }
 
@@ -230,8 +239,9 @@ public class TransformResourceHandler(
             }
             catch (InvalidOperationException ex)
             {
-                logger.LogError(ex, "Failed to parse inline StructureMap: {Message}", ex.Message);
-                throw new InvalidOperationException($"Invalid StructureMap resource: {ex.Message}", ex);
+                // A client error, logged without the message, which quotes the request's StructureMap.
+                logger.LogWarning("Failed to parse inline StructureMap ({ExceptionType})", ex.GetType().Name);
+                throw new InvalidOperationException($"Invalid StructureMap resource: {LogSafeText.Sanitize(ex.Message)}", ex);
             }
         }
 

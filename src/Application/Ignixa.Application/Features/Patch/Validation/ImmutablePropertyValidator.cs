@@ -1,4 +1,5 @@
 using System;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Application.Features.Patch.Validation;
@@ -20,7 +21,7 @@ public class ImmutablePropertyValidator
         if (before.Id != after.Id)
         {
             throw new FhirPatchException(
-                $"Cannot modify immutable property 'id' via PATCH (before: '{before.Id}', after: '{after.Id}'). Use PUT to change resource ID.");
+                $"Cannot modify immutable property 'id' via PATCH (before: '{before.Id.SanitizeExpressionForLog()}', after: '{after.Id.SanitizeExpressionForLog()}'). Use PUT to change resource ID.");
         }
 
         // Validate meta.versionId unchanged (if both have meta)
@@ -29,7 +30,7 @@ public class ImmutablePropertyValidator
             if (before.Meta.VersionId != after.Meta.VersionId)
             {
                 throw new FhirPatchException(
-                    $"Cannot modify immutable property 'meta.versionId' via PATCH (server-managed). Before: '{before.Meta.VersionId}', After: '{after.Meta.VersionId}'");
+                    $"Cannot modify immutable property 'meta.versionId' via PATCH (server-managed). Before: '{before.Meta.VersionId.SanitizeExpressionForLog()}', After: '{after.Meta.VersionId.SanitizeExpressionForLog()}'");
             }
         }
 

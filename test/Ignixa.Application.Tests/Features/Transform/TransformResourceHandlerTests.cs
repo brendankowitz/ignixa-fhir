@@ -155,8 +155,32 @@ public class TransformResourceHandlerTests
             Content: sourcePatient);
 
         // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        await Assert.ThrowsAsync<Ignixa.Domain.Exceptions.BadRequestException>(
             async () => await _handler.HandleAsync(command, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GivenAMapWhoseFhirPathIsNestedBeyondTheParserLimit_WhenTransforming_ThenTheRequestIsBad()
+    {
+        // Arrange: the FHIRPath parser refuses the where() clause with FormatException, which must reach the client
+        // as a bad request, not as a server error.
+        var nested = new string('(', 17) + "true" + new string(')', 17);
+        var fml = $$"""
+            map 'http://example.org/Nested' = 'Nested'
+            uses 'http://hl7.org/fhir/StructureDefinition/Patient' alias Patient as source
+            uses 'http://hl7.org/fhir/StructureDefinition/Patient' alias Patient as target
+            group Transform(source src : Patient, target tgt : Patient) {
+              src.id as v where ({{nested}}) -> tgt.id = v;
+            }
+            """;
+        var command = new TransformResourceCommand(SrcMaps: [fml], Content: CreatePatient("patient-123", "Doe", "John", "male", "1990-01-15"));
+
+        // Act
+        var exception = await Should.ThrowAsync<Ignixa.Domain.Exceptions.BadRequestException>(
+            async () => await _handler.HandleAsync(command, CancellationToken.None));
+
+        // Assert
+        exception.InnerException.ShouldBeOfType<FormatException>();
     }
 
     // A client that disconnects cancels the request: the transform stops at its next rule and the cancellation surfaces as itself,
@@ -183,7 +207,7 @@ public class TransformResourceHandlerTests
     [Fact]
     public async Task GivenAMapWhoseFhirPathRunsAway_WhenTransforming_ThenTheConfiguredTimeoutStopsItAsTooCostly()
     {
-        // Arrange - regression for #531: the map is the request's, and its where() clause is nine nested projections
+        // Arrange - new behaviour for #531 (does not compile at the branch base): the map is the request's, and its where() clause is nine nested projections
         // over ten items (10^9 of pure CPU). Experimental:Transform:TimeoutSeconds was never read, and the evaluator
         // could not be interrupted once it started, so this ran to completion.
         const string tenItems = "(1|2|3|4|5|6|7|8|9|10)";

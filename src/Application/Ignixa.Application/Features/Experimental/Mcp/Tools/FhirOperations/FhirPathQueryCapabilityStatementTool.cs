@@ -123,12 +123,12 @@ public class FhirPathQueryCapabilityStatementTool : TenantAwareMcpTool
             // Reported as its own outcome, and without the results gathered before the limit stopped evaluation: a
             // prefix of the answer presented as the answer would be wrong.
             results.Clear();
-            errors.Add($"FHIRPath evaluation exceeded an evaluation limit: {ex.Message}");
+            errors.Add($"FHIRPath evaluation exceeded an evaluation limit: {LogSafeText.Sanitize(ex.Message)}");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
         {
             results.Clear();
-            errors.Add($"FHIRPath evaluation error: {ex.Message}");
+            errors.Add($"FHIRPath evaluation error: {LogSafeText.Sanitize(ex.Message)}");
         }
 
         return new FhirPathQueryResultDto
@@ -141,27 +141,18 @@ public class FhirPathQueryCapabilityStatementTool : TenantAwareMcpTool
     }
 
     /// <summary>
-    /// Resolve the FHIR version from tenant configuration, with fallback to R4 default.
+    /// Resolve the FHIR version from tenant configuration; R4 when the tenant configures none.
     /// </summary>
+    /// <remarks>
+    /// A failure to read the configuration propagates: answering under R4 would evaluate the expression against a
+    /// schema the tenant may not use, and report that as a success.
+    /// </remarks>
     private async Task<FhirVersion> ResolveFhirVersionAsync(int tenantId, CancellationToken cancellationToken)
     {
-        // Default to R4
-        var fhirVersion = FhirVersion.R4;
-
-        try
-        {
-            var tenantConfig = await _tenantConfigStore.GetTenantConfigurationAsync(tenantId, cancellationToken);
-            if (tenantConfig != null && !string.IsNullOrEmpty(tenantConfig.FhirVersion))
-            {
-                fhirVersion = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
-            }
-        }
-        catch
-        {
-            // If tenant resolution fails, use default R4
-        }
-
-        return fhirVersion;
+        var tenantConfig = await _tenantConfigStore.GetTenantConfigurationAsync(tenantId, cancellationToken);
+        return tenantConfig != null && !string.IsNullOrEmpty(tenantConfig.FhirVersion)
+            ? FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion)
+            : FhirVersion.R4;
     }
 
     /// <summary>

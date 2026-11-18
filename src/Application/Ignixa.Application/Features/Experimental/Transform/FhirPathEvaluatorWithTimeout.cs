@@ -46,14 +46,31 @@ public class FhirPathEvaluatorWithTimeout
         FhirPathEvaluator evaluator,
         ILogger<FhirPathEvaluatorWithTimeout> logger,
         TimeSpan timeout)
+        : this(expressionCache, evaluator, logger, timeout, FhirPathEvaluationLimits.Default)
     {
+    }
+
+    /// <param name="expressionCache">Parsed expressions, shared across requests.</param>
+    /// <param name="evaluator">The FHIRPath evaluator.</param>
+    /// <param name="logger">Logs evaluation failures.</param>
+    /// <param name="timeout">The time each evaluation, and the <c>$transform</c> as a whole, may take.</param>
+    /// <param name="limits">The limits each evaluation runs under, before <paramref name="timeout"/> is applied.</param>
+    /// <remarks>Lets a test raise the step budget so that only the timeout or the token can stop an evaluation.</remarks>
+    internal FhirPathEvaluatorWithTimeout(
+        FhirPathExpressionCache expressionCache,
+        FhirPathEvaluator evaluator,
+        ILogger<FhirPathEvaluatorWithTimeout> logger,
+        TimeSpan timeout,
+        FhirPathEvaluationLimits limits)
+    {
+        ArgumentNullException.ThrowIfNull(limits);
         _expressionCache = expressionCache ?? throw new ArgumentNullException(nameof(expressionCache));
         _evaluator = evaluator ?? throw new ArgumentNullException(nameof(evaluator));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(timeout, TimeSpan.Zero);
 
         Timeout = timeout;
-        _limits = FhirPathEvaluationLimits.Default with { Timeout = timeout };
+        _limits = limits with { Timeout = timeout };
     }
 
     /// <summary>
@@ -87,14 +104,18 @@ public class FhirPathEvaluatorWithTimeout
             _logger.LogDebug("FHIRPath evaluation cancelled: {Expression}", expression.SanitizeExpressionForLog());
             throw;
         }
-        catch (FhirPathResourceLimitExceededException ex)
+        catch (FhirPathResourceLimitExceededException)
         {
-            _logger.LogWarning(ex, "FHIRPath evaluation exceeded an evaluation limit: {Expression}", expression.SanitizeExpressionForLog());
+            _logger.LogWarning("FHIRPath evaluation exceeded an evaluation limit: {Expression}", expression.SanitizeExpressionForLog());
             throw;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "FHIRPath evaluation failed: {Expression}", expression.SanitizeExpressionForLog());
+            // Logged by type: an evaluation error's message can quote values from the source resource.
+            _logger.LogError(
+                "FHIRPath evaluation failed ({ExceptionType}): {Expression}",
+                ex.GetType().Name,
+                expression.SanitizeExpressionForLog());
             throw;
         }
     }

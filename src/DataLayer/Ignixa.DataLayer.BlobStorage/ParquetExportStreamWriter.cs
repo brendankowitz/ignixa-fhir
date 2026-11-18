@@ -135,7 +135,12 @@ public partial class ParquetExportStreamWriter : IExportStreamWriter
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error writing resource to Parquet buffer");
+            // Logged by type and stack only: the message can quote values from the resource being written.
+            _logger.LogError(
+                "Error writing resource to Parquet buffer ({ExceptionType}){NewLine}{StackTrace}",
+                ex.GetType().Name,
+                Environment.NewLine,
+                ex.StackTrace);
             throw;
         }
     }

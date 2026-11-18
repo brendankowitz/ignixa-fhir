@@ -88,17 +88,18 @@ internal class FhirPathIntegration
         {
             // Kept in its own type: "the map asked for more than an evaluation allows" is a capacity
             // outcome a host reports differently from an ill-formed expression.
-            throw new FhirPathResourceLimitExceededException($"Failed to evaluate FHIRPath expression: {expression}", ex);
+            throw new FhirPathResourceLimitExceededException($"Failed to evaluate FHIRPath expression: {LogSafeText.Sanitize(expression)}", ex);
         }
         catch (FhirPathEvaluationException ex)
         {
             // Same message and inner exception as the general case, but the type stays distinguishable
             // so callers can tell "this expression is ill-formed for its data" from an engine defect.
-            throw new FhirPathEvaluationException($"Failed to evaluate FHIRPath expression: {expression}", ex);
+            throw new FhirPathEvaluationException($"Failed to evaluate FHIRPath expression: {LogSafeText.Sanitize(expression)}", ex);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
         {
-            throw new InvalidOperationException($"Failed to evaluate FHIRPath expression: {expression}", ex);
+            // Memory and stack exhaustion propagate as themselves; anything else is an engine or parse failure.
+            throw new InvalidOperationException($"Failed to evaluate FHIRPath expression: {LogSafeText.Sanitize(expression)}", ex);
         }
     }
 

@@ -2,6 +2,7 @@
 // Copyright (c) Ignixa Contributors.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
+using Ignixa.FhirPath;
 using Ignixa.DeId.Configuration;
 using Ignixa.DeId.Models;
 using Microsoft.Extensions.Logging;
@@ -63,10 +64,11 @@ public sealed class DeIdPipeline : IDeIdPipeline
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            _logger.LogError(ex, "Pipeline execution failed with unexpected error");
+            // Logged by type: the message can quote rule paths and resource values.
+            _logger.LogError("Pipeline execution failed with unexpected error ({ExceptionType})", ex.GetType().Name);
             return Result<DeIdResult>.Failure(new DeIdError(
                 "PIPELINE_ERROR",
-                $"Pipeline execution failed: {ex.Message}",
+                $"Pipeline execution failed: {LogSafeText.Sanitize(ex.Message)}",
                 ErrorSeverity.Fatal,
                 ex));
         }

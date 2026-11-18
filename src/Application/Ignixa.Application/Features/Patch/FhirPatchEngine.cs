@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Ignixa.Application.Features.Patch.Executors;
 using Ignixa.Domain.Exceptions;
+using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
@@ -42,6 +43,7 @@ public class FhirPatchEngine
     /// allows, which is neither a bad patch nor a server fault.
     /// </remarks>
     /// <exception cref="RequestTooCostlyException">A path exceeded a FHIRPath evaluation limit.</exception>
+    /// <exception cref="FhirPatchException">An operation is invalid, including a path that is not valid FHIRPath.</exception>
     public async Task<ResourceJsonNode> ApplyPatchAsync(
         ResourceJsonNode resource,
         FhirPatchOperation[] operations,
@@ -69,7 +71,14 @@ public class FhirPatchEngine
             catch (FhirPathResourceLimitExceededException ex)
             {
                 throw new RequestTooCostlyException(
-                    $"The {operation.Type} operation's path exceeded a FHIRPath evaluation limit: {ex.Message}",
+                    $"The {operation.Type} operation's path exceeded a FHIRPath evaluation limit: {LogSafeText.Sanitize(ex.Message)}",
+                    ex);
+            }
+            catch (FormatException ex)
+            {
+                // The FHIRPath parser's contract for a path it cannot parse or that exceeds its size limits.
+                throw new FhirPatchException(
+                    $"The {operation.Type} operation's path is not a valid FHIRPath expression: {LogSafeText.Sanitize(ex.Message)}",
                     ex);
             }
 

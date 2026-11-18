@@ -6,6 +6,7 @@
  */
 
 using System.Collections.Frozen;
+using System.Runtime.CompilerServices;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.SqlOnFhir.Expressions;
@@ -35,7 +36,9 @@ public class SqlOnFhirEvaluator
         new[] { "context", "resource", "rootResource", "rowIndex" }.ToFrozenSet(StringComparer.Ordinal);
 
     private readonly SqlOnFhirEvaluationVisitor _visitor;
-    private readonly Dictionary<string, ViewDefinitionExpression> _compiledViewDefinitions = [];
+    // Keyed on the ViewDefinition node itself: an entry lives exactly as long as the caller holds the node, so the
+    // cache needs no bound, and the table is safe for concurrent evaluations sharing this evaluator.
+    private readonly ConditionalWeakTable<ISourceNavigator, ViewDefinitionExpression> _compiledViewDefinitions = new();
 
     public SqlOnFhirEvaluator()
     {
@@ -111,13 +114,7 @@ public class SqlOnFhirEvaluator
 
         try
         {
-            var cacheKey = $"{resourceType}_{viewDefinitionNode.GetHashCode()}";
-
-            if (!_compiledViewDefinitions.TryGetValue(cacheKey, out var viewExpr))
-            {
-                viewExpr = ViewDefinitionExpressionParser.Parse(viewDefinitionNode);
-                _compiledViewDefinitions[cacheKey] = viewExpr;
-            }
+            var viewExpr = _compiledViewDefinitions.GetValue(viewDefinitionNode, ViewDefinitionExpressionParser.Parse);
 
             return _visitor.EvaluateBatch(viewExpr, resources, variables, cancellationToken);
         }

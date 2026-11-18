@@ -276,10 +276,11 @@ public class FhirPathInvariantCheck : IValidationCheck
             // Evaluation was STOPPED at an engine limit (a regex match timeout), which the data can trigger:
             // the same constraint finishes on ordinary input. Excusing it like an ill-formed constraint below
             // would let an instance crafted to exhaust the limit pass the invariant, so it fails instead.
+            // Logged by type: the message can quote the constraint's pattern or the instance's values.
             _logger?.LogWarning(
-                ex,
-                "Constraint {ConstraintKey} exceeded an evaluation limit; failing the instance",
-                _constraint.Key);
+                "Constraint {ConstraintKey} exceeded an evaluation limit ({ExceptionType}); failing the instance",
+                _constraint.Key,
+                ex.GetType().Name);
 
             var issue = ValidationIssue.FromTemplate(
                 IssueSeverity.Error,
@@ -300,10 +301,11 @@ public class FhirPathInvariantCheck : IValidationCheck
             // case: it feeds a repeating Timing.repeat.when to 'in', which is only defined for a singleton
             // (R5 rewrote it as when.select($this in (…)).allFalse() for exactly this reason). Failing the
             // resource here would reject a perfectly conformant instance for a bug in the spec's own text.
+            // Logged by type: an evaluation error's message can quote the instance's values.
             _logger?.LogWarning(
-                ex,
-                "Constraint {ConstraintKey} is not evaluable against this instance; treating as non-failing",
-                _constraint.Key);
+                "Constraint {ConstraintKey} is not evaluable against this instance ({ExceptionType}); treating as non-failing",
+                _constraint.Key,
+                ex.GetType().Name);
 
             var issue = ValidationIssue.FromTemplate(
                 IssueSeverity.Warning,
@@ -320,10 +322,13 @@ public class FhirPathInvariantCheck : IValidationCheck
             // An UNEXPECTED evaluation failure — a defect in our engine or malformed data, not a known
             // limitation. Surface it loudly (failing Error + Error log) rather than masking it as a
             // benign warning, so it cannot silently pass a resource or inflate conformance metrics.
+            // Logged by type and stack only: the message can quote the instance's values.
             _logger?.LogError(
-                ex,
-                "Unexpected error evaluating constraint {ConstraintKey}",
-                _constraint.Key);
+                "Unexpected error evaluating constraint {ConstraintKey} ({ExceptionType}){NewLine}{StackTrace}",
+                _constraint.Key,
+                ex.GetType().Name,
+                Environment.NewLine,
+                ex.StackTrace);
 
             var issue = ValidationIssue.FromTemplate(
                 IssueSeverity.Error,

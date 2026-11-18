@@ -193,11 +193,11 @@ public partial class ElementSearchIndexer : ISearchIndexer
         }
         catch (Exception ex) when (IsExpectedEvaluationFailure(ex))
         {
-            Log.FailedToExtractValues(_logger, ex, LogSafeText.Sanitize(searchParameter.Expression)!, resource.InstanceType, searchParameter.Url.ToString(), resourceIdentity);
+            Log.FailedToExtractValues(_logger, ex.GetType().Name, LogSafeText.Sanitize(searchParameter.Expression)!, resource.InstanceType, searchParameter.Url.ToString(), resourceIdentity);
         }
         catch (Exception ex)
         {
-            Log.UnexpectedExtractionFailure(_logger, ex, LogSafeText.Sanitize(searchParameter.Expression)!, resource.InstanceType, searchParameter.Url.ToString(), resourceIdentity);
+            Log.UnexpectedExtractionFailure(_logger, ex.GetType().Name, ex.StackTrace ?? string.Empty, LogSafeText.Sanitize(searchParameter.Expression)!, resource.InstanceType, searchParameter.Url.ToString(), resourceIdentity);
         }
 
         foreach (IElement rootObject in rootObjects)
@@ -314,11 +314,11 @@ public partial class ElementSearchIndexer : ISearchIndexer
         }
         catch (Exception ex) when (IsExpectedEvaluationFailure(ex))
         {
-            Log.FailedToExtractValues(_logger, ex, LogSafeText.Sanitize(fhirPathExpression)!, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
+            Log.FailedToExtractValues(_logger, ex.GetType().Name, LogSafeText.Sanitize(fhirPathExpression)!, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
         }
         catch (Exception ex)
         {
-            Log.UnexpectedExtractionFailure(_logger, ex, LogSafeText.Sanitize(fhirPathExpression)!, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
+            Log.UnexpectedExtractionFailure(_logger, ex.GetType().Name, ex.StackTrace ?? string.Empty, LogSafeText.Sanitize(fhirPathExpression)!, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
         }
 
         Debug.Assert(extractedValues != null, "The extracted values should not be null.");
@@ -422,11 +422,11 @@ public partial class ElementSearchIndexer : ISearchIndexer
         }
         catch (Exception ex) when (IsExpectedEvaluationFailure(ex))
         {
-            Log.FailedToExtractValues(_logger, ex, LogSafeText.Sanitize(fhirPathExpression)!, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
+            Log.FailedToExtractValues(_logger, ex.GetType().Name, LogSafeText.Sanitize(fhirPathExpression)!, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
         }
         catch (Exception ex)
         {
-            Log.UnexpectedExtractionFailure(_logger, ex, LogSafeText.Sanitize(fhirPathExpression)!, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
+            Log.UnexpectedExtractionFailure(_logger, ex.GetType().Name, ex.StackTrace ?? string.Empty, LogSafeText.Sanitize(fhirPathExpression)!, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
         }
 
         Debug.Assert(extractedValues != null, "The extracted values should not be null.");
@@ -676,11 +676,13 @@ public partial class ElementSearchIndexer : ISearchIndexer
         [LoggerMessage(Level = LogLevel.Warning, Message = "Component {ComponentIndex} of composite search parameter '{SearchParameterCode}' has null or empty Expression. Skipping this composite value.")]
         public static partial void ComponentNullOrEmptyExpression(ILogger logger, int componentIndex, string searchParameterCode);
 
-        [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to extract the values using '{FhirPathExpression}' against '{ElementType}' for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}'.")]
-        public static partial void FailedToExtractValues(ILogger logger, Exception ex, string fhirPathExpression, string elementType, string searchParameterUrl, string resourceIdentity);
+        // Logged by exception type: an evaluation error's message can quote values from the resource.
+        [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to extract the values using '{FhirPathExpression}' against '{ElementType}' for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}' ({ExceptionType}).")]
+        public static partial void FailedToExtractValues(ILogger logger, string exceptionType, string fhirPathExpression, string elementType, string searchParameterUrl, string resourceIdentity);
 
-        [LoggerMessage(Level = LogLevel.Error, Message = "Unexpected error extracting values using '{FhirPathExpression}' against '{ElementType}' for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}'. This is not an expected FHIRPath evaluation failure and likely indicates a bug in the indexer or evaluator.")]
-        public static partial void UnexpectedExtractionFailure(ILogger logger, Exception ex, string fhirPathExpression, string elementType, string searchParameterUrl, string resourceIdentity);
+        // Logged by exception type and stack only: the message can quote values from the resource.
+        [LoggerMessage(Level = LogLevel.Error, Message = "Unexpected error extracting values using '{FhirPathExpression}' against '{ElementType}' for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}' ({ExceptionType}). This is not an expected FHIRPath evaluation failure and likely indicates a bug in the indexer or evaluator. Stack: {StackTrace}")]
+        public static partial void UnexpectedExtractionFailure(ILogger logger, string exceptionType, string stackTrace, string fhirPathExpression, string elementType, string searchParameterUrl, string resourceIdentity);
 
         [LoggerMessage(Level = LogLevel.Warning, Message = "Skipping element with null or empty InstanceType for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}' during search indexing.")]
         public static partial void SkippingElementNullOrEmptyInstanceType(ILogger logger, string searchParameterUrl, string resourceIdentity);

@@ -5,6 +5,7 @@
 
 using System.Text.Json;
 using Ignixa.Api.Middleware;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.Validation.Abstractions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -84,6 +85,43 @@ public class FhirExceptionMiddlewareTests
         // Assert
         context.Response.StatusCode.ShouldBe(StatusCodes.Status400BadRequest);
         IssueCode(body).ShouldBe("invalid");
+    }
+
+    [Fact]
+    public async Task GivenAFhirPathEvaluationLimitExceeded_WhenHandled_ThenRespondsWithTooCostlyOutcome()
+    {
+        // Arrange: the limit derives from InvalidOperationException, which on its own maps to a processing error.
+        var (context, body) = CreateContext();
+        var middleware = new FhirExceptionMiddleware(
+            _ => throw new FhirPathResourceLimitExceededException("FHIRPath evaluation exceeded its step budget."),
+            NullLogger<FhirExceptionMiddleware>.Instance);
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        context.Response.StatusCode.ShouldBe(StatusCodes.Status400BadRequest);
+        IssueCode(body).ShouldBe("too-costly");
+    }
+
+    [Fact]
+    public async Task GivenTheClientAbortedTheRequest_WhenCancellationSurfaces_ThenRespondsClientClosedRequestWithoutABody()
+    {
+        // Arrange
+        var (context, body) = CreateContext();
+        using var aborted = new CancellationTokenSource();
+        aborted.Cancel();
+        context.RequestAborted = aborted.Token;
+        var middleware = new FhirExceptionMiddleware(
+            _ => throw new OperationCanceledException(aborted.Token),
+            NullLogger<FhirExceptionMiddleware>.Instance);
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        context.Response.StatusCode.ShouldBe(StatusCodes.Status499ClientClosedRequest);
+        body.Length.ShouldBe(0);
     }
 
     private static (DefaultHttpContext Context, MemoryStream Body) CreateContext()

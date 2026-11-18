@@ -9,6 +9,7 @@ using HotChocolate;
 using HotChocolate.Resolvers;
 using Ignixa.Abstractions;
 using Ignixa.Application.Infrastructure;
+using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization.SourceNodes;
@@ -17,6 +18,12 @@ namespace Ignixa.Application.Features.Experimental.GraphQl.Resolvers;
 
 internal static class FieldResolver
 {
+    /// <summary>
+    /// The error code for a FHIRPath filter that exceeded an evaluation limit. The execution service fails the whole
+    /// request as too costly when any field reports it, rather than returning partial data.
+    /// </summary>
+    internal const string TooCostlyErrorCode = "FHIRPATH_TOO_COSTLY";
+
     private static readonly FhirPathParser FhirPathExpressionParser = new(preserveTrivia: false);
 
     internal static JsonElement ParseResourceBytes(ReadOnlyMemory<byte> bytes)
@@ -154,16 +161,16 @@ internal static class FieldResolver
             {
                 throw new GraphQLException(
                     ErrorBuilder.New()
-                        .SetMessage($"FHIRPath expression '{expression}' exceeded an evaluation limit: {ex.Message}")
-                        .SetCode("FHIRPATH_TOO_COSTLY")
+                        .SetMessage($"FHIRPath expression '{expression.SanitizeExpressionForLog()}' exceeded an evaluation limit: {LogSafeText.Sanitize(ex.Message)}")
+                        .SetCode(TooCostlyErrorCode)
                         .SetException(ex)
                         .Build());
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
             {
                 throw new GraphQLException(
                     ErrorBuilder.New()
-                        .SetMessage($"Error evaluating FHIRPath expression '{expression.SanitizeExpressionForLog()}': {ex.Message}")
+                        .SetMessage($"Error evaluating FHIRPath expression '{expression.SanitizeExpressionForLog()}': {LogSafeText.Sanitize(ex.Message)}")
                         .SetCode("FHIRPATH_INVALID")
                         .SetException(ex)
                         .Build());

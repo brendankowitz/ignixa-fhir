@@ -7,6 +7,7 @@ using System.Net;
 using System.Text.Json;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Conformance;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Abstractions;
@@ -43,6 +44,21 @@ public class FhirExceptionMiddleware
         {
             _logger.LogWarning(badRequestEx, "Request rejected by the server: {StatusCode}", badRequestEx.StatusCode);
             await HandleExceptionAsync(context, badRequestEx);
+        }
+        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+        {
+            // The client went away: not a server fault, and there is no one to send an OperationOutcome to.
+            _logger.LogInformation("Request cancelled by the client");
+            if (!context.Response.HasStarted)
+            {
+                context.Response.StatusCode = StatusCodes.Status499ClientClosedRequest;
+            }
+        }
+        catch (FhirPathResourceLimitExceededException limitEx)
+        {
+            // An expression asked for more work than an evaluation allows: the request is too costly, not a fault.
+            _logger.LogWarning("FHIRPath evaluation limit exceeded: {ExceptionType}", limitEx.GetType().Name);
+            await HandleExceptionAsync(context, limitEx);
         }
         catch (Exception ex)
         {
@@ -88,6 +104,12 @@ public class FhirExceptionMiddleware
             code = badRequest.StatusCode == StatusCodes.Status413PayloadTooLarge
                 ? OperationOutcomeIssue.IssueTypeCommon.TooCostly
                 : OperationOutcomeIssue.IssueTypeCommon.Invalid;
+        }
+        else if (exception is FhirPathResourceLimitExceededException)
+        {
+            // Checked before InvalidOperationException, which it derives from.
+            statusCode = HttpStatusCode.BadRequest;
+            code = OperationOutcomeIssue.IssueTypeCommon.TooCostly;
         }
         else if (exception is ArgumentException or ArgumentNullException)
         {

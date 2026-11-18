@@ -50,16 +50,15 @@ internal sealed class RuleMatchingHandler(ILogger<RuleMatchingHandler> logger) :
             IReadOnlyList<IElement> matchedElements;
             try
             {
-                matchedElements = rootElement.Select(rule.Path, cancellationToken);
+                matchedElements = rootElement.Select(rule.Path, requestSupplied: !rule.IsServerDefined, cancellationToken);
             }
             catch (Exception ex) when (ex is not (OperationCanceledException or OutOfMemoryException))
             {
-                // The expression is operator-supplied and the library reports bad ones with a mix of
-                // exception types (FormatException, FhirPathEvaluationException, and raw framework
-                // exceptions such as OverflowException or InvalidOperationException for a multi-item
-                // argument), so every such failure is a rule that could not be evaluated. That includes
-                // InsufficientExecutionStackException from an over-deep path. OutOfMemoryException is
-                // process-critical and deliberately not caught.
+                // The expression is operator-supplied and the library reports bad ones as FormatException (it does
+                // not parse or exceeds the parser's limits), FhirPathEvaluationException (it does not evaluate
+                // against this resource), FhirPathResourceLimitExceededException, or
+                // InsufficientExecutionStackException from an over-deep path, so every such failure is a rule that
+                // could not be evaluated. OutOfMemoryException is process-critical and deliberately not caught.
                 // Fail closed: skipping an unevaluable rule would return the data it targets in clear.
                 // Logged by type and stack only: an evaluation message can quote resource values.
                 logger.LogError(
@@ -71,7 +70,7 @@ internal sealed class RuleMatchingHandler(ILogger<RuleMatchingHandler> logger) :
 
                 return Result<DeIdResult>.Failure(new DeIdError(
                     "RULE_EVALUATION_FAILED",
-                    $"Rule '{rule.Path}' could not be evaluated against {resourceType}: {ex.Message}",
+                    $"Rule '{LogSafeText.Sanitize(rule.Path)}' could not be evaluated against {resourceType}: {LogSafeText.Sanitize(ex.Message)}",
                     ErrorSeverity.Error,
                     ex));
             }

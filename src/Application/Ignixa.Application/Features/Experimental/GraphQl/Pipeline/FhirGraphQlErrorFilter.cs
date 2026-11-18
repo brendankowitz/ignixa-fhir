@@ -53,6 +53,7 @@ public sealed class FhirGraphQlErrorFilter(
         "FHIR_VERSION_CONFLICT" => IssueTypeCommon.Conflict,
         "INVALID_RESOURCE" => IssueTypeCommon.Invalid,
         "FHIRPATH_INVALID" => IssueTypeCommon.Invalid,
+        "FHIRPATH_TOO_COSTLY" => IssueTypeCommon.TooCostly,
         "FHIR_OPERATION_FAILED" => IssueTypeCommon.Exception,
         "FHIR_SINGLETON_VIOLATION" => IssueTypeCommon.MultipleMatches,
         "FHIR_SYNTAX_ERROR" => IssueTypeCommon.Invalid,

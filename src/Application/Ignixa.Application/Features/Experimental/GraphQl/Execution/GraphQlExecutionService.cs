@@ -12,7 +12,9 @@ using Ignixa.Abstractions;
 using Ignixa.Application.Features.Experimental.GraphQl.Contracts;
 using Ignixa.Application.Features.Experimental.GraphQl.Directives;
 using Ignixa.Application.Features.Experimental.GraphQl.Models;
+using Ignixa.Application.Features.Experimental.GraphQl.Resolvers;
 using Ignixa.Application.Features.Experimental.GraphQl.Schema;
+using Ignixa.Domain.Exceptions;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.Experimental.GraphQl.Execution;
@@ -95,6 +97,14 @@ public sealed partial class GraphQlExecutionService(
         }
 
         var result = await executor.ExecuteAsync(builder.Build(), cancellationToken);
+
+        // A FHIRPath filter over its evaluation limit fails the request as too costly, as $patch and $transform do,
+        // rather than returning the other fields' data with a field error.
+        if (result is IOperationResult { Errors: { Count: > 0 } errors }
+            && errors.FirstOrDefault(error => error.Code == FieldResolver.TooCostlyErrorCode) is { } tooCostly)
+        {
+            throw new RequestTooCostlyException(tooCostly.Message);
+        }
 
         result = PostProcessDirectives(result, document, executedOperationName, logger);
 

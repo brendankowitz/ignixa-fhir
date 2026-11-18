@@ -23,9 +23,8 @@ public class LogSanitizationExtensionsTests
     [Theory]
     [InlineData("")]
     [InlineData("Patient/p1")]
-    [InlineData(" \tPatient/p1\t ")]
     [InlineData("Patient/\u00E9")]
-    public void GivenNoLineBreaks_WhenSanitizingForLog_ThenPreservesContent(string value)
+    public void GivenNoUnsafeCharacters_WhenSanitizingForLog_ThenPreservesContent(string value)
     {
         var result = value.SanitizeForLog();
 
@@ -39,7 +38,10 @@ public class LogSanitizationExtensionsTests
     [InlineData("a\rb\nc", "a b c")]
     [InlineData("\r\nPatient/p1\r\n", "  Patient/p1  ")]
     [InlineData("a\r\r\n\nb", "a    b")]
-    public void GivenLineBreaks_WhenSanitizingForLog_ThenReplacesEachWithOneSpace(
+    [InlineData("\tPatient/p1\t", " Patient/p1 ")]
+    [InlineData("a\u2028b\u2029c", "a b c")]
+    [InlineData("a\u202Eb\u2066c", "a b c")]
+    public void GivenLineBreaksControlsOrBidiFormatting_WhenSanitizingForLog_ThenReplacesEachWithOneSpace(
         string value,
         string expected)
     {

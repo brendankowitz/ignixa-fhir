@@ -5,6 +5,7 @@
 
 using Shouldly;
 using Ignixa.Application.Features.Experimental.Transform;
+using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -206,7 +207,7 @@ public class ConceptMapResolverServiceTests
             .Returns(translateResult);
 
         // Act
-        var result = _service.Translate(sourceCode, sourceSystem, mapUrl, null);
+        var result = _service.Translate(sourceCode, sourceSystem, mapUrl, null, CancellationToken.None);
 
         // Assert
         result.ShouldBe("M");
@@ -214,10 +215,10 @@ public class ConceptMapResolverServiceTests
 
     #endregion
 
-    #region GivenException_WhenTranslate_ThenThrowsInvalidOperationException
+    #region GivenException_WhenTranslate_ThenThrowsMappingExecutionException
 
     [Fact]
-    public async Task GivenException_WhenTranslate_ThenThrowsInvalidOperationException()
+    public async Task GivenException_WhenTranslate_ThenThrowsMappingExecutionException()
     {
         // Arrange
         const string sourceCode = "male";
@@ -233,9 +234,40 @@ public class ConceptMapResolverServiceTests
         var act = async () => await _service.TranslateAsync(sourceCode, sourceSystem, mapUrl, null, CancellationToken.None);
 
         // Assert
-        var ex = await Should.ThrowAsync<InvalidOperationException>(act);
-        ex.Message.ShouldStartWith($"ConceptMap translation failed for '{sourceSystem}#{sourceCode}' using map '{mapUrl}':");
+        var ex = await Should.ThrowAsync<MappingExecutionException>(act);
+        ex.Message.ShouldContain($"ConceptMap translation failed using map '{mapUrl}'");
+        ex.Code.ShouldBe("TRANSLATE_FAILED");
     }
 
     #endregion
+
+    [Fact]
+    public void GivenATranslationFailure_WhenTranslatedSynchronously_ThenTheFailurePropagatesInsteadOfAnUntranslatedCode()
+    {
+        // Arrange
+        _mockTerminologyService.TranslateCodeAsync(Arg.Any<TranslateParameters>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<TranslateResult>(new InvalidOperationException("store unavailable")));
+
+        // Act
+        var act = () => _service.Translate("male", "http://hl7.org/fhir/administrative-gender", "http://example.org/ConceptMap/m", null, CancellationToken.None);
+
+        // Assert
+        Should.Throw<MappingExecutionException>(act);
+    }
+
+    [Fact]
+    public void GivenTheMappingIsCancelled_WhenTranslatedSynchronously_ThenTheTokenReachesTheTerminologyServiceAndCancellationPropagates()
+    {
+        // Arrange
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        _mockTerminologyService.TranslateCodeAsync(Arg.Any<TranslateParameters>(), Arg.Any<CancellationToken>())
+            .Returns(call => Task.FromCanceled<TranslateResult>(call.Arg<CancellationToken>()));
+
+        // Act
+        var act = () => _service.Translate("male", "http://hl7.org/fhir/administrative-gender", "http://example.org/ConceptMap/m", null, cancellation.Token);
+
+        // Assert
+        Should.Throw<OperationCanceledException>(act);
+    }
 }

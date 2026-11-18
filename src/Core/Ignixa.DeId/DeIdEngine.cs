@@ -75,7 +75,7 @@ public class DeIdEngine : IDeIdEngine
         CancellationToken cancellationToken = default)
     {
         var element = resource.ToElement(_schema);
-        var resourceId = element.Scalar("id", cancellationToken)?.ToString() ?? "unknown";
+        var resourceId = element.Select("id", requestSupplied: false, cancellationToken).FirstOrDefault()?.Value?.ToString() ?? "unknown";
         _logger.LogDebug("De-identifying resource {ResourceType}/{ResourceId}", resource.ResourceType, resourceId);
 
         var context = new DeIdContext(

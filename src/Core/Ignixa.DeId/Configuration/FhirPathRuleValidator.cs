@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 using System.Collections.Immutable;
+using Ignixa.FhirPath;
 using Ignixa.DeId.Configuration.ProcessorSettings;
 using Ignixa.DeId.Exceptions;
 using Ignixa.DeId.Extensions;
@@ -40,7 +41,7 @@ internal static class FhirPathRuleValidator
             // Any parse failure, including InsufficientExecutionStackException from an over-deep path,
             // means the rule can never be evaluated. OutOfMemoryException is process-critical and not caught.
             throw new ConfigurationException(
-                $"Rule path '{rule.Path}' is not a valid FHIRPath expression: {ex.Message}",
+                $"Rule path '{LogSafeText.Sanitize(rule.Path)}' is not a valid FHIRPath expression: {LogSafeText.Sanitize(ex.Message)}",
                 ex);
         }
     }

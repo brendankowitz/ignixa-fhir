@@ -7,6 +7,7 @@ using System.ComponentModel;
 using System.Text.Json.Nodes;
 using Medino;
 using ModelContextProtocol.Server;
+using Ignixa.FhirPath;
 using Ignixa.Application.Features.Experimental.Mcp.Tools;
 using Ignixa.Application.Features.Patch;
 using Ignixa.Application.Features.Resource;
@@ -84,12 +85,12 @@ public class PatchResourceTool : TenantAwareMcpTool
         {
             operations = ParseOperationsJson(operationsJson);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
         {
             return new PatchResourceResultDto
             {
                 Success = false,
-                ErrorMessage = $"Invalid operationsJson: {ex.Message}",
+                ErrorMessage = $"Invalid operationsJson: {LogSafeText.Sanitize(ex.Message)}",
                 PatchedResource = null
             };
         }
@@ -100,12 +101,12 @@ public class PatchResourceTool : TenantAwareMcpTool
         {
             resolvedTenantId = await ResolveTenantIdAsync(tenantId, cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
         {
             return new PatchResourceResultDto
             {
                 Success = false,
-                ErrorMessage = $"Tenant resolution failed: {ex.Message}",
+                ErrorMessage = $"Tenant resolution failed: {LogSafeText.Sanitize(ex.Message)}",
                 PatchedResource = null
             };
         }
@@ -120,7 +121,7 @@ public class PatchResourceTool : TenantAwareMcpTool
             return new PatchResourceResultDto
             {
                 Success = false,
-                ErrorMessage = ex.Message,
+                ErrorMessage = LogSafeText.Sanitize(ex.Message),
                 PatchedResource = null
             };
         }
@@ -157,12 +158,12 @@ public class PatchResourceTool : TenantAwareMcpTool
                 PatchedResource = patchedResource.Resource
             };
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
         {
             return new PatchResourceResultDto
             {
                 Success = false,
-                ErrorMessage = $"Patch operation failed: {ex.Message}",
+                ErrorMessage = $"Patch operation failed: {LogSafeText.Sanitize(ex.Message)}",
                 PatchedResource = null
             };
         }

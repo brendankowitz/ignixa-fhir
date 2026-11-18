@@ -69,21 +69,21 @@ public static class FhirPatchOperationResolver
         if (matches.Count != 1)
         {
             throw new FhirPatchException(
-                $"Add path '{operation.Path}' must resolve to a single element, but matched {matches.Count}");
+                $"Add path '{operation.Path.SanitizeExpressionForLog()}' must resolve to a single element, but matched {matches.Count}");
         }
 
         var parentType = matches[0].InstanceType;
         if (matches[0].Meta<JsonNode>() is not JsonObject parent)
         {
             throw new FhirPatchException(
-                $"Add path '{operation.Path}' resolves to a primitive {parentType} value; adding '{operation.Name}' by name requires a complex parent element");
+                $"Add path '{operation.Path.SanitizeExpressionForLog()}' resolves to a primitive {parentType} value; adding '{operation.Name.SanitizeExpressionForLog()}' by name requires a complex parent element");
         }
 
         var element = ResolveElement(schema, parentType, operation.Name!, operation.ValueType);
         if (!element.IsCollection && element.JsonNames.FirstOrDefault(name => parent.ContainsKey(name) || parent.ContainsKey("_" + name)) is { } existing)
         {
             throw new FhirPatchException(
-                $"Cannot add '{operation.Name}' to {parentType}: the element does not repeat and already has a value ('{existing}')");
+                $"Cannot add '{operation.Name.SanitizeExpressionForLog()}' to {parentType}: the element does not repeat and already has a value ('{existing}')");
         }
 
         return operation with
@@ -104,7 +104,7 @@ public static class FhirPatchOperationResolver
         if (matches.Count > 1)
         {
             throw new FhirPatchException(
-                $"Path '{path}' must resolve to a single element to build a value from nested parts, but matched {matches.Count}");
+                $"Path '{path.SanitizeExpressionForLog()}' must resolve to a single element to build a value from nested parts, but matched {matches.Count}");
         }
 
         return matches.Count == 1 ? matches[0].InstanceType : ResolveAbsentTargetType(resource, schema, path, cancellationToken);
@@ -121,7 +121,7 @@ public static class FhirPatchOperationResolver
         var name = lastDot > 0 ? path[(lastDot + 1)..] : string.Empty;
         if (!IsSimpleIdentifier(name))
         {
-            throw new FhirPatchException($"Path '{path}' did not match any element");
+            throw new FhirPatchException($"Path '{path.SanitizeExpressionForLog()}' did not match any element");
         }
 
         var parentPath = path[..lastDot];
@@ -129,7 +129,7 @@ public static class FhirPatchOperationResolver
         if (parents.Count != 1)
         {
             throw new FhirPatchException(
-                $"Path '{path}' did not match any element, and its parent '{parentPath}' matched {parents.Count} elements (expected 1)");
+                $"Path '{path.SanitizeExpressionForLog()}' did not match any element, and its parent '{parentPath.SanitizeExpressionForLog()}' matched {parents.Count} elements (expected 1)");
         }
 
         var element = ResolveElement(schema, parents[0].InstanceType, name, valueType: null);
@@ -148,7 +148,7 @@ public static class FhirPatchOperationResolver
         }
         catch (FormatException ex)
         {
-            throw new FhirPatchException($"Path '{path.SanitizeExpressionForLog()}' is not a valid FHIRPath expression: {ex.Message}", ex);
+            throw new FhirPatchException($"Path '{path.SanitizeExpressionForLog()}' is not a valid FHIRPath expression: {ex.Message.SanitizeExpressionForLog()}", ex);
         }
         catch (FhirPathResourceLimitExceededException)
         {
@@ -158,7 +158,7 @@ public static class FhirPatchOperationResolver
         }
         catch (FhirPathEvaluationException ex)
         {
-            throw new FhirPatchException($"Path '{path.SanitizeExpressionForLog()}' could not be evaluated: {ex.Message}", ex);
+            throw new FhirPatchException($"Path '{path.SanitizeExpressionForLog()}' could not be evaluated: {ex.Message.SanitizeExpressionForLog()}", ex);
         }
     }
 
@@ -186,7 +186,7 @@ public static class FhirPatchOperationResolver
             }
             else if (element.JsonNames.Any(value.ContainsKey))
             {
-                throw new FhirPatchException($"Element '{part.Name}' of {typeName} does not repeat but was supplied more than once");
+                throw new FhirPatchException($"Element '{part.Name.SanitizeExpressionForLog()}' of {typeName} does not repeat but was supplied more than once");
             }
             else
             {
@@ -204,18 +204,18 @@ public static class FhirPatchOperationResolver
 
         var element = parentDefinition.Children.FirstOrDefault(child => child.Info.Name == name)
             ?? parentDefinition.Children.FirstOrDefault(child => child.Info.Name == name + "[x]")
-            ?? throw new FhirPatchException($"'{name}' is not an element of {parentType}");
+            ?? throw new FhirPatchException($"'{name.SanitizeExpressionForLog()}' is not an element of {parentType}");
 
         if (element.Info.IsChoiceElement || element.Info.Name.EndsWith("[x]", StringComparison.Ordinal))
         {
             if (valueType == null)
             {
-                throw new FhirPatchException($"Choice element '{name}' of {parentType} requires a typed value[x]");
+                throw new FhirPatchException($"Choice element '{name.SanitizeExpressionForLog()}' of {parentType} requires a typed value[x]");
             }
 
             var allowedTypes = (element as ITypeExtended)?.Types.Select(type => type.Code).ToList() ?? [];
             var choiceType = allowedTypes.FirstOrDefault(code => string.Equals(code, valueType, StringComparison.OrdinalIgnoreCase))
-                ?? throw new FhirPatchException($"Type '{valueType}' is not allowed for choice element '{name}' of {parentType}");
+                ?? throw new FhirPatchException($"Type '{valueType.SanitizeExpressionForLog()}' is not allowed for choice element '{name.SanitizeExpressionForLog()}' of {parentType}");
 
             // Every variant counts as the same element, so cardinality checks consider all of them.
             return new ElementResolution(ChoiceProperty(name, choiceType), element.IsCollection, choiceType,

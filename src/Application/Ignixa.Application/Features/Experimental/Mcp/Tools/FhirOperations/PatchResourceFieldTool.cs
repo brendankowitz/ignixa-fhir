@@ -7,6 +7,7 @@ using System.ComponentModel;
 using System.Text.Json.Nodes;
 using Medino;
 using ModelContextProtocol.Server;
+using Ignixa.FhirPath;
 using Ignixa.Application.Features.Experimental.Mcp.Tools;
 using Ignixa.Application.Features.Patch;
 using Ignixa.Application.Features.Resource;
@@ -85,12 +86,12 @@ public class PatchResourceFieldTool : TenantAwareMcpTool
         {
             resolvedTenantId = await ResolveTenantIdAsync(tenantId, cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
         {
             return new PatchResourceFieldResultDto
             {
                 Success = false,
-                ErrorMessage = $"Tenant resolution failed: {ex.Message}",
+                ErrorMessage = $"Tenant resolution failed: {LogSafeText.Sanitize(ex.Message)}",
                 PatchedResource = null
             };
         }
@@ -105,7 +106,7 @@ public class PatchResourceFieldTool : TenantAwareMcpTool
             return new PatchResourceFieldResultDto
             {
                 Success = false,
-                ErrorMessage = ex.Message,
+                ErrorMessage = LogSafeText.Sanitize(ex.Message),
                 PatchedResource = null
             };
         }
@@ -156,12 +157,12 @@ public class PatchResourceFieldTool : TenantAwareMcpTool
                 PatchedResource = patchedResource.Resource
             };
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
         {
             return new PatchResourceFieldResultDto
             {
                 Success = false,
-                ErrorMessage = $"Patch operation failed: {ex.Message}",
+                ErrorMessage = $"Patch operation failed: {LogSafeText.Sanitize(ex.Message)}",
                 PatchedResource = null
             };
         }
