@@ -2076,7 +2076,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         var keyword = quantity.Unit == "a" ? "year" : "month";
         throw new FhirPathEvaluationException(
-            $"'{quantity}' uses the UCUM definite-duration unit '{quantity.Unit}', which has no calendar " +
+            "The quantity uses a UCUM definite-duration unit, which has no calendar " +
             $"equivalent, so it cannot be used in {instanceType} arithmetic; use the calendar keyword " +
             $"'{keyword}' instead.");
     }
@@ -2134,8 +2134,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         // The two failures are distinct: 'cm' is not a duration at all (official testMinus6), whereas
         // 'h' is a perfectly good duration that a Date simply has no component to receive.
         var message = _timeValuedUnits.Contains(quantity.Unit)
-            ? $"'{quantity}' is not a unit that {instanceType} arithmetic supports."
-            : $"'{quantity}' is not a time-valued quantity, so it cannot be used in {instanceType} arithmetic.";
+            ? $"The quantity's unit is not one that {instanceType} arithmetic supports."
+            : $"The quantity is not time-valued, so it cannot be used in {instanceType} arithmetic.";
 
         throw new FhirPathEvaluationException(message);
     }

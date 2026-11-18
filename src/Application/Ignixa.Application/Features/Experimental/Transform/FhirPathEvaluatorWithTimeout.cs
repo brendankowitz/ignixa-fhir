@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
+using Ignixa.Application.Infrastructure;
 using Ignixa.FhirPath.Evaluation;
 using Microsoft.Extensions.Logging;
 
@@ -83,17 +84,17 @@ public class FhirPathEvaluatorWithTimeout
         }
         catch (OperationCanceledException)
         {
-            _logger.LogDebug("FHIRPath evaluation cancelled: {Expression}", expression);
+            _logger.LogDebug("FHIRPath evaluation cancelled: {Expression}", expression.SanitizeExpressionForLog());
             throw;
         }
         catch (FhirPathResourceLimitExceededException ex)
         {
-            _logger.LogWarning(ex, "FHIRPath evaluation exceeded an evaluation limit: {Expression}", expression);
+            _logger.LogWarning(ex, "FHIRPath evaluation exceeded an evaluation limit: {Expression}", expression.SanitizeExpressionForLog());
             throw;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "FHIRPath evaluation failed: {Expression}", expression);
+            _logger.LogError(ex, "FHIRPath evaluation failed: {Expression}", expression.SanitizeExpressionForLog());
             throw;
         }
     }

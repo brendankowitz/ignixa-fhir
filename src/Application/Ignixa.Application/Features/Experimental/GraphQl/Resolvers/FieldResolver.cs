@@ -144,7 +144,7 @@ internal static class FieldResolver
 
                 var sourceNode = JsonNodeSourceNode.Create(node, instanceType ?? "root");
                 var element = sourceNode.ToElement(schemaProvider);
-                return element.IsTrue(expression, new EvaluationContext { CancellationToken = cancellationToken });
+                return element.IsTrue(expression, new EvaluationContext { CancellationToken = cancellationToken, ExpressionIsRequestSupplied = true });
             }
             catch (OperationCanceledException)
             {

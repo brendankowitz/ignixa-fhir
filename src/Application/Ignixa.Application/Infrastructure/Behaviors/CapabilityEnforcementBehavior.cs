@@ -121,7 +121,7 @@ public class CapabilityEnforcementBehavior<TRequest, TResponse> : IPipelineBehav
         {
             _logger.LogWarning(
                 "Capability enforcement: Request rejected - FHIRPath expression '{Expression}' evaluated to false (TenantId: {TenantId})",
-                expression,
+                expression.SanitizeExpressionForLog(),
                 tenantId);
 
             // ForbiddenException carries StatusCode 403 and its own OperationOutcome. A plain

@@ -5,6 +5,7 @@
 
 using System.Diagnostics;
 using Ignixa.Api.Infrastructure;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Events.Startup;
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Admin;
@@ -367,7 +368,7 @@ public class TenantPackagePreloadService : BackgroundService
                     + "It will be retried, and will fail the same way, on first use.",
                     searchParameter.Url,
                     tenantId,
-                    expression);
+                    expression.SanitizeExpressionForLog());
             }
         }
 

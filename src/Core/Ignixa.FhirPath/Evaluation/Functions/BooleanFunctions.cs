@@ -160,9 +160,9 @@ internal static class BooleanFunctions
         var nonBooleanElement = list.FirstOrDefault(element => element.Value is not bool);
         if (nonBooleanElement is not null)
         {
-            var valueDescription = nonBooleanElement.Value is null ? "null" : $"'{nonBooleanElement.Value}'";
+            var typeDescription = nonBooleanElement.InstanceType ?? "an untyped value";
             throw new FhirPathEvaluationException(
-                $"Unable to convert {valueDescription} to a boolean for {functionName}()");
+                $"Unable to convert a value of type '{typeDescription}' to a boolean for {functionName}()");
         }
     }
 }

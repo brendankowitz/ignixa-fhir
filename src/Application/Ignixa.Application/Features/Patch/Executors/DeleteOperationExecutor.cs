@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Features.Patch.Validation;
 using Ignixa.FhirMappingLanguage.Mutator;
 using Ignixa.FhirPath.Evaluation;
@@ -39,7 +40,7 @@ public class DeleteOperationExecutor(
         try
         {
             mutator.DeleteProperty(resource, operation.Path, cancellationToken);
-            logger.LogDebug("Deleted element at {Path}", operation.Path);
+            logger.LogDebug("Deleted element at {Path}", operation.Path.SanitizeExpressionForLog());
         }
         catch (FhirPathResourceLimitExceededException)
         {

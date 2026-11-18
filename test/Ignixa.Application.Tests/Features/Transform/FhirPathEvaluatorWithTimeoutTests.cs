@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Application.Tests.TestDoubles;
 using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Experimental.Transform;
@@ -160,5 +161,25 @@ public class FhirPathEvaluatorWithTimeoutTests
 
         public IReadOnlyList<IElement> Children(string name = null!) => [];
         public T Meta<T>() where T : class => null!;
+    }
+
+    [Fact]
+    public void GivenFailingExpressionWithLineBreaksAndLongText_WhenEvaluate_ThenLogCarriesSingleLineTruncatedText()
+    {
+        // Arrange
+        var logger = new CapturingLogger<FhirPathEvaluatorWithTimeout>();
+        var evaluator = new FhirPathEvaluatorWithTimeout(
+            new FhirPathExpressionCache(new FhirPathParser(), NullLogger<FhirPathExpressionCache>.Instance),
+            new FhirPathEvaluator(),
+            logger,
+            TimeSpan.FromSeconds(30));
+        var expression = "(1 | 2 | 3)\r\n& '" + new string('x', 5000) + "'";
+
+        // Act
+        Should.Throw<Exception>(() => evaluator.Evaluate(expression, new TestElement("Patient", "Patient"), CancellationToken.None));
+
+        // Assert
+        logger.Messages.ShouldNotBeEmpty();
+        logger.Messages.ShouldAllBe(m => m.Length < 600 && !m.Contains('\r') && !m.Contains('\n'));
     }
 }

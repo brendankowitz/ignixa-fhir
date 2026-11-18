@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Ignixa.Application.Infrastructure;
 using Ignixa.FhirMappingLanguage.Mutator;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization.SourceNodes;
@@ -45,7 +46,7 @@ public class InsertOperationExecutor(
                 ?? throw new FhirPatchException("Failed to serialize value");
 
             mutator.InsertIntoArray(resource, operation.Path, valueNode, operation.Index.Value, cancellationToken);
-            logger.LogDebug("Inserted value at {Path}[{Index}]", operation.Path, operation.Index.Value);
+            logger.LogDebug("Inserted value at {Path}[{Index}]", operation.Path.SanitizeExpressionForLog(), operation.Index.Value);
         }
         catch (FhirPathResourceLimitExceededException)
         {

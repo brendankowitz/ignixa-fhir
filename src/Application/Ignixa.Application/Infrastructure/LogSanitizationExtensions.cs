@@ -11,6 +11,9 @@ namespace Ignixa.Application.Infrastructure;
 /// </summary>
 public static class LogSanitizationExtensions
 {
+    /// <summary>The most expression text a log record carries.</summary>
+    public const int MaxExpressionLogLength = 200;
+
     /// <summary>
     /// Returns a copy of <paramref name="value"/> safe to pass as a structured log argument, by
     /// replacing any CR/LF characters with a space so a caller cannot forge extra log lines
@@ -43,4 +46,30 @@ public static class LogSanitizationExtensions
             span.Replace('\n', ' ');
         });
     }
+
+    /// <summary>
+    /// Sanitizes <paramref name="value"/> as <see cref="SanitizeForLog(string?)"/> does, then truncates it to at most
+    /// <paramref name="maxLength"/> characters so a caller-chosen string cannot dominate a log record.
+    /// </summary>
+    /// <param name="value">The value to sanitize; <see langword="null"/> is returned unchanged.</param>
+    /// <param name="maxLength">The longest text to keep, which must be positive. A longer value keeps this many
+    /// characters followed by a marker naming how many were dropped.</param>
+    public static string? SanitizeForLog(this string? value, int maxLength)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxLength, 1);
+
+        var sanitized = value.SanitizeForLog();
+        if (sanitized is null || sanitized.Length <= maxLength)
+        {
+            return sanitized;
+        }
+
+        return $"{sanitized.AsSpan(0, maxLength)}...[{sanitized.Length - maxLength} more characters]";
+    }
+
+    /// <summary>
+    /// Sanitizes and truncates FHIRPath expression text for logging, to <see cref="MaxExpressionLogLength"/> characters.
+    /// </summary>
+    public static string? SanitizeExpressionForLog(this string? expression) =>
+        expression.SanitizeForLog(MaxExpressionLogLength);
 }

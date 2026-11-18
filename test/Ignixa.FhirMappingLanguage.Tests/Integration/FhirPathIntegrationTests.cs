@@ -462,4 +462,21 @@ public class FhirPathIntegrationTests
         exception.Message.ShouldBe("Failed to evaluate FHIRPath expression: (((");
         exception.InnerException.ShouldNotBeNull();
     }
+
+    [Fact]
+    public void GivenMoreDistinctExpressionsThanCapacity_WhenEvaluating_ThenCacheStaysBounded()
+    {
+        // Arrange
+        var integration = new FhirPathIntegration(cacheCapacity: 8);
+        var patient = new TestTypedElement("Patient");
+
+        // Act
+        for (var i = 0; i < 100; i++)
+        {
+            integration.Evaluate($"family | 'distinct{i}'", patient).ToList();
+        }
+
+        // Assert
+        integration.CachedExpressionCount.ShouldBeLessThanOrEqualTo(8);
+    }
 }

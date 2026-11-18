@@ -143,7 +143,7 @@ public static class FhirPatchOperationResolver
     {
         try
         {
-            return resource.ToElement(schema).Select(path, new EvaluationContext { CancellationToken = cancellationToken }).ToList();
+            return resource.ToElement(schema).Select(path, new EvaluationContext { CancellationToken = cancellationToken, ExpressionIsRequestSupplied = true }).ToList();
         }
         catch (FormatException ex)
         {

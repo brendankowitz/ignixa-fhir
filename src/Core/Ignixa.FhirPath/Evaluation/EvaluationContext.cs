@@ -202,7 +202,20 @@ public record EvaluationContext
     /// Optional callback for trace() function output.
     /// When set, trace() calls will invoke this handler with trace information.
     /// </summary>
+    /// <remarks>
+    /// The entry carries the trace name, which the expression author chooses, and a projection of resource data,
+    /// which may be PHI. A host that wires a handler must strip control characters from the name before logging it,
+    /// and must not write the projection to logs, telemetry or responses unredacted.
+    /// </remarks>
     public Action<TraceEntry>? TraceHandler { get; init; }
+
+    /// <summary>
+    /// Marks the expression being evaluated as text an API caller supplied (a de-identification rule, a GraphQL
+    /// filter, a FHIRPath Patch path). Such expressions are compiled into a small cache tier separate from the
+    /// server's own expressions, so a caller cannot evict search parameters or invariants by submitting many
+    /// distinct expressions. Leave unset for expressions the server owns.
+    /// </summary>
+    public bool ExpressionIsRequestSupplied { get; init; }
 
     /// <summary>
     /// Optional callback invoked after each expression node is evaluated during debug tracing.

@@ -2,6 +2,7 @@ using System;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Features.Patch.Validation;
 using Ignixa.FhirMappingLanguage.Mutator;
 using Ignixa.FhirPath.Evaluation;
@@ -57,13 +58,13 @@ public class ReplaceOperationExecutor(
             {
                 // Replacing an array element - use ReplaceArrayElement
                 mutator.ReplaceArrayElement(resource, operation.Path, valueNode, cancellationToken);
-                logger.LogDebug("Replaced array element at {Path}", operation.Path);
+                logger.LogDebug("Replaced array element at {Path}", operation.Path.SanitizeExpressionForLog());
             }
             else
             {
                 // Replacing a property - use SetProperty with Replace mode
                 mutator.SetProperty(resource, operation.Path, valueNode, PropertyMutationMode.Replace, cancellationToken);
-                logger.LogDebug("Replaced property at {Path}", operation.Path);
+                logger.LogDebug("Replaced property at {Path}", operation.Path.SanitizeExpressionForLog());
             }
         }
         catch (FhirPathResourceLimitExceededException)

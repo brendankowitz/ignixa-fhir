@@ -3,8 +3,9 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Collections.Concurrent;
 using System.Diagnostics;
+using Ignixa.Application.Infrastructure;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Expressions;
 using Ignixa.FhirPath.Parser;
 using Microsoft.Extensions.Logging;
@@ -12,12 +13,19 @@ using Microsoft.Extensions.Logging;
 namespace Ignixa.Application.Features.Experimental.Transform;
 
 /// <summary>
-/// Thread-safe cache for compiled FHIRPath expressions.
+/// Thread-safe, capacity-bounded cache for parsed FHIRPath expressions.
 /// Compiles expressions once and reuses them for better performance in mapping transformations.
 /// </summary>
+/// <remarks>
+/// Expressions come from StructureMaps that requests supply, so the cache evicts (see
+/// <see cref="BoundedExpressionCache{TValue}"/>) rather than growing with caller-chosen text.
+/// </remarks>
 public class FhirPathExpressionCache
 {
-    private readonly ConcurrentDictionary<string, Expression> _cache = new();
+    /// <summary>Entries retained per generation; twice this at most.</summary>
+    internal const int DefaultCapacity = 512;
+
+    private readonly BoundedExpressionCache<Expression> _cache;
     private readonly FhirPathParser _compiler;
     private readonly ILogger<FhirPathExpressionCache> _logger;
 
@@ -28,8 +36,10 @@ public class FhirPathExpressionCache
 
     public FhirPathExpressionCache(
         FhirPathParser compiler,
-        ILogger<FhirPathExpressionCache> logger)
+        ILogger<FhirPathExpressionCache> logger,
+        int capacity = DefaultCapacity)
     {
+        _cache = new BoundedExpressionCache<Expression>(capacity);
         _compiler = compiler ?? throw new ArgumentNullException(nameof(compiler));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -53,7 +63,7 @@ public class FhirPathExpressionCache
         if (_cache.TryGetValue(expression, out var compiled))
         {
             Interlocked.Increment(ref _cacheHits);
-            _logger.LogTrace("FHIRPath cache hit: {Expression}", expression);
+            _logger.LogTrace("FHIRPath cache hit: {Expression}", expression.SanitizeExpressionForLog());
             return compiled;
         }
 
@@ -72,7 +82,7 @@ public class FhirPathExpressionCache
             _logger.LogError(
                 ex,
                 "Failed to parse FHIRPath expression: {Expression}",
-                expression);
+                expression.SanitizeExpressionForLog());
             throw;
         }
         finally
@@ -85,13 +95,12 @@ public class FhirPathExpressionCache
             Interlocked.Add(ref _compilationTimeMs, elapsedMs);
         }
 
-        // Add to cache (TryAdd handles concurrent additions gracefully)
-        _cache.TryAdd(expression, result);
+        _cache.GetOrAdd(expression, _ => result);
 
         _logger.LogDebug(
             "Compiled FHIRPath expression (took {Ms}ms): {Expression}",
             stopwatch.ElapsedMilliseconds,
-            expression);
+            expression.SanitizeExpressionForLog());
 
         return result;
     }

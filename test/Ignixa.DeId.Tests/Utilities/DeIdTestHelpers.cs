@@ -47,7 +47,10 @@ public static class DeIdTestHelpers
     /// Creates an engine over an in-memory options instance, for configurations that are built by hand
     /// (including ones the file loader would reject) rather than loaded from a file.
     /// </summary>
-    public static IDeIdEngine CreateEngine(DeIdOptions options, IFhirSchemaProvider? schema = null)
+    public static IDeIdEngine CreateEngine(
+        DeIdOptions options,
+        IFhirSchemaProvider? schema = null,
+        Action<IServiceCollection>? configureServices = null)
     {
         schema ??= new R4CoreSchemaProvider();
 
@@ -58,6 +61,7 @@ public static class DeIdTestHelpers
                 new StructureDefinitionSchemaResolver(sp.GetRequiredService<IFhirSchemaProvider>())));
         services.AddLogging();
         services.AddSingleton<IOptions<DeIdOptions>>(Options.Create(options));
+        configureServices?.Invoke(services);
         services.AddFhirDeId();
 
         return services.BuildServiceProvider().GetRequiredService<IDeIdEngine>();

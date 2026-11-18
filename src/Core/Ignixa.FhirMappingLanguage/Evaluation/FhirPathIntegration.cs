@@ -19,22 +19,25 @@ namespace Ignixa.FhirMappingLanguage.Evaluation;
 /// </summary>
 internal class FhirPathIntegration
 {
+    internal const int DefaultCacheCapacity = 512;
+
     private readonly FhirPathParser _parser;
     private readonly FhirPathEvaluator _evaluator;
     private readonly FhirPathEvaluationLimits _limits;
-    private readonly Dictionary<string, Ignixa.FhirPath.Expressions.Expression> _expressionCache;
+    private readonly BoundedExpressionCache<Ignixa.FhirPath.Expressions.Expression>? _expressionCache;
 
     /// <summary>
     /// Creates a new FhirPathIntegration instance.
     /// </summary>
     /// <param name="cacheExpressions">Whether to cache compiled expressions for performance</param>
     /// <param name="limits">The limits each evaluation runs under; <see cref="FhirPathEvaluationLimits.Default"/> when null.</param>
-    public FhirPathIntegration(bool cacheExpressions = true, FhirPathEvaluationLimits? limits = null)
+    /// <param name="cacheCapacity">Entries retained per cache generation. Expression text comes from the map being evaluated, so the cache evicts rather than grows.</param>
+    public FhirPathIntegration(bool cacheExpressions = true, FhirPathEvaluationLimits? limits = null, int cacheCapacity = DefaultCacheCapacity)
     {
         _parser = new();
         _evaluator = new();
         _limits = limits ?? FhirPathEvaluationLimits.Default;
-        _expressionCache = cacheExpressions ? [] : null!;
+        _expressionCache = cacheExpressions ? new BoundedExpressionCache<Ignixa.FhirPath.Expressions.Expression>(cacheCapacity) : null;
     }
 
     /// <summary>
@@ -139,18 +142,13 @@ internal class FhirPathIntegration
     {
         if (_expressionCache != null)
         {
-            if (_expressionCache.TryGetValue(expression, out var cached))
-            {
-                return cached;
-            }
-
-            var compiled = _parser.Parse(expression);
-            _expressionCache[expression] = compiled;
-            return compiled;
+            return _expressionCache.GetOrAdd(expression, _parser.Parse);
         }
 
         return _parser.Parse(expression);
     }
+
+    internal int CachedExpressionCount => _expressionCache?.Count ?? 0;
 
     /// <summary>
     /// Clears the expression cache.

@@ -27,7 +27,7 @@ public static class FhirPathExtensions
     /// library reports these with several exception types, so callers treat any failure as an unevaluable expression.</exception>
     public static IReadOnlyList<IElement> Select(this IElement element, string expression, CancellationToken cancellationToken)
     {
-        return TypedElementExtensions.Select(element, expression, new EvaluationContext { CancellationToken = cancellationToken }).ToList();
+        return TypedElementExtensions.Select(element, expression, new EvaluationContext { CancellationToken = cancellationToken, ExpressionIsRequestSupplied = true }).ToList();
     }
 
     /// <summary>
@@ -43,7 +43,7 @@ public static class FhirPathExtensions
     /// <exception cref="Exception">The expression cannot be parsed.</exception>
     public static void EnsureParses(string expression)
     {
-        TypedElementExtensions.Precompile(expression);
+        TypedElementExtensions.PrecompileRequestSupplied(expression);
     }
 
     /// <summary>

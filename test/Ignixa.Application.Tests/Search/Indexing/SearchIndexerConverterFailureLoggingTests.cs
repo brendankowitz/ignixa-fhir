@@ -196,6 +196,34 @@ public class SearchIndexerConverterFailureLoggingTests
         recordingLogger.Entries.ShouldAllBe(e => e.Exception is FhirPathEvaluationException);
     }
 
+    [Fact]
+    public void GivenCustomParameterWithLongMultiLineExpression_WhenConverterFails_ThenLogCarriesSingleLineTruncatedExpression()
+    {
+        // Arrange - a tenant controls the text of a custom search parameter's expression.
+        const string customUrl = "http://example.org/fhir/SearchParameter/long-expression";
+        var expression = "Patient.name.family\r\n" + new string(' ', 5000) + "| Patient.name.given";
+        var customParameter = ResourceJsonNode.Parse($$"""
+            {"resourceType":"SearchParameter","id":"long","url":"{{customUrl}}","name":"long","status":"active",
+             "code":"long-code","base":["Patient"],"type":"string","expression":{{System.Text.Json.JsonSerializer.Serialize(expression)}}}
+            """).ToElement(_schemaProvider);
+        _searchParameterDefinitionManager.AddNewSearchParameters([customParameter]);
+        _searchParameterDefinitionManager.TryGetSearchParameter(new Uri(customUrl), out var info).ShouldBeTrue();
+        info.IsSupported = true;
+        info.IsSearchable = true;
+
+        var recordingLogger = new RecordingLogger();
+        var indexer = CreateIndexer(new FormatException("simulated unparseable literal"), recordingLogger);
+        var element = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"p1","name":[{"family":"Doe","given":["D"]}]}""")
+            .ToElement(_schemaProvider);
+
+        // Act
+        indexer.Extract(element);
+
+        // Assert
+        recordingLogger.Entries.ShouldContain(e => e.Message.Contains("more characters"));
+        recordingLogger.Entries.ShouldAllBe(e => e.Message.Length < 700 && !e.Message.Contains('\r') && !e.Message.Contains('\n'));
+    }
+
     /// <summary>
     /// Builds an indexer whose converter manager always hands back a converter that throws
     /// <paramref name="toThrow"/>, regardless of which FHIR type or search parameter asked for it.

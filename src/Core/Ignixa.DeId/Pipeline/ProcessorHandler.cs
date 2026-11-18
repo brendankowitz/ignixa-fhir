@@ -115,17 +115,19 @@ internal sealed class ProcessorHandler : DeIdPipelineHandler
                         // Both modes fail the operation: a partially de-identified resource must not be
                         // returned as a success.
                         _logger.LogError(
-                            "Processor failed for rule {Path}: {Error}. Stopping further rule processing.",
+                            "Processor failed for rule {Path} ({ErrorCode}, {CauseType}). Stopping further rule processing.",
                             matchedRule.Rule.Path,
-                            processorResult.Error.Message);
+                            processorResult.Error.Code,
+                            processorResult.Error.Exception?.GetType().Name);
                         return Result<DeIdResult>.Failure(processorResult.Error);
 
                     // Explicit operator opt-in: the failure is surfaced to the caller through the result warnings.
                     case ErrorHandlingMode.LogAndContinue:
                         _logger.LogWarning(
-                            "Processor failed for rule {Path}: {Error}",
+                            "Processor failed for rule {Path} ({ErrorCode}, {CauseType})",
                             matchedRule.Rule.Path,
-                            processorResult.Error.Message);
+                            processorResult.Error.Code,
+                            processorResult.Error.Exception?.GetType().Name);
                         context.AddWarning($"Processor failed for rule '{matchedRule.Rule.Path}': {processorResult.Error.Message}");
                         continue;
 
@@ -255,11 +257,13 @@ internal sealed class ProcessorHandler : DeIdPipelineHandler
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
+            // The exception travels in the returned error. It is not logged as an object because processors parse
+            // element values, and a parse failure's message quotes the value being parsed.
             _logger.LogError(
-                ex,
-                "Processor {Method} failed for element at {Location}",
+                "Processor {Method} failed for element at {Location} ({CauseType})",
                 method,
-                location);
+                location,
+                ex.GetType().Name);
 
             return Result<bool>.Failure(new DeIdError(
                 "PROCESSOR_ERROR",

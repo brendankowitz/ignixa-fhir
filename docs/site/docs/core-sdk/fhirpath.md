@@ -752,6 +752,20 @@ How hosts react to the exception:
 
 Every host that evaluates an expression taken from a request - Patch, `$transform`, GraphQL, MCP, de-identification and SQL-on-FHIR export - passes the request's cancellation token into evaluation. Search indexing and validation evaluate the server's own expressions, have no token to pass, and run under the default limits.
 
+### Expression Caches
+
+Parsed expressions and compiled delegates are cached by expression text. Every cache is capacity-bounded and drops its older generation when full rather than growing, so text a caller chooses cannot exhaust memory.
+
+The shared cache is split into two tiers. Expressions the server owns (search parameters, invariants) use a large tier. Expressions an API caller supplies (de-identification rule paths and `generalize` cases, GraphQL filters, FHIRPath Patch paths) are evaluated with `EvaluationContext.ExpressionIsRequestSupplied = true` and use a small separate tier, so a tenant submitting many distinct expressions evicts only other request-supplied expressions and never the server's own. A host that evaluates caller-supplied text through the library should set the flag. Use `TypedElementExtensions.PrecompileRequestSupplied` instead of `Precompile` to validate such text.
+
+`$transform` and the FHIR Mapping Language evaluator keep their own bounded caches.
+
+### Logging and Error Messages
+
+Evaluation error messages name types and functions and never include element values, so a message is safe to log with its exception. Log sites in the server sanitize expression text (line breaks replaced) and truncate it to 200 characters; hosts that log expression text should do the same.
+
+`EvaluationContext.TraceHandler` receives the `trace()` name, which the expression author chooses, and a projection of resource data that may be PHI. A host that sets a handler must strip control characters from the name before logging and must not write the projection to logs, telemetry or responses unredacted. The server does not set a handler.
+
 ### Host Culture and Clock
 
 Results do not depend on the host's culture or time zone. `now()`, `today()` and `timeOfDay()` all read the UTC clock and format with the invariant culture, so `today()` is the Gregorian UTC date even on a host whose default calendar is not Gregorian (th-TH, ar-SA), and `timeOfDay()` agrees with the time component of `now()`.

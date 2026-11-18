@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using Ignixa.Application.Infrastructure;
 using Ignixa.FhirMappingLanguage.Mutator;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization.SourceNodes;
@@ -41,7 +42,7 @@ public class AddOperationExecutor(
         if (operation.TargetParent is { } parent)
         {
             AddToResolvedParent(parent, operation.TargetProperty!, operation.TargetIsCollection == true, valueNode);
-            logger.LogDebug("Added value at {Path}", operation.Path);
+            logger.LogDebug("Added value at {Path}", operation.Path.SanitizeExpressionForLog());
             return Task.FromResult(resource);
         }
 
@@ -74,7 +75,7 @@ public class AddOperationExecutor(
             // Append mode creates the array when the path is absent and appends when it exists.
             mutator.SetProperty(resource, operation.Path, valueNode, PropertyMutationMode.Append, cancellationToken);
 
-            logger.LogDebug("Added value to {Path}", operation.Path);
+            logger.LogDebug("Added value to {Path}", operation.Path.SanitizeExpressionForLog());
         }
         catch (FhirPathResourceLimitExceededException)
         {

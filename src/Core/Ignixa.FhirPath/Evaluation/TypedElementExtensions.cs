@@ -40,13 +40,21 @@ public static class TypedElementExtensions
     /// </remarks>
     private const int ExpressionCacheCapacity = 4096;
 
-    // Thread-safe cache for compiled expressions (string -> Expression AST)
-    private static readonly BoundedExpressionCache<Expression> _astCache = new(ExpressionCacheCapacity);
+    /// <summary>
+    /// Entries retained per generation by the tier serving request-supplied expressions.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately small and separate from the server-owned tier: a request chooses its expression text,
+    /// so a caller churning this tier evicts only other callers' request-supplied expressions and never the
+    /// server's search parameters or invariants.
+    /// </remarks>
+    private const int RequestSuppliedCacheCapacity = 256;
 
-    // Thread-safe cache for compiled delegates (Expression -> compiled delegate)
-    // Key: Expression object hash code and expression string combined
-    // Value: Compiled delegate or null if compilation not supported
-    private static readonly BoundedExpressionCache<Func<IElement, EvaluationContext, IEnumerable<IElement>>?> _delegateCache = new(ExpressionCacheCapacity);
+    // Server-owned expressions (search parameters, invariants, built-in strategies).
+    private static readonly ExpressionCaches _serverCaches = new(ExpressionCacheCapacity);
+
+    // Expressions an API caller supplied (DeId rules, GraphQL, FHIRPath Patch).
+    private static readonly ExpressionCaches _requestCaches = new(RequestSuppliedCacheCapacity);
 
     // Shared compiler instances
     private static readonly FhirPathParser AstParser = new FhirPathParser(preserveTrivia: false);
@@ -74,26 +82,40 @@ public static class TypedElementExtensions
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(expression);
 
-        var ast = CompileExpressionToAst(expression);
-        _ = CompileExpressionToDelegate(ast, expression);
+        var ast = CompileExpressionToAst(_serverCaches, expression);
+        _ = CompileExpressionToDelegate(_serverCaches, ast, expression);
+    }
+
+    /// <summary>
+    /// Parses and compiles an expression an API caller supplied, into the small request-supplied tier
+    /// rather than the tier holding the server's own expressions.
+    /// </summary>
+    /// <param name="expression">The FHIRPath expression to pre-compile.</param>
+    /// <exception cref="ArgumentException">The expression is null, empty or whitespace.</exception>
+    public static void PrecompileRequestSupplied(string expression)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(expression);
+
+        var ast = CompileExpressionToAst(_requestCaches, expression);
+        _ = CompileExpressionToDelegate(_requestCaches, ast, expression);
     }
 
     /// <summary>
     /// Parses and caches a FhirPath expression string to AST.
     /// </summary>
-    private static Expression CompileExpressionToAst(string expression)
+    private static Expression CompileExpressionToAst(ExpressionCaches caches, string expression)
     {
-        return _astCache.GetOrAdd(expression, expr => AstParser.Parse(expr));
+        return caches.Ast.GetOrAdd(expression, expr => AstParser.Parse(expr));
     }
 
     /// <summary>
     /// Attempts to compile an AST expression to a delegate and caches the result.
     /// Returns the compiled delegate if successful, null if the expression pattern is not supported.
     /// </summary>
-    private static Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileExpressionToDelegate(Expression ast, string expressionString)
+    private static Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileExpressionToDelegate(ExpressionCaches caches, Expression ast, string expressionString)
     {
         // Use expression string as cache key (stable across invocations)
-        return _delegateCache.GetOrAdd(expressionString, _ => _delegateCompiler.TryCompile(ast));
+        return caches.Delegates.GetOrAdd(expressionString, _ => _delegateCompiler.TryCompile(ast));
     }
 
     /// <summary>
@@ -162,17 +184,18 @@ public static class TypedElementExtensions
         // AST and this is the overwhelmingly common path. Asking for the AST first also meant that an
         // expression whose AST entry had been evicted while its delegate survived paid a full re-parse
         // whose result was then discarded.
-        if (_delegateCache.TryGetValue(expression, out var cachedDelegate))
+        var caches = context.ExpressionIsRequestSupplied ? _requestCaches : _serverCaches;
+        if (caches.Delegates.TryGetValue(expression, out var cachedDelegate))
         {
             return cachedDelegate != null
                 ? InvokeCompiled(cachedDelegate, input, context)
-                : _evaluator.Evaluate(input, CompileExpressionToAst(expression), context);
+                : _evaluator.Evaluate(input, CompileExpressionToAst(caches, expression), context);
         }
 
         // Cold path: parse, then compile and cache the result (null included, so an expression the
         // compiler declines is not re-attempted on every evaluation).
-        var ast = CompileExpressionToAst(expression);
-        var compiledDelegate = CompileExpressionToDelegate(ast, expression);
+        var ast = CompileExpressionToAst(caches, expression);
+        var compiledDelegate = CompileExpressionToDelegate(caches, ast, expression);
 
         return compiledDelegate != null
             ? InvokeCompiled(compiledDelegate, input, context)
@@ -300,7 +323,26 @@ public static class TypedElementExtensions
     /// </summary>
     public static void ClearCache()
     {
-        _astCache.Clear();
-        _delegateCache.Clear();
+        _serverCaches.Clear();
+        _requestCaches.Clear();
+    }
+
+    internal static bool IsServerExpressionCached(string expression) => _serverCaches.Ast.TryGetValue(expression, out _);
+
+    internal static bool IsRequestSuppliedExpressionCached(string expression) => _requestCaches.Ast.TryGetValue(expression, out _);
+
+    private sealed class ExpressionCaches(int capacity)
+    {
+        // Expression text -> AST.
+        public BoundedExpressionCache<Expression> Ast { get; } = new(capacity);
+
+        // Expression text -> compiled delegate, or null when the compiler declines the pattern.
+        public BoundedExpressionCache<Func<IElement, EvaluationContext, IEnumerable<IElement>>?> Delegates { get; } = new(capacity);
+
+        public void Clear()
+        {
+            Ast.Clear();
+            Delegates.Clear();
+        }
     }
 }

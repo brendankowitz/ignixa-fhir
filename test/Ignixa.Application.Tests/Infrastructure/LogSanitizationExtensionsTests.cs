@@ -48,4 +48,28 @@ public class LogSanitizationExtensionsTests
         result.Length.ShouldBe(value.Length);
         result.ShouldBe(expected);
     }
+
+    [Fact]
+    public void GivenTextLongerThanTheLimit_WhenSanitizingForLogWithLimit_ThenTruncatesAndNamesTheDroppedCount()
+    {
+        var result = new string('a', 50).SanitizeForLog(10);
+
+        result.ShouldBe("aaaaaaaaaa...[40 more characters]");
+    }
+
+    [Fact]
+    public void GivenLineBreaksWithinTheLimit_WhenSanitizingForLogWithLimit_ThenReplacesThemWithoutTruncating()
+    {
+        var result = "a\r\nb".SanitizeForLog(10);
+
+        result.ShouldBe("a  b");
+    }
+
+    [Fact]
+    public void GivenLongExpression_WhenSanitizingExpressionForLog_ThenIsBoundedByTheExpressionLimit()
+    {
+        var result = new string('a', 5000).SanitizeExpressionForLog();
+
+        result!.Length.ShouldBeLessThan(LogSanitizationExtensions.MaxExpressionLogLength + 40);
+    }
 }
