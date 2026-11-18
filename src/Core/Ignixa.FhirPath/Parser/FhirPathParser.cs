@@ -12,6 +12,7 @@ using Ignixa.FhirPath.Expressions;
 using Ignixa.FhirPath.Parsing;
 using Ignixa.FhirPath.Parsing.ParseTree;
 using Superpower;
+using Superpower.Model;
 
 namespace Ignixa.FhirPath.Parser;
 
@@ -114,14 +115,25 @@ public class FhirPathParser
                 t.Kind != FhirPathTokenKind.Whitespace &&
                 t.Kind != FhirPathTokenKind.LineComment &&
                 t.Kind != FhirPathTokenKind.BlockComment).ToArray();
-            tokens = new Superpower.Model.TokenList<FhirPathTokenKind>(filteredTokens);
+            tokens = new TokenList<FhirPathTokenKind>(filteredTokens);
         }
 
-        // The grammar recurses once per bracket level inside Superpower's combinators, where no counter
-        // can be added, so nesting is bounded on the token list before the grammar ever sees it.
+        // Each bracket level costs the grammar tens of kilobytes of stack, so nesting is bounded on the
+        // token list before the grammar sees it. The grammar also checks the stack at every bracket level,
+        // which covers threads too small for this bound.
         RejectExcessiveNesting(tokens);
 
-        var parseResult = FhirPathParseTreeGrammar.Expression.AtEnd().TryParse(tokens);
+        TokenListParserResult<FhirPathTokenKind, ParseNode> parseResult;
+        try
+        {
+            parseResult = FhirPathParseTreeGrammar.Expression.AtEnd().TryParse(tokens);
+        }
+        catch (InsufficientExecutionStackException ex)
+        {
+            throw new FormatException(
+                "Expression is nested too deeply to parse on the current thread's stack.", ex);
+        }
+
         if (!parseResult.HasValue)
             throw new FormatException($"Parsing failed: {parseResult}");
 
@@ -137,7 +149,7 @@ public class FhirPathParser
         return tree;
     }
 
-    private void RejectExcessiveNesting(Superpower.Model.TokenList<FhirPathTokenKind> tokens)
+    private void RejectExcessiveNesting(TokenList<FhirPathTokenKind> tokens)
     {
         var depth = 0;
         foreach (var token in tokens)

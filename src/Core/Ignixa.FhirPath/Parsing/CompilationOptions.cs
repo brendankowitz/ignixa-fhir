@@ -19,11 +19,18 @@ namespace Ignixa.FhirPath.Parsing;
 /// the parser rejects oversized input with a <see cref="FormatException"/> before anything recurses over it.
 /// </para>
 /// <para>
-/// The defaults sit below the depths measured to exhaust a 1 MB stack with tier-1 JIT (26 to 28 nested
-/// function calls or instance selectors in the parser; about 900 chained operators in the evaluator) and at least 2.6 times above the
-/// deepest, most nested and longest expressions in the shipped search parameters and invariants (tree depth
-/// 70, nesting 6, 3,107 characters). Raising them trades that margin away; running on a thread with a stack
-/// smaller than 1 MB narrows it.
+/// The defaults sit below the smallest depths measured to exhaust a bare 1 MB thread stack (Windows x64,
+/// .NET 10, Release, tier-1 JIT with dynamic PGO): about 25 levels when function-call and instance-selector
+/// nesting alternate, and several hundred chained operators. Those depths move by tens of percent between
+/// runs and JIT states, so they are an order of magnitude, not a guarantee. The defaults are also at least
+/// 2.6 times above the deepest, most nested and longest expressions in the shipped search parameters and
+/// invariants (tree depth 70, nesting 6, 3,107 characters).
+/// </para>
+/// <para>
+/// The limits are the first line of defence, not the only one: every recursive stage, the parser's grammar
+/// included, checks the remaining stack, so a thread that runs short anyway gets an exception rather than a
+/// crash. Raising the limits makes that fallback, rather than a clean <see cref="FormatException"/>, the
+/// normal outcome for oversized input.
 /// </para>
 /// </remarks>
 public sealed class CompilationOptions

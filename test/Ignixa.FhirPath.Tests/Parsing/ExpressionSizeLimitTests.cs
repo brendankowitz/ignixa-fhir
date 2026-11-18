@@ -9,6 +9,8 @@ using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Parser;
 using Ignixa.FhirPath.Parsing;
+using Ignixa.FhirPath.Tests.Evaluation;
+using Ignixa.FhirPath.Tests.TestHelpers;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 using Ignixa.Specification.Extensions;
@@ -26,16 +28,17 @@ namespace Ignixa.FhirPath.Tests.Parsing;
 /// therefore bounds length, bracket nesting and tree depth up front and reports a <see cref="FormatException"/>.
 /// </para>
 /// <para>
-/// The over-limit inputs here are deliberately only a little over the default limits, below the depths that
-/// crashed the process before the fix, so this suite can run against the base commit without killing the
-/// test host - and fails there, because the base commit accepts them. The process-killing sizes are proven
-/// out of process, not here.
+/// The over-limit inputs are deliberately only a little over the default limits, below the depths that
+/// crashed the process before the fix: the same inputs, parsed by the code before the fix, are accepted
+/// rather than crashing the host. (This suite itself does not compile there, because it uses the
+/// <see cref="CompilationOptions"/> limits it pins.) The process-killing sizes are proven out of process.
 /// </para>
 /// </remarks>
 public class ExpressionSizeLimitTests
 {
     private const int OverNesting = CompilationOptions.DefaultMaxNestingDepth + 4;
     private const int OverChain = CompilationOptions.DefaultMaxExpressionDepth + 44;
+    private const int Nesting = CompilationOptions.DefaultMaxNestingDepth;
 
     public static TheoryData<string, string> OverLimitShapes => new()
     {
@@ -80,25 +83,56 @@ public class ExpressionSizeLimitTests
         Should.Throw<FormatException>(() => parser.Parse(expression));
     }
 
-    [Fact]
-    public void GivenExpressionsAtEachDefaultLimit_WhenParsedAndEvaluated_ThenTheySucceed()
+    public static TheoryData<string, string, int> AtLimitShapes => new()
     {
-        // Arrange: exactly at each limit, which must stay legal - and evaluable, since a limit only helps
-        // if everything it admits runs without exhausting the stack.
-        var nesting = CompilationOptions.DefaultMaxNestingDepth;
-        var atNestingLimit = Repeat("(", nesting) + "1" + Repeat(")", nesting);
-        var termsAtDepthLimit = CompilationOptions.DefaultMaxExpressionDepth;
-        var atDepthLimit = "1" + Repeat("+1", termsAtDepthLimit - 1);
-        var parser = new FhirPathParser();
-        var subject = ResourceJsonNode.Parse("""{"resourceType":"Patient"}""").ToElement(FhirVersion.R4.GetSchemaProvider());
+        { "nested parentheses", Repeat("(", Nesting) + "1" + Repeat(")", Nesting), 1 },
+        { "nested function arguments", Repeat("iif(true,", Nesting) + "1" + Repeat(",2)", Nesting), 1 },
+        { "nested select", "name.select(" + Repeat("select(", Nesting - 1) + "true" + Repeat(")", Nesting), 1 },
+        { "nested instance selectors", NestedExtensions(Nesting), 1 },
+        { "alternating function arguments and instance selectors", AlternatingIifAndExtensions(Nesting), 1 },
+        { "binary-operator chain at the depth limit", "1" + Repeat("+1", CompilationOptions.DefaultMaxExpressionDepth - 1), 1 },
+    };
+
+    [Theory]
+    [MemberData(nameof(AtLimitShapes))]
+    public void GivenAnExpressionAtTheDefaultLimits_WhenParsedAndEvaluatedOnAOneMegabyteStack_ThenItSucceeds(
+        string shape,
+        string expression,
+        int expectedCount)
+    {
+        // Arrange: a limit only protects the process if everything it admits also runs, so the worst shapes
+        // measured for stack use per bracket level are parsed and evaluated on a 1 MB stack - smaller than
+        // the 1.5 MB thread-pool default - right at the limit.
+        var subject = ResourceJsonNode.Parse("""{"resourceType":"Patient","name":[{"family":"x"}]}""")
+            .ToElement(FhirVersion.R4.GetSchemaProvider());
 
         // Act
-        var nestedValue = new FhirPathEvaluator().Evaluate(subject, parser.Parse(atNestingLimit)).Single().Value;
-        var deepValue = new FhirPathEvaluator().Evaluate(subject, parser.Parse(atDepthLimit)).Single().Value;
+        var results = StackSizedThread.Run(
+            () =>
+            {
+                var parsed = new FhirPathParser().Parse(expression);
+                return new FhirPathEvaluator().Evaluate(subject, parsed, InstanceCreationTestContext.For(subject)).ToList();
+            },
+            maxStackSize: 1024 * 1024);
 
         // Assert
-        nestedValue.ShouldBe(1);
-        deepValue.ShouldBe(termsAtDepthLimit);
+        results.Count.ShouldBe(expectedCount, shape);
+    }
+
+    [Fact]
+    public void GivenNestingBeyondTheThreadStack_WhenParsedWithTheNestingLimitRaised_ThenParseThrowsFormatException()
+    {
+        // Arrange: with the pre-scan disabled, the grammar's own stack check is all that stands between this
+        // input and a stack overflow that would kill the test host.
+        var parser = new FhirPathParser(new CompilationOptions { MaxNestingDepth = int.MaxValue });
+        var expression = Repeat("iif(true,", 250) + "1" + Repeat(",2)", 250);
+
+        // Act
+        var exception = Should.Throw<FormatException>(
+            () => StackSizedThread.Run(() => parser.Parse(expression), maxStackSize: 1024 * 1024));
+
+        // Assert
+        exception.InnerException.ShouldBeOfType<InsufficientExecutionStackException>();
     }
 
     [Fact]
@@ -125,9 +159,37 @@ public class ExpressionSizeLimitTests
     [InlineData(-1)]
     public void GivenANonPositiveLimit_WhenConstructingOptions_ThenThrowsArgumentOutOfRange(int limit)
     {
-        Should.Throw<ArgumentOutOfRangeException>(() => new CompilationOptions { MaxExpressionLength = limit });
-        Should.Throw<ArgumentOutOfRangeException>(() => new CompilationOptions { MaxNestingDepth = limit });
-        Should.Throw<ArgumentOutOfRangeException>(() => new CompilationOptions { MaxExpressionDepth = limit });
+        // Arrange
+        Func<CompilationOptions>[] constructions =
+        [
+            () => new CompilationOptions { MaxExpressionLength = limit },
+            () => new CompilationOptions { MaxNestingDepth = limit },
+            () => new CompilationOptions { MaxExpressionDepth = limit },
+        ];
+
+        // Act
+        var failures = constructions.Select(construct => Record.Exception(construct)).ToList();
+
+        // Assert
+        failures.ShouldAllBe(failure => failure is ArgumentOutOfRangeException);
+    }
+
+    // Extension.extension is itself an Extension, so instance selectors can nest to any depth.
+    private static string NestedExtensions(int depth) =>
+        Repeat("Extension{extension: ", depth - 1) + "Extension{url: 'u'}" + Repeat("}", depth - 1);
+
+    private static string AlternatingIifAndExtensions(int depth)
+    {
+        var open = new StringBuilder();
+        var close = new StringBuilder();
+        for (var level = 0; level < depth - 1; level++)
+        {
+            var isIif = level % 2 == 0;
+            open.Append(isIif ? "iif(true, " : "Extension{extension: ");
+            close.Insert(0, isIif ? ", {})" : "}");
+        }
+
+        return open + "Extension{url: 'u'}" + close;
     }
 
     private static string Repeat(string value, int count) => new StringBuilder(value.Length * count).Insert(0, value, count).ToString();

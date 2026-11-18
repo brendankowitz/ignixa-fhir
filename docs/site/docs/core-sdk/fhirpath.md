@@ -614,7 +614,7 @@ Every stage after tokenizing (the parser, the AST builders, the analyzer, the de
 
 The defaults apply to every `FhirPathParser`, including the one behind `Select`, `Scalar` and the other extension methods. The deepest expressions in the shipped FHIR search parameters and invariants reach a nesting depth of 6, a tree depth of 70 and a length of about 3,100 characters.
 
-Bracket nesting has a much lower limit than tree depth because each bracket level costs the parser far more stack: on a 1 MB stack the parser overflowed at 26 to 28 nested function calls or instance selectors, while a chain of operators reached about 900 terms before evaluation ran short of stack.
+Bracket nesting has a much lower limit than tree depth because each bracket level costs the parser far more stack. Measured on a bare 1 MB thread (Windows x64, .NET 10, Release build, tier-1 JIT with dynamic PGO), the parser ran out of stack at about 25 levels when function calls and instance selectors alternated, while chains of operators ran to several hundred terms. These depths vary between runs and with JIT state, and a request thread has already used part of its stack, so treat them as an order of magnitude.
 
 The limits are configurable through `CompilationOptions`:
 
@@ -626,7 +626,12 @@ var parser = new FhirPathParser(new CompilationOptions
 });
 ```
 
-Raise them only for trusted expressions, and only after measuring on the smallest thread stack the host uses. As a further safeguard, the AST builders, the analyzer, the delegate compiler and the evaluator call `RuntimeHelpers.EnsureSufficientExecutionStack()` as they recurse, so a thread whose stack is too small for an expression the limits admit gets an `InsufficientExecutionStackException` rather than terminating the process. The parser's own grammar has no such check, which is why bracket nesting is bounded before parsing starts.
+Raise them only for trusted expressions, and only after measuring on the smallest thread stack the host uses. As a further safeguard, every recursive stage calls `RuntimeHelpers.EnsureSufficientExecutionStack()` as it recurses, so a thread whose stack is too small for an expression gets an exception rather than terminating the process:
+
+- the parser's grammar checks at every bracket level and reports a `FormatException` (with the `InsufficientExecutionStackException` as its inner exception), so `TryParse` returns `false`;
+- the AST builders, the delegate compiler, the evaluator and `FhirPathAnalyzer.Analyze` throw `InsufficientExecutionStackException`.
+
+The limits keep these fallbacks off the normal path; they do not replace them.
 
 ### Evaluation Errors
 

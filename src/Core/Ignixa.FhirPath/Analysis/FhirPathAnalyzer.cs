@@ -140,8 +140,10 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
             var contextForCollection = AnalysisContext.Create(_schema, rootTypeName);
             expression.AcceptVisitor(typeCollector, contextForCollection);
         }
-        catch (Exception)
+        catch (Exception ex) when (ex is not InsufficientExecutionStackException)
         {
+            // Stack exhaustion is not swallowed: the tree is too deep for this thread, and returning partial
+            // types would hide that. (The first pass has already recorded it as an issue.)
             // Ignore exceptions during type collection to ensure we return partial type information
             // Validation errors are already captured in the first pass
         }

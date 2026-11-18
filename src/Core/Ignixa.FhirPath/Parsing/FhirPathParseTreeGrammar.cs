@@ -7,10 +7,11 @@
 
 using Ignixa.FhirPath.Parser;
 using Ignixa.FhirPath.Parsing.ParseTree;
+using System.Globalization;
+using System.Runtime.CompilerServices;
 using Superpower;
 using Superpower.Model;
 using Superpower.Parsers;
-using System.Globalization;
 
 namespace Ignixa.FhirPath.Parsing;
 
@@ -112,7 +113,7 @@ internal static class FhirPathParseTreeGrammar
 
     private static readonly TokenListParser<FhirPathTokenKind, ParseNode> ParenthesizedExpression =
         from lparen in Token.EqualTo(FhirPathTokenKind.LeftParen)
-        from expr in Parse.Ref(() => Expression!)
+        from expr in Parse.Ref(() => NestedExpression!)
         from rparen in Token.EqualTo(FhirPathTokenKind.RightParen)
         select (ParseNode)new ParenthesizedParseNode(expr, Loc(lparen, rparen));
 
@@ -140,7 +141,7 @@ internal static class FhirPathParseTreeGrammar
                 from elementName in Token.EqualTo(FhirPathTokenKind.Identifier)
                     .Or(Token.EqualTo(FhirPathTokenKind.DelimitedIdentifier))
                 from colon in Token.EqualTo(FhirPathTokenKind.Colon)
-                from valueExpr in Parse.Ref(() => Expression!)
+                from valueExpr in Parse.Ref(() => NestedExpression!)
                 select new ElementAssignmentParseNode(
                     UnescapeIdentifier(elementName.ToStringValue()),
                     valueExpr,
@@ -190,7 +191,7 @@ internal static class FhirPathParseTreeGrammar
             from lparen in Token.EqualTo(FhirPathTokenKind.LeftParen)
             from args in (IsTypeSpecifierFunction(nameToken.ToStringValue())
                 ? TypeSpecifierArgument.ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Comma))
-                : Parse.Ref(() => Expression!).ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Comma)))
+                : Parse.Ref(() => NestedExpression!).ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Comma)))
             from rparen in Token.EqualTo(FhirPathTokenKind.RightParen)
             select (args, rparen)
         ).Optional()
@@ -226,7 +227,7 @@ internal static class FhirPathParseTreeGrammar
             from lparen in Token.EqualTo(FhirPathTokenKind.LeftParen)
             from args in (IsTypeSpecifierFunction(nameToken.ToStringValue())
                 ? TypeSpecifierArgument.ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Comma))
-                : Parse.Ref(() => Expression!).ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Comma)))
+                : Parse.Ref(() => NestedExpression!).ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Comma)))
             from rparen in Token.EqualTo(FhirPathTokenKind.RightParen)
             select (args, rparen)
         ).Optional()
@@ -244,7 +245,7 @@ internal static class FhirPathParseTreeGrammar
 
     private static readonly TokenListParser<FhirPathTokenKind, Func<ParseNode, ParseNode>> IndexerInvocation =
         from lbracket in Token.EqualTo(FhirPathTokenKind.LeftBracket)
-        from index in Parse.Ref(() => Expression!)
+        from index in Parse.Ref(() => NestedExpression!)
         from rbracket in Token.EqualTo(FhirPathTokenKind.RightBracket)
         select new Func<ParseNode, ParseNode>(focus =>
             new IndexerParseNode(focus, index, Loc(lbracket, rbracket)));
@@ -343,6 +344,16 @@ internal static class FhirPathParseTreeGrammar
             OrExpression);
 
     public static readonly TokenListParser<FhirPathTokenKind, ParseNode> Expression = ImpliesExpression;
+
+    // Every bracket level - parentheses, function arguments, indexers, instance-selector values - re-enters
+    // the grammar through this parser, and each re-entry descends through every precedence level above, so
+    // this is where the parser's stack use grows. Checking here bounds the unchecked recursion between two
+    // checks to a single bracket level. FhirPathParser turns the exception into a FormatException.
+    private static readonly TokenListParser<FhirPathTokenKind, ParseNode> NestedExpression = input =>
+    {
+        RuntimeHelpers.EnsureSufficientExecutionStack();
+        return Expression(input);
+    };
 
     private static string UnescapeString(string str)
     {
