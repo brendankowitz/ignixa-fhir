@@ -336,25 +336,8 @@ internal static class StringFunctions
             return [];
 
         // FHIRPath uses single-line mode where '.' matches any character including newlines
-        var regex = CreateRegex(pattern, RegexOptions.Singleline, "matches");
-        return FunctionHelpers.ReturnBoolean(regex.IsMatch(str));
-    }
-
-    /// <summary>
-    /// Compiles a regex, signalling an invalid pattern as a <see cref="FhirPathEvaluationException"/>
-    /// rather than an empty result so callers can tell a bad pattern from a non-match.
-    /// </summary>
-    private static Regex CreateRegex(string pattern, RegexOptions options, string functionName)
-    {
-        try
-        {
-            return new Regex(pattern, options);
-        }
-        catch (ArgumentException ex)
-        {
-            throw new FhirPathEvaluationException(
-                $"Invalid regular expression pattern '{pattern}' in {functionName}(): {ex.Message}", ex);
-        }
+        var regex = FhirPathRegex.Get(pattern, RegexOptions.Singleline, "matches");
+        return FunctionHelpers.ReturnBoolean(FhirPathRegex.IsMatch(regex, str, "matches"));
     }
 
     /// <summary>
@@ -397,7 +380,7 @@ internal static class StringFunctions
 
         // Validate the user's raw pattern first: wrapping can turn an invalid pattern (e.g. "a)|(b") into a valid one,
         // and the error should quote the text the caller wrote.
-        CreateRegex(pattern, options, "matchesFull");
+        FhirPathRegex.Get(pattern, options, "matchesFull");
 
         // The raw pattern is valid, so the only way wrapping it can fail is a trailing '#' comment (x flag or inline
         // "(?x)") running to end of line and swallowing the closing. Retry once with a newline, which ends the comment
@@ -405,14 +388,14 @@ internal static class StringFunctions
         Regex regex;
         try
         {
-            regex = CreateRegex("^(?:" + pattern + ")$", options, "matchesFull");
+            regex = FhirPathRegex.Get("^(?:" + pattern + ")$", options, "matchesFull");
         }
         catch (FhirPathEvaluationException)
         {
-            regex = CreateRegex("^(?:" + pattern + "\n)$", options, "matchesFull");
+            regex = FhirPathRegex.Get("^(?:" + pattern + "\n)$", options, "matchesFull");
         }
 
-        return FunctionHelpers.ReturnBoolean(regex.IsMatch(str));
+        return FunctionHelpers.ReturnBoolean(FhirPathRegex.IsMatch(regex, str, "matchesFull"));
     }
 
     private static RegexOptions ParseRegexFlags(string flags)
@@ -465,8 +448,8 @@ internal static class StringFunctions
         if (string.IsNullOrEmpty(pattern))
             return [FunctionHelpers.CreateString(str)];
 
-        var regex = CreateRegex(pattern, RegexOptions.None, "replaceMatches");
-        var result = regex.Replace(str, substitution);
+        var regex = FhirPathRegex.Get(pattern, RegexOptions.None, "replaceMatches");
+        var result = FhirPathRegex.Replace(regex, str, substitution, "replaceMatches");
         return [FunctionHelpers.CreateString(result)];
     }
 
@@ -698,8 +681,9 @@ internal static class StringFunctions
             };
 #pragma warning restore CA1308 // Normalize strings to uppercase
         }
-        catch
+        catch (FormatException)
         {
+            // Not valid base64 / hex: there is no decoded value. Convert.From*String throws only this for bad input.
             return [];
         }
     }
@@ -804,22 +788,17 @@ internal static class StringFunctions
         if (escapeType is null)
             return [];
 
-        try
-        {
+        // No try/catch: HtmlDecode, UnescapeDataString and UnescapeJsonString all leave a malformed escape
+        // in place rather than throwing, so the only exceptions left to catch here are ones that must surface.
 #pragma warning disable CA1308 // Normalize strings to uppercase
-            return escapeType.ToLowerInvariant() switch
-            {
-                "html" => [FunctionHelpers.CreateString(WebUtility.HtmlDecode(str))],
-                "json" => [FunctionHelpers.CreateString(UnescapeJsonString(str))],
-                "url" => [FunctionHelpers.CreateString(Uri.UnescapeDataString(str))],
-                _ => []
-            };
-#pragma warning restore CA1308 // Normalize strings to uppercase
-        }
-        catch
+        return escapeType.ToLowerInvariant() switch
         {
-            return [];
-        }
+            "html" => [FunctionHelpers.CreateString(WebUtility.HtmlDecode(str))],
+            "json" => [FunctionHelpers.CreateString(UnescapeJsonString(str))],
+            "url" => [FunctionHelpers.CreateString(Uri.UnescapeDataString(str))],
+            _ => []
+        };
+#pragma warning restore CA1308 // Normalize strings to uppercase
     }
 
     /// <summary>
@@ -847,7 +826,7 @@ internal static class StringFunctions
                         if (i + 5 < s.Length)
                         {
                             var hex = s.Substring(i + 2, 4);
-                            if (int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out var codepoint))
+                            if (int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out var codepoint))
                             {
                                 sb.Append((char)codepoint);
                                 i += 5;
