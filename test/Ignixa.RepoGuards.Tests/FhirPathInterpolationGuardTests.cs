@@ -4,6 +4,9 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.RegularExpressions;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Shouldly;
 using Xunit;
 
@@ -21,44 +24,43 @@ namespace Ignixa.RepoGuards.Tests;
 /// (<c>%name</c> via <c>EvaluationContext.WithEnvironmentVariable</c>) so the expression text is constant.
 /// </para>
 /// <para>
-/// Two patterns are flagged, on whole-file text with comment lines blanked: an interpolated literal that
-/// holds a quoted hole (<c>'{x}'</c>) next to a FHIRPath function call, and an interpolated literal passed
-/// directly as the expression argument of <c>Select</c>, <c>Scalar</c>, <c>IsTrue</c>, <c>IsBoolean</c>,
-/// <c>Predicate</c> or <c>Parse</c>. It is a heuristic: an expression assembled by concatenation or from a
-/// variable that is later interpolated is not seen, which is what review is for.
+/// The scan parses each file with Roslyn rather than matching text, so every interpolated literal form
+/// (<c>$"..."</c>, <c>@$"..."</c>, <c>$@"..."</c>, single- and multi-line <c>$"""..."""</c>) is seen as one node,
+/// wherever its lines break, and comments are never scanned. An interpolated literal is reported when it
+/// (a) is an argument to <c>Select</c>, <c>Scalar</c>, <c>IsTrue</c>, <c>IsBoolean</c> or <c>Predicate</c>, or to
+/// <c>Parse</c>, <c>Evaluate</c> or <c>Compile</c> on a FHIRPath parser/evaluator receiver, or (b) holds a
+/// quoted hole (<c>'{x}'</c>) next to a FHIRPath function call. It is syntactic, with no type information: an
+/// expression assembled by concatenation, or built into a variable that is interpolated later, is not seen.
 /// </para>
 /// </remarks>
 public class FhirPathInterpolationGuardTests
 {
     private const string SourcePath = "src";
 
-    private static readonly Regex[] InterpolationPatterns =
-    [
-        // $"...where(type = '{value}')..." - a quoted hole beside a FHIRPath function call.
-        new(
-            @"\$@?""[^""\n]*\.(?:where|exists|first|select|all|ofType|startsWith|endsWith|contains|extension|matches|iif)\([^""\n]*'\{[^}""\n]+\}",
-            RegexOptions.Compiled | RegexOptions.CultureInvariant),
+    private static readonly HashSet<string> ExpressionArgumentMethods =
+        new(["Select", "Scalar", "IsTrue", "IsBoolean", "Predicate"], StringComparer.Ordinal);
 
-        // .Select($"...{value}...") - any interpolated expression argument.
-        new(
-            @"\.(?:Select|Scalar|IsTrue|IsBoolean|Predicate|Parse)\(\s*\$@?""",
-            RegexOptions.Compiled | RegexOptions.CultureInvariant),
-    ];
+    private static readonly HashSet<string> ParserArgumentMethods =
+        new(["Parse", "Evaluate", "Compile"], StringComparer.Ordinal);
+
+    // The receiver of Parse/Evaluate/Compile must look like a FHIRPath type or field, so XDocument.Parse and
+    // a query-string parameterParser.Parse are out of scope without an allowlist.
+    private static readonly Regex FhirPathReceiver =
+        new(@"fhirpath|^_?(?:parser|evaluator|compiler)$", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static readonly Regex QuotedHole =
+        new(@"'\{+[^{}]+\}+'", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex FhirPathFunctionCall =
+        new(@"\.(?:where|exists|first|select|all|ofType|startsWith|endsWith|contains|extension|matches|iif)\(", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>
-    /// Interpolations that are not FHIRPath, with the reason. Keyed by path relative to <see cref="SourcePath"/>;
-    /// the value is how many the file may hold. An entry whose count no longer matches fails the scan, so the
-    /// list cannot outlive the code it excuses.
+    /// Interpolations that are not FHIRPath, with the reason. Keyed by the path relative to
+    /// <see cref="SourcePath"/> and the whitespace-normalized literal text, so a second interpolation on the
+    /// same line is a different key and cannot ride on an existing entry. An entry that no longer matches
+    /// anything fails the scan, so the list cannot outlive the code it excuses.
     /// </summary>
-    private static readonly Dictionary<string, (int Count, string Reason)> Allowlist = new(StringComparer.Ordinal)
-    {
-        ["Core/Ignixa.NarrativeGenerator/Security/XhtmlSanitizer.cs"] = (1,
-            "XDocument.Parse over an XHTML narrative wrapper, not a FHIRPath expression. The pattern matches "
-            + "any Parse( call; the input is sanitized as XML by this class."),
-        ["Application/Ignixa.Application.BackgroundOperations/BulkDelete/Activities/BulkDeleteBatchActivity.cs"] = (1,
-            "parameterParser.Parse over a search query string whose values are Uri.EscapeDataString-encoded; "
-            + "it is a URL query, not a FHIRPath expression."),
-    };
+    private static readonly Dictionary<(string File, string Literal), string> Allowlist = new();
 
     [Fact]
     public void GivenSourceFiles_WhenScanned_ThenNoValueIsInterpolatedIntoFhirPathOutsideTheAllowlist()
@@ -69,17 +71,17 @@ public class FhirPathInterpolationGuardTests
             $"Found too few .cs files under {SourcePath} for this scan to be meaningful; the scan path is probably wrong.");
 
         var found = sources
-            .Select(file => (File: Relative(root, file), Hits: FindInterpolations(File.ReadAllText(file))))
-            .Where(entry => entry.Hits.Count > 0)
+            .SelectMany(file => FindInterpolations(File.ReadAllText(file))
+                .Select(hit => (File: Relative(root, file), Hit: hit)))
             .ToList();
 
         var offenders = found
-            .Where(entry => !Allowlist.TryGetValue(entry.File, out var allowed) || allowed.Count != entry.Hits.Count)
-            .SelectMany(entry => entry.Hits.Select(hit => $"{SourcePath}/{entry.File}({hit.Line}): {hit.Text}"))
+            .Where(entry => !Allowlist.ContainsKey((entry.File, entry.Hit.Literal)))
+            .Select(entry => $"{SourcePath}/{entry.File}({entry.Hit.Line}): {entry.Hit.Literal}")
             .ToList();
 
         var staleEntries = Allowlist.Keys
-            .Where(file => found.All(entry => !string.Equals(entry.File, file, StringComparison.Ordinal)))
+            .Where(key => !found.Any(entry => entry.File == key.File && entry.Hit.Literal == key.Literal))
             .ToList();
 
         offenders.ShouldBeEmpty(
@@ -88,56 +90,88 @@ public class FhirPathInterpolationGuardTests
             + "EvaluationContext.WithEnvironmentVariable instead. If the interpolation is not FHIRPath, add it "
             + "to the allowlist in this file with a reason."
             + Environment.NewLine + string.Join(Environment.NewLine, offenders));
-        staleEntries.ShouldBeEmpty("These allowlist entries no longer hold an interpolation; remove them.");
+        staleEntries.ShouldBeEmpty("These allowlist entries no longer match an interpolation; remove them.");
     }
 
     /// <summary>
     /// The positive control: without it a defect in the matcher would let the scan report green over files
-    /// it never really examined.
+    /// it never really examined. Covers each literal form, and a literal split across lines.
     /// </summary>
     [Theory]
-    [InlineData("""var e = $"rest.resource.where(type = '{ResourceType}').exists()";""")]
-    [InlineData("""x.Select($"snapshot.element.where(path='{path}')")""")]
-    [InlineData("""element.Scalar($"{path}.fixedString")""")]
-    [InlineData("""element.IsTrue( $"{expression}" )""")]
+    [InlineData("""class C { string e = $"rest.resource.where(type = '{ResourceType}').exists()"; }""")]
+    [InlineData("""class C { string e = @$"rest.resource.where(type = '{ResourceType}').exists()"; }""")]
+    [InlineData("""class C { string e = $@"rest.resource.where(type = '{ResourceType}').exists()"; }""")]
+    [InlineData("class C { string e = $\"\"\"rest.resource.where(type = '{ResourceType}').exists()\"\"\"; }")]
+    [InlineData("class C { string e = $\"\"\"\n    rest.resource\n        .where(type = '{ResourceType}')\n    \"\"\"; }")]
+    [InlineData("class C { string e = $$\"\"\"rest.resource.where(type = '{{ResourceType}}').exists()\"\"\"; }")]
+    [InlineData("""class C { void M() { x.Select($"snapshot.element.where(path='{path}')"); } }""")]
+    [InlineData("""class C { void M() { element.Scalar($"{path}.fixedString"); } }""")]
+    [InlineData("""class C { void M() { element.IsTrue( $"{expression}" ); } }""")]
+    [InlineData("class C { void M() { element.Scalar(\n    $\"\"\"\n    {path}.fixedString\n    \"\"\"); } }")]
+    [InlineData("""class C { void M() { _parser.Parse($"{expression}"); } }""")]
+    [InlineData("""class C { void M() { fhirPathEvaluator.Evaluate($"{expression}"); } }""")]
     public void GivenAnInterpolatedFhirPathExpression_WhenScanned_ThenItIsDetected(string source)
     {
         FindInterpolations(source).ShouldNotBeEmpty("The scan does not see this interpolation, so it is inert for code written this way.");
     }
 
     /// <summary>
-    /// The negative control: constant expressions, variable bindings and ordinary messages are not reported.
+    /// The negative control: constant expressions, variable bindings, ordinary messages, other Parse calls
+    /// and comments are not reported.
     /// </summary>
     [Theory]
-    [InlineData("""var e = "rest.resource.where(type = %resourceType).exists()";""")]
-    [InlineData("""x.Select("snapshot.element.where(path = %path)", context)""")]
-    [InlineData("""throw new BadRequestException($"Resource type '{resourceType}' is not supported");""")]
-    [InlineData("""var e = $"{baseName}.ofType({variant})";""")]
+    [InlineData("""class C { string e = "rest.resource.where(type = %resourceType).exists()"; }""")]
+    [InlineData("""class C { void M() { x.Select("snapshot.element.where(path = %path)", context); } }""")]
+    [InlineData("""class C { void M() { throw new BadRequestException($"Resource type '{resourceType}' is not supported"); } }""")]
+    [InlineData("""class C { string e = $"{baseName}.ofType({variant})"; }""")]
+    [InlineData("""class C { void M() { XDocument.Parse($"<root>{xhtml}</root>"); } }""")]
+    [InlineData("""class C { void M() { parameterParser.Parse($"_id={id}"); } }""")]
+    [InlineData("""class C { void M() { items.Select(item => $"{item}"); } }""")]
     [InlineData("""// var e = $"rest.resource.where(type = '{ResourceType}')";""")]
-    public void GivenAnExpressionWithoutInterpolatedValues_WhenScanned_ThenItIsNotReported(string source)
+    public void GivenCodeWithoutInterpolatedFhirPath_WhenScanned_ThenItIsNotReported(string source)
     {
         FindInterpolations(source).ShouldBeEmpty("The scan reports text that does not interpolate a value into FHIRPath.");
     }
 
-    private static IReadOnlyList<(int Line, string Text)> FindInterpolations(string source)
+    private static IReadOnlyList<(int Line, string Literal)> FindInterpolations(string source)
     {
-        var lines = source.ReplaceLineEndings("\n").Split('\n');
-        var scannable = string.Join(
-            '\n',
-            lines.Select(line => line.TrimStart().StartsWith("//", StringComparison.Ordinal) ? string.Empty : line));
+        var tree = CSharpSyntaxTree.ParseText(source);
 
-        return InterpolationPatterns
-            .SelectMany(pattern => pattern.Matches(scannable).Cast<Match>())
-            .Select(match => LineAt(scannable, lines, match.Index))
-            .DistinctBy(hit => hit.Line)
-            .OrderBy(hit => hit.Line)
+        return tree.GetRoot()
+            .DescendantNodes()
+            .OfType<InterpolatedStringExpressionSyntax>()
+            .Where(IsFhirPathInterpolation)
+            .Select(node => (
+                Line: node.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
+                Literal: Regex.Replace(node.ToString(), @"\s+", " ")))
             .ToList();
     }
 
-    private static (int Line, string Text) LineAt(string scannable, string[] lines, int index)
+    private static bool IsFhirPathInterpolation(InterpolatedStringExpressionSyntax literal)
     {
-        int line = scannable.Take(index).Count(character => character == '\n');
-        return (line + 1, lines[line].Trim());
+        var text = literal.ToString();
+        if (QuotedHole.IsMatch(text) && FhirPathFunctionCall.IsMatch(text))
+        {
+            return true;
+        }
+
+        return literal.Parent is ArgumentSyntax { Parent: ArgumentListSyntax { Parent: InvocationExpressionSyntax call } }
+            && TakesFhirPathExpression(call);
+    }
+
+    private static bool TakesFhirPathExpression(InvocationExpressionSyntax call)
+    {
+        switch (call.Expression)
+        {
+            case MemberAccessExpressionSyntax member:
+                var name = member.Name.Identifier.ValueText;
+                return ExpressionArgumentMethods.Contains(name)
+                    || (ParserArgumentMethods.Contains(name) && FhirPathReceiver.IsMatch(member.Expression.ToString()));
+            case IdentifierNameSyntax identifier:
+                return ExpressionArgumentMethods.Contains(identifier.Identifier.ValueText);
+            default:
+                return false;
+        }
     }
 
     private static List<string> Sources(string root) =>

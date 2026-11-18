@@ -13,6 +13,7 @@ using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Models;
 using Ignixa.Serialization;
@@ -35,7 +36,7 @@ public class PatchResourceFieldTool : TenantAwareMcpTool
         ITenantConfigurationStore tenantStore,
         IMediator mediator,
         IFhirVersionContext versionContext)
-        : base(fhirRequestContextAccessor, tenantStore)
+        : base(fhirRequestContextAccessor, tenantStore, versionContext: versionContext)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
         _versionContext = versionContext ?? throw new ArgumentNullException(nameof(versionContext));
@@ -94,13 +95,17 @@ public class PatchResourceFieldTool : TenantAwareMcpTool
             };
         }
 
-        var resourceTypeError = await ValidateResourceTypeAsync(resourceType, resolvedTenantId, _versionContext, cancellationToken);
-        if (resourceTypeError != null)
+        // Like tenant resolution above, a rejected resource type is reported in the result, not thrown.
+        try
+        {
+            resourceType = (await RequireKnownResourceTypeAsync(resourceType, resolvedTenantId, cancellationToken)).ResourceType;
+        }
+        catch (BadRequestException ex)
         {
             return new PatchResourceFieldResultDto
             {
                 Success = false,
-                ErrorMessage = resourceTypeError,
+                ErrorMessage = ex.Message,
                 PatchedResource = null
             };
         }

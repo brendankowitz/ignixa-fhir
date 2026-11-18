@@ -158,6 +158,10 @@ Get version history for a resource.
 }
 ```
 
+#### Resource type validation
+
+`search_fhir_resources`, `get_fhir_resource`, `get_resource_history`, `patch_resource_field` and `patch_fhir_resource` check `resourceType` against the resource types the tenant serves, including types defined by installed packages, before doing any work. This is the same check the REST API applies to `/{resourceType}` routes. An unknown type is rejected with an error that names it (truncated to 64 characters), and the match is case-insensitive: `patient` is used as `Patient`.
+
 ### Package Management
 
 #### search_fhir_packages

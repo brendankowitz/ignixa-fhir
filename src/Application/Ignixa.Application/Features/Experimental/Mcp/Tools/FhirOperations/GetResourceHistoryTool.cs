@@ -33,7 +33,7 @@ public class GetResourceHistoryTool : TenantAwareMcpTool
         ITenantConfigurationStore tenantStore,
         IMediator mediator,
         IFhirVersionContext versionContext)
-        : base(fhirRequestContextAccessor, tenantStore)
+        : base(fhirRequestContextAccessor, tenantStore, versionContext: versionContext)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
         _fhirRequestContextAccessor = fhirRequestContextAccessor;
@@ -73,11 +73,8 @@ Example: resourceType='Patient', id='123', count=5")]
         // Resolve tenant using base class logic
         var resolvedTenantId = await ResolveTenantIdAsync(tenantId, cancellationToken);
 
-        var resourceTypeError = await ValidateResourceTypeAsync(resourceType, resolvedTenantId, _versionContext, cancellationToken);
-        if (resourceTypeError != null)
-        {
-            throw new ArgumentException(resourceTypeError);
-        }
+        var knownResourceType = await RequireKnownResourceTypeAsync(resourceType, resolvedTenantId, cancellationToken);
+        resourceType = knownResourceType.ResourceType;
 
         // Enforce default count=10, max=50 (LLM optimization per design guidelines)
         var effectiveCount = Math.Min(count ?? 10, 50);

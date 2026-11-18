@@ -45,7 +45,7 @@ public class GetResourceHistoryToolTests
         tenantStore.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>())
             .Returns(new TenantConfiguration { TenantId = 1, DisplayName = "History test", FhirVersion = "4.0" });
         var versionContext = Substitute.For<IFhirVersionContext>();
-        versionContext.GetBaseSchemaProvider(FhirVersion.R4).Returns(FhirVersion.R4.GetSchemaProvider());
+        versionContext.GetSchemaProvider(FhirVersion.R4, 1).Returns(FhirVersion.R4.GetSchemaProvider());
         return new GetResourceHistoryTool(contextAccessor, tenantStore, mediator, versionContext);
     }
 

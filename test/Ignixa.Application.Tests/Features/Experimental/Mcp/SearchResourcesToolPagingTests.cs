@@ -135,6 +135,7 @@ public class SearchResourcesToolPagingTests
             .Returns(new TenantConfiguration { TenantId = 1, DisplayName = "Search test", FhirVersion = "4.0" });
         var versionContext = Substitute.For<IFhirVersionContext>();
         versionContext.GetBaseSchemaProvider(FhirVersion.R4).Returns(FhirVersion.R4.GetSchemaProvider());
+        versionContext.GetSchemaProvider(FhirVersion.R4, 1).Returns(FhirVersion.R4.GetSchemaProvider());
         var builder = Substitute.For<ISearchOptionsBuilder>();
         builder.Build(Arg.Any<string?>(), Arg.Any<IReadOnlyList<QueryParameter>>(), Arg.Any<ISchema?>())
             .Returns(new SearchOptions

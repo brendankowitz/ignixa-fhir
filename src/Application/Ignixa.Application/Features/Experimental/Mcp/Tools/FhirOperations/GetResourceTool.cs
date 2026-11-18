@@ -33,7 +33,7 @@ public class GetResourceTool : TenantAwareMcpTool
         IMediator mediator,
         IFhirRequestContextAccessor contextAccessor,
         IFhirVersionContext versionContext)
-        : base(fhirRequestContextAccessor, tenantStore)
+        : base(fhirRequestContextAccessor, tenantStore, versionContext: versionContext)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
         _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
@@ -68,11 +68,8 @@ Example: resourceType='Patient', id='123', elements='id,name,birthDate'")]
         // Resolve tenant using base class logic
         var resolvedTenantId = await ResolveTenantIdAsync(tenantId, cancellationToken);
 
-        var resourceTypeError = await ValidateResourceTypeAsync(resourceType, resolvedTenantId, _versionContext, cancellationToken);
-        if (resourceTypeError != null)
-        {
-            throw new ArgumentException(resourceTypeError);
-        }
+        var knownResourceType = await RequireKnownResourceTypeAsync(resourceType, resolvedTenantId, cancellationToken);
+        resourceType = knownResourceType.ResourceType;
 
         // Update the FHIR request context with the resolved tenant ID
         // The middleware has already created the context, we just need to update the tenant
