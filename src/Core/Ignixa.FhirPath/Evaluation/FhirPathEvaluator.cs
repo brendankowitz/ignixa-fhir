@@ -242,6 +242,10 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// Per FHIRPath 2.0 spec, the variable is available for the remainder of the expression.
     /// Uses a mutable dictionary in the context to allow side effects while keeping context immutable.
     /// </summary>
+    /// <remarks>
+    /// Handled before dispatch, so it charges the text of its name and value arguments itself. The focus is stored,
+    /// not read, so its text is charged where a later read of it is.
+    /// </remarks>
     private IEnumerable<IElement> EvaluateDefineVariable(FunctionCallExpression expression, IEnumerable<IElement> focus, EvaluationContext context)
     {
         if (expression.Arguments.Count is < 1 or > 2)
@@ -258,7 +262,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         }
         else
         {
-            var nameResult = EvaluateExpression(focus, nameExpr, context).ToList();
+            var nameResult = EvaluateFunctionArgument(focus, nameExpr, context).ToList();
             if (nameResult.Count == 1 && nameResult[0].Value is string evaluatedName)
             {
                 variableName = evaluatedName;
@@ -274,7 +278,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         if (expression.Arguments.Count == 2)
         {
             var valueExpr = expression.Arguments[1];
-            value = EvaluateExpression(focus, valueExpr, context).ToImmutableList();
+            value = EvaluateFunctionArgument(focus, valueExpr, context).ToImmutableList();
         }
         else
         {

@@ -15,6 +15,7 @@ using Ignixa.Application.Features.Experimental.GraphQl.Models;
 using Ignixa.Application.Features.Experimental.GraphQl.Resolvers;
 using Ignixa.Application.Features.Experimental.GraphQl.Schema;
 using Ignixa.Domain.Exceptions;
+using Ignixa.FhirPath;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.Experimental.GraphQl.Execution;
@@ -212,7 +213,8 @@ public sealed partial class GraphQlExecutionService(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "GraphQL post-processing failed");
+            // Logged without the message, which can quote request or result text.
+            logger.LogError("GraphQL post-processing failed: {Exception}", LogSafeText.DescribeWithoutMessages(ex));
             return OperationResultBuilder.FromResult(opResult)
                 .AddError(BuildError(
                     "GraphQL result post-processing failed; directive transformations were not applied.",

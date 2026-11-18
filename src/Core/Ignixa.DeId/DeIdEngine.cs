@@ -9,6 +9,7 @@ using Ignixa.DeId.Configuration;
 using Ignixa.DeId.Extensions;
 using Ignixa.DeId.Models;
 using Ignixa.DeId.Pipeline;
+using Ignixa.FhirPath;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -58,7 +59,8 @@ public class DeIdEngine : IDeIdEngine
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to parse resource JSON");
+            // Logged without the message, which can quote the input.
+            _logger.LogError("Failed to parse resource JSON: {Exception}", LogSafeText.DescribeWithoutMessages(ex));
             return Result<DeIdResult>.Failure(new DeIdError(
                 "PARSE_ERROR",
                 $"Failed to parse resource JSON: {ex.Message}",

@@ -141,10 +141,12 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
         }
         catch (FhirPatchException ex)
         {
-            _logger.LogError(ex,
-                "PATCH failed: Immutable property violation for {ResourceType}/{ResourceId}",
-                request.ResourceType,
-                request.ResourceId);
+            // Logged without the message, which quotes the request's paths and values.
+            _logger.LogError(
+                "PATCH failed: Immutable property violation for {ResourceType}/{ResourceId}: {Exception}",
+                request.ResourceType.SanitizeForLog(),
+                request.ResourceId.SanitizeForLog(),
+                LogSafeText.DescribeWithoutMessages(ex));
             throw;
         }
 

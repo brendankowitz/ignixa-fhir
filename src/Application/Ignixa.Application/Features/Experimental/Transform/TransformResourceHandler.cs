@@ -184,7 +184,10 @@ public class TransformResourceHandler(
         catch (MappingExecutionException ex) when (ex.Code == "TRANSFORM_TIMEOUT")
         {
             // A timeout is the request being too costly (too-costly outcome), not an unexpected failure.
-            logger.LogWarning(ex, "Transformation exceeded the transform timeout (Location: {Location})", ex.Location);
+            logger.LogWarning(
+                "Transformation exceeded the transform timeout (Location: {Location}): {Exception}",
+                LogSafeText.Sanitize(ex.Location),
+                LogSafeText.DescribeWithoutMessages(ex));
 
             throw new Domain.Exceptions.RequestTooCostlyException(ex.Message, ex);
         }

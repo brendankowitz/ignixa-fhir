@@ -44,6 +44,30 @@ public class InputTextCostTests
     }
 
     [Fact]
+    public void GivenALongComputedVariableName_WhenDefinedInALoopUnderALowStepLimit_ThenTheNameTextIsCharged()
+    {
+        // Arrange: 50 definitions named by a 65,536-character variable, far more text than 50,000 steps allow.
+        var expression = LongDigits + ".select('" + new string('a', 50) + "'.toChars().select(defineVariable(%v)))";
+        var context = new EvaluationContext { Limits = FhirPathEvaluationLimits.Default with { MaxSteps = 50_000 } };
+
+        // Act & Assert
+        Should.Throw<FhirPathResourceLimitExceededException>(() => Evaluate(expression, context));
+    }
+
+    [Fact]
+    public void GivenANormalDefineVariable_WhenEvaluatedWithTheDefaultLimits_ThenTheVariableIsReadable()
+    {
+        // Arrange
+        var expression = "(1 | 2).defineVariable('n' & 'x', 10).select($this + %nx)";
+
+        // Act
+        var result = Evaluate(expression, new EvaluationContext());
+
+        // Assert
+        result.Select(r => r.Value).ShouldBe([11, 12]);
+    }
+
+    [Fact]
     public void GivenAnAggregateWhoseAccumulatorIsLarge_WhenEachIterationRebindsIt_ThenEachRebindingIsCharged()
     {
         // Arrange: a 2,000-item accumulator rebound for 50 items, more than 50,000 steps allow.
