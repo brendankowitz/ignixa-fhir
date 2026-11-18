@@ -103,13 +103,20 @@ internal static class FunctionHelpers
     /// <c>in</c>, <c>contains</c>, <c>intersect</c>, <c>exclude</c> and <c>|</c> compare temporals as
     /// text while the <c>=</c> operator compared them as instants.
     /// </remarks>
-    private static bool AreEqual(object? left, object? right)
+    private static bool AreEqual(object? left, object? right, EvaluationBudget? budget)
     {
         if (left == null && right == null) return true;
         if (left == null || right == null) return false;
 
         if (WireValue.AsWireString(left) is { } leftStr && WireValue.AsWireString(right) is { } rightStr)
         {
+            // Strings of equal length compare character by character; a string read from the resource can be
+            // megabytes long, so the comparison is charged by length.
+            if (leftStr.Length == rightStr.Length)
+            {
+                budget?.ChargeText(leftStr.Length);
+            }
+
             return leftStr == rightStr;
         }
 
@@ -174,7 +181,7 @@ internal static class FunctionHelpers
         // Both have primitive values - compare values
         if (left.Value != null && right.Value != null)
         {
-            return AreEqual(left.Value, right.Value);
+            return AreEqual(left.Value, right.Value, budget);
         }
 
         // One has value, one doesn't - not equal

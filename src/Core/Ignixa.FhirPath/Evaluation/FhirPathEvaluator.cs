@@ -97,6 +97,13 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         // cross product, which materialises nothing and so trips no size limit.
         context.Budget.Step();
 
+        // A subexpression whose value cannot change within this evaluation is computed once: dom-3 would otherwise
+        // walk the whole resource once per contained resource. Skipped under node tracing, which reports every node.
+        if (context.NodeEvaluationHandler is null && LoopInvariance.IsWorthMemoising(expr))
+        {
+            return context.Budget.GetOrAddInvariant(expr, () => expr.AcceptVisitor(this, context).ToList());
+        }
+
         // Optimization: Skip context creation if focus hasn't changed
         // This is common in indexer/child/binary expressions where we evaluate sub-expressions with the same focus
         EvaluationContext effectiveContext;
@@ -345,6 +352,11 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return EvaluateArithmetic(operatorName, leftResult, rightResult, context.Budget);
         }
 
+        if (operatorName is "=" or "!=" or "~" or "!~" or ">" or ">=" or "<" or "<=")
+        {
+            ChargeOperandText(leftResult, rightResult, context.Budget);
+        }
+
         return operatorName switch
         {
             "&" => EvaluateStringConcatenation(leftResult, rightResult, context.Budget),
@@ -406,6 +418,30 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             "or" => EvaluateOr(left, right),
             _ => EvaluateImplies(left, right)
         };
+    }
+
+    /// <summary>
+    /// Charges a comparison for the text it may read: equality, equivalence (which also normalises whitespace) and
+    /// ordering are linear in the length of String operands, and a String read from the resource can be megabytes
+    /// long and referenced from every item of a multiplied collection.
+    /// </summary>
+    private static void ChargeOperandText(List<IElement> left, List<IElement> right, EvaluationBudget budget)
+    {
+        foreach (var operand in left)
+        {
+            if (WireValue.AsWireString(operand.Value) is { } text)
+            {
+                budget.ChargeText(text.Length);
+            }
+        }
+
+        foreach (var operand in right)
+        {
+            if (WireValue.AsWireString(operand.Value) is { } text)
+            {
+                budget.ChargeText(text.Length);
+            }
+        }
     }
 
     /// <summary>

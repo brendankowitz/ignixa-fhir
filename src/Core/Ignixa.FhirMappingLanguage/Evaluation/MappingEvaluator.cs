@@ -454,7 +454,7 @@ public class MappingEvaluator
                 VisitRule(group.Rules[i], context, group.Name);
             }
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not (OperationCanceledException or FhirPathResourceLimitExceededException))
         {
             CheckErrorLimit(context);
             context.AddError($"Error executing group: {ex.Message}", location, "GROUP_EXECUTION_ERROR", ex, groupName: group.Name);
@@ -483,7 +483,7 @@ public class MappingEvaluator
 
             ExecuteRuleSources(rule, context, 0, new Dictionary<string, IEnumerable<IElement>>(), groupName, location);
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not (OperationCanceledException or FhirPathResourceLimitExceededException))
         {
             CheckErrorLimit(context);
             context.AddError(
@@ -583,7 +583,7 @@ public class MappingEvaluator
                     throw new NotSupportedException($"Dependent expression type {dependent.GetType().Name} not supported");
             }
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not (OperationCanceledException or FhirPathResourceLimitExceededException))
         {
             context.AddError(
                 $"Error executing dependent expression: {ex.Message}",
@@ -748,7 +748,7 @@ public class MappingEvaluator
                 }
             }
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not (OperationCanceledException or FhirPathResourceLimitExceededException))
         {
             context.AddError(
                 $"Error invoking group '{invocation.GroupName}': {ex.Message}",
@@ -791,7 +791,7 @@ public class MappingEvaluator
                         var result = EvaluateSourceExpression(fhirPathCondition, source, element, context).ToList();
                         return result.Count == 1 && result[0].Value is true;
                     }
-                    catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+                    catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not (OperationCanceledException or FhirPathResourceLimitExceededException))
                     {
                         context.AddError($"Error evaluating where condition: {ex.Message}",
                             location, "WHERE_ERROR", ex, ruleName: _currentRuleName,
@@ -883,7 +883,7 @@ public class MappingEvaluator
                         }
                     }
                 }
-                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not (OperationCanceledException or FhirPathResourceLimitExceededException))
                 {
                     context.AddError(
                         $"Check condition failed: {ex.Message}",
@@ -968,7 +968,7 @@ public class MappingEvaluator
                         }
                     }
                 }
-                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not (OperationCanceledException or FhirPathResourceLimitExceededException))
                 {
                     context.AddError(
                         $"Error executing log statement: {ex.Message}",
@@ -992,7 +992,7 @@ public class MappingEvaluator
 
             return contextValuesList;
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not (OperationCanceledException or FhirPathResourceLimitExceededException))
         {
             CheckErrorLimit(context);
             context.AddError(
@@ -1115,7 +1115,7 @@ public class MappingEvaluator
                 }
             }
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not (OperationCanceledException or FhirPathResourceLimitExceededException))
         {
             context.AddError(
                 $"Error visiting target: {ex.Message}",
@@ -1493,7 +1493,7 @@ public class MappingEvaluator
                     var argValue = argValues[0];
                     args.Add(transform.FunctionName is "reference" or "pointer" or "cast" ? argValue : argValue.Value ?? argValue);
                 }
-                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not (OperationCanceledException or FhirPathResourceLimitExceededException))
                 {
                     context.AddError(
                         $"Error evaluating transform argument: {ex.Message}",
@@ -1553,7 +1553,7 @@ public class MappingEvaluator
             }
             return result;
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not (OperationCanceledException or FhirPathResourceLimitExceededException))
         {
             context.AddError(
                 $"Error executing transform '{transform.FunctionName}': {ex.Message}",
@@ -1603,7 +1603,7 @@ public class MappingEvaluator
                 _ => throw new NotSupportedException($"Expression type {expr.GetType().Name} not supported in this context")
             };
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not (OperationCanceledException or FhirPathResourceLimitExceededException))
         {
             context.AddError(
                 $"Error evaluating expression: {ex.Message}",
@@ -2002,7 +2002,7 @@ public class MappingEvaluator
             // Apply mutation
             _mutator!.SetProperty(targetResource, fhirPath, element, mutationMode);
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not (OperationCanceledException or FhirPathResourceLimitExceededException))
         {
             context.AddError(
                 $"Failed to mutate target property: {ex.Message}",

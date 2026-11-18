@@ -94,7 +94,8 @@ public class EvaluationBudgetTests
 
     /// <summary>
     /// A budget the temporals fit when only built (see the control test), and any pairwise operation over them
-    /// does not.
+    /// does not. Measured: building them costs 1,986 steps, and the cheapest operation (isDistinct(),
+    /// subsetOf()) 3,816 including the build.
     /// </summary>
     private const long PairwiseBudget = 3_000;
 
@@ -213,6 +214,27 @@ public class EvaluationBudgetTests
 
         // Act & Assert
         Should.Throw<FhirPathResourceLimitExceededException>(() => Evaluate(nested, context))
+            .Message.ShouldContain("step budget");
+    }
+
+    [Theory]
+    [InlineData("distinct()")]
+    [InlineData("select($this = %context.name.family).count()")]
+    [InlineData("select($this < %context.name.family).count()")]
+    [InlineData("sort().count()")]
+    public void GivenALongStringFromTheResource_WhenAMultipliedCollectionOfItIsDedupedOrCompared_ThenTheTextIsCharged(string operation)
+    {
+        // Arrange - regression: strings read from the resource were hashed and compared for a single step each, so
+        // twenty references to a 160,000-character family name cost almost nothing; at attack scale (half a million
+        // references to a 10 MB string) that is tens of minutes of CPU. Each now costs a step per 16 characters.
+        var patient = ResourceJsonNode
+            .Parse($$"""{"resourceType":"Patient","id":"p","name":[{"family":"{{new string('a', 160_000)}}"}]}""")
+            .ToElement(FhirVersion.R4.GetSchemaProvider());
+        var context = WithLimits(FhirPathEvaluationLimits.Default with { MaxSteps = 100_000 });
+        var expression = _parser.Parse($"{TwentyItems}.select(%context.name.family).{operation}");
+
+        // Act & Assert
+        Should.Throw<FhirPathResourceLimitExceededException>(() => _evaluator.Evaluate(patient, expression, context).ToList())
             .Message.ShouldContain("step budget");
     }
 

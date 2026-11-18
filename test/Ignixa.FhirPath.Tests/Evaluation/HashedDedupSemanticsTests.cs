@@ -164,13 +164,81 @@ public class HashedDedupSemanticsTests
     }
 
     [Fact]
+    public void GivenQuantityShapedChildrenWhoseValueIsAYearInOneAndItsTextInTheOther_WhenUnioned_ThenTheyAreOneItem()
+    {
+        // Arrange - regression: in a quantity-shaped child, a String value that reads as a number was keyed as a
+        // possible magnitude and a date value was not, although "2012" equals @2012; the index kept both parents.
+        FhirTemporal.TryParse("2012", FhirPrimitive.Date, out var year).ShouldBeTrue();
+        var root = Node("root", "Root", null,
+            Node("item", "Element", null, Node("measure", "Element", null, Node("value", "string", "2012"))),
+            Node("item", "Element", null, Node("measure", "Element", null, Node("value", "date", year))));
+
+        // Act
+        var result = Evaluate(root, "(item | item).count()");
+
+        // Assert
+        result.Single().Value.ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenQuantitiesInManySpellingsOfOneUnit_WhenUnioned_ThenEachConversionIsChargedForWhatItCosts()
+    {
+        // Arrange - regression: g.{a1}, g.{a2}, ... are one compatibility class, and each UCUM conversion between two
+        // spellings takes a millisecond or more, but was charged 64 steps; sixty spellings fit a million steps while
+        // taking seconds. A conversion is now charged 12,000 steps.
+        var root = Node("root", "Root", null, Enumerable.Range(1, 60)
+            .Select(i => Node("item", "Quantity", null, Node("value", "decimal", (decimal)i), Node("code", "code", $"g.{{a{i}}}")))
+            .ToArray());
+        var context = new EvaluationContext { Limits = FhirPathEvaluationLimits.Default with { MaxSteps = 1_000_000 } };
+
+        // Act & Assert
+        Should.Throw<FhirPathResourceLimitExceededException>(
+            () => _evaluator.Evaluate(root, _parser.Parse("(item | item).count()"), context).ToList());
+    }
+
+    [Fact]
+    public void GivenAThousandMassesInSixUnits_WhenUnioned_ThenEachUnitIsConvertedOnce()
+    {
+        // Arrange - mg, g, kg, ug, ng and lb are one class. Converting every lookup into every unit present would be
+        // 6,000 conversions; each unit is instead scaled to the first once, and a lookup probes by magnitude.
+        string[] units = ["mg", "g", "kg", "ug", "ng", "[lb_av]"];
+        var root = Node("root", "Root", null, Enumerable.Range(0, 1_000)
+            .Select(i => Node("item", "Quantity", null, Node("value", "decimal", i + 0.5m), Node("code", "code", units[i % units.Length])))
+            .ToArray());
+        var context = new EvaluationContext { Limits = FhirPathEvaluationLimits.Default with { MaxSteps = 1_000_000 } };
+
+        // Act
+        var result = _evaluator.Evaluate(root, _parser.Parse("(item | item).count()"), context).ToList();
+
+        // Assert
+        result.Single().Value.ShouldBe(1_000);
+    }
+
+    [Fact]
+    public void GivenTheSameMassInTwoUnits_WhenUnioned_ThenTheyAreOneItem()
+    {
+        // Arrange - 1500 mg and 1.5 g land in the same magnitude bucket through different scales.
+        var root = Node("root", "Root", null,
+            Node("item", "Quantity", null, Node("value", "decimal", 1500m), Node("code", "code", "mg")),
+            Node("item", "Quantity", null, Node("value", "decimal", 1.5m), Node("code", "code", "g")),
+            Node("item", "Quantity", null, Node("value", "decimal", 0.0015m), Node("code", "code", "kg")));
+
+        // Act
+        var result = Evaluate(root, "(item | item).count()");
+
+        // Assert
+        result.Single().Value.ShouldBe(1);
+    }
+
+    [Fact]
     public void GivenAThousandQuantitiesInDistinctUnits_WhenUnioned_ThenTheCostIsLinear()
     {
         // Arrange - combo-value-quantity over components whose units all differ (m1, m2, ... m1000 are a thousand
         // dimensions). Grouped by unit alone, every lookup tested every unit: about 500,000 probes, each a UCUM
-        // parse. Grouped by compatibility class, each unit is parsed once and a lookup tests only its own class.
+        // parse. Grouped by compatibility class, each unit is parsed once (3,000 steps) and a lookup tests only its
+        // own class, so a thousand units fit in four million steps.
         var root = Parse(ObservationWithDistinctUnits(1_000));
-        var context = new EvaluationContext { Limits = FhirPathEvaluationLimits.Default with { MaxSteps = 300_000 } };
+        var context = new EvaluationContext { Limits = FhirPathEvaluationLimits.Default with { MaxSteps = 4_000_000 } };
 
         // Act
         var result = _evaluator.Evaluate(root, _parser.Parse("(component.value | component.value).count()"), context).ToList();

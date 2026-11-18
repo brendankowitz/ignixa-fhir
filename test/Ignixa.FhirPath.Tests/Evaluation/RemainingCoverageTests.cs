@@ -231,24 +231,23 @@ public class RemainingCoverageTests
     }
 
     [Fact]
-    public void GivenAConstructingProjection_WhenRepeatNeverConverges_ThenThrowsResourceLimitExceededAtTheIterationCap()
+    public void GivenAConstructingProjection_WhenRepeatNeverConverges_ThenTheStepBudgetStopsIt()
     {
         // Arrange - the #433 constructing-projection hazard, kept end-to-end at production thresholds, to pin
         // that the real defaults terminate it and in what shape. Before #435 it cost ~33 seconds and tripped
         // the iteration cap; #435's comparison budget then tripped first, at a third of the iterations. Since
-        // #533 the strings hash apart and are never compared, so dedup costs nothing and the iteration cap is
-        // what stops it again - now in well under a second.
+        // #533 the strings hash apart and are never compared, which left the iteration cap to stop it. Hashing
+        // is now charged by length, and building and hashing ever-longer strings exhausts the step budget before
+        // the iteration cap is reached - still in under a second.
         var expr = _parser.Parse("'a'.repeat($this & 'x')");
         var root = CreateIntegerElement(0);
 
         // Act
         var evaluate = () => _evaluator.Evaluate(root, expr).ToList();
 
-        // Assert - the parentheses are load-bearing for the same ordinal-substring reason as above.
+        // Assert
         var exception = Should.Throw<FhirPathResourceLimitExceededException>(evaluate);
-        exception.Message.ShouldContain("repeat()");
-        exception.Message.ShouldContain("maximum iteration limit");
-        exception.Message.ShouldContain("(10000)");
+        exception.Message.ShouldContain("step budget");
     }
 
     [Fact]

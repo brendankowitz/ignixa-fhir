@@ -1113,8 +1113,17 @@ internal static class CollectionFunctions
     {
         var list = focus.ToList();
 
+        // Each item takes part in about log2(n) comparisons, each linear in the length of a String key.
+        var comparisonsPerItem = Math.Max(1, (int)Math.Ceiling(Math.Log2(Math.Max(list.Count, 2))));
+        var budget = context.Budget;
+
         if (arguments.Count == 0)
         {
+            foreach (var element in list)
+            {
+                ChargeSortKey(element, comparisonsPerItem, budget);
+            }
+
             return RunSort(list.OrderBy(e => (IElement?)e, ValueOrdering.SortComparer.NullsLow));
         }
 
@@ -1132,7 +1141,9 @@ internal static class CollectionFunctions
         {
             var innerContext = context.PushThis(element);
             var result = evaluateExpression([element], expr, innerContext);
-            return result.FirstOrDefault();
+            var key = result.FirstOrDefault();
+            ChargeSortKey(key, comparisonsPerItem, budget);
+            return key;
         };
 
         // Apply first sort key
@@ -1158,6 +1169,14 @@ internal static class CollectionFunctions
         }
 
         return RunSort(orderedList);
+    }
+
+    private static void ChargeSortKey(IElement? key, int comparisonsPerItem, EvaluationBudget budget)
+    {
+        if (WireValue.AsWireString(key?.Value) is { } text)
+        {
+            budget.ChargeText((long)text.Length * comparisonsPerItem);
+        }
     }
 
     /// <summary>

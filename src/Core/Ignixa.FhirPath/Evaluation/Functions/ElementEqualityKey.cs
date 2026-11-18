@@ -121,7 +121,7 @@ internal static class ElementEqualityKey
 
         if (WireValue.AsWireString(element.Value) is { } text)
         {
-            key = TextHash(text);
+            key = TextHash(text, budget);
             return true;
         }
 
@@ -187,7 +187,7 @@ internal static class ElementEqualityKey
 
         if (WireValue.AsWireString(child.Value) is { } text)
         {
-            contribution = ParsesAsTemporal(text) ? TemporalLikeTag : TextHash(text);
+            contribution = ParsesAsTemporal(text) ? TemporalLikeTag : TextHash(text, budget);
             return true;
         }
 
@@ -252,8 +252,9 @@ internal static class ElementEqualityKey
     private static bool CouldEqualAMagnitude(IElement value, int depth, EvaluationBudget budget) => value.Value switch
     {
         FhirQuantity => true,
-        string text => decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out _),
         null => TryGetContribution(value, depth + 1, budget, out var contribution) && contribution == QuantityLikeTag,
+        var other when WireValue.AsWireString(other) is { } text =>
+            decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out _),
         var other => IsNumber(other),
     };
 
@@ -303,5 +304,13 @@ internal static class ElementEqualityKey
         return false;
     }
 
-    private static int TextHash(string text) => HashCode.Combine(TextTag, string.GetHashCode(text, StringComparison.Ordinal));
+    /// <summary>
+    /// Hashes text, charged by its length: a string read from the resource can be megabytes long, and a collection can
+    /// hold many references to it.
+    /// </summary>
+    private static int TextHash(string text, EvaluationBudget budget)
+    {
+        budget.ChargeText(text.Length);
+        return HashCode.Combine(TextTag, string.GetHashCode(text, StringComparison.Ordinal));
+    }
 }

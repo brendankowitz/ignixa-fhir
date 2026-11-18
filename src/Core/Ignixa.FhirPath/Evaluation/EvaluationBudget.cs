@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Expressions;
 
 namespace Ignixa.FhirPath.Evaluation;
 
@@ -43,6 +44,7 @@ internal sealed class EvaluationBudget
     private readonly CancellationToken _cancellationToken;
     private readonly long _deadline;
     private long _steps;
+    private Dictionary<Expression, List<IElement>>? _invariantResults;
 
     /// <summary>
     /// Starts metering an evaluation.
@@ -122,6 +124,29 @@ internal sealed class EvaluationBudget
     /// </summary>
     /// <exception cref="FhirPathResourceLimitExceededException">The step budget is exhausted.</exception>
     public void ChargeText(long length) => Charge(length / CharactersPerStep);
+
+    /// <summary>
+    /// Returns the value of a subexpression <see cref="LoopInvariance"/> has judged fixed for this evaluation,
+    /// computing it on first use.
+    /// </summary>
+    /// <remarks>
+    /// Held per evaluation, so nothing outlives the <see cref="FhirPathEvaluator.Evaluate"/> call that computed it. A
+    /// reuse is charged a step per sixteen items, so even a cached collection costs something to hand out again.
+    /// </remarks>
+    public List<IElement> GetOrAddInvariant(Expression expression, Func<List<IElement>> compute)
+    {
+        _invariantResults ??= new Dictionary<Expression, List<IElement>>(ReferenceEqualityComparer.Instance);
+
+        if (_invariantResults.TryGetValue(expression, out var cached))
+        {
+            Charge(cached.Count / CharactersPerStep);
+            return cached;
+        }
+
+        var computed = compute();
+        _invariantResults[expression] = computed;
+        return computed;
+    }
 
     /// <summary>
     /// Checks the size of a collection the evaluator is building.

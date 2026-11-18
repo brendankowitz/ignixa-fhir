@@ -528,6 +528,67 @@ public class SecurityLimitsTests
 
     #endregion
 
+    #region FHIRPath evaluation limits
+
+    [Fact]
+    public void GivenAWhereConditionThatExceedsTheFhirPathLimits_WhenExecutedInLenientMode_ThenTheLimitPropagates()
+    {
+        // Arrange - regression: lenient mode recorded the limit as a rule error and carried on to the next rule,
+        // so a map could exhaust the budget once per rule. A limit is a capacity outcome, not a data error.
+        var forty = "(" + string.Join(" | ", Enumerable.Range(1, 40)) + ")";
+        var crossProduct = $"{forty}.select({forty}.select({forty}.select({forty}))).count() > 0";
+        var map = new MapExpression(
+            url: "http://example.org/map",
+            identifier: "TestMap",
+            uses: [],
+            imports: [],
+            groups:
+            [
+                new GroupExpression(
+                    name: "Main",
+                    parameters: [new ParameterExpression(ParameterMode.Source, "src", "Patient")],
+                    extends: null,
+                    rules:
+                    [
+                        new RuleExpression(
+                            name: "expensiveCondition",
+                            sources:
+                            [
+                                new SourceExpression(
+                                    context: new QualifiedIdentifierExpression(new IdentifierExpression("src"), "id"),
+                                    variable: "v",
+                                    type: null,
+                                    condition: new FhirPathExpression(crossProduct),
+                                    check: null,
+                                    log: null,
+                                    defaultValue: null,
+                                    cardinality: null)
+                            ],
+                            targets: [],
+                            dependent: null)
+                    ])
+            ]);
+
+        var evaluator = new MappingEvaluator(new MappingEvaluatorOptions
+        {
+            ErrorMode = ErrorMode.Lenient,
+            FhirPathTimeout = TimeSpan.FromMilliseconds(50),
+        });
+        var context = new MappingContext { ErrorMode = ErrorMode.Lenient };
+        var source = new TestElement("Patient", "src");
+        source.AddChild("id", new TestElement("id", "id", "p1"));
+        context.SetSource("src", source);
+
+        // Act
+        var act = () => evaluator.ExecuteGroup(map, "Main", context);
+
+        // Assert
+        Should.Throw<Ignixa.FhirPath.Evaluation.FhirPathResourceLimitExceededException>(act);
+        context.Errors.ShouldBeEmpty();
+    }
+
+    #endregion
+
     #region Helper Classes
 
     private class TestElement : IElement

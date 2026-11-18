@@ -26,13 +26,16 @@ namespace Ignixa.FhirPath.Evaluation.Functions;
 /// and <c>Observation.component.value as Quantity</c> needs.
 /// </para>
 /// <para>
-/// The cross-kind cases are probed explicitly. A quantity is looked up in each unit group of its compatibility class
-/// (<see cref="ValueOrdering.CompatibilityClass"/>) as the value <see cref="ValueOrdering.TryExpressIn"/> gives in
-/// that group's unit, which is the value equality itself would
-/// compare; where no conversion applies, equality falls through to comparing the quantities as they are, so only
-/// the same unit and value can match. A number is also a quantity in unit <c>'1'</c>, so numbers and quantities probe
-/// each other. And a quantity is compared child by child with a complex element of another type that has its
-/// children, so quantities and quantity-shaped complex elements scan each other.
+/// The cross-kind cases are probed explicitly. Quantities are grouped by compatibility class
+/// (<see cref="ValueOrdering.CompatibilityClass"/>). Within a class, each unit that converts linearly into the class's
+/// first unit is given a scale, once, so a quantity's magnitude in that unit is its value times the scale; quantities
+/// equal after conversion have magnitudes within rounding of each other, so a lookup probes the magnitude's bucket and
+/// its two neighbours and confirms with equality itself. A unit without a scale is probed the old way: the candidate
+/// is converted into it with <see cref="ValueOrdering.TryExpressIn"/>, or, where no conversion applies and equality
+/// falls through to comparing the quantities as they are, matched on the same unit and value. A number is also a
+/// quantity in unit <c>'1'</c>, so numbers and quantities probe each other. And a quantity is compared child by child
+/// with a complex element of another type that has its children, so quantities and quantity-shaped complex elements
+/// scan each other.
 /// </para>
 /// <para>
 /// Comparisons are made as <c>AreElementsEqual(member, candidate)</c>, the argument order the scans used. Every key
@@ -47,17 +50,40 @@ internal sealed class ElementEqualityIndex
     private readonly Dictionary<int, List<IElement>> _keyed = [];
     private readonly List<IElement> _unkeyed = [];
     private readonly List<IElement> _quantityShaped = [];
-    private readonly Dictionary<string, Dictionary<string, Dictionary<decimal, List<IElement>>>> _quantitiesByClass = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, QuantityClass> _quantitiesByClass = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _classByUnit = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, double?> _scaleByUnit = new(StringComparer.Ordinal);
     private readonly List<IElement> _quantities = [];
     private int _numberCount;
 
     /// <summary>
-    /// Steps charged for work that parses a UCUM unit: computing a unit's compatibility class, or converting a value
-    /// between two different units. Each costs tens of microseconds rather than the fraction of one a step stands
-    /// for, so a collection of quantities in many units drains the budget in proportion to what it costs.
+    /// Steps charged for computing the compatibility class of a unit UCUM can read: one parse, measured at about
+    /// 0.4 ms - a few thousand times what a step stands for.
     /// </summary>
-    private const int UnitAlgebraSteps = 64;
+    private const int UnitParseSteps = 3_000;
+
+    /// <summary>
+    /// Steps charged for computing the class of a unit UCUM cannot read. The parser reports that by throwing, which
+    /// measured at about 4 ms a unit, so a collection of made-up units (or annotated spellings such as
+    /// <c>g.{a1}</c>, <c>g.{a2}</c>) is charged for what it costs: about 330 of them exhaust the default budget in
+    /// about 1.3 s.
+    /// </summary>
+    private const int UnreadableUnitSteps = 30_000;
+
+    /// <summary>
+    /// Steps charged for converting a value between two different units, which parses both: about 0.5 ms for common
+    /// units and several times that for a unit UCUM rejects. Conversions are made once per unit to give it a scale,
+    /// for each comparison of quantities in different units, and per unit without a scale on every lookup - so a
+    /// collection in many spellings of one unit that do not convert into each other (<c>g.{a1}</c>, <c>g.{a2}</c>,
+    /// ...) is charged for its quadratic probing.
+    /// </summary>
+    private const int UnitConversionSteps = 12_000;
+
+    /// <summary>
+    /// The relative width of a magnitude bucket. Magnitudes of equal quantities differ only by decimal rounding
+    /// (about 1e-27 relative), so they always fall in the same or adjacent buckets.
+    /// </summary>
+    private const double BucketWidth = 1e-9;
 
     /// <param name="budget">The evaluation budget charged for each key and comparison.</param>
     /// <param name="beforeComparison">Called before each comparison, for a caller enforcing its own comparison limit.</param>
@@ -167,26 +193,43 @@ internal sealed class ElementEqualityIndex
     private void AddQuantity(IElement element, FhirQuantity quantity)
     {
         var compatibilityClass = ClassOf(quantity.Unit);
-        if (!_quantitiesByClass.TryGetValue(compatibilityClass, out var byUnit))
+        if (!_quantitiesByClass.TryGetValue(compatibilityClass, out var members))
         {
-            byUnit = new Dictionary<string, Dictionary<decimal, List<IElement>>>(StringComparer.Ordinal);
-            _quantitiesByClass[compatibilityClass] = byUnit;
+            members = new QuantityClass(quantity.Unit);
+            _quantitiesByClass[compatibilityClass] = members;
         }
 
-        if (!byUnit.TryGetValue(quantity.Unit, out var byValue))
+        var isNewUnit = !members.ByUnit.TryGetValue(quantity.Unit, out var byValue);
+        if (isNewUnit)
         {
             byValue = [];
-            byUnit[quantity.Unit] = byValue;
+            members.ByUnit[quantity.Unit] = byValue;
         }
 
-        if (!byValue.TryGetValue(quantity.Value, out var members))
+        if (!byValue!.TryGetValue(quantity.Value, out var sameValue))
         {
-            members = [];
-            byValue[quantity.Value] = members;
+            sameValue = [];
+            byValue[quantity.Value] = sameValue;
         }
 
-        members.Add(element);
+        sameValue.Add(element);
         _quantities.Add(element);
+
+        if (ScaleOf(quantity.Unit, members) is { } scale)
+        {
+            var bucket = BucketOf(quantity.Value, scale);
+            if (!members.ByMagnitude.TryGetValue(bucket, out var near))
+            {
+                near = [];
+                members.ByMagnitude[bucket] = near;
+            }
+
+            near.Add((element, quantity.Unit));
+        }
+        else if (isNewUnit)
+        {
+            members.UnscaledUnits.Add(quantity.Unit);
+        }
     }
 
     private bool Contains(Entry entry)
@@ -230,14 +273,39 @@ internal sealed class ElementEqualityIndex
             return false;
         }
 
-        if (!_quantitiesByClass.TryGetValue(ClassOf(quantity.Unit), out var byUnit))
+        if (!_quantitiesByClass.TryGetValue(ClassOf(quantity.Unit), out var members))
         {
             return false;
         }
 
-        foreach (var (unit, byValue) in byUnit)
+        if (ScaleOf(quantity.Unit, members) is not { } scale)
         {
-            _budget.Charge(string.Equals(unit, quantity.Unit, StringComparison.Ordinal) ? 1 : UnitAlgebraSteps);
+            // Without a scale the candidate cannot be placed among the scaled members, so it probes every unit.
+            return AnyEqualInUnits(quantity, candidate, members, members.ByUnit.Keys);
+        }
+
+        var bucket = BucketOf(quantity.Value, scale);
+        for (var neighbour = bucket.Magnitude - 1; neighbour <= bucket.Magnitude + 1; neighbour++)
+        {
+            if (members.ByMagnitude.TryGetValue((bucket.Sign, neighbour), out var near) && AnyEqualIn(near, quantity.Unit, candidate))
+            {
+                return true;
+            }
+        }
+
+        return AnyEqualInUnits(quantity, candidate, members, members.UnscaledUnits);
+    }
+
+    /// <summary>
+    /// In each of <paramref name="units"/>, finds a member holding the value equality would compare with
+    /// <paramref name="quantity"/> converted into that unit, or - where no conversion applies - the same unit and value.
+    /// </summary>
+    private bool AnyEqualInUnits(FhirQuantity quantity, IElement candidate, QuantityClass members, IEnumerable<string> units)
+    {
+        foreach (var unit in units)
+        {
+            var byValue = members.ByUnit[unit];
+            _budget.Charge(string.Equals(unit, quantity.Unit, StringComparison.Ordinal) ? 1 : UnitConversionSteps);
 
             if (ValueOrdering.TryExpressIn(quantity, unit, out var converted))
             {
@@ -258,14 +326,78 @@ internal sealed class ElementEqualityIndex
     }
 
     /// <summary>
+    /// Compares the candidate with members of nearly the same magnitude, charging a conversion for each member in
+    /// another unit, since equality converts between them.
+    /// </summary>
+    private bool AnyEqualIn(List<(IElement Element, string Unit)> near, string candidateUnit, IElement candidate)
+    {
+        foreach (var (member, unit) in near)
+        {
+            _beforeComparison?.Invoke();
+            _budget.Charge(string.Equals(unit, candidateUnit, StringComparison.Ordinal) ? 1 : UnitConversionSteps);
+
+            if (FunctionHelpers.AreElementsEqual(member, candidate, _budget))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// The factor that takes a value in <paramref name="unit"/> to the class's first unit, computed once per unit;
+    /// null when the unit does not convert into it linearly (an annotated or special unit such as <c>Cel</c>), which
+    /// leaves the unit to be probed by conversion.
+    /// </summary>
+    private double? ScaleOf(string unit, QuantityClass members)
+    {
+        if (_scaleByUnit.TryGetValue(unit, out var known))
+        {
+            return known;
+        }
+
+        double? scale = null;
+        if (string.Equals(unit, members.Representative, StringComparison.Ordinal))
+        {
+            scale = 1d;
+        }
+        else
+        {
+            _budget.Charge(UnitConversionSteps);
+            if (ValueOrdering.TryExpressIn(new FhirQuantity(1m, unit), members.Representative, out var one) && one != 0m)
+            {
+                // A second point rules out an offset (Cel to K, should a converter support it): only a linear
+                // conversion makes magnitudes comparable.
+                _budget.Charge(UnitConversionSteps);
+                if (ValueOrdering.TryExpressIn(new FhirQuantity(2m, unit), members.Representative, out var two) && two == 2m * one)
+                {
+                    scale = (double)one;
+                }
+            }
+        }
+
+        _scaleByUnit[unit] = scale;
+        return scale;
+    }
+
+    private static (int Sign, long Magnitude) BucketOf(decimal value, double scale)
+    {
+        var magnitude = (double)value * scale;
+        return magnitude == 0d
+            ? (0, 0)
+            : (Math.Sign(magnitude), (long)Math.Floor(Math.Log(Math.Abs(magnitude)) / BucketWidth));
+    }
+
+    /// <summary>
     /// The compatibility class of a unit, computed once per distinct unit this index sees.
     /// </summary>
     private string ClassOf(string unit)
     {
         if (!_classByUnit.TryGetValue(unit, out var compatibilityClass))
         {
-            _budget.Charge(UnitAlgebraSteps);
             compatibilityClass = ValueOrdering.CompatibilityClass(unit);
+            _budget.Charge(compatibilityClass.StartsWith("unit:", StringComparison.Ordinal) ? UnreadableUnitSteps : UnitParseSteps);
             _classByUnit[unit] = compatibilityClass;
         }
 
@@ -314,4 +446,20 @@ internal sealed class ElementEqualityIndex
 
     /// <summary>An element with what its classification found, computed once per add or lookup.</summary>
     private readonly record struct Entry(IElement Element, EntryKind Kind, int Key, FhirQuantity? Quantity, decimal? Number);
+
+    /// <summary>The quantity members of one compatibility class.</summary>
+    /// <param name="representative">The first unit seen in the class, which scales are relative to.</param>
+    private sealed class QuantityClass(string representative)
+    {
+        public string Representative { get; } = representative;
+
+        /// <summary>Every member, by unit and then by value.</summary>
+        public Dictionary<string, Dictionary<decimal, List<IElement>>> ByUnit { get; } = new(StringComparer.Ordinal);
+
+        /// <summary>Members in units with a scale, by the bucket of their magnitude in the representative unit.</summary>
+        public Dictionary<(int Sign, long Magnitude), List<(IElement Element, string Unit)>> ByMagnitude { get; } = [];
+
+        /// <summary>Units of members that have no scale, in the order first seen.</summary>
+        public List<string> UnscaledUnits { get; } = [];
+    }
 }
