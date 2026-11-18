@@ -9,7 +9,7 @@ These files decide who the caller is and what one request is allowed to do. Noth
 
 ## Endpoints
 
-1. **Every route is authorized or deliberately public.** A new route needs `RequireFhirAuthorization()`. Only discovery and liveness routes belong in `PublicRoutes` in `EndpointAuthorizationCoverageTests`. Flag any addition to that list that returns or changes resource data.
+1. **Every route is authorized or deliberately public.** A new route needs `RequireFhirAuthorization()`. Respect the intentionally anonymous routes, and distinguish development and test settings from production behavior. Only discovery and liveness routes belong in `PublicRoutes` in `EndpointAuthorizationCoverageTests`. Flag any addition to that list that returns or changes resource data.
 2. **The declared interaction must match the work.** Check `FhirAuthorizationMetadata` against what the handler does. A route declared as `Read` or `SearchSystem` must not create, update, or delete. If the handler can do more than the route declares, it must authorize each further interaction explicitly or refuse it, as `GraphQlEndpoints.RefuseMutation` refuses mutations while authorization is enabled. A route that can touch every type must declare `*`.
 3. **Operations have no permission of their own.** Each `$operation` route must declare the interaction it authorizes as. Read, search, and write permissions are independent, so an operation that performs more than one interaction needs authority for each of them.
 4. **Server-wide effects need server-wide authority.** An operation that changes state shared by all tenants needs `RequireServerWideAuthority()` after `RequireFhirAuthorization()`.
@@ -25,9 +25,9 @@ These files decide who the caller is and what one request is allowed to do. Noth
 
 ## Scopes and tokens
 
-11. **Unknown must refuse.** In `SmartScopeParser`, a scope that is malformed, unsupported, or carries a constraint the server cannot enforce must be rejected. It must not be dropped or granted without its constraint.
-12. **Split before decoding.** A decoded value must not introduce a new separator, resource type, or constraint.
-13. **Keep the scope kind.** A `patient/` or `user/` scope must not be treated as a broader kind. Check v1 compatibility (`EnableV1ScopeCompatibility`) and v2 syntax separately.
+11. **Unknown must not widen.** `SmartScopeParser` returns no scope for a string it cannot parse, so that string grants nothing. That is correct, and so is ignoring non-resource scopes such as `openid`. Flag a change that grants a partly understood scope in a wider form, for example without its search constraint, with a wildcard in place of a type, or with permissions it did not list.
+12. **Parse the raw string.** If scope values are ever decoded, split on the raw delimiters first. A decoded value must not introduce a new separator, resource type, or constraint.
+13. **Keep the scope kind.** A `patient/` or `user/` scope must not be treated as a broader kind. Check v2 syntax and the v1 mappings (`.read` to `rs`, `.write` to `cud`, `.*` to `cruds`) separately. A change to a mapping changes what existing v1 tokens can do.
 14. **Token validation.** Check signature, signing keys, issuer, audience, and lifetime, and any setting that disables them. Where a grant depends on launch context or `fhirUser`, check how the value is bound to a resource in this service and this tenant.
 15. **Advertised and enforced must match.** The capability statement and `.well-known/smart-configuration` must not advertise a scope or capability the server refuses or ignores.
 
