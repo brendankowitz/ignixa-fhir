@@ -88,6 +88,8 @@ public class LibraryConfigurationLoader
             throw new InvalidOperationException("DeIdOptions.rules must contain at least one rule.");
         }
 
+        FhirPathRuleValidator.EnsureValid(options.Rules);
+
         return options;
     }
 

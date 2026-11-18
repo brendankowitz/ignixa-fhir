@@ -3,31 +3,36 @@
 // Copyright (c) Ignixa Contributors.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
-using System.Collections.Concurrent;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
-using Ignixa.FhirPath.Expressions;
-using Ignixa.FhirPath.Parser;
 
 namespace Ignixa.DeId.Extensions;
 
 /// <summary>
 /// Extension methods for evaluating FHIRPath expressions on IElement nodes.
-/// Uses cached parser/evaluator instances for performance.
+/// Delegates to the FHIRPath library, whose expression caches are size-bounded. Rule paths come from
+/// request-supplied configuration, so a cache owned here would grow with attacker-chosen text.
 /// </summary>
 public static class FhirPathExtensions
 {
-    private static readonly FhirPathParser Parser = new();
-    private static readonly FhirPathEvaluator Evaluator = new();
-    private static readonly ConcurrentDictionary<string, Expression> ExpressionCache = new();
-
     /// <summary>
-    /// Selects nodes matching a FHIRPath expression.
+    /// Selects nodes matching a FHIRPath expression. Results are materialized here so that a
+    /// failure during lazy evaluation surfaces from this call rather than from a later enumeration.
     /// </summary>
+    /// <exception cref="Exception">The expression cannot be parsed or evaluated against this element. The
+    /// library reports these with several exception types, so callers treat any failure as an unevaluable expression.</exception>
     public static IReadOnlyList<IElement> Select(this IElement element, string expression)
     {
-        var compiled = GetOrParseExpression(expression);
-        return Evaluator.Evaluate(element, compiled).ToList();
+        return TypedElementExtensions.Select(element, expression).ToList();
+    }
+
+    /// <summary>
+    /// Parses an expression so that an invalid one is rejected up front rather than when first evaluated.
+    /// </summary>
+    /// <exception cref="Exception">The expression cannot be parsed.</exception>
+    public static void EnsureParses(string expression)
+    {
+        TypedElementExtensions.Precompile(expression);
     }
 
     /// <summary>
@@ -59,10 +64,5 @@ public static class FhirPathExtensions
     {
         var results = element.Select(expression);
         return results.Count > 0 ? results[0].Value : null;
-    }
-
-    private static Expression GetOrParseExpression(string expression)
-    {
-        return ExpressionCache.GetOrAdd(expression, expr => Parser.Parse(expr));
     }
 }

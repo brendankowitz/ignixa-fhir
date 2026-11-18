@@ -88,6 +88,6 @@ public class DeIdentifyHandler : IRequestHandler<DeIdentifyCommand, DeIdentifyRe
             return new DeIdentifyResult(false, null, result.Error.Message);
         }
 
-        return new DeIdentifyResult(true, result.Value.Resource, null);
+        return new DeIdentifyResult(true, result.Value.Resource, null, result.Value.Warnings);
     }
 }

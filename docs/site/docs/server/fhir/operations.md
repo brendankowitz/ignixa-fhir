@@ -142,6 +142,17 @@ Returns the de-identified resource with security labels added to `meta.security`
 }
 ```
 
+#### Failure behavior
+
+De-identification fails closed. The operation returns a `400` OperationOutcome, and no resource, when:
+
+- a configuration rule path is not a valid FHIRPath expression (rejected when the configuration is loaded);
+- a rule path cannot be evaluated against the submitted resource (for example an invalid regular expression, or a function argument that resolves to more than one item for that resource);
+- a rule names a method with no registered processor;
+- a processor fails and `processing.errorHandling` is `StopOnError` (the default) or `FailFast`.
+
+A rule that simply matches nothing (the element is absent) is not an error. With `processing.errorHandling: "LogAndContinue"` a processor failure does not fail the operation; each one is reported in an `X-Ignixa-DeId-Warning` response header, one header value per warning, and the affected element is left as it was.
+
 See [DeId Core SDK](/docs/core-sdk/deid) for configuration format and supported de-identification methods.
 
 ### $validate

@@ -5,6 +5,7 @@
 using System.Collections.Immutable;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Ignixa.DeId.Exceptions;
 using Ignixa.DeId.Models;
 
 namespace Ignixa.DeId.Configuration;
@@ -73,6 +74,7 @@ public static class DeIdOptionsLoader
             }
 
             var rules = ParseRules(rulesArray);
+            FhirPathRuleValidator.EnsureValid(rules);
             var parameters = ParseParameters(root["parameters"]);
             var processing = ParseProcessing(root["processing"]);
 
@@ -85,6 +87,13 @@ public static class DeIdOptionsLoader
             };
 
             return Result<DeIdOptions>.Success(options);
+        }
+        catch (ConfigurationException ex)
+        {
+            return Result<DeIdOptions>.Failure(new DeIdError(
+                "CONFIG_INVALID_RULE_PATH",
+                ex.Message,
+                Exception: ex));
         }
         catch (JsonException ex)
         {

@@ -26,6 +26,11 @@ namespace Ignixa.Api.Endpoints;
 public static class DeIdOperationEndpoints
 {
     /// <summary>
+    /// Response header carrying one value per non-fatal de-identification warning.
+    /// </summary>
+    public const string DeIdWarningHeader = "X-Ignixa-DeId-Warning";
+
+    /// <summary>
     /// Registers FHIR $de-identify operation endpoints.
     /// </summary>
     public static IEndpointRouteBuilder MapDeIdOperationEndpoints(this IEndpointRouteBuilder endpoints)
@@ -189,12 +194,34 @@ public static class DeIdOperationEndpoints
 
         var result = await mediator.SendAsync(command, cancellationToken);
 
-        return result.IsSuccess
-            ? Results.Ok(result.OutputResource!.MutableNode)
-            : FhirResults.BadRequest(CreateOperationOutcome(
+        if (result.IsSuccess)
+        {
+            AddWarningHeaders(context, result.Warnings);
+            return Results.Ok(result.OutputResource!.MutableNode);
+        }
+
+        return FhirResults.BadRequest(CreateOperationOutcome(
                 OperationOutcomeIssue.IssueSeverityCode.Error,
                 OperationOutcomeIssue.IssueTypeCommon.Processing,
                 result.ErrorMessage!));
+    }
+
+    /// <summary>
+    /// The success body is the bare de-identified resource, so warnings travel in a response header
+    /// rather than being dropped. Control characters are stripped because header values are single-line.
+    /// </summary>
+    private static void AddWarningHeaders(HttpContext context, IReadOnlyList<string>? warnings)
+    {
+        if (warnings is null)
+        {
+            return;
+        }
+
+        foreach (var warning in warnings)
+        {
+            var singleLine = new string(warning.Where(c => !char.IsControl(c)).ToArray());
+            context.Response.Headers.Append(DeIdWarningHeader, singleLine);
+        }
     }
 
     private static ResourceJsonNode CreateBootstrapLibrary(string policy)

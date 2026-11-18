@@ -188,7 +188,7 @@ public class DeIdEngineTests
     }
 
     [Fact]
-    public async Task GivenUnsupportedMethod_WhenDeidentify_ThenWarningIsEmitted()
+    public async Task GivenUnsupportedMethod_WhenDeidentify_ThenOperationFailsRatherThanLeavingDataInClear()
     {
         // Arrange
         var engine = DeIdTestHelpers.CreateR4Engine(
@@ -199,9 +199,9 @@ public class DeIdEngineTests
         var result = await engine.DeidentifyAsync(json);
 
         // Assert
-        result.IsSuccess.ShouldBeTrue();
-        result.Value.Warnings.ShouldNotBeEmpty();
-        result.Value.Warnings.ShouldContain(w => w.Contains("NONEXISTENTMETHOD", StringComparison.OrdinalIgnoreCase));
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.Code.ShouldBe("PROCESSOR_NOT_FOUND");
+        result.Error.Message.ShouldContain("NONEXISTENTMETHOD", Case.Insensitive);
     }
 
     [Fact]

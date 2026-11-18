@@ -28,7 +28,9 @@ public record DeIdentifyCommand(
 /// <param name="IsSuccess">Whether the de-identification succeeded.</param>
 /// <param name="OutputResource">The de-identified FHIR resource, or null if failed.</param>
 /// <param name="ErrorMessage">Error message if de-identification failed.</param>
+/// <param name="Warnings">Non-fatal warnings raised while de-identifying; the caller must surface them.</param>
 public record DeIdentifyResult(
     bool IsSuccess,
     ResourceJsonNode? OutputResource,
-    string? ErrorMessage);
+    string? ErrorMessage,
+    IReadOnlyList<string>? Warnings = null);

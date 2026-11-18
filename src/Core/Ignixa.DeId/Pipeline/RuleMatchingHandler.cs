@@ -2,6 +2,7 @@
 // Copyright (c) Ignixa Contributors.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
+using Ignixa.Abstractions;
 using Ignixa.DeId.Extensions;
 using Ignixa.DeId.Models;
 using Microsoft.Extensions.Logging;
@@ -45,42 +46,44 @@ internal sealed class RuleMatchingHandler(ILogger<RuleMatchingHandler> logger) :
                 continue;
             }
 
+            IReadOnlyList<IElement> matchedElements;
             try
             {
-                var matchedElements = rootElement.Select(rule.Path);
-
-                if (matchedElements.Count > 0)
-                {
-                    logger.LogDebug(
-                        "Rule {RulePath} matched {MatchCount} elements",
-                        rule.Path,
-                        matchedElements.Count);
-
-                    context.MatchedRules.Add(new MatchedRule
-                    {
-                        Rule = rule,
-                        MatchedElements = matchedElements
-                    });
-                }
-                else
-                {
-                    logger.LogTrace("Rule {RulePath} matched no elements", rule.Path);
-                }
+                matchedElements = rootElement.Select(rule.Path);
             }
-            catch (OperationCanceledException)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(
-                    ex,
-                    "Failed to evaluate FHIRPath expression '{Path}': {Message}",
-                    rule.Path,
-                    ex.Message);
+                // The expression is operator-supplied and the library reports bad ones with a mix of
+                // exception types (FormatException, FhirPathEvaluationException, and raw framework
+                // exceptions such as OverflowException or InvalidOperationException for a multi-item
+                // argument), so every non-cancellation failure is a rule that could not be evaluated.
+                // Fail closed: skipping an unevaluable rule would return the data it targets in clear.
+                logger.LogError(ex, "Failed to evaluate FHIRPath rule '{Path}'", rule.Path);
 
-                context.AddWarning($"Failed to evaluate FHIRPath expression '{rule.Path}': {ex.Message}");
+                return Result<DeIdResult>.Failure(new DeIdError(
+                    "RULE_EVALUATION_FAILED",
+                    $"Rule '{rule.Path}' could not be evaluated against {resourceType}: {ex.Message}",
+                    ErrorSeverity.Error,
+                    ex));
             }
+
+            // An empty match is legitimate (the element is absent); only an evaluation failure is an error.
+            if (matchedElements.Count == 0)
+            {
+                logger.LogTrace("Rule {RulePath} matched no elements", rule.Path);
+                continue;
+            }
+
+            logger.LogDebug(
+                "Rule {RulePath} matched {MatchCount} elements",
+                rule.Path,
+                matchedElements.Count);
+
+            context.MatchedRules.Add(new MatchedRule
+            {
+                Rule = rule,
+                MatchedElements = matchedElements
+            });
         }
 
         logger.LogDebug(

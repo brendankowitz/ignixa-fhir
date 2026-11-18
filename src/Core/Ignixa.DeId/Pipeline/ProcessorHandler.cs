@@ -86,13 +86,15 @@ internal sealed class ProcessorHandler : DeIdPipelineHandler
                 }
                 else
                 {
-                    _logger.LogWarning(
-                        "No processor registered for method '{Method}', skipping rule {Path}",
+                    // Fail closed: skipping the rule would leave the elements it matched in clear.
+                    _logger.LogError(
+                        "No processor registered for method '{Method}' required by rule {Path}",
                         method,
                         matchedRule.Rule.Path);
 
-                    context.AddWarning($"No processor registered for method '{method}'");
-                    continue;
+                    return Result<DeIdResult>.Failure(new DeIdError(
+                        "PROCESSOR_NOT_FOUND",
+                        $"No processor registered for method '{method}' required by rule '{matchedRule.Rule.Path}'"));
                 }
             }
 
@@ -109,17 +111,16 @@ internal sealed class ProcessorHandler : DeIdPipelineHandler
                 switch (errorHandling)
                 {
                     case ErrorHandlingMode.FailFast:
-                        return Result<DeIdResult>.Failure(processorResult.Error);
-
                     case ErrorHandlingMode.StopOnError:
+                        // Both modes fail the operation: a partially de-identified resource must not be
+                        // returned as a success.
                         _logger.LogError(
                             "Processor failed for rule {Path}: {Error}. Stopping further rule processing.",
                             matchedRule.Rule.Path,
                             processorResult.Error.Message);
-                        context.AddWarning($"Processor failed for rule '{matchedRule.Rule.Path}': {processorResult.Error.Message}");
-                        CleanupDocument(context.Resource.MutableNode);
-                        return await nextHandler(context, cancellationToken).ConfigureAwait(false);
+                        return Result<DeIdResult>.Failure(processorResult.Error);
 
+                    // Explicit operator opt-in: the failure is surfaced to the caller through the result warnings.
                     case ErrorHandlingMode.LogAndContinue:
                         _logger.LogWarning(
                             "Processor failed for rule {Path}: {Error}",

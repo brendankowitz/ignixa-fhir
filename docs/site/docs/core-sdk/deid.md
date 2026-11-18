@@ -122,6 +122,17 @@ else
 }
 ```
 
+De-identification fails closed: a failure is never reported as a success with the data left in clear.
+
+| Code | Cause |
+|------|-------|
+| `CONFIG_INVALID_RULE_PATH` | A rule `path` is not a valid FHIRPath expression. Returned by `DeIdOptionsLoader` at load time; `LibraryConfigurationLoader` throws `ConfigurationException`. |
+| `RULE_EVALUATION_FAILED` | A rule path parsed but could not be evaluated against this resource (invalid regex, over-limit expression, or a function argument that resolves to several items). A rule that matches nothing is not an error. |
+| `PROCESSOR_NOT_FOUND` | A matched rule names a method with no registered processor. |
+| `PROCESSOR_ERROR` | A processor failed and `processing.errorHandling` is `StopOnError` (default) or `FailFast`. |
+
+Only `processing.errorHandling: "LogAndContinue"` continues after a processor failure; each failure is added to `Result.Value.Warnings`, so callers must inspect it.
+
 ## Request Options
 
 Control de-identification behavior per request using `RequestOptions`:

@@ -73,6 +73,23 @@ public class DeIdentifyHandlerTests
     }
 
     [Fact]
+    public async Task GivenPipelineSucceedsWithWarnings_WhenDeIdentifying_ThenWarningsAreReturnedToTheCaller()
+    {
+        // Regression: the handler returned only the resource, dropping every warning.
+        var resource = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"patient-123"}""");
+        var library = LibraryConfigurationLoader.CreateLibraryResource("lib-w", "SAFE_HARBOR", CreateSafeHarborOptions());
+        var command = new DeIdentifyCommand(1, resource, "SAFE_HARBOR", library);
+
+        SetupFhirContext();
+        SetupPipelineSuccess(resource, "Processor failed for rule 'Patient.name'");
+
+        var result = await _handler.HandleAsync(command, CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Warnings.ShouldHaveSingleItem().ShouldBe("Processor failed for rule 'Patient.name'");
+    }
+
+    [Fact]
     public async Task GivenPipelineReturnsFailure_WhenDeIdentifying_ThenReturnsFailureWithErrorMessage()
     {
         // Arrange
@@ -245,7 +262,7 @@ public class DeIdentifyHandlerTests
         _contextAccessor.RequestContext.Returns(fhirContext);
     }
 
-    private void SetupPipelineSuccess(ResourceJsonNode outputResource)
+    private void SetupPipelineSuccess(ResourceJsonNode outputResource, params string[] warnings)
     {
         var deIdResult = new DeIdResult
         {
@@ -257,6 +274,7 @@ public class DeIdentifyHandlerTests
                 Duration = TimeSpan.Zero,
                 OperationCounts = new Dictionary<string, int> { ["redact"] = 1 }.ToImmutableDictionary()
             },
+            Warnings = [.. warnings],
             AppliedLabels = new AppliedSecurityLabels { IsRedacted = true }
         };
 

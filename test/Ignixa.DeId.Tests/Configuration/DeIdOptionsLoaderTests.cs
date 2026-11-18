@@ -43,6 +43,29 @@ public class DeIdOptionsLoaderTests
         result.Value.Rules[0].Method.ShouldBe("REDACT");
     }
 
+    [Theory]
+    [InlineData("Patient.name.where(family = 99999999999999999999999999)")]
+    [InlineData("Patient.name.where(")]
+    public void GivenRuleWithUnparseablePath_WhenLoadFromJson_ThenConfigurationIsRejected(string path)
+    {
+        // Regression: an unparseable path was accepted and later skipped at evaluation time.
+        var json = $$"""
+        {
+            "fhirVersion": "R4",
+            "fhirPathRules": [
+                { "path": "Patient.address", "method": "redact" },
+                { "path": "{{path}}", "method": "redact" }
+            ]
+        }
+        """;
+
+        var result = DeIdOptionsLoader.LoadFromJson(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.Code.ShouldBe("CONFIG_INVALID_RULE_PATH");
+        result.Error.Message.ShouldContain(path);
+    }
+
     [Fact]
     public void GivenInvalidJson_WhenLoadFromJson_ThenReturnsJsonError()
     {
