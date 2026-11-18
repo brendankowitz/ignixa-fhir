@@ -415,6 +415,27 @@ public class ResolveFunctionTests
     }
 
     [Fact]
+    public void GivenElementResolverThatExceedsAnEvaluationLimit_WhenResolving_ThenTheLimitPropagates()
+    {
+        // Arrange - a host resolver that runs FHIRPath of its own and trips a limit has not failed to find the
+        // reference. Turning that into an empty resolve() would let an expression exhaust a limit and carry on
+        // with a wrong answer (regression: it was swallowed as "not found").
+        var observation = ToElement(ObservationWithContainedPatientJson);
+        var expr = _parser.Parse("'Patient/unresolvable'.resolve()");
+        var context = new FhirEvaluationContext
+        {
+            Resource = observation,
+            ElementResolver = _ => throw new FhirPathResourceLimitExceededException("limit reached inside the resolver"),
+        };
+
+        // Act
+        var act = () => _evaluator.Evaluate(observation, expr, context).ToList();
+
+        // Assert
+        Should.Throw<FhirPathResourceLimitExceededException>(act);
+    }
+
+    [Fact]
     public void GivenRootWhoseChildrenThrows_WhenResolving_ThenPropagatesTheException()
     {
         // Arrange - a ThrowingElement is a broken IElement, not a reference that failed to

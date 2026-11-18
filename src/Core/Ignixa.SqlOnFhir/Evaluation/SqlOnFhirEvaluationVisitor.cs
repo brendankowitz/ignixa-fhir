@@ -35,9 +35,10 @@ internal class SqlOnFhirEvaluationVisitor
     public IEnumerable<Dictionary<string, object?>> Evaluate(
         ViewDefinitionExpression viewDef,
         IElement resource,
-        IReadOnlyDictionary<string, string>? variables = null)
+        IReadOnlyDictionary<string, string>? variables = null,
+        CancellationToken cancellationToken = default)
     {
-        var context = CreateEvaluationContext(viewDef, resource, variables);
+        var context = CreateEvaluationContext(viewDef, resource, variables, cancellationToken);
         return EvaluateViewDefinition(viewDef, resource, context);
     }
 
@@ -49,7 +50,8 @@ internal class SqlOnFhirEvaluationVisitor
     public IEnumerable<Dictionary<string, object?>> EvaluateBatch(
         ViewDefinitionExpression viewDef,
         IEnumerable<IElement> resources,
-        IReadOnlyDictionary<string, string>? variables = null)
+        IReadOnlyDictionary<string, string>? variables = null,
+        CancellationToken cancellationToken = default)
     {
         var resourceList = resources.ToList();
         if (resourceList.Count == 0)
@@ -57,9 +59,9 @@ internal class SqlOnFhirEvaluationVisitor
 
         var unionAllIndex = IndexOfBatchOrderedUnionAllSelect(viewDef);
         if (unionAllIndex < 0)
-            return resourceList.SelectMany(r => Evaluate(viewDef, r, variables)).ToList();
+            return resourceList.SelectMany(r => Evaluate(viewDef, r, variables, cancellationToken)).ToList();
 
-        return EvaluateBatchWithUnionAllOrdering(viewDef, unionAllIndex, resourceList, variables);
+        return EvaluateBatchWithUnionAllOrdering(viewDef, unionAllIndex, resourceList, variables, cancellationToken);
     }
 
     private static int IndexOfBatchOrderedUnionAllSelect(ViewDefinitionExpression viewDef)
@@ -86,7 +88,8 @@ internal class SqlOnFhirEvaluationVisitor
         ViewDefinitionExpression viewDef,
         int selectIndex,
         List<IElement> resources,
-        IReadOnlyDictionary<string, string>? variables)
+        IReadOnlyDictionary<string, string>? variables,
+        CancellationToken cancellationToken)
     {
         var unionAllSelect = viewDef.Select[selectIndex];
 
@@ -103,7 +106,7 @@ internal class SqlOnFhirEvaluationVisitor
 
             foreach (var resource in resources)
             {
-                var context = CreateEvaluationContext(branchView, resource, variables);
+                var context = CreateEvaluationContext(branchView, resource, variables, cancellationToken);
                 result.AddRange(EvaluateViewDefinition(branchView, resource, context));
             }
         }
@@ -114,9 +117,10 @@ internal class SqlOnFhirEvaluationVisitor
     private static EvaluationContext CreateEvaluationContext(
         ViewDefinitionExpression viewDef,
         IElement resource,
-        IReadOnlyDictionary<string, string>? variables)
+        IReadOnlyDictionary<string, string>? variables,
+        CancellationToken cancellationToken)
     {
-        var context = new EvaluationContext() with { RootResource = resource };
+        var context = new EvaluationContext { RootResource = resource, CancellationToken = cancellationToken };
         foreach (var constant in viewDef.Constants)
             if (constant.Value != null)
                 context = context.WithEnvironmentVariable(
@@ -432,9 +436,9 @@ internal class SqlOnFhirEvaluationVisitor
                     $"repeat went deeper than {MaxRepeatDepth} levels; a repeat path must lead to child elements");
 
             // Depth alone does not bound the work: ["item", "item"] over a 30-deep tree visits ~2^30 nodes. Same cap as FhirPath repeat().
-            if (result.Count >= RepeatGuardLimits.MaxIterations)
+            if (result.Count >= context.Limits.MaxRepeatIterations)
                 throw new InvalidOperationException(
-                    $"repeat produced more than {RepeatGuardLimits.MaxIterations} nodes; a repeat path must lead to child elements");
+                    $"repeat produced more than {context.Limits.MaxRepeatIterations} nodes; a repeat path must lead to child elements");
 
             result.Add(element);
             foreach (var path in repeatPaths)

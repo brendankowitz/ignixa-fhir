@@ -165,7 +165,7 @@ public static class TypedElementExtensions
         if (_delegateCache.TryGetValue(expression, out var cachedDelegate))
         {
             return cachedDelegate != null
-                ? cachedDelegate(input, context)
+                ? InvokeCompiled(cachedDelegate, input, context)
                 : _evaluator.Evaluate(input, CompileExpressionToAst(expression), context);
         }
 
@@ -175,8 +175,20 @@ public static class TypedElementExtensions
         var compiledDelegate = CompileExpressionToDelegate(ast, expression);
 
         return compiledDelegate != null
-            ? compiledDelegate(input, context)
+            ? InvokeCompiled(compiledDelegate, input, context)
             : _evaluator.Evaluate(input, ast, context);
+    }
+
+    /// <summary>
+    /// Runs a compiled delegate, observing cancellation first as the interpreter does on entry.
+    /// </summary>
+    private static IEnumerable<IElement> InvokeCompiled(
+        Func<IElement, EvaluationContext, IEnumerable<IElement>> compiled,
+        IElement input,
+        EvaluationContext context)
+    {
+        context.CancellationToken.ThrowIfCancellationRequested();
+        return compiled(input, context);
     }
 
     /// <summary>

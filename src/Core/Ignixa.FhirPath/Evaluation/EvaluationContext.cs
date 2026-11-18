@@ -109,6 +109,8 @@ public record EvaluationContext
     private static readonly ImmutableDictionary<string, ImmutableList<IElement>> EmptyOrdinalEnvironment =
         ImmutableDictionary<string, ImmutableList<IElement>>.Empty.WithComparers(StringComparer.Ordinal);
 
+    private readonly FhirPathEvaluationLimits _limits = FhirPathEvaluationLimits.Default;
+
     /// <summary>
     /// Creates a new empty evaluation context.
     /// </summary>
@@ -227,6 +229,48 @@ public record EvaluationContext
     /// of <c>resolve()</c>, not part of the public evaluation API.
     /// </summary>
     internal ReferenceIndexCache ReferenceIndexCache { get; init; } = new();
+
+    /// <summary>
+    /// The resource limits evaluation runs under. Defaults to <see cref="FhirPathEvaluationLimits.Default"/>.
+    /// </summary>
+    /// <remarks>
+    /// Exceeding a limit raises <see cref="FhirPathResourceLimitExceededException"/>. The limits apply to each
+    /// <see cref="FhirPathEvaluator.Evaluate"/> call separately; see <see cref="FhirPathEvaluationLimits"/>.
+    /// </remarks>
+    public FhirPathEvaluationLimits Limits
+    {
+        get => _limits;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            _limits = value;
+        }
+    }
+
+    /// <summary>
+    /// Stops evaluation when cancelled, raising <see cref="OperationCanceledException"/>.
+    /// </summary>
+    /// <remarks>
+    /// Observed when evaluation starts and then every 1,024 steps, on the interpreted and the compiled path alike,
+    /// so a cancelled request stops within microseconds of work rather than at the end of the expression. Hosts
+    /// pass the request's token here.
+    /// </remarks>
+    public CancellationToken CancellationToken { get; init; }
+
+    /// <summary>
+    /// The meter for the evaluation in progress. Replaced by <see cref="FhirPathEvaluator.Evaluate"/> on every
+    /// call, so a context reused across evaluations never carries one evaluation's count into the next; like
+    /// <see cref="ReferenceIndexCache"/>, a <c>with</c> copy shares it. The initial value only serves code that
+    /// evaluates without going through <see cref="FhirPathEvaluator.Evaluate"/>.
+    /// </summary>
+    internal EvaluationBudget Budget { get; init; } = new(FhirPathEvaluationLimits.Default, CancellationToken.None);
+
+    /// <summary>
+    /// Returns a copy of this context with a fresh <see cref="Budget"/> built from <see cref="Limits"/> and
+    /// <see cref="CancellationToken"/>.
+    /// </summary>
+    /// <exception cref="OperationCanceledException"><see cref="CancellationToken"/> is already cancelled.</exception>
+    internal EvaluationContext StartBudget() => this with { Budget = new EvaluationBudget(Limits, CancellationToken) };
 
     /// <summary>
     /// Creates a context that evaluates in a nested <c>defineVariable</c> scope: it can read the variables

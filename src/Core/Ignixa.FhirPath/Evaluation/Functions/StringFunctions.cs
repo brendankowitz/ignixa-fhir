@@ -6,6 +6,7 @@
  * length(), replace(), matches(), replaceMatches(), toChars(), join().
  */
 
+using System.Globalization;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -287,6 +288,10 @@ internal static class StringFunctions
         if (patternResult?.Value is not string pattern || substitutionResult?.Value is not string substitution)
             return [];
 
+        // Checked before building: an empty pattern multiplies the input by the substitution's length, so three
+        // nested calls square and cube it.
+        context.Budget.EnsureStringLength(ReplacedLength(str, pattern, substitution), "replace()");
+
         // Empty pattern: insert substitution between every character (per FHIRPath spec)
         // Example: 'abc'.replace('', 'x') → 'xaxbxcx'
         if (string.IsNullOrEmpty(pattern))
@@ -305,6 +310,32 @@ internal static class StringFunctions
 
         var replaced = str.Replace(pattern, substitution, StringComparison.Ordinal);
         return [FunctionHelpers.CreateString(replaced)];
+    }
+
+    /// <summary>
+    /// The exact length <c>replace()</c> will produce, computed without building it.
+    /// </summary>
+    /// <remarks>
+    /// Counts non-overlapping ordinal occurrences left to right, which is how
+    /// <see cref="string.Replace(string, string, StringComparison)"/> finds them. An empty pattern matches before
+    /// every character and at the end. Linear in the input, so it costs no more than the replacement.
+    /// </remarks>
+    private static long ReplacedLength(string input, string pattern, string substitution)
+    {
+        if (pattern.Length == 0)
+        {
+            return input.Length + ((long)input.Length + 1) * substitution.Length;
+        }
+
+        long occurrences = 0;
+        var index = input.IndexOf(pattern, StringComparison.Ordinal);
+        while (index >= 0)
+        {
+            occurrences++;
+            index = input.IndexOf(pattern, index + pattern.Length, StringComparison.Ordinal);
+        }
+
+        return input.Length + occurrences * ((long)substitution.Length - pattern.Length);
     }
 
     /// <summary>
@@ -432,8 +463,17 @@ internal static class StringFunctions
         if (string.IsNullOrEmpty(pattern))
             return [FunctionHelpers.CreateString(str)];
 
+        var budget = context.Budget;
+        // The linear engine's capture phase ignores the match timeout, so its input is bounded up front.
+        if (FhirPathRegex.NeedsCaptures(substitution) && str.Length > budget.Limits.MaxRegexCaptureInputLength)
+        {
+            throw new FhirPathResourceLimitExceededException(string.Create(
+                CultureInfo.InvariantCulture,
+                $"replaceMatches() with a reference in its substitution accepts at most {budget.Limits.MaxRegexCaptureInputLength} characters of input, but was given {str.Length}."));
+        }
+
         var regex = FhirPathRegex.Get(pattern, RegexOptions.None, "replaceMatches");
-        var result = FhirPathRegex.Replace(regex, pattern, str, substitution, "replaceMatches");
+        var result = FhirPathRegex.Replace(regex, pattern, str, substitution, "replaceMatches", budget);
         return [FunctionHelpers.CreateString(result)];
     }
 
@@ -449,11 +489,13 @@ internal static class StringFunctions
         MaxArguments = 0,
         Category = "String",
         Description = "Splits a string into individual characters")]
-    public static IEnumerable<IElement> ToChars(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> ToChars(IEnumerable<IElement> focus, EvaluationContext context)
     {
         if (!FunctionHelpers.TryGetSingleString(focus, "toChars", out var str))
             return [];
 
+        context.Budget.EnsureCollectionSize(str.Length, "toChars()");
+        context.Budget.Charge(str.Length);
         return str.Select(c => FunctionHelpers.CreateString(c.ToString()));
     }
 
@@ -501,6 +543,9 @@ internal static class StringFunctions
         {
             return [];
         }
+
+        var joinedLength = strings.Sum(text => (long)text.Length) + (long)separator.Length * Math.Max(0, strings.Count - 1);
+        context.Budget.EnsureStringLength(joinedLength, "join()");
 
         var result = string.Join(separator, strings);
         return [FunctionHelpers.CreateString(result)];
@@ -553,6 +598,8 @@ internal static class StringFunctions
             return [];
 
         var parts = str.Split(delimiter, StringSplitOptions.None);
+        context.Budget.EnsureCollectionSize(parts.Length, "split()");
+        context.Budget.Charge(parts.Length);
         return parts.Select(p => FunctionHelpers.CreateString(p));
     }
 
@@ -614,6 +661,9 @@ internal static class StringFunctions
         if (encodingType is null)
             return [];
 
+        // Base64 and hex both lengthen the input, so the length is checked before encoding.
+        context.Budget.EnsureStringLength(EncodedLength(str, encodingType), "encode()");
+
 #pragma warning disable CA1308 // Normalize strings to uppercase
         return encodingType.ToLowerInvariant() switch
         {
@@ -623,6 +673,14 @@ internal static class StringFunctions
             _ => []
         };
 #pragma warning restore CA1308 // Normalize strings to uppercase
+    }
+
+    private static long EncodedLength(string input, string encodingType)
+    {
+        long utf8Bytes = Encoding.UTF8.GetByteCount(input);
+        return encodingType.Equals("hex", StringComparison.OrdinalIgnoreCase)
+            ? 2 * utf8Bytes
+            : (utf8Bytes + 2) / 3 * 4;
     }
 
     /// <summary>

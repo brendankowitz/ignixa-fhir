@@ -15,7 +15,7 @@ namespace Ignixa.RepoGuards.Tests;
 /// out of production code.
 /// </summary>
 /// <remarks>
-/// Same reasoning as <see cref="RepeatGuardLimitsSeamGuardTests"/>: the seam's constructor is internal, but
+/// The seam's constructor is internal, but
 /// <c>InternalsVisibleTo</c> also names the production assemblies <c>Ignixa.SqlOnFhir</c> and
 /// <c>Ignixa.Search</c>. A scope held in production would change how long a pattern may run before it fails.
 /// Names are taken from the types so a rename breaks this file rather than silently matching nothing.

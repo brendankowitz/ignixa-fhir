@@ -141,7 +141,18 @@ internal static class FunctionHelpers
     /// being reported unequal here, so the branch only ever adds a decision.
     /// </para>
     /// </remarks>
-    public static bool AreElementsEqual(IElement? left, IElement? right)
+    public static bool AreElementsEqual(IElement? left, IElement? right) => AreElementsEqual(left, right, budget: null);
+
+    /// <summary>
+    /// <see cref="AreElementsEqual(IElement?, IElement?)"/>, charging <paramref name="budget"/> a step for every
+    /// child pair the comparison descends into.
+    /// </summary>
+    /// <remarks>
+    /// A set operation charges one step per comparison, but one comparison of two large complex elements that differ
+    /// only in their last leaf walks both subtrees. Charging the descent makes the budget track that cost, so
+    /// near-equal deep elements cannot make each step arbitrarily expensive.
+    /// </remarks>
+    internal static bool AreElementsEqual(IElement? left, IElement? right, EvaluationBudget? budget)
     {
         if (left == null && right == null) return true;
         if (left == null || right == null) return false;
@@ -179,6 +190,8 @@ internal static class FunctionHelpers
         if (leftChildren.Count != rightChildren.Count)
             return false;
 
+        budget?.Charge(leftChildren.Count);
+
         for (int i = 0; i < leftChildren.Count; i++)
         {
             // Children must have same name
@@ -186,7 +199,7 @@ internal static class FunctionHelpers
                 return false;
 
             // Recursively compare
-            if (!AreElementsEqual(leftChildren[i], rightChildren[i]))
+            if (!AreElementsEqual(leftChildren[i], rightChildren[i], budget))
                 return false;
         }
 
@@ -360,23 +373,36 @@ internal static class FunctionHelpers
     /// <summary>
     /// Returns the distinct elements of a collection under FHIRPath equality, preserving order.
     /// </summary>
+    /// <param name="elements">The collection.</param>
+    /// <param name="budget">The evaluation budget, charged per comparison and checked against the result size.</param>
+    /// <param name="site">The operator or function deduplicating, for a limit's message.</param>
     /// <remarks>
-    /// A linear scan rather than <c>Enumerable.Distinct</c> with a comparer, because FHIRPath equality has
-    /// no hash consistent with it: <c>@2012-01-01T10:00:00Z</c> and <c>@2012-01-01T20:00:00+10:00</c> are
-    /// the same value with different literals, and <c>1</c> and <c>1.0</c> are the same value with
-    /// different CLR types. The comparer this replaced hashed <c>Value.GetHashCode()</c> and compared with
-    /// <c>Value.Equals</c>, so it could not see either equality and never even called the comparison for
-    /// the first. FHIRPath collections are small enough that the quadratic scan is the right trade.
+    /// <para>
+    /// Not <c>Enumerable.Distinct</c> with a comparer, because FHIRPath equality has no hash consistent with it
+    /// for every value: <c>@2012-01-01T10:00:00Z</c> and <c>@2012-01-01T20:00:00+10:00</c> are the same value
+    /// with different literals, and a quantity equals a number in another unit. The comparer this once used
+    /// hashed <c>Value.GetHashCode()</c> and compared with <c>Value.Equals</c>, so it saw neither equality.
+    /// </para>
+    /// <para>
+    /// It was then a pairwise scan, quadratic in the collection, which made indexing <c>combo-code</c>
+    /// (<c>Observation.code | Observation.component.code</c>) quadratic in the number of components (#533).
+    /// <see cref="ElementEqualityIndex"/> keeps the scan's answer exactly while hashing every element that has a
+    /// key consistent with equality, and falls back to comparing the rest pairwise.
+    /// </para>
     /// </remarks>
-    public static List<IElement> Distinct(IEnumerable<IElement> elements)
+    public static List<IElement> Distinct(IEnumerable<IElement> elements, EvaluationBudget budget, string site)
     {
+        ArgumentNullException.ThrowIfNull(budget);
+
+        var index = new ElementEqualityIndex(budget);
         var result = new List<IElement>();
 
         foreach (var element in elements)
         {
-            if (!result.Any(existing => AreElementsEqual(existing, element)))
+            if (index.AddIfAbsent(element))
             {
                 result.Add(element);
+                budget.EnsureCollectionSize(result.Count, site);
             }
         }
 
@@ -386,12 +412,12 @@ internal static class FunctionHelpers
     /// <summary>
     /// Union operator: Merge collections, eliminate duplicates.
     /// </summary>
-    public static IEnumerable<IElement> EvaluateUnion(List<IElement> left, List<IElement> right)
+    public static IEnumerable<IElement> EvaluateUnion(List<IElement> left, List<IElement> right, EvaluationBudget budget)
     {
         ArgumentNullException.ThrowIfNull(left);
         ArgumentNullException.ThrowIfNull(right);
 
-        return Distinct(left.Concat(right));
+        return Distinct(left.Concat(right), budget, "Operator '|'");
     }
 
     #endregion

@@ -23,11 +23,12 @@ namespace Ignixa.FhirPath.Evaluation.Functions;
 /// <para>
 /// Both engines run under <see cref="MatchTimeout"/>. Linear time is not small time - a large bounded
 /// repetition over a long input can still take seconds - so the timeout is the bound in both cases. A
-/// timeout is a <see cref="FhirPathResourceLimitExceededException"/>, never "no match". One gap remains:
-/// the linear engine does not check the timeout while it computes capture groups, which only
-/// <c>replaceMatches()</c> asks for when its substitution names a group. Measured on a 1,000,000-character
-/// input, <c>replaceMatches('(.*a){80}', '$1')</c> ran 21 s under a 1 s timeout; the cost grows with input
-/// length times repetition count. Bounding that is left to a per-evaluation budget.
+/// timeout is a <see cref="FhirPathResourceLimitExceededException"/>, never "no match". The linear engine does
+/// not check the timeout while it computes capture groups, which only <c>replaceMatches()</c> asks for when its
+/// substitution contains a reference: measured on a 1,000,000-character input, <c>replaceMatches('(.*a){80}', '$1')</c>
+/// ran 21 s under a 1 s timeout, the cost growing with input length times repetition count. That case is bounded
+/// by <see cref="FhirPathEvaluationLimits.MaxRegexCaptureInputLength"/>, which <c>replaceMatches()</c> checks
+/// before matching.
 /// </para>
 /// <para>
 /// Both engines are built with <see cref="RegexOptions.CultureInvariant"/>: case-insensitive matching
@@ -105,12 +106,48 @@ internal static class FhirPathRegex
         }
     }
 
+    /// <summary>
+    /// Replaces every match, after proving the result fits the evaluation's string limit.
+    /// </summary>
     /// <param name="pattern">The pattern as the caller wrote it, for the error message.</param>
-    /// <exception cref="FhirPathResourceLimitExceededException">The match exceeded the regex's timeout.</exception>
-    public static string Replace(Regex regex, string pattern, string input, string substitution, string functionName)
+    /// <remarks>
+    /// <para>
+    /// The output length is bounded before anything is built, by walking the matches with
+    /// <see cref="Regex.EnumerateMatches(ReadOnlySpan{char})"/> - which finds match bounds only, never captures,
+    /// and is under the same timeout - and summing an upper bound on each expansion
+    /// (<see cref="RegexSubstitution"/>). A pattern that matches the empty string at every position multiplies
+    /// the input by the substitution, the regex analogue of <c>replace('', s)</c>, and this is what stops it.
+    /// Each match is also a step, so many matches drain the budget and observe cancellation.
+    /// </para>
+    /// <para>
+    /// A group can only be as long as the match on the linear engine, which has no lookarounds; the backtracking
+    /// engine can capture inside a lookbehind or lookahead outside the match, so there a group is bounded by the
+    /// input instead.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="FhirPathResourceLimitExceededException">
+    /// The match exceeded the regex's timeout, or the result would exceed the evaluation's string or step limit.
+    /// </exception>
+    public static string Replace(Regex regex, string pattern, string input, string substitution, string functionName, EvaluationBudget budget)
     {
+        ArgumentNullException.ThrowIfNull(regex);
+        ArgumentNullException.ThrowIfNull(budget);
+
+        var shape = RegexSubstitution.Parse(substitution);
+        var linear = (regex.Options & RegexOptions.NonBacktracking) != 0;
+
         try
         {
+            long length = input.Length;
+            foreach (var match in regex.EnumerateMatches(input))
+            {
+                budget.Step();
+                var groupBound = linear ? match.Length : input.Length;
+                length += shape.MaxExpansionLength(match.Index, match.Length, input.Length, groupBound) - match.Length;
+            }
+
+            budget.EnsureStringLength(length, functionName + "()");
+
             return regex.Replace(input, substitution);
         }
         catch (RegexMatchTimeoutException ex)
@@ -118,6 +155,12 @@ internal static class FhirPathRegex
             throw Timeout(ex, pattern, functionName);
         }
     }
+
+    /// <summary>
+    /// Reports whether a substitution contains any reference, which is what makes the linear engine compute captures -
+    /// the one phase of matching its timeout does not cover.
+    /// </summary>
+    public static bool NeedsCaptures(string substitution) => RegexSubstitution.Parse(substitution).NeedsCaptures;
 
     private static string Key(char kind, RegexOptions options, TimeSpan timeout, string pattern) =>
         string.Create(CultureInfo.InvariantCulture, $"{kind}{(int)options}:{timeout.Ticks}:{pattern}");
@@ -179,8 +222,9 @@ internal static class FhirPathRegex
     /// context only, so a test can prove a timeout surfaces without spending the production second.
     /// </summary>
     /// <remarks>
-    /// Same shape and caveats as <see cref="RepeatGuardLimits.Scope"/>: an <see cref="AsyncLocal{T}"/> override,
-    /// restored on dispose, kept out of production code by <c>Ignixa.RepoGuards.Tests.FhirPathRegexTimeoutSeamGuardTests</c>.
+    /// An <see cref="AsyncLocal{T}"/> override, restored on dispose, kept out of production code by
+    /// <c>Ignixa.RepoGuards.Tests.FhirPathRegexTimeoutSeamGuardTests</c>. Restoring in the disposing flow only, it
+    /// leaks into work started inside the scope; harmless for the synchronous tests that use it.
     /// The timeout is part of the cache key, so a scoped timeout never reaches a regex cached under another.
     /// </remarks>
     internal sealed class TimeoutScope : IDisposable

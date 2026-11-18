@@ -79,8 +79,10 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             context = context.WithContextNode(input);
         }
 
-        // Push the root element onto the $this stack so $this resolves correctly throughout evaluation
-        context = context.PushThis(input);
+        // Push the root element onto the $this stack so $this resolves correctly throughout evaluation.
+        // Every call meters itself from scratch, so a context reused across evaluations carries its limits
+        // and token forward but never a previous evaluation's count.
+        context = context.PushThis(input).StartBudget();
 
         return EvaluateExpression([input], expression, context);
     }
@@ -90,6 +92,10 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         // Every node is dispatched from here. The parser bounds expression depth; this turns a stack
         // too small for that bound into a catchable exception instead of a process-killing overflow.
         RuntimeHelpers.EnsureSufficientExecutionStack();
+
+        // The single per-node choke point for the evaluation budget: it is what stops a nested select()
+        // cross product, which materialises nothing and so trips no size limit.
+        context.Budget.Step();
 
         // Optimization: Skip context creation if focus hasn't changed
         // This is common in indexer/child/binary expressions where we evaluate sub-expressions with the same focus
@@ -283,7 +289,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             var left = EvaluateExpression(context.Focus, expression.Left, leftContext).ToList();
             var right = EvaluateExpression(context.Focus, expression.Right, rightContext).ToList();
 
-            return EvaluateUnion(left, right);
+            return FunctionHelpers.EvaluateUnion(left, right, context.Budget);
         }
 
 #pragma warning disable CA1308 // Normalize strings to uppercase
@@ -305,18 +311,18 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         return operatorName switch
         {
-            "&" => EvaluateStringConcatenation(leftResult, rightResult),
+            "&" => EvaluateStringConcatenation(leftResult, rightResult, context.Budget),
 
             "is" => EvaluateTypeIs(leftResult, expression.Right, context),
             "as" => EvaluateTypeAs(leftResult, expression.Right, context),
 
-            "in" => FunctionHelpers.ReturnBoolean(EvaluateMembership(leftResult, rightResult, isIn: true)),
-            "contains" => FunctionHelpers.ReturnBoolean(EvaluateMembership(leftResult, rightResult, isIn: false)),
+            "in" => FunctionHelpers.ReturnBoolean(EvaluateMembership(leftResult, rightResult, isIn: true, context.Budget)),
+            "contains" => FunctionHelpers.ReturnBoolean(EvaluateMembership(leftResult, rightResult, isIn: false, context.Budget)),
 
             "=" => FunctionHelpers.ReturnBoolean(CompareEquality(leftResult, rightResult, equals: true)),
             "!=" => FunctionHelpers.ReturnBoolean(CompareEquality(leftResult, rightResult, equals: false)),
-            "~" => FunctionHelpers.ReturnBoolean(CompareEquivalence(leftResult, rightResult, equivalent: true)),
-            "!~" => FunctionHelpers.ReturnBoolean(CompareEquivalence(leftResult, rightResult, equivalent: false)),
+            "~" => FunctionHelpers.ReturnBoolean(CompareEquivalence(leftResult, rightResult, equivalent: true, context.Budget)),
+            "!~" => FunctionHelpers.ReturnBoolean(CompareEquivalence(leftResult, rightResult, equivalent: false, context.Budget)),
             ">" => FunctionHelpers.ReturnBoolean(CompareOrder(leftResult, rightResult, greater: true, orEqual: false)),
             ">=" => FunctionHelpers.ReturnBoolean(CompareOrder(leftResult, rightResult, greater: true, orEqual: true)),
             "<" => FunctionHelpers.ReturnBoolean(CompareOrder(leftResult, rightResult, greater: false, orEqual: false)),
@@ -382,12 +388,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         ("implies", false) => true,
         _ => null
     };
-
-
-    private IEnumerable<IElement> EvaluateUnion(List<IElement> left, List<IElement> right)
-    {
-        return FunctionHelpers.EvaluateUnion(left, right);
-    }
 
     /// <summary>
     /// Evaluates the AND operator with FHIRPath three-valued logic.
@@ -773,7 +773,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// rule and must not be reinterpreted as an incompatible operand.
     /// </para>
     /// </remarks>
-    private IEnumerable<IElement> EvaluateStringConcatenation(List<IElement> left, List<IElement> right)
+    private IEnumerable<IElement> EvaluateStringConcatenation(List<IElement> left, List<IElement> right, EvaluationBudget budget)
     {
         if (left.Count > 1 || right.Count > 1)
         {
@@ -781,7 +781,13 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 $"Operator '&' requires singleton operands, but was given {left.Count} item(s) on the left and {right.Count} item(s) on the right.");
         }
 
-        return [CreateString(AsConcatenationOperand(left, "left") + AsConcatenationOperand(right, "right"))];
+        var leftText = AsConcatenationOperand(left, "left");
+        var rightText = AsConcatenationOperand(right, "right");
+
+        // Checked before allocating: $total & $total under aggregate() doubles per item.
+        budget.EnsureStringLength((long)leftText.Length + rightText.Length, "Operator '&'");
+
+        return [CreateString(leftText + rightText)];
     }
 
     /// <remarks>
@@ -857,7 +863,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return TypeMatcher.FilterByType(left, typeName, context.Schema);
     }
 
-    private bool? EvaluateMembership(List<IElement> left, List<IElement> right, bool isIn)
+    private static bool? EvaluateMembership(List<IElement> left, List<IElement> right, bool isIn, EvaluationBudget budget)
     {
         var singleItem = isIn ? left : right;
         var collection = isIn ? right : left;
@@ -883,12 +889,16 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return false;
 
         var item = singleItem[0];
-        return collection.Any(c => FunctionHelpers.AreElementsEqual(c, item));
+        return collection.Any(c =>
+        {
+            budget.Step();
+            return FunctionHelpers.AreElementsEqual(c, item, budget);
+        });
     }
 
-    private bool? CompareEquivalence(List<IElement> left, List<IElement> right, bool equivalent)
+    private bool? CompareEquivalence(List<IElement> left, List<IElement> right, bool equivalent, EvaluationBudget budget)
     {
-        return AreCollectionsEquivalent(left, right, matchNames: false) == equivalent;
+        return AreCollectionsEquivalent(left, right, matchNames: false, budget) == equivalent;
     }
 
     /// <summary>
@@ -944,12 +954,14 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     private bool AreCollectionsEquivalent(
         IReadOnlyList<IElement> left,
         IReadOnlyList<IElement> right,
-        bool matchNames)
+        bool matchNames,
+        EvaluationBudget budget)
     {
         if (left.Count != right.Count)
             return false;
 
         var candidates = new List<int>[left.Count];
+        long candidateCount = 0;
 
         for (var leftIndex = 0; leftIndex < left.Count; leftIndex++)
         {
@@ -957,10 +969,16 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
             for (var rightIndex = 0; rightIndex < right.Count; rightIndex++)
             {
+                budget.Step();
+
                 if ((!matchNames || string.Equals(left[leftIndex].Name, right[rightIndex].Name, StringComparison.Ordinal))
-                    && AreElementsEquivalent(left[leftIndex], right[rightIndex]))
+                    && AreElementsEquivalent(left[leftIndex], right[rightIndex], budget))
                 {
                     row.Add(rightIndex);
+
+                    // The matrix is the one thing here that grows with the square of the input: 10,000 equal
+                    // items would materialise 100,000,000 entries before pairing began.
+                    budget.EnsureCollectionSize(++candidateCount, "Operator '~'");
                 }
             }
 
@@ -982,7 +1000,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
             // The counts are equal, so a matching that leaves any left item unpaired is not perfect,
             // and a maximum matching that is not perfect proves no perfect one exists.
-            if (!TryPair(leftIndex, candidates, pairedWith, visited))
+            if (!TryPair(leftIndex, candidates, pairedWith, visited, budget))
                 return false;
         }
 
@@ -1007,17 +1025,22 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// pairing is only ever surrendered for one that still leaves its owner paired. This is the step
     /// first-fit lacks, and the reason the result cannot depend on operand order.
     /// </remarks>
-    private static bool TryPair(int leftIndex, List<int>[] candidates, int[] pairedWith, bool[] visited)
+    private static bool TryPair(int leftIndex, List<int>[] candidates, int[] pairedWith, bool[] visited, EvaluationBudget budget)
     {
+        // An augmenting path can be as long as the collection, and each hop is a frame.
+        RuntimeHelpers.EnsureSufficientExecutionStack();
+
         foreach (var rightIndex in candidates[leftIndex])
         {
+            budget.Step();
+
             if (visited[rightIndex])
                 continue;
 
             visited[rightIndex] = true;
 
             if (pairedWith[rightIndex] == Unpaired
-                || TryPair(pairedWith[rightIndex], candidates, pairedWith, visited))
+                || TryPair(pairedWith[rightIndex], candidates, pairedWith, visited, budget))
             {
                 pairedWith[rightIndex] = leftIndex;
                 return true;
@@ -1044,9 +1067,9 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// The descent matches children by name rather than by position, because repeating children have no
     /// meaningful order.
     /// </remarks>
-    private bool AreElementsEquivalent(IElement left, IElement right)
+    private bool AreElementsEquivalent(IElement left, IElement right, EvaluationBudget budget)
     {
-        if (FunctionHelpers.AreElementsEqual(left, right))
+        if (FunctionHelpers.AreElementsEqual(left, right, budget))
             return true;
 
         var leftQuantity = TryExtractQuantity(left);
@@ -1062,7 +1085,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         if (left.Value is not null || right.Value is not null)
             return AreEquivalent(left.Value, right.Value, left.InstanceType, right.InstanceType);
 
-        return AreCollectionsEquivalent(left.Children(), right.Children(), matchNames: true);
+        return AreCollectionsEquivalent(left.Children(), right.Children(), matchNames: true, budget);
     }
 
     /// <summary>

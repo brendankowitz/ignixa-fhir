@@ -175,21 +175,35 @@ internal static class ValueOrdering
         ArgumentNullException.ThrowIfNull(right);
 
         leftValue = left.Value;
-        rightValue = 0m;
+        return TryExpressIn(right, left.Unit, out rightValue);
+    }
 
-        if (!UnitConverter.IsCompatible(left.Unit, right.Unit))
+    /// <summary>
+    /// Expresses <paramref name="quantity"/> in <paramref name="unit"/> exactly as <see cref="TryAlignUnits"/>
+    /// expresses its right operand in its left operand's unit.
+    /// </summary>
+    /// <remarks>
+    /// Separate so that <see cref="ElementEqualityIndex"/> can look a quantity up by the value equality would
+    /// compare, without a second implementation of the conversion that could drift from this one.
+    /// </remarks>
+    /// <returns><see langword="false"/> when no conversion relates the two units.</returns>
+    internal static bool TryExpressIn(FhirQuantity quantity, string unit, out decimal value)
+    {
+        value = 0m;
+
+        if (!UnitConverter.IsCompatible(unit, quantity.Unit))
         {
             return false;
         }
 
-        var converted = right.ConvertTo(left.Unit, UnitConverter);
+        var converted = quantity.ConvertTo(unit, UnitConverter);
 
         if (converted is null)
         {
             return false;
         }
 
-        rightValue = converted.Value;
+        value = converted.Value;
         return true;
     }
 
