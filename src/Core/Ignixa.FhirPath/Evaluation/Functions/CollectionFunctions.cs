@@ -228,7 +228,7 @@ internal static class CollectionFunctions
             throw new FhirPathEvaluationException("skip() requires a num argument");
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var numResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
+        var numResult = FunctionHelpers.SingleArgument("skip", evaluateExpression(context.Focus, arguments[0], context));
         if (numResult?.Value is not int num)
             return [];
 
@@ -256,7 +256,7 @@ internal static class CollectionFunctions
             throw new FhirPathEvaluationException("take() requires a num argument");
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var numResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
+        var numResult = FunctionHelpers.SingleArgument("take", evaluateExpression(context.Focus, arguments[0], context));
         if (numResult?.Value is not int num)
             return [];
 

@@ -198,6 +198,36 @@ internal static class FunctionHelpers
     #region Type Validation Helpers
 
     /// <summary>
+    /// Returns the one item an argument evaluated to, or <see langword="null"/> when it evaluated to empty.
+    /// </summary>
+    /// <exception cref="FhirPathEvaluationException">
+    /// The argument evaluated to more than one item. FHIRPath "Singleton Evaluation of Collections"
+    /// requires a function that expects a single item to signal an error rather than pick one.
+    /// </exception>
+    public static IElement? SingleArgument(string functionName, IEnumerable<IElement> argument) =>
+        AtMostOne(functionName, "argument", argument);
+
+    /// <summary>
+    /// Returns the one item the input collection holds, or <see langword="null"/> when it is empty.
+    /// </summary>
+    /// <exception cref="FhirPathEvaluationException">The input holds more than one item.</exception>
+    public static IElement? SingleInput(string functionName, IEnumerable<IElement> input) =>
+        AtMostOne(functionName, "input", input);
+
+    private static IElement? AtMostOne(string functionName, string role, IEnumerable<IElement> items)
+    {
+        // Stop after two items: the answer is known and the sequence may be long or lazily evaluated.
+        var firstTwo = items.Take(2).ToList();
+        if (firstTwo.Count > 1)
+        {
+            throw new FhirPathEvaluationException(
+                $"{functionName}() {role} must be a single item, but it evaluated to a collection of several items");
+        }
+
+        return firstTwo.Count == 1 ? firstTwo[0] : null;
+    }
+
+    /// <summary>
     /// Validates that the focus collection contains a single value with a string representation.
     /// </summary>
     /// <param name="focus">The input collection</param>

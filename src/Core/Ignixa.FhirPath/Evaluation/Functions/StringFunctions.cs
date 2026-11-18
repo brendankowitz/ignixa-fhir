@@ -45,7 +45,7 @@ internal static class StringFunctions
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var substringResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
+        var substringResult = FunctionHelpers.SingleArgument("indexOf", evaluateExpression(context.Focus, arguments[0], context));
         if (substringResult?.Value is not string substring)
             return [];
 
@@ -116,7 +116,7 @@ internal static class StringFunctions
             return [];
 
         // Non-scoped function: evaluate arguments in outer context (don't change $this)
-        var startResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
+        var startResult = FunctionHelpers.SingleArgument("substring", evaluateExpression(context.Focus, arguments[0], context));
         if (startResult?.Value is not int start)
             return [];
 
@@ -126,7 +126,7 @@ internal static class StringFunctions
         int? length = null;
         if (arguments.Count > 1)
         {
-            var lengthResult = evaluateExpression(context.Focus, arguments[1], context).SingleOrDefault();
+            var lengthResult = FunctionHelpers.SingleArgument("substring", evaluateExpression(context.Focus, arguments[1], context));
             if (lengthResult?.Value is int len)
                 length = len;
         }
@@ -164,7 +164,7 @@ internal static class StringFunctions
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var prefixResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
+        var prefixResult = FunctionHelpers.SingleArgument("startsWith", evaluateExpression(context.Focus, arguments[0], context));
         if (prefixResult?.Value is not string prefix)
             return [];
 
@@ -194,7 +194,7 @@ internal static class StringFunctions
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var suffixResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
+        var suffixResult = FunctionHelpers.SingleArgument("endsWith", evaluateExpression(context.Focus, arguments[0], context));
         if (suffixResult?.Value is not string suffix)
             return [];
 
@@ -281,8 +281,8 @@ internal static class StringFunctions
             return [];
 
         // Non-scoped function: evaluate arguments in outer context (don't change $this)
-        var patternResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
-        var substitutionResult = evaluateExpression(context.Focus, arguments[1], context).SingleOrDefault();
+        var patternResult = FunctionHelpers.SingleArgument("replace", evaluateExpression(context.Focus, arguments[0], context));
+        var substitutionResult = FunctionHelpers.SingleArgument("replace", evaluateExpression(context.Focus, arguments[1], context));
 
         if (patternResult?.Value is not string pattern || substitutionResult?.Value is not string substitution)
             return [];
@@ -331,7 +331,7 @@ internal static class StringFunctions
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var regexResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
+        var regexResult = FunctionHelpers.SingleArgument("matches", evaluateExpression(context.Focus, arguments[0], context));
         if (regexResult?.Value is not string pattern)
             return [];
 
@@ -364,14 +364,14 @@ internal static class StringFunctions
             return [];
 
         // Non-scoped function: evaluate arguments in outer context (don't change $this)
-        var regexResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
+        var regexResult = FunctionHelpers.SingleArgument("matchesFull", evaluateExpression(context.Focus, arguments[0], context));
         if (regexResult?.Value is not string pattern)
             return [];
 
         var options = RegexOptions.None;
         if (arguments.Count > 1)
         {
-            var flagsResult = evaluateExpression(context.Focus, arguments[1], context).SingleOrDefault();
+            var flagsResult = FunctionHelpers.SingleArgument("matchesFull", evaluateExpression(context.Focus, arguments[1], context));
             if (flagsResult?.Value is string flags)
             {
                 options = ParseRegexFlags(flags);
@@ -422,8 +422,8 @@ internal static class StringFunctions
             return [];
 
         // Non-scoped function: evaluate arguments in outer context (don't change $this)
-        var patternResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
-        var substitutionResult = evaluateExpression(context.Focus, arguments[1], context).SingleOrDefault();
+        var patternResult = FunctionHelpers.SingleArgument("replaceMatches", evaluateExpression(context.Focus, arguments[0], context));
+        var substitutionResult = FunctionHelpers.SingleArgument("replaceMatches", evaluateExpression(context.Focus, arguments[1], context));
 
         if (patternResult?.Value is not string pattern || substitutionResult?.Value is not string substitution)
             return [];
@@ -548,7 +548,7 @@ internal static class StringFunctions
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var delimiterResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
+        var delimiterResult = FunctionHelpers.SingleArgument("split", evaluateExpression(context.Focus, arguments[0], context));
         if (delimiterResult?.Value is not string delimiter)
             return [];
 
@@ -579,7 +579,7 @@ internal static class StringFunctions
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var substringResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
+        var substringResult = FunctionHelpers.SingleArgument("contains", evaluateExpression(context.Focus, arguments[0], context));
         if (substringResult?.Value is not string substring)
             return [];
 
@@ -603,13 +603,13 @@ internal static class StringFunctions
         EvaluationContext context,
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
-        var element = focus.SingleOrDefault();
+        var element = FunctionHelpers.SingleInput("encode", focus);
         if (element?.Value is not string str)
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var encodingTypeResult = evaluateExpression(context.Focus, arguments[0], context);
-        var encodingType = encodingTypeResult.FirstOrDefault()?.Value?.ToString();
+        var encodingTypeResult = FunctionHelpers.SingleArgument("encode", evaluateExpression(context.Focus, arguments[0], context));
+        var encodingType = encodingTypeResult?.Value?.ToString();
 
         if (encodingType is null)
             return [];
@@ -642,13 +642,13 @@ internal static class StringFunctions
         EvaluationContext context,
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
-        var element = focus.SingleOrDefault();
+        var element = FunctionHelpers.SingleInput("decode", focus);
         if (element?.Value is not string str)
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var encodingTypeResult = evaluateExpression(context.Focus, arguments[0], context);
-        var encodingType = encodingTypeResult.FirstOrDefault()?.Value?.ToString();
+        var encodingTypeResult = FunctionHelpers.SingleArgument("decode", evaluateExpression(context.Focus, arguments[0], context));
+        var encodingType = encodingTypeResult?.Value?.ToString();
 
         if (encodingType is null)
             return [];
@@ -689,13 +689,13 @@ internal static class StringFunctions
         EvaluationContext context,
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
-        var element = focus.SingleOrDefault();
+        var element = FunctionHelpers.SingleInput("escape", focus);
         if (element?.Value is not string str)
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var escapeTypeResult = evaluateExpression(context.Focus, arguments[0], context);
-        var escapeType = escapeTypeResult.FirstOrDefault()?.Value?.ToString();
+        var escapeTypeResult = FunctionHelpers.SingleArgument("escape", evaluateExpression(context.Focus, arguments[0], context));
+        var escapeType = escapeTypeResult?.Value?.ToString();
 
         if (escapeType is null)
             return [];
@@ -761,13 +761,13 @@ internal static class StringFunctions
         EvaluationContext context,
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
-        var element = focus.SingleOrDefault();
+        var element = FunctionHelpers.SingleInput("unescape", focus);
         if (element?.Value is not string str)
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var escapeTypeResult = evaluateExpression(context.Focus, arguments[0], context);
-        var escapeType = escapeTypeResult.FirstOrDefault()?.Value?.ToString();
+        var escapeTypeResult = FunctionHelpers.SingleArgument("unescape", evaluateExpression(context.Focus, arguments[0], context));
+        var escapeType = escapeTypeResult?.Value?.ToString();
 
         if (escapeType is null)
             return [];

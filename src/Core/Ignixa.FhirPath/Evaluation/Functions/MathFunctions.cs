@@ -16,6 +16,8 @@ namespace Ignixa.FhirPath.Evaluation.Functions;
 /// </summary>
 internal static class MathFunctions
 {
+    private const int MaxRoundPrecision = 28;
+
     /// <summary>
     /// round() - Rounds to the nearest integer or to the specified precision.
     /// </summary>
@@ -39,11 +41,19 @@ internal static class MathFunctions
         if (arguments.Count > 0)
         {
             // Non-scoped function: evaluate argument in outer context (don't change $this)
-            var precisionResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
-            if (precisionResult?.Value is int p)
-                precision = p;
-            else
+            var precisionResult = FunctionHelpers.SingleArgument("round", evaluateExpression(context.Focus, arguments[0], context));
+            if (precisionResult?.Value is not int p)
                 return [];
+
+            // §round: a negative precision is an error. decimal holds at most 28 fractional digits, so a
+            // larger precision cannot be honoured and is rejected explicitly rather than by Math.Round.
+            if (p is < 0 or > MaxRoundPrecision)
+            {
+                throw new FhirPathEvaluationException(
+                    $"round() precision must be between 0 and {MaxRoundPrecision}, but was {p}");
+            }
+
+            precision = p;
         }
 
         var rounded = Math.Round(value, precision, MidpointRounding.AwayFromZero);
@@ -78,15 +88,12 @@ internal static class MathFunctions
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var exponentResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
-        if (!FunctionHelpers.TryConvertToDecimal(exponentResult?.Value, out var exponent))
+        var exponentResult = FunctionHelpers.SingleArgument("power", evaluateExpression(context.Focus, arguments[0], context));
+        if (!TryConvertArgument(exponentResult?.Value, out var exponent))
             return [];
 
-        var result = Math.Pow((double)baseValue, (double)exponent);
-        // Return empty for NaN (e.g., (-1)^0.5 which is imaginary) or Infinity
-        if (double.IsNaN(result) || double.IsInfinity(result))
-            return [];
-        return [FunctionHelpers.CreateDecimal((decimal)result)];
+        // NaN is e.g. (-1)^0.5 (imaginary); an unrepresentable result is overflow, which yields empty.
+        return DecimalResult(Math.Pow((double)baseValue, (double)exponent));
     }
 
     /// <summary>
@@ -178,8 +185,9 @@ internal static class MathFunctions
             return [FunctionHelpers.CreateQuantity(absQty)];
         }
 
+        // abs(-2147483648) does not fit an Integer: overflow yields empty.
         if (list[0].Value is int intValue)
-            return [FunctionHelpers.CreateInteger(Math.Abs(intValue))];
+            return intValue == int.MinValue ? [] : [FunctionHelpers.CreateInteger(Math.Abs(intValue))];
 
         if (FunctionHelpers.TryConvertToDecimal(list[0].Value, out var value))
             return [FunctionHelpers.CreateDecimal(Math.Abs(value))];
@@ -206,8 +214,7 @@ internal static class MathFunctions
         if (value < 0)
             return [];
 
-        var result = (decimal)Math.Sqrt((double)value);
-        return [FunctionHelpers.CreateDecimal(result)];
+        return DecimalResult(Math.Sqrt((double)value));
     }
 
     /// <summary>
@@ -225,8 +232,7 @@ internal static class MathFunctions
         if (!FunctionHelpers.TryGetSingleNumber(focus, "exp", out var value))
             return [];
 
-        var result = (decimal)Math.Exp((double)value);
-        return [FunctionHelpers.CreateDecimal(result)];
+        return DecimalResult(Math.Exp((double)value));
     }
 
     /// <summary>
@@ -247,8 +253,7 @@ internal static class MathFunctions
         if (value <= 0)
             return [];
 
-        var result = (decimal)Math.Log((double)value);
-        return [FunctionHelpers.CreateDecimal(result)];
+        return DecimalResult(Math.Log((double)value));
     }
 
     /// <summary>
@@ -274,14 +279,49 @@ internal static class MathFunctions
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var baseResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
-        if (!FunctionHelpers.TryConvertToDecimal(baseResult?.Value, out var baseValue))
+        var baseResult = FunctionHelpers.SingleArgument("log", evaluateExpression(context.Focus, arguments[0], context));
+        if (!TryConvertArgument(baseResult?.Value, out var baseValue))
             return [];
 
         if (value <= 0 || baseValue <= 0 || baseValue == 1)
             return [];
 
-        var result = (decimal)Math.Log((double)value, (double)baseValue);
-        return [FunctionHelpers.CreateDecimal(result)];
+        return DecimalResult(Math.Log((double)value, (double)baseValue));
+    }
+
+    /// <summary>
+    /// Wraps a computed double as a Decimal. NaN, infinity and values beyond <see cref="decimal"/>'s range
+    /// are overflow, which §Math defines as empty - matching what the arithmetic operators do.
+    /// </summary>
+    private static IEnumerable<IElement> DecimalResult(double result)
+    {
+        if (double.IsNaN(result) || double.IsInfinity(result))
+            return [];
+
+        try
+        {
+            return [FunctionHelpers.CreateDecimal((decimal)result)];
+        }
+        catch (OverflowException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Converts an evaluated argument to a decimal; a number outside <see cref="decimal"/>'s range, like a
+    /// non-number, yields no value so the function returns empty.
+    /// </summary>
+    private static bool TryConvertArgument(object? value, out decimal result)
+    {
+        try
+        {
+            return FunctionHelpers.TryConvertToDecimal(value, out result);
+        }
+        catch (OverflowException)
+        {
+            result = 0;
+            return false;
+        }
     }
 }
