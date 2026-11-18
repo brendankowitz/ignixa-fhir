@@ -146,7 +146,7 @@ public partial class ParquetExportStreamWriter : IExportStreamWriter
         CancellationToken cancellationToken)
     {
         // Evaluate ViewDefinition against resource (returns IEnumerable<Dictionary<string, object?>>)
-        var rows = _evaluator!.Evaluate(_viewDefinitionNode!, resourceElement);
+        var rows = _evaluator!.Evaluate(_viewDefinitionNode!, resourceElement, variables: null, cancellationToken);
         var rowList = rows?.ToList() ?? new List<Dictionary<string, object?>>(); // Materialize to count
 
         if (rowList.Count == 0)

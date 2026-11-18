@@ -1132,6 +1132,51 @@ public class SqlOnFhirEvaluatorTests
     }
 
     [Fact]
+    public void GivenAColumnThatExceedsAnEvaluationLimit_WhenBatchEvaluated_ThenTheLimitTypeSurvivesTheContextWrapping()
+    {
+        // The lookahead forces the backtracking engine and (a+)+ inside it is exponential on a run of 'a' with no
+        // 'b', so the match times out (one second). Regression: the evaluator rewrapped the resulting resource-limit
+        // exception as a plain FhirPathEvaluationException, so an export could not tell "this view asks too much"
+        // from an ill-formed expression.
+        var patient = CreateTypedElement(new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "p1" }
+        });
+
+        var path = $"'{new string('a', 40)}'.matches('(?=(a+)+b)')";
+        var viewJson = $$"""
+            { "resource": "Patient", "select": [{ "column": [{ "name": "slow", "path": "{{path}}", "type": "boolean" }] }] }
+            """;
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(viewJson)!, "ViewDefinition");
+
+        var ex = Assert.Throws<FhirPathResourceLimitExceededException>(() => _evaluator.EvaluateBatch(sourceNode, [patient]).ToList());
+
+        Assert.Contains("Failed to evaluate ViewDefinition for resource type 'Patient'", ex.Message, StringComparison.Ordinal);
+        Assert.IsType<FhirPathResourceLimitExceededException>(ex.InnerException);
+    }
+
+    [Fact]
+    public void GivenACancelledToken_WhenBatchEvaluated_ThenTheCancellationSurfacesUnwrapped()
+    {
+        // The export path passes its request token; a cancelled one must stop the view as itself, not as an
+        // InvalidOperationException saying evaluation failed.
+        var patient = CreateTypedElement(new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "p1" }
+        });
+
+        var viewJson = """
+            { "resource": "Patient", "select": [{ "column": [{ "name": "id", "path": "id", "type": "string" }] }] }
+            """;
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(viewJson)!, "ViewDefinition");
+
+        Assert.Throws<OperationCanceledException>(
+            () => _evaluator.EvaluateBatch(sourceNode, [patient], variables: null, new CancellationToken(canceled: true)).ToList());
+    }
+
+    [Fact]
     public void GivenAFhirPathEvaluationError_WhenBatchEvaluated_ThenTheErrorTypeSurvivesTheContextWrapping()
     {
         // A spec-mandated FHIRPath error - '&' is a singleton operator given a three-item left operand -

@@ -99,7 +99,19 @@ public class MappingContext : ITransformContext
     /// <summary>
     /// FHIRPath evaluator for evaluating embedded FHIRPath expressions.
     /// </summary>
+    /// <remarks>
+    /// A host-supplied evaluator should pass <see cref="CancellationToken"/> to the evaluation, so that the
+    /// transformation's timeout and the caller's cancellation can stop an expression while it runs rather than only
+    /// at the next rule.
+    /// </remarks>
     public Func<string, IElement, IEnumerable<IElement>>? FhirPathEvaluator { get; set; }
+
+    /// <summary>
+    /// The token the transformation in progress observes: the caller's token linked with
+    /// <see cref="MappingEvaluatorOptions.TransformTimeout"/>. Set by <see cref="MappingEvaluator"/> for the duration
+    /// of an <c>Execute</c> or <c>ExecuteGroup</c> call, and <see cref="CancellationToken.None"/> outside one.
+    /// </summary>
+    public CancellationToken CancellationToken { get; internal set; }
 
     /// <summary>
     /// Transform function resolver.

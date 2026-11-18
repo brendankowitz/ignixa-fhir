@@ -21,11 +21,13 @@ public interface IJsonNodeMutator
     /// <param name="fhirPathExpression">FHIRPath expression to property (e.g., "Patient.name")</param>
     /// <param name="value">Value to set (IElement)</param>
     /// <param name="mode">Mutation mode: Replace (single-valued), Append (multi-valued), or Auto-detect (default)</param>
+    /// <param name="cancellationToken">Observed by the FHIRPath evaluation that locates the target.</param>
     void SetProperty(
         ResourceJsonNode resource,
         string fhirPathExpression,
         IElement value,
-        PropertyMutationMode mode = PropertyMutationMode.AutoDetect);
+        PropertyMutationMode mode = PropertyMutationMode.AutoDetect,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Set property value from JsonNode.
@@ -35,11 +37,13 @@ public interface IJsonNodeMutator
     /// <param name="fhirPathExpression">FHIRPath expression to property</param>
     /// <param name="value">Value to set (JsonNode)</param>
     /// <param name="mode">Mutation mode</param>
+    /// <param name="cancellationToken">Observed by the FHIRPath evaluation that locates the target.</param>
     void SetProperty(
         ResourceJsonNode resource,
         string fhirPathExpression,
         JsonNode value,
-        PropertyMutationMode mode = PropertyMutationMode.AutoDetect);
+        PropertyMutationMode mode = PropertyMutationMode.AutoDetect,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Ensure property path exists, creating intermediate objects if needed.
@@ -59,9 +63,11 @@ public interface IJsonNodeMutator
     /// <param name="resource">Target resource to mutate</param>
     /// <param name="fhirPathExpression">FHIRPath expression to the element to delete</param>
     /// <exception cref="System.InvalidOperationException">Thrown if path doesn't match exactly one element</exception>
+    /// <param name="cancellationToken">Observed by the FHIRPath evaluation that locates the target.</param>
     void DeleteProperty(
         ResourceJsonNode resource,
-        string fhirPathExpression);
+        string fhirPathExpression,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Insert value into array at specific index.
@@ -72,11 +78,13 @@ public interface IJsonNodeMutator
     /// <param name="value">Value to insert</param>
     /// <param name="index">Zero-based index position for insertion</param>
     /// <exception cref="System.ArgumentOutOfRangeException">Thrown if index is out of range</exception>
+    /// <param name="cancellationToken">Observed by the FHIRPath evaluation that locates the target.</param>
     void InsertIntoArray(
         ResourceJsonNode resource,
         string fhirPathExpression,
         JsonNode value,
-        int index);
+        int index,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Replace array element at specific index.
@@ -85,10 +93,12 @@ public interface IJsonNodeMutator
     /// <param name="fhirPathExpression">FHIRPath expression to the array element</param>
     /// <param name="value">New value to set</param>
     /// <exception cref="System.InvalidOperationException">Thrown if path doesn't match exactly one element or element is not in an array</exception>
+    /// <param name="cancellationToken">Observed by the FHIRPath evaluation that locates the target.</param>
     void ReplaceArrayElement(
         ResourceJsonNode resource,
         string fhirPathExpression,
-        JsonNode value);
+        JsonNode value,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Evaluate FHIRPath and return all matching JsonNodes.
@@ -97,9 +107,11 @@ public interface IJsonNodeMutator
     /// <param name="resource">Resource to evaluate against</param>
     /// <param name="fhirPathExpression">FHIRPath expression (e.g., "Patient.name.where(use='official')")</param>
     /// <returns>Matching JsonNodes extracted via Meta</returns>
+    /// <param name="cancellationToken">Observed by the FHIRPath evaluation that locates the target.</param>
     IEnumerable<JsonNode> Evaluate(
         ResourceJsonNode resource,
-        string fhirPathExpression);
+        string fhirPathExpression,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Evaluate FHIRPath and require exactly one match.
@@ -108,7 +120,9 @@ public interface IJsonNodeMutator
     /// <param name="fhirPathExpression">FHIRPath expression</param>
     /// <returns>The single matching JsonNode</returns>
     /// <exception cref="System.InvalidOperationException">Thrown if zero or multiple matches found</exception>
+    /// <param name="cancellationToken">Observed by the FHIRPath evaluation that locates the target.</param>
     JsonNode EvaluateSingle(
         ResourceJsonNode resource,
-        string fhirPathExpression);
+        string fhirPathExpression,
+        CancellationToken cancellationToken = default);
 }

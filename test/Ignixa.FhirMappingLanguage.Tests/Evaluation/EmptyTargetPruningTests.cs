@@ -497,29 +497,29 @@ public class EmptyTargetPruningTests
 
     private sealed class ForwardingJsonNodeMutator(IJsonNodeMutator inner) : IJsonNodeMutator
     {
-        public void SetProperty(ResourceJsonNode resource, string fhirPathExpression, IElement value, PropertyMutationMode mode = PropertyMutationMode.AutoDetect) =>
-            inner.SetProperty(resource, fhirPathExpression, value, mode);
+        public void SetProperty(ResourceJsonNode resource, string fhirPathExpression, IElement value, PropertyMutationMode mode = PropertyMutationMode.AutoDetect, CancellationToken cancellationToken = default) =>
+            inner.SetProperty(resource, fhirPathExpression, value, mode, cancellationToken);
 
-        public void SetProperty(ResourceJsonNode resource, string fhirPathExpression, JsonNode value, PropertyMutationMode mode = PropertyMutationMode.AutoDetect) =>
-            inner.SetProperty(resource, fhirPathExpression, value, mode);
+        public void SetProperty(ResourceJsonNode resource, string fhirPathExpression, JsonNode value, PropertyMutationMode mode = PropertyMutationMode.AutoDetect, CancellationToken cancellationToken = default) =>
+            inner.SetProperty(resource, fhirPathExpression, value, mode, cancellationToken);
 
         public JsonNode EnsurePropertyPath(ResourceJsonNode resource, string fhirPathExpression) =>
             inner.EnsurePropertyPath(resource, fhirPathExpression);
 
-        public void DeleteProperty(ResourceJsonNode resource, string fhirPathExpression) =>
-            inner.DeleteProperty(resource, fhirPathExpression);
+        public void DeleteProperty(ResourceJsonNode resource, string fhirPathExpression, CancellationToken cancellationToken = default) =>
+            inner.DeleteProperty(resource, fhirPathExpression, cancellationToken);
 
-        public void InsertIntoArray(ResourceJsonNode resource, string fhirPathExpression, JsonNode value, int index) =>
-            inner.InsertIntoArray(resource, fhirPathExpression, value, index);
+        public void InsertIntoArray(ResourceJsonNode resource, string fhirPathExpression, JsonNode value, int index, CancellationToken cancellationToken = default) =>
+            inner.InsertIntoArray(resource, fhirPathExpression, value, index, cancellationToken);
 
-        public void ReplaceArrayElement(ResourceJsonNode resource, string fhirPathExpression, JsonNode value) =>
-            inner.ReplaceArrayElement(resource, fhirPathExpression, value);
+        public void ReplaceArrayElement(ResourceJsonNode resource, string fhirPathExpression, JsonNode value, CancellationToken cancellationToken = default) =>
+            inner.ReplaceArrayElement(resource, fhirPathExpression, value, cancellationToken);
 
-        public IEnumerable<JsonNode> Evaluate(ResourceJsonNode resource, string fhirPathExpression) =>
-            inner.Evaluate(resource, fhirPathExpression);
+        public IEnumerable<JsonNode> Evaluate(ResourceJsonNode resource, string fhirPathExpression, CancellationToken cancellationToken = default) =>
+            inner.Evaluate(resource, fhirPathExpression, cancellationToken);
 
-        public JsonNode EvaluateSingle(ResourceJsonNode resource, string fhirPathExpression) =>
-            inner.EvaluateSingle(resource, fhirPathExpression);
+        public JsonNode EvaluateSingle(ResourceJsonNode resource, string fhirPathExpression, CancellationToken cancellationToken = default) =>
+            inner.EvaluateSingle(resource, fhirPathExpression, cancellationToken);
     }
 
     private sealed class ImmutableTargetElement : IElement

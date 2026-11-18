@@ -11,6 +11,7 @@ using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Registry;
 using Ignixa.FhirMappingLanguage.Transforms;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirMappingLanguage.Mutator;
 using Ignixa.Serialization.SourceNodes;
 
@@ -62,7 +63,7 @@ public class MappingEvaluator
     {
         _options = MappingEvaluatorOptions.Default;
         _options.Validate();
-        _fhirPathIntegration = enableFhirPath ? new() : null;
+        _fhirPathIntegration = enableFhirPath ? new(limits: FhirPathLimits(_options)) : null;
         _importResolver = null;
     }
 
@@ -74,7 +75,7 @@ public class MappingEvaluator
     {
         _options = options ?? MappingEvaluatorOptions.Default;
         _options.Validate();
-        _fhirPathIntegration = new FhirPathIntegration();
+        _fhirPathIntegration = new FhirPathIntegration(limits: FhirPathLimits(_options));
         _importResolver = null;
     }
 
@@ -87,7 +88,7 @@ public class MappingEvaluator
     {
         _options = MappingEvaluatorOptions.Default;
         _options.Validate();
-        _fhirPathIntegration = enableFhirPath ? new() : null;
+        _fhirPathIntegration = enableFhirPath ? new(limits: FhirPathLimits(_options)) : null;
         _importResolver = importResolver;
     }
 
@@ -100,7 +101,7 @@ public class MappingEvaluator
     {
         _options = options ?? MappingEvaluatorOptions.Default;
         _options.Validate();
-        _fhirPathIntegration = new FhirPathIntegration();
+        _fhirPathIntegration = new FhirPathIntegration(limits: FhirPathLimits(_options));
         _importResolver = importResolver;
     }
 
@@ -113,7 +114,7 @@ public class MappingEvaluator
     {
         _options = options ?? MappingEvaluatorOptions.Default;
         _options.Validate();
-        _fhirPathIntegration = new FhirPathIntegration();
+        _fhirPathIntegration = new FhirPathIntegration(limits: FhirPathLimits(_options));
         _mutator = mutator;
         _importResolver = null;
     }
@@ -128,7 +129,7 @@ public class MappingEvaluator
     {
         _options = options ?? MappingEvaluatorOptions.Default;
         _options.Validate();
-        _fhirPathIntegration = new FhirPathIntegration();
+        _fhirPathIntegration = new FhirPathIntegration(limits: FhirPathLimits(_options));
         _mutator = mutator;
         _importResolver = importResolver;
     }
@@ -197,12 +198,16 @@ public class MappingEvaluator
     /// The transformation failed, or did not finish within <see cref="MappingEvaluatorOptions.TransformTimeout"/> (code <c>TRANSFORM_TIMEOUT</c>).
     /// </exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
-    public void ExecuteGroup(MapExpression map, string groupName, MappingContext context, CancellationToken cancellationToken) =>
-        WithinTimeout(() => ExecuteGroupCore(map, groupName, context), cancellationToken);
+    public void ExecuteGroup(MapExpression map, string groupName, MappingContext context, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        WithinTimeout(context, () => ExecuteGroupCore(map, groupName, context), cancellationToken);
+    }
 
     // TransformTimeout bounds the whole call: a map of a few dozen groups that call each other twice each would otherwise run for
-    // years without ever reaching MaxRecursionDepth or MaxElementsCreated.
-    private void WithinTimeout(Action execute, CancellationToken cancellationToken)
+    // years without ever reaching MaxRecursionDepth or MaxElementsCreated. The linked token is also published on the context,
+    // so FHIRPath evaluation observes it mid-expression rather than only at the next rule.
+    private void WithinTimeout(MappingContext context, Action execute, CancellationToken cancellationToken)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         if (_options.TransformTimeout.TotalMilliseconds <= int.MaxValue)
@@ -210,7 +215,9 @@ public class MappingEvaluator
             timeout.CancelAfter(_options.TransformTimeout);
         }
 
+        var enclosingToken = context.CancellationToken;
         _cancellationToken = timeout.Token;
+        context.CancellationToken = timeout.Token;
         try
         {
             execute();
@@ -225,8 +232,16 @@ public class MappingEvaluator
         finally
         {
             _cancellationToken = CancellationToken.None;
+            context.CancellationToken = enclosingToken;
         }
     }
+
+    /// <summary>
+    /// The limits the built-in FHIRPath integration evaluates under: the defaults, with
+    /// <see cref="MappingEvaluatorOptions.FhirPathTimeout"/> as each evaluation's time limit.
+    /// </summary>
+    private static FhirPathEvaluationLimits FhirPathLimits(MappingEvaluatorOptions options) =>
+        FhirPathEvaluationLimits.Default with { Timeout = options.FhirPathTimeout };
 
     private void ExecuteGroupCore(MapExpression map, string groupName, MappingContext context)
     {

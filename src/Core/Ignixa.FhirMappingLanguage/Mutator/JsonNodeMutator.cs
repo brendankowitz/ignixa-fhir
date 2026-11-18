@@ -44,7 +44,8 @@ public partial class JsonNodeMutator : IMappingTargetMutator
         ResourceJsonNode resource,
         string fhirPathExpression,
         IElement value,
-        PropertyMutationMode mode = PropertyMutationMode.AutoDetect)
+        PropertyMutationMode mode = PropertyMutationMode.AutoDetect,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(resource);
         ArgumentNullException.ThrowIfNull(fhirPathExpression);
@@ -59,7 +60,7 @@ public partial class JsonNodeMutator : IMappingTargetMutator
         }
 
         // Delegate to JsonNode overload
-        SetProperty(resource, fhirPathExpression, serializedValue, mode);
+        SetProperty(resource, fhirPathExpression, serializedValue, mode, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -67,14 +68,15 @@ public partial class JsonNodeMutator : IMappingTargetMutator
         ResourceJsonNode resource,
         string fhirPathExpression,
         JsonNode value,
-        PropertyMutationMode mode = PropertyMutationMode.AutoDetect)
+        PropertyMutationMode mode = PropertyMutationMode.AutoDetect,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(resource);
         ArgumentNullException.ThrowIfNull(fhirPathExpression);
         ArgumentNullException.ThrowIfNull(value);
 
         // 1. Evaluate FHIRPath to get existing nodes (may be empty)
-        var existingNodes = EvaluateToJsonNodes(resource, fhirPathExpression).ToList();
+        var existingNodes = EvaluateToJsonNodes(resource, fhirPathExpression, cancellationToken).ToList();
 
         // 2. Determine effective mode based on existing property structure or schema
         PropertyMutationMode effectiveMode = mode;
@@ -134,11 +136,11 @@ public partial class JsonNodeMutator : IMappingTargetMutator
         // 3. Execute mutation based on effective mode
         if (effectiveMode == PropertyMutationMode.Append)
         {
-            AppendToArray(resource, fhirPathExpression, value);
+            AppendToArray(resource, fhirPathExpression, value, cancellationToken);
         }
         else
         {
-            ReplaceValue(resource, fhirPathExpression, value);
+            ReplaceValue(resource, fhirPathExpression, value, cancellationToken);
         }
     }
 
@@ -197,8 +199,9 @@ public partial class JsonNodeMutator : IMappingTargetMutator
     /// </summary>
     /// <param name="resource">Resource to evaluate against</param>
     /// <param name="fhirPathExpression">FHIRPath expression (e.g., "Patient.name.where(use='official')")</param>
+    /// <param name="cancellationToken">Stops the evaluation; it is also bounded by the default evaluation limits.</param>
     /// <returns>Matching JsonNodes extracted via Meta</returns>
-    private IEnumerable<JsonNode> EvaluateToJsonNodes(ResourceJsonNode resource, string fhirPathExpression)
+    private IEnumerable<JsonNode> EvaluateToJsonNodes(ResourceJsonNode resource, string fhirPathExpression, CancellationToken cancellationToken)
     {
         // 1. Parse FHIRPath expression
         var expression = _parser.Parse(fhirPathExpression);
@@ -208,7 +211,7 @@ public partial class JsonNodeMutator : IMappingTargetMutator
         var typedElement = resource.ToElement(structureProvider);
 
         // 3. Evaluate FHIRPath expression
-        var matches = _evaluator.Evaluate(typedElement, expression);
+        var matches = _evaluator.Evaluate(typedElement, expression, new EvaluationContext { CancellationToken = cancellationToken });
 
         // 4. Extract JsonNodes using Meta<T>
         foreach (var match in matches)
@@ -225,10 +228,10 @@ public partial class JsonNodeMutator : IMappingTargetMutator
     /// Append value to array at the specified path.
     /// Creates array if it doesn't exist.
     /// </summary>
-    private void AppendToArray(ResourceJsonNode resource, string fhirPathExpression, JsonNode value)
+    private void AppendToArray(ResourceJsonNode resource, string fhirPathExpression, JsonNode value, CancellationToken cancellationToken)
     {
         // Try to evaluate to existing nodes
-        var existingNodes = EvaluateToJsonNodes(resource, fhirPathExpression).ToList();
+        var existingNodes = EvaluateToJsonNodes(resource, fhirPathExpression, cancellationToken).ToList();
 
         if (existingNodes.Count > 0)
         {
@@ -270,10 +273,10 @@ public partial class JsonNodeMutator : IMappingTargetMutator
     /// Replace value at the specified path.
     /// Creates property if it doesn't exist.
     /// </summary>
-    private void ReplaceValue(ResourceJsonNode resource, string fhirPathExpression, JsonNode value)
+    private void ReplaceValue(ResourceJsonNode resource, string fhirPathExpression, JsonNode value, CancellationToken cancellationToken)
     {
         // Try to evaluate to existing node
-        var existingNodes = EvaluateToJsonNodes(resource, fhirPathExpression).ToList();
+        var existingNodes = EvaluateToJsonNodes(resource, fhirPathExpression, cancellationToken).ToList();
 
         if (existingNodes.Count > 0)
         {
@@ -423,12 +426,12 @@ public partial class JsonNodeMutator : IMappingTargetMutator
     #region IJsonNodeMutator New Methods (PATCH Operation Support)
 
     /// <inheritdoc />
-    public void DeleteProperty(ResourceJsonNode resource, string fhirPathExpression)
+    public void DeleteProperty(ResourceJsonNode resource, string fhirPathExpression, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(resource);
         ArgumentNullException.ThrowIfNull(fhirPathExpression);
 
-        var targetNode = EvaluateSingle(resource, fhirPathExpression);
+        var targetNode = EvaluateSingle(resource, fhirPathExpression, cancellationToken);
 
         // Check if array element or property
         if (targetNode.Parent is JsonArray array)
@@ -465,14 +468,15 @@ public partial class JsonNodeMutator : IMappingTargetMutator
         ResourceJsonNode resource,
         string fhirPathExpression,
         JsonNode value,
-        int index)
+        int index,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(resource);
         ArgumentNullException.ThrowIfNull(fhirPathExpression);
         ArgumentNullException.ThrowIfNull(value);
 
         // Try to evaluate the path to get the array
-        var matches = Evaluate(resource, fhirPathExpression).ToList();
+        var matches = Evaluate(resource, fhirPathExpression, cancellationToken).ToList();
 
         JsonObject targetParent;
         string propertyName;
@@ -490,7 +494,7 @@ public partial class JsonNodeMutator : IMappingTargetMutator
             var parentPath = fhirPathExpression[..lastDot];
             propertyName = fhirPathExpression[(lastDot + 1)..];
 
-            var parentMatches = Evaluate(resource, parentPath).ToList();
+            var parentMatches = Evaluate(resource, parentPath, cancellationToken).ToList();
             if (parentMatches.Count != 1 || parentMatches[0] is not JsonObject parentObj)
             {
                 throw new InvalidOperationException(
@@ -550,13 +554,14 @@ public partial class JsonNodeMutator : IMappingTargetMutator
     public void ReplaceArrayElement(
         ResourceJsonNode resource,
         string fhirPathExpression,
-        JsonNode value)
+        JsonNode value,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(resource);
         ArgumentNullException.ThrowIfNull(fhirPathExpression);
         ArgumentNullException.ThrowIfNull(value);
 
-        var targetNode = EvaluateSingle(resource, fhirPathExpression);
+        var targetNode = EvaluateSingle(resource, fhirPathExpression, cancellationToken);
 
         if (targetNode.Parent is not JsonArray parentArray)
         {
@@ -577,21 +582,21 @@ public partial class JsonNodeMutator : IMappingTargetMutator
     }
 
     /// <inheritdoc />
-    public IEnumerable<JsonNode> Evaluate(ResourceJsonNode resource, string fhirPathExpression)
+    public IEnumerable<JsonNode> Evaluate(ResourceJsonNode resource, string fhirPathExpression, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(resource);
         ArgumentNullException.ThrowIfNull(fhirPathExpression);
 
-        return EvaluateToJsonNodes(resource, fhirPathExpression);
+        return EvaluateToJsonNodes(resource, fhirPathExpression, cancellationToken);
     }
 
     /// <inheritdoc />
-    public JsonNode EvaluateSingle(ResourceJsonNode resource, string fhirPathExpression)
+    public JsonNode EvaluateSingle(ResourceJsonNode resource, string fhirPathExpression, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(resource);
         ArgumentNullException.ThrowIfNull(fhirPathExpression);
 
-        var matches = Evaluate(resource, fhirPathExpression).ToList();
+        var matches = Evaluate(resource, fhirPathExpression, cancellationToken).ToList();
 
         if (matches.Count == 0)
         {

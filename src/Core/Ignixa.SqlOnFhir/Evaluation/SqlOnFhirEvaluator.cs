@@ -54,8 +54,28 @@ public class SqlOnFhirEvaluator
         IElement resource,
         IReadOnlyDictionary<string, string>? variables = null)
     {
+        return Evaluate(viewDefinitionNode, resource, variables, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Evaluates a ViewDefinition against a FHIR resource, stopping when <paramref name="cancellationToken"/> is
+    /// cancelled.
+    /// </summary>
+    /// <param name="viewDefinitionNode">The ViewDefinition as ISourceNavigator</param>
+    /// <param name="resource">The FHIR resource to evaluate against</param>
+    /// <param name="variables">Optional FHIRPath variables to inject into the evaluation context</param>
+    /// <param name="cancellationToken">Observed by every FHIRPath evaluation the view runs.</param>
+    /// <returns>List of rows, where each row is a dictionary mapping column names to values</returns>
+    /// <exception cref="OperationCanceledException">The token was cancelled.</exception>
+    /// <exception cref="FhirPathResourceLimitExceededException">An expression exceeded an evaluation limit.</exception>
+    public IEnumerable<Dictionary<string, object?>> Evaluate(
+        ISourceNavigator viewDefinitionNode,
+        IElement resource,
+        IReadOnlyDictionary<string, string>? variables,
+        CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(resource);
-        return EvaluateBatch(viewDefinitionNode, [resource], variables);
+        return EvaluateBatch(viewDefinitionNode, [resource], variables, cancellationToken);
     }
 
     /// <summary>
@@ -67,6 +87,21 @@ public class SqlOnFhirEvaluator
         ISourceNavigator viewDefinitionNode,
         IEnumerable<IElement> resources,
         IReadOnlyDictionary<string, string>? variables = null)
+    {
+        return EvaluateBatch(viewDefinitionNode, resources, variables, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Evaluates a ViewDefinition against multiple FHIR resources with correct UNION ALL ordering, stopping when
+    /// <paramref name="cancellationToken"/> is cancelled.
+    /// </summary>
+    /// <exception cref="OperationCanceledException">The token was cancelled.</exception>
+    /// <exception cref="FhirPathResourceLimitExceededException">An expression exceeded an evaluation limit.</exception>
+    public IEnumerable<Dictionary<string, object?>> EvaluateBatch(
+        ISourceNavigator viewDefinitionNode,
+        IEnumerable<IElement> resources,
+        IReadOnlyDictionary<string, string>? variables,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(viewDefinitionNode);
         ArgumentNullException.ThrowIfNull(resources);
@@ -84,7 +119,20 @@ public class SqlOnFhirEvaluator
                 _compiledViewDefinitions[cacheKey] = viewExpr;
             }
 
-            return _visitor.EvaluateBatch(viewExpr, resources, variables);
+            return _visitor.EvaluateBatch(viewExpr, resources, variables, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation is the caller's own request coming back, not an evaluation failure to report.
+            throw;
+        }
+        catch (FhirPathResourceLimitExceededException ex)
+        {
+            // Wrapped in its own type, so a caller can still tell "the view asked for more than the
+            // evaluation allows" from an ill-formed expression.
+            throw new FhirPathResourceLimitExceededException(
+                $"Failed to evaluate ViewDefinition for resource type '{resourceType}'",
+                ex);
         }
         catch (FhirPathEvaluationException ex)
         {

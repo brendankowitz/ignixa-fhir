@@ -21,16 +21,19 @@ internal class FhirPathIntegration
 {
     private readonly FhirPathParser _parser;
     private readonly FhirPathEvaluator _evaluator;
+    private readonly FhirPathEvaluationLimits _limits;
     private readonly Dictionary<string, Ignixa.FhirPath.Expressions.Expression> _expressionCache;
 
     /// <summary>
     /// Creates a new FhirPathIntegration instance.
     /// </summary>
     /// <param name="cacheExpressions">Whether to cache compiled expressions for performance</param>
-    public FhirPathIntegration(bool cacheExpressions = true)
+    /// <param name="limits">The limits each evaluation runs under; <see cref="FhirPathEvaluationLimits.Default"/> when null.</param>
+    public FhirPathIntegration(bool cacheExpressions = true, FhirPathEvaluationLimits? limits = null)
     {
         _parser = new();
         _evaluator = new();
+        _limits = limits ?? FhirPathEvaluationLimits.Default;
         _expressionCache = cacheExpressions ? [] : null!;
     }
 
@@ -39,7 +42,10 @@ internal class FhirPathIntegration
     /// </summary>
     /// <param name="expression">The FHIRPath expression to evaluate</param>
     /// <param name="element">The element to evaluate against</param>
+    /// <param name="mappingContext">Supplies mapping variables, and the transformation's cancellation token.</param>
     /// <returns>The result elements</returns>
+    /// <exception cref="OperationCanceledException">The transformation was cancelled or timed out.</exception>
+    /// <exception cref="FhirPathResourceLimitExceededException">The expression exceeded an evaluation limit.</exception>
     public IEnumerable<IElement> Evaluate(string expression, IElement element, MappingContext? mappingContext = null)
     {
         if (string.IsNullOrWhiteSpace(expression))
@@ -51,7 +57,11 @@ internal class FhirPathIntegration
         {
             // Get or compile the expression
             var compiledExpression = GetOrCompileExpression(expression);
-            var evaluationContext = new EvaluationContext();
+            var evaluationContext = new EvaluationContext
+            {
+                Limits = _limits,
+                CancellationToken = mappingContext?.CancellationToken ?? CancellationToken.None,
+            };
             if (mappingContext is not null)
             {
                 var variables = new Dictionary<string, IReadOnlyList<IElement>>(StringComparer.Ordinal);
@@ -65,6 +75,17 @@ internal class FhirPathIntegration
             // Materialized here so evaluation errors surface inside this try rather than at the
             // caller's first enumeration, which would bypass the wrapping below entirely.
             return _evaluator.Evaluate(element, compiledExpression, evaluationContext).ToList();
+        }
+        catch (OperationCanceledException)
+        {
+            // The transformation's own timeout or the caller's cancellation, which MappingEvaluator reports.
+            throw;
+        }
+        catch (FhirPathResourceLimitExceededException ex)
+        {
+            // Kept in its own type: "the map asked for more than an evaluation allows" is a capacity
+            // outcome a host reports differently from an ill-formed expression.
+            throw new FhirPathResourceLimitExceededException($"Failed to evaluate FHIRPath expression: {expression}", ex);
         }
         catch (FhirPathEvaluationException ex)
         {
