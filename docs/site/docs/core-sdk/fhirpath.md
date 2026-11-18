@@ -521,7 +521,7 @@ var practitionerNames = encounter.Select(
 The `resolve()` function's error-handling contract:
 
 - The reference is not found in-instance, and either no `ElementResolver` is configured or it also misses → returns empty. This follows FHIRPath's propagation semantics - operations on empty collections return empty rather than throwing exceptions, so expressions can keep evaluating even when a reference can't be resolved.
-- The configured `ElementResolver` throws → treated the same as "not found" (empty), **except** `OperationCanceledException` and `OutOfMemoryException`, which propagate rather than being swallowed. The host resolver is caller-supplied code and a trust boundary, so an ordinary failure there is "reference not found" per spec - but cancellation and out-of-memory are not ordinary failures.
+- The configured `ElementResolver` throws → treated the same as "not found" (empty), **except** `OperationCanceledException`, `OutOfMemoryException` and `InsufficientExecutionStackException` (including when wrapped in an `AggregateException`), which propagate rather than being swallowed. The host resolver is caller-supplied code and a trust boundary, so an ordinary failure there is "reference not found" per spec - but cancellation, memory exhaustion and stack exhaustion are not ordinary failures.
 - A defect while building or querying the in-instance index itself (for example a broken `IElement` implementation) is **not** treated as "not found" - it propagates. Only the external-resolver boundary is trusted enough to swallow exceptions; a bug in Ignixa's own resolution logic is not.
 
 A contained or intra-Bundle/Parameters reference resolves with **no `ElementResolver` configured at all** - see [In-instance resolution](#in-instance-resolution). `ResolveFunctionTests.cs` (`test/Ignixa.FhirPath.Tests/Evaluation/`) is the executable spec behind this section - in-instance resolution, container scoping, the bare-`#` versus `#id` asymmetry, and this error-handling contract are all asserted there. If this page and that file ever disagree, trust the tests.
@@ -690,6 +690,19 @@ catch (FhirPathEvaluationException ex)
 :::note
 FHIRPath follows propagation semantics for empty collections - operations on empty values typically return empty rather than throwing exceptions. Only constraint violations (like `single()` on multiple items) and invalid arguments throw. An instance selector is one of these: it also throws `InvalidOperationException` ("Instance selector requires a single input item or empty collection") when the input collection it is evaluated against holds more than one item. An invalid regular expression pattern in `matches()`, `matchesFull()` or `replaceMatches()` throws `FhirPathEvaluationException` (a subclass of `InvalidOperationException`) rather than returning empty. Empty propagation still applies first: if the input is empty, the pattern is never compiled and no exception is thrown.
 :::
+
+### Regular Expressions
+
+Patterns in `matches()`, `matchesFull()` and `replaceMatches()` come from expression text, so the engine bounds what one can cost:
+
+- A pattern runs on .NET's linear-time engine (`RegexOptions.NonBacktracking`), so a pattern such as `^(a+)+$` cannot backtrack catastrophically on a long input.
+- A pattern that needs a construct only the backtracking engine has - a lookahead or lookbehind, a backreference, an atomic group, a conditional or `\G` - runs on that engine with a 1-second match timeout. Exceeding it throws `FhirPathEvaluationException`, with the `RegexMatchTimeoutException` as its inner exception; it never reads as "no match".
+- Case-insensitive matching (the `i` flag of `matchesFull()`, or an inline `(?i)`) uses invariant-culture case rules, so `'I'.matches('(?i)i')` is `true` on every host, including tr-TR.
+- Constructed patterns are cached (bounded), so `where(x.matches(p))` over many items compiles `p` once.
+
+### Host Culture and Clock
+
+Results do not depend on the host's culture or time zone. `now()`, `today()` and `timeOfDay()` all read the UTC clock and format with the invariant culture, so `today()` is the Gregorian UTC date even on a host whose default calendar is not Gregorian (th-TH, ar-SA), and `timeOfDay()` agrees with the time component of `now()`.
 
 ## Architecture
 
