@@ -36,6 +36,8 @@ public class McpResourceTypeValidationTests
     private readonly ITenantConfigurationStore _tenants = Substitute.For<ITenantConfigurationStore>();
     private readonly IFhirVersionContext _versionContext = Substitute.For<IFhirVersionContext>();
     private readonly ISearchOptionsBuilderFactory _builderFactory = Substitute.For<ISearchOptionsBuilderFactory>();
+    private readonly ISearchOptionsBuilder _builder = Substitute.For<ISearchOptionsBuilder>();
+    private readonly IFhirSchemaProvider _tenantProvider = Substitute.For<IFhirSchemaProvider>();
 
     public McpResourceTypeValidationTests()
     {
@@ -45,14 +47,12 @@ public class McpResourceTypeValidationTests
 
         // The tenant provider is the source of truth (as in the HTTP filter): it knows "Foo", a
         // package-defined type, and matches names case-insensitively like the real schema providers.
-        var tenantProvider = Substitute.For<IFhirSchemaProvider>();
-        tenantProvider.ResourceTypeNames.Returns(new HashSet<string>(["Patient", "Foo"], StringComparer.OrdinalIgnoreCase));
-        _versionContext.GetSchemaProvider(FhirVersion.R4, 1).Returns(tenantProvider);
+        _tenantProvider.ResourceTypeNames.Returns(new HashSet<string>(["Patient", "Foo"], StringComparer.OrdinalIgnoreCase));
+        _versionContext.GetSchemaProvider(FhirVersion.R4, 1).Returns(_tenantProvider);
 
-        var builder = Substitute.For<ISearchOptionsBuilder>();
-        builder.Build(Arg.Any<string?>(), Arg.Any<IReadOnlyList<QueryParameter>>(), Arg.Any<ISchema?>())
+        _builder.Build(Arg.Any<string?>(), Arg.Any<IReadOnlyList<QueryParameter>>(), Arg.Any<ISchema?>())
             .Returns(call => new SearchOptions { ResourceType = call.ArgAt<string?>(0) });
-        _builderFactory.Create(Arg.Any<FhirVersion>(), Arg.Any<int?>()).Returns(builder);
+        _builderFactory.Create(Arg.Any<FhirVersion>(), Arg.Any<int?>()).Returns(_builder);
         _mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
             .Returns(new SearchResourcesResult(NoEntries<SearchEntryResult>()));
         _mediator.SendAsync(Arg.Any<GetResourceHistoryQuery>(), Arg.Any<CancellationToken>())
@@ -106,6 +106,14 @@ public class McpResourceTypeValidationTests
                 _ => null,
             })
             .ShouldBe(["Foo"]);
+    }
+
+    [Fact]
+    public async Task GivenAPackageDefinedResourceType_WhenSearching_ThenSearchOptionsAreBuiltAgainstTheTenantSchema()
+    {
+        await Invoke("search_fhir_resources", "Foo");
+
+        _builder.Received(1).Build("Foo", Arg.Any<IReadOnlyList<QueryParameter>>(), _tenantProvider);
     }
 
     [Fact]

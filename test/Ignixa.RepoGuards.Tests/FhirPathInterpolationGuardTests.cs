@@ -28,7 +28,7 @@ namespace Ignixa.RepoGuards.Tests;
 /// (<c>$"..."</c>, <c>@$"..."</c>, <c>$@"..."</c>, single- and multi-line <c>$"""..."""</c>) is seen as one node,
 /// wherever its lines break, and comments are never scanned. An interpolated literal is reported when it
 /// (a) is an argument to <c>Select</c>, <c>Scalar</c>, <c>IsTrue</c>, <c>IsBoolean</c> or <c>Predicate</c>, or to
-/// <c>Parse</c>, <c>Evaluate</c> or <c>Compile</c> on a FHIRPath parser/evaluator receiver, or (b) holds a
+/// <c>Parse</c>, <c>TryParse</c>, <c>Evaluate</c>, <c>Compile</c> or <c>TryCompile</c> on any receiver, or (b) holds a
 /// quoted hole (<c>'{x}'</c>) next to a FHIRPath function call. It is syntactic, with no type information: an
 /// expression assembled by concatenation, or built into a variable that is interpolated later, is not seen.
 /// </para>
@@ -41,12 +41,7 @@ public class FhirPathInterpolationGuardTests
         new(["Select", "Scalar", "IsTrue", "IsBoolean", "Predicate"], StringComparer.Ordinal);
 
     private static readonly HashSet<string> ParserArgumentMethods =
-        new(["Parse", "Evaluate", "Compile"], StringComparer.Ordinal);
-
-    // The receiver of Parse/Evaluate/Compile must look like a FHIRPath type or field, so XDocument.Parse and
-    // a query-string parameterParser.Parse are out of scope without an allowlist.
-    private static readonly Regex FhirPathReceiver =
-        new(@"fhirpath|^_?(?:parser|evaluator|compiler)$", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        new(["Parse", "TryParse", "Evaluate", "Compile", "TryCompile"], StringComparer.Ordinal);
 
     private static readonly Regex QuotedHole =
         new(@"'\{+[^{}]+\}+'", RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -60,7 +55,14 @@ public class FhirPathInterpolationGuardTests
     /// same line is a different key and cannot ride on an existing entry. An entry that no longer matches
     /// anything fails the scan, so the list cannot outlive the code it excuses.
     /// </summary>
-    private static readonly Dictionary<(string File, string Literal), string> Allowlist = new();
+    private static readonly Dictionary<(string File, string Literal), string> Allowlist = new()
+    {
+        [("Core/Ignixa.NarrativeGenerator/Security/XhtmlSanitizer.cs", "$\"<root>{xhtml}</root>\"")] =
+            "XDocument.Parse over an XHTML narrative wrapper, not FHIRPath; the XML is sanitized by this class.",
+        [("Application/Ignixa.Application.BackgroundOperations/BulkDelete/Activities/BulkDeleteBatchActivity.cs",
+            "$\"_id={Uri.EscapeDataString(target.ResourceId)}&_revinclude={Uri.EscapeDataString(\"*:*\")}\"")] =
+            "parameterParser.Parse over a search query string whose values are Uri.EscapeDataString-encoded; a URL query, not FHIRPath.",
+    };
 
     [Fact]
     public void GivenSourceFiles_WhenScanned_ThenNoValueIsInterpolatedIntoFhirPathOutsideTheAllowlist()
@@ -109,6 +111,10 @@ public class FhirPathInterpolationGuardTests
     [InlineData("""class C { void M() { element.IsTrue( $"{expression}" ); } }""")]
     [InlineData("class C { void M() { element.Scalar(\n    $\"\"\"\n    {path}.fixedString\n    \"\"\"); } }")]
     [InlineData("""class C { void M() { _parser.Parse($"{expression}"); } }""")]
+    [InlineData("""class C { void M() { this._compiler.Parse($"{expression}"); } }""")]
+    [InlineData("""class C { void M() { var p = new FhirPathParser(); p.Parse($"{expression}"); } }""")]
+    [InlineData("""class C { void M() { engine.TryCompile($"{expression}", out _); } }""")]
+    [InlineData("""class C { void M() { Parse($"{expression}"); } }""")]
     [InlineData("""class C { void M() { fhirPathEvaluator.Evaluate($"{expression}"); } }""")]
     public void GivenAnInterpolatedFhirPathExpression_WhenScanned_ThenItIsDetected(string source)
     {
@@ -116,16 +122,13 @@ public class FhirPathInterpolationGuardTests
     }
 
     /// <summary>
-    /// The negative control: constant expressions, variable bindings, ordinary messages, other Parse calls
-    /// and comments are not reported.
+    /// The negative control: constant expressions, variable bindings, ordinary messages and comments are not reported.
     /// </summary>
     [Theory]
     [InlineData("""class C { string e = "rest.resource.where(type = %resourceType).exists()"; }""")]
     [InlineData("""class C { void M() { x.Select("snapshot.element.where(path = %path)", context); } }""")]
     [InlineData("""class C { void M() { throw new BadRequestException($"Resource type '{resourceType}' is not supported"); } }""")]
     [InlineData("""class C { string e = $"{baseName}.ofType({variant})"; }""")]
-    [InlineData("""class C { void M() { XDocument.Parse($"<root>{xhtml}</root>"); } }""")]
-    [InlineData("""class C { void M() { parameterParser.Parse($"_id={id}"); } }""")]
     [InlineData("""class C { void M() { items.Select(item => $"{item}"); } }""")]
     [InlineData("""// var e = $"rest.resource.where(type = '{ResourceType}')";""")]
     public void GivenCodeWithoutInterpolatedFhirPath_WhenScanned_ThenItIsNotReported(string source)
@@ -165,10 +168,10 @@ public class FhirPathInterpolationGuardTests
         {
             case MemberAccessExpressionSyntax member:
                 var name = member.Name.Identifier.ValueText;
-                return ExpressionArgumentMethods.Contains(name)
-                    || (ParserArgumentMethods.Contains(name) && FhirPathReceiver.IsMatch(member.Expression.ToString()));
+                return ExpressionArgumentMethods.Contains(name) || ParserArgumentMethods.Contains(name);
             case IdentifierNameSyntax identifier:
-                return ExpressionArgumentMethods.Contains(identifier.Identifier.ValueText);
+                var bare = identifier.Identifier.ValueText;
+                return ExpressionArgumentMethods.Contains(bare) || ParserArgumentMethods.Contains(bare);
             default:
                 return false;
         }

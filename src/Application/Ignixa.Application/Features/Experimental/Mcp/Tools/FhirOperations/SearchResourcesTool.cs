@@ -121,8 +121,9 @@ Example: resourceType='Patient', searchParams={'name': 'Smith'}, elements='id,na
         // Get FHIR version for the tenant to resolve correct schema provider
         var fhirVersion = knownResourceType.FhirVersion;
 
-        // Get the appropriate schema provider for this FHIR version
-        var schemaProvider = _versionContext.GetBaseSchemaProvider(fhirVersion);
+        // The tenant provider, as on the HTTP search path: package-defined types and search parameters
+        // exist only there, and validation above already used it.
+        var schemaProvider = _versionContext.GetSchemaProvider(fhirVersion, resolvedTenantId);
 
         // Use SearchOptionsBuilder to parse all parameters and build expressions
         var builder = _builderFactory.Create(fhirVersion, resolvedTenantId);
