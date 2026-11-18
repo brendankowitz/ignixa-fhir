@@ -135,6 +135,46 @@ public class SectionMetadataParserTests
         sections[0].Cardinality.ShouldBe(SectionCardinality.Recommended);
     }
 
+    // Regression for #536: the slice name came from a package and was interpolated into FHIRPath text, so a
+    // quote in it was parsed as syntax (a parse error, or a predicate matching other slices' elements).
+    [Fact]
+    public void GivenSliceNameContainingAQuoteAndExpressionSyntax_WhenParsing_ThenEachSliceKeepsItsOwnMetadata()
+    {
+        // Arrange
+        const string hostile = "a' or true or path = 'b";
+        var json = $$"""
+        {
+          "resourceType": "StructureDefinition",
+          "url": "http://example.org/test",
+          "type": "Composition",
+          "snapshot": {
+            "element": [
+              { "path": "Composition.section:plain", "sliceName": "plain", "min": 0, "max": "1" },
+              {
+                "path": "Composition.section:plain.code",
+                "patternCodeableConcept": { "coding": [{ "system": "http://loinc.org", "code": "1-1" }] }
+              },
+              { "path": "Composition.section:plain.title", "fixedString": "Plain" },
+              { "path": "Composition.section:{{hostile}}", "sliceName": "{{hostile}}", "min": 0, "max": "1" },
+              {
+                "path": "Composition.section:{{hostile}}.code",
+                "patternCodeableConcept": { "coding": [{ "system": "http://loinc.org", "code": "2-2" }] }
+              },
+              { "path": "Composition.section:{{hostile}}.title", "fixedString": "Hostile" }
+            ]
+          }
+        }
+        """;
+        var sd = JsonSourceNodeFactory.Parse<StructureDefinition>(json);
+
+        // Act
+        var sections = _parser.ParseSections(sd);
+
+        // Assert
+        sections.Select(section => (section.Title, section.Code))
+            .ShouldBe([("Plain", "1-1"), ("Hostile", "2-2")], ignoreOrder: true);
+    }
+
     [Fact]
     public void GivenStructureDefinitionWithNoSnapshot_WhenParsing_ThenReturnsEmptyList()
     {

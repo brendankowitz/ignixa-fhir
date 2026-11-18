@@ -77,7 +77,7 @@ public class SectionMetadataParser(
         // Find root element: snapshot.element.where(path='Composition.section:{sliceName}')
         var rootPath = $"{SectionPath}:{sliceName}";
         var rootElement = structureDefElement
-            .Select($"snapshot.element.where(path='{rootPath}')")
+            .Select("snapshot.element.where(path = %path)", StructureDefinitionPathContext.For(rootPath))
             .FirstOrDefault();
 
         if (rootElement is null)
@@ -148,12 +148,12 @@ public class SectionMetadataParser(
 
         // Try pattern first: snapshot.element.where(path='{path}').patternCodeableConcept.coding.where(system='http://loinc.org')
         var loincCoding = structureDefElement
-            .Select($"snapshot.element.where(path='{codePath}').patternCodeableConcept.coding.where(system='http://loinc.org')")
+            .Select("snapshot.element.where(path = %path).patternCodeableConcept.coding.where(system='http://loinc.org')", StructureDefinitionPathContext.For(codePath))
             .FirstOrDefault();
 
         // If not found, try fixed: snapshot.element.where(path='{path}').fixedCodeableConcept.coding.where(system='http://loinc.org')
         loincCoding ??= structureDefElement
-            .Select($"snapshot.element.where(path='{codePath}').fixedCodeableConcept.coding.where(system='http://loinc.org')")
+            .Select("snapshot.element.where(path = %path).fixedCodeableConcept.coding.where(system='http://loinc.org')", StructureDefinitionPathContext.For(codePath))
             .FirstOrDefault();
 
         if (loincCoding is null)
@@ -178,10 +178,10 @@ public class SectionMetadataParser(
         var titlePath = $"{SectionPath}:{sliceName}.title";
 
         // Try fixedString first
-        var title = structureDefElement.Scalar($"snapshot.element.where(path='{titlePath}').fixedString") as string;
+        var title = structureDefElement.Scalar("snapshot.element.where(path = %path).fixedString", StructureDefinitionPathContext.For(titlePath)) as string;
 
         // If not found, try patternString
-        title ??= structureDefElement.Scalar($"snapshot.element.where(path='{titlePath}').patternString") as string;
+        title ??= structureDefElement.Scalar("snapshot.element.where(path = %path).patternString", StructureDefinitionPathContext.For(titlePath)) as string;
 
         return title;
     }
@@ -204,7 +204,7 @@ public class SectionMetadataParser(
 
         // Find Reference type with targetProfile: snapshot.element.where(path='{path}').type.where(code='Reference').targetProfile
         var targetProfiles = structureDefElement
-            .Select($"snapshot.element.where(path='{entryPath}').type.where(code='Reference').targetProfile")
+            .Select("snapshot.element.where(path = %path).type.where(code='Reference').targetProfile", StructureDefinitionPathContext.For(entryPath))
             .Select(e => e.Value as string)
             .Where(p => p is not null)
             .ToList();
