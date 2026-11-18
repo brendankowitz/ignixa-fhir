@@ -1,5 +1,5 @@
 ---
-applyTo: "src/Application/Ignixa.Application/Features/Bundle/**,src/Application/Ignixa.Application/Features/ConditionalOperations/**,src/Application/Ignixa.Application/Features/Patch/**,src/Application/Ignixa.Application/Features/Resource/**,src/Application/Ignixa.Api/Endpoints/FhirEndpoints.cs,src/Application/Ignixa.Api/Endpoints/PatchEndpoints.cs"
+applyTo: "src/Application/Ignixa.Application/Features/Bundle/**,src/Application/Ignixa.Application/Features/ConditionalOperations/**,src/Application/Ignixa.Application/Features/Patch/**,src/Application/Ignixa.Application/Features/Resource/**,src/Application/Ignixa.Application/Features/Experimental/Mcp/Tools/**,src/Application/Ignixa.Application/Features/Experimental/GraphQl/**,src/Application/Ignixa.Api/Endpoints/FhirEndpoints.cs,src/Application/Ignixa.Api/Endpoints/PatchEndpoints.cs,src/DataLayer/**"
 excludeAgent: "cloud-agent"
 ---
 
