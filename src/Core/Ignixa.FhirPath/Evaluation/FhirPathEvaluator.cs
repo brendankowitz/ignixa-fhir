@@ -9,6 +9,7 @@
 using System.Collections.Frozen;
 using System.Collections.Immutable;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Ignixa.FhirPath.Expressions;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation.Functions;
@@ -86,6 +87,10 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     private IEnumerable<IElement> EvaluateExpression(IEnumerable<IElement> focus, Expression expr, EvaluationContext context)
     {
+        // Every node is dispatched from here. The parser bounds expression depth; this turns a stack
+        // too small for that bound into a catchable exception instead of a process-killing overflow.
+        RuntimeHelpers.EnsureSufficientExecutionStack();
+
         // Optimization: Skip context creation if focus hasn't changed
         // This is common in indexer/child/binary expressions where we evaluate sub-expressions with the same focus
         EvaluationContext effectiveContext;

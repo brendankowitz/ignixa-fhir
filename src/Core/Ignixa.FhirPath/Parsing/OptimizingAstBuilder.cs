@@ -40,7 +40,7 @@ internal class OptimizingAstBuilder : AstBuilder
 {
     public override Expression VisitBinary(BinaryParseNode node, AstBuildContext context)
     {
-        var left = node.Left.Accept(this, context);
+        var left = Build(node.Left, context);
         Expression right;
         var op = node.Operator;
 
@@ -53,7 +53,7 @@ internal class OptimizingAstBuilder : AstBuilder
         }
         else
         {
-            right = node.Right.Accept(this, context);
+            right = Build(node.Right, context);
         }
 
         var location = CreateLocation(node.Location);
@@ -75,7 +75,7 @@ internal class OptimizingAstBuilder : AstBuilder
 
     public override Expression VisitUnary(UnaryParseNode node, AstBuildContext context)
     {
-        var operand = node.Operand.Accept(this, context);
+        var operand = Build(node.Operand, context);
         var location = CreateLocation(node.Location);
 
         if (TryFoldUnary(node.Operator, operand, out var folded))
@@ -88,7 +88,7 @@ internal class OptimizingAstBuilder : AstBuilder
 
     public override Expression VisitParenthesized(ParenthesizedParseNode node, AstBuildContext context)
     {
-        var inner = node.InnerExpression.Accept(this, context);
+        var inner = Build(node.InnerExpression, context);
 
         // Eliminate parentheses around simple expressions
         if (inner is ConstantExpression or EmptyExpression or IdentifierExpression or VariableRefExpression or ScopeExpression)
@@ -102,8 +102,8 @@ internal class OptimizingAstBuilder : AstBuilder
 
     public override Expression VisitFunctionCall(FunctionCallParseNode node, AstBuildContext context)
     {
-        var focus = node.Focus?.Accept(this, context);
-        var args = node.Arguments.Select(a => a.Accept(this, context)).ToList();
+        var focus = node.Focus is null ? null : Build(node.Focus, context);
+        var args = node.Arguments.Select(a => Build(a, context)).ToList();
         var location = CreateLocation(node.Location);
 
         var funcName = node.FunctionName.ToUpperInvariant();

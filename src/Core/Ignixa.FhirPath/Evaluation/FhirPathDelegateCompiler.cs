@@ -5,6 +5,7 @@
  * Falls back to interpreted execution for complex/unsupported expressions.
  */
 
+using System.Runtime.CompilerServices;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation.Functions;
 using Ignixa.FhirPath.Expressions;
@@ -52,6 +53,10 @@ public class FhirPathDelegateCompiler
     {
         ArgumentNullException.ThrowIfNull(expr);
 
+        // Compilation recurses through TryCompile once per tree level; the parser bounds that depth, and
+        // this turns an undersized stack into an exception the filter below lets through.
+        RuntimeHelpers.EnsureSufficientExecutionStack();
+
         try
         {
             return expr switch
@@ -84,9 +89,11 @@ public class FhirPathDelegateCompiler
                 _ => null
             };
         }
-        catch
+        catch (Exception ex) when (ex is not (InsufficientExecutionStackException or OperationCanceledException or OutOfMemoryException))
         {
-            // If compilation fails for any reason, return null to use interpreter
+            // A compilation failure falls back to the interpreter. Stack exhaustion, cancellation and
+            // memory exhaustion are not compilation failures: falling back would hide them, and the
+            // interpreter would hit the same stack limit with less headroom.
             return null;
         }
     }

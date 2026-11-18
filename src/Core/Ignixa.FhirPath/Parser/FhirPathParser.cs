@@ -87,11 +87,20 @@ public class FhirPathParser
     /// </summary>
     /// <param name="expression">The FhirPath expression to parse</param>
     /// <returns>The root ParseNode of the parse tree</returns>
-    /// <exception cref="FormatException">Thrown when the expression cannot be parsed</exception>
+    /// <exception cref="FormatException">
+    /// Thrown when the expression cannot be parsed, or exceeds <see cref="CompilationOptions.MaxExpressionLength"/>,
+    /// <see cref="CompilationOptions.MaxNestingDepth"/> or <see cref="CompilationOptions.MaxExpressionDepth"/>.
+    /// </exception>
     internal ParseNode ParseToTree(string expression)
     {
         if (string.IsNullOrWhiteSpace(expression))
             throw new ArgumentException("Expression cannot be null or whitespace", nameof(expression));
+
+        if (expression.Length > _options.MaxExpressionLength)
+        {
+            throw new FormatException(
+                $"Expression is {expression.Length} characters long; the maximum is {_options.MaxExpressionLength}.");
+        }
 
         var tokenizeResult = _tokenizer.TryTokenize(expression);
         if (!tokenizeResult.HasValue)
@@ -108,11 +117,48 @@ public class FhirPathParser
             tokens = new Superpower.Model.TokenList<FhirPathTokenKind>(filteredTokens);
         }
 
+        // The grammar recurses once per bracket level inside Superpower's combinators, where no counter
+        // can be added, so nesting is bounded on the token list before the grammar ever sees it.
+        RejectExcessiveNesting(tokens);
+
         var parseResult = FhirPathParseTreeGrammar.Expression.AtEnd().TryParse(tokens);
         if (!parseResult.HasValue)
             throw new FormatException($"Parsing failed: {parseResult}");
 
-        return parseResult.Value;
+        // Chains such as a.b.c or 1 + 2 + 3 parse iteratively but yield a left-deep tree that every later
+        // stage recurses over, so the tree's depth is bounded before anything walks it.
+        var tree = parseResult.Value;
+        if (tree.Depth > _options.MaxExpressionDepth)
+        {
+            throw new FormatException(
+                $"Expression syntax tree is {tree.Depth} levels deep; the maximum is {_options.MaxExpressionDepth}.");
+        }
+
+        return tree;
+    }
+
+    private void RejectExcessiveNesting(Superpower.Model.TokenList<FhirPathTokenKind> tokens)
+    {
+        var depth = 0;
+        foreach (var token in tokens)
+        {
+            switch (token.Kind)
+            {
+                case FhirPathTokenKind.LeftParen or FhirPathTokenKind.LeftBracket or FhirPathTokenKind.LeftBrace:
+                    if (++depth > _options.MaxNestingDepth)
+                    {
+                        throw new FormatException(
+                            $"Expression nests brackets too deeply at position {token.Position.Absolute}; "
+                            + $"the maximum nesting depth is {_options.MaxNestingDepth}.");
+                    }
+
+                    break;
+                case FhirPathTokenKind.RightParen or FhirPathTokenKind.RightBracket or FhirPathTokenKind.RightBrace:
+                    // Unbalanced closers are the grammar's to report; only the high-water mark matters here.
+                    depth = Math.Max(0, depth - 1);
+                    break;
+            }
+        }
     }
 
     /// <summary>

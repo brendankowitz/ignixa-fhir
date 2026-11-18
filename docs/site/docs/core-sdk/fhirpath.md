@@ -602,6 +602,32 @@ catch (FormatException ex)
 }
 ```
 
+### Expression Size Limits
+
+Every stage after tokenizing (the parser, the AST builders, the analyzer, the delegate compiler and the evaluator) recurses over the expression. A .NET stack overflow cannot be caught, so an expression nested or chained deeply enough would terminate the whole process. Expression text often comes from outside the server (FHIRPath Patch paths, ViewDefinitions, `$transform` maps, package-supplied SearchParameters and invariants), so the parser rejects oversized expressions up front with a `FormatException`, and `TryParse` returns `false`:
+
+| Limit | Default | What it counts |
+|---|---|---|
+| `MaxExpressionLength` | 16,384 | Characters in the expression text. |
+| `MaxNestingDepth` | 16 | Depth of nested `(`, `[` and `{`: parentheses, function-call arguments, indexers and instance selectors. |
+| `MaxExpressionDepth` | 256 | Depth of the syntax tree. Each step in a chain such as `a.b.c`, `1 + 2 + 3`, `a[0][1]` or `x.not().not()` adds a level, as does each level of nesting. |
+
+The defaults apply to every `FhirPathParser`, including the one behind `Select`, `Scalar` and the other extension methods. The deepest expressions in the shipped FHIR search parameters and invariants reach a nesting depth of 6, a tree depth of 70 and a length of about 3,100 characters.
+
+Bracket nesting has a much lower limit than tree depth because each bracket level costs the parser far more stack: on a 1 MB stack the parser overflowed at 26 to 28 nested function calls or instance selectors, while a chain of operators reached about 900 terms before evaluation ran short of stack.
+
+The limits are configurable through `CompilationOptions`:
+
+```csharp
+var parser = new FhirPathParser(new CompilationOptions
+{
+    MaxNestingDepth = 8,
+    MaxExpressionDepth = 128,
+});
+```
+
+Raise them only for trusted expressions, and only after measuring on the smallest thread stack the host uses. As a further safeguard, the AST builders, the analyzer, the delegate compiler and the evaluator call `RuntimeHelpers.EnsureSufficientExecutionStack()` as they recurse, so a thread whose stack is too small for an expression the limits admit gets an `InsufficientExecutionStackException` rather than terminating the process. The parser's own grammar has no such check, which is why bracket nesting is bounded before parsing starts.
+
 ### Evaluation Errors
 
 Evaluation errors throw specific exceptions:
