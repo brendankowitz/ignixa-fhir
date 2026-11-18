@@ -98,8 +98,9 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         context.Budget.Step();
 
         // A subexpression whose value cannot change within this evaluation is computed once: dom-3 would otherwise
-        // walk the whole resource once per contained resource. Skipped under node tracing, which reports every node.
-        if (context.NodeEvaluationHandler is null && LoopInvariance.IsWorthMemoising(expr))
+        // walk the whole resource once per contained resource. Skipped when a handler observes evaluation (node
+        // tracing reports every node; a trace handler should see every trace() call beneath one).
+        if (context.NodeEvaluationHandler is null && context.TraceHandler is null && LoopInvariance.IsWorthMemoising(expr))
         {
             return context.Budget.GetOrAddInvariant(expr, () => expr.AcceptVisitor(this, context).ToList());
         }
@@ -1153,11 +1154,11 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         {
             return leftQuantity is not null
                 && rightQuantity is not null
-                && AreEquivalent(leftQuantity, rightQuantity, left.InstanceType, right.InstanceType);
+                && AreEquivalent(leftQuantity, rightQuantity, left.InstanceType, right.InstanceType, budget);
         }
 
         if (left.Value is not null || right.Value is not null)
-            return AreEquivalent(left.Value, right.Value, left.InstanceType, right.InstanceType);
+            return AreEquivalent(left.Value, right.Value, left.InstanceType, right.InstanceType, budget);
 
         return AreCollectionsEquivalent(left.Children(), right.Children(), matchNames: true, budget);
     }
@@ -1186,6 +1187,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// <param name="right">The right value.</param>
     /// <param name="leftType">The left operand's declared instance type, or <see langword="null"/>.</param>
     /// <param name="rightType">The right operand's declared instance type, or <see langword="null"/>.</param>
+    /// <param name="budget">Charged for the text the comparison normalises.</param>
     /// <remarks>
     /// The types have to be threaded in rather than recovered from the values. A temporal literal's
     /// value is a plain string once the parser has stripped the sigil, and a string literal keeps
@@ -1193,7 +1195,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// <c>"@2013"</c>. Deciding temporality from that string treated the String as the temporal and the
     /// Date as an ordinary string, which is how <c>'@2013' ~ @2013</c> came to answer true.
     /// </remarks>
-    private bool AreEquivalent(object? left, object? right, string? leftType, string? rightType)
+    private bool AreEquivalent(object? left, object? right, string? leftType, string? rightType, EvaluationBudget budget)
     {
         if (left == null && right == null) return true;
         if (left == null || right == null) return false;
@@ -1268,6 +1270,9 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 return normalizedLeft == normalizedRight;
             }
 
+            // Normalising is linear in both texts and runs for every pair the matching tries, so a long
+            // String referenced from many items of each operand is charged per pair, not once per operand.
+            budget.ChargeText((long)leftStr.Length + rightStr.Length);
             return string.Equals(
                 NormalizeWhitespace(leftStr),
                 NormalizeWhitespace(rightStr),

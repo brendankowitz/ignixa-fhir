@@ -56,26 +56,28 @@ internal sealed class ElementEqualityIndex
     private readonly List<IElement> _quantities = [];
     private int _numberCount;
 
+    // The unit costs below were measured warm in a Release build, where the step budget runs at about 3,650 steps
+    // a millisecond (10,000,000 steps of nested select() took 2.74 s). Each charge is set at or above the worst
+    // measured case, so a collection built to make the index do UCUM work exhausts the budget no slower than any
+    // other expression.
+
     /// <summary>
-    /// Steps charged for computing the compatibility class of a unit UCUM can read: one parse, measured at about
-    /// 0.4 ms - a few thousand times what a step stands for.
+    /// Steps charged for computing the compatibility class of a unit UCUM can read: one parse, measured at 0.50 ms
+    /// (<c>m2</c>, <c>m3</c>, ...) to 0.65 ms (annotated spellings such as <c>g.{a1}</c>), about 1,800-2,400 steps.
     /// </summary>
     private const int UnitParseSteps = 3_000;
 
     /// <summary>
-    /// Steps charged for computing the class of a unit UCUM cannot read. The parser reports that by throwing, which
-    /// measured at about 4 ms a unit, so a collection of made-up units (or annotated spellings such as
-    /// <c>g.{a1}</c>, <c>g.{a2}</c>) is charged for what it costs: about 330 of them exhaust the default budget in
-    /// about 1.3 s.
+    /// Steps charged for computing the class of a unit UCUM cannot read, which the parser rejects early: measured at
+    /// 0.012-0.11 ms (<c>widget1</c>, <c>[foo1]</c>, <c>m/zz1</c>), at most about 400 steps.
     /// </summary>
-    private const int UnreadableUnitSteps = 30_000;
+    private const int UnreadableUnitSteps = 1_000;
 
     /// <summary>
-    /// Steps charged for converting a value between two different units, which parses both: about 0.5 ms for common
-    /// units and several times that for a unit UCUM rejects. Conversions are made once per unit to give it a scale,
-    /// for each comparison of quantities in different units, and per unit without a scale on every lookup - so a
-    /// collection in many spellings of one unit that do not convert into each other (<c>g.{a1}</c>, <c>g.{a2}</c>,
-    /// ...) is charged for its quadratic probing.
+    /// Steps charged for converting a value between two different units, which parses both: measured at 1.2 ms
+    /// (<c>mg</c> to <c>kg</c>), 2.2 ms (<c>[lb_av]</c> to <c>g</c>, or between annotated spellings) and 0.5 ms
+    /// for a conversion that fails - about 4,400-8,000 steps. Conversions are made once per unit to give it a
+    /// scale, for each comparison of quantities in different units, and per unit without a scale on every lookup.
     /// </summary>
     private const int UnitConversionSteps = 12_000;
 
@@ -84,6 +86,12 @@ internal sealed class ElementEqualityIndex
     /// (about 1e-27 relative), so they always fall in the same or adjacent buckets.
     /// </summary>
     private const double BucketWidth = 1e-9;
+
+    /// <summary>
+    /// Values (and scales) below this keep fewer than 15 significant digits within decimal's 28 places, so they are
+    /// compared directly rather than by magnitude.
+    /// </summary>
+    private const decimal PreciseMagnitude = 1e-13m;
 
     /// <param name="budget">The evaluation budget charged for each key and comparison.</param>
     /// <param name="beforeComparison">Called before each comparison, for a caller enforcing its own comparison limit.</param>
@@ -214,10 +222,21 @@ internal sealed class ElementEqualityIndex
 
         sameValue.Add(element);
         _quantities.Add(element);
+        members.All.Add((element, quantity.Unit));
 
-        if (ScaleOf(quantity.Unit, members) is { } scale)
+        var scale = ScaleOf(quantity.Unit, members);
+        if (scale is null && isNewUnit)
         {
-            var bucket = BucketOf(quantity.Value, scale);
+            members.UnscaledUnits.Add(quantity.Unit);
+        }
+
+        if (IsNearTheScaleLimit(quantity.Value))
+        {
+            members.Imprecise.Add((element, quantity.Unit));
+        }
+        else if (scale is not null)
+        {
+            var bucket = BucketOf(quantity.Value, scale.Value);
             if (!members.ByMagnitude.TryGetValue(bucket, out var near))
             {
                 near = [];
@@ -225,10 +244,6 @@ internal sealed class ElementEqualityIndex
             }
 
             near.Add((element, quantity.Unit));
-        }
-        else if (isNewUnit)
-        {
-            members.UnscaledUnits.Add(quantity.Unit);
         }
     }
 
@@ -278,6 +293,18 @@ internal sealed class ElementEqualityIndex
             return false;
         }
 
+        if (IsNearTheScaleLimit(quantity.Value))
+        {
+            // A conversion that lands near decimal's 28-place limit keeps few significant digits, so an equal member
+            // can sit any distance away by magnitude or converted value: compare with every member of the class.
+            return AnyEqualIn(members.All, quantity.Unit, candidate);
+        }
+
+        if (AnyEqualIn(members.Imprecise, quantity.Unit, candidate))
+        {
+            return true;
+        }
+
         if (ScaleOf(quantity.Unit, members) is not { } scale)
         {
             // Without a scale the candidate cannot be placed among the scaled members, so it probes every unit.
@@ -295,6 +322,13 @@ internal sealed class ElementEqualityIndex
 
         return AnyEqualInUnits(quantity, candidate, members, members.UnscaledUnits);
     }
+
+    /// <summary>
+    /// Whether a value is small enough that decimal's 28-place scale leaves it, or a conversion that yields it, with
+    /// fewer significant digits than the magnitude buckets assume. Equal quantities convert into each other's
+    /// values, so a pair can only be mis-bucketed when one of their values is this small.
+    /// </summary>
+    private static bool IsNearTheScaleLimit(decimal value) => value != 0m && Math.Abs(value) < PreciseMagnitude;
 
     /// <summary>
     /// In each of <paramref name="units"/>, finds a member holding the value equality would compare with
@@ -365,7 +399,9 @@ internal sealed class ElementEqualityIndex
         else
         {
             _budget.Charge(UnitConversionSteps);
-            if (ValueOrdering.TryExpressIn(new FhirQuantity(1m, unit), members.Representative, out var one) && one != 0m)
+            if (ValueOrdering.TryExpressIn(new FhirQuantity(1m, unit), members.Representative, out var one)
+                && one != 0m
+                && !IsNearTheScaleLimit(one))
             {
                 // A second point rules out an offset (Cel to K, should a converter support it): only a linear
                 // conversion makes magnitudes comparable.
@@ -461,5 +497,11 @@ internal sealed class ElementEqualityIndex
 
         /// <summary>Units of members that have no scale, in the order first seen.</summary>
         public List<string> UnscaledUnits { get; } = [];
+
+        /// <summary>Members whose value is near decimal's scale limit, compared with every lookup.</summary>
+        public List<(IElement Element, string Unit)> Imprecise { get; } = [];
+
+        /// <summary>Every member, for a lookup whose own value is near decimal's scale limit.</summary>
+        public List<(IElement Element, string Unit)> All { get; } = [];
     }
 }

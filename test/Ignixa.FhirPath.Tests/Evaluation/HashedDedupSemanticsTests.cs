@@ -231,6 +231,41 @@ public class HashedDedupSemanticsTests
     }
 
     [Fact]
+    public void GivenEqualMassesWhoseMagnitudesStraddleABucketBoundary_WhenUnioned_ThenTheyAreOneItem()
+    {
+        // Arrange - found by search: in kg, 4807888.714286 g and 4807.888714286 kg differ by one rounding of a double
+        // and fall in adjacent magnitude buckets, so the lookup must probe the neighbours.
+        var root = Node("root", "Root", null,
+            Node("item", "Quantity", null, Node("value", "decimal", 4807.888714286m), Node("code", "code", "kg")),
+            Node("item", "Quantity", null, Node("value", "decimal", 4807888.714286m), Node("code", "code", "g")));
+
+        // Act
+        var result = Evaluate(root, "(item | item).count()");
+
+        // Assert
+        result.Single().Value.ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenQuantitiesEqualOnlyAtDecimalsScaleLimit_WhenUnioned_ThenTheyDedupeAsEqualityDoes()
+    {
+        // Arrange - regression: 1.2346e-16 m expressed in Gm rounds to 1.235e-25 at decimal's 28 places, so equality
+        // (which expresses the right operand in the left's unit) holds while the magnitudes are about 3e-4 apart -
+        // about 300,000 buckets. Values that small are now compared directly.
+        var root = Node("root", "Root", null,
+            Node("item", "Quantity", null, Node("value", "decimal", 0.0000000000000000000000001235m), Node("code", "code", "Gm")),
+            Node("item", "Quantity", null, Node("value", "decimal", 0.00000000000000012346m), Node("code", "code", "m")));
+
+        // Act
+        var equal = Evaluate(root, "item[0] = item[1]");
+        var result = Evaluate(root, "(item | item).count()");
+
+        // Assert
+        equal.Single().Value.ShouldBe(true);
+        result.Single().Value.ShouldBe(1);
+    }
+
+    [Fact]
     public void GivenAThousandQuantitiesInDistinctUnits_WhenUnioned_ThenTheCostIsLinear()
     {
         // Arrange - combo-value-quantity over components whose units all differ (m1, m2, ... m1000 are a thousand

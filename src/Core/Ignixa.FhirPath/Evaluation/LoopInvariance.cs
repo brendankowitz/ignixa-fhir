@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Collections.Frozen;
 using System.Runtime.CompilerServices;
 using Ignixa.FhirPath.Expressions;
 
@@ -20,24 +21,48 @@ namespace Ignixa.FhirPath.Evaluation;
 /// every iteration.
 /// </para>
 /// <para>
-/// The test is deliberately narrow, because a subexpression wrongly judged invariant would return a stale value. An
-/// expression is invariant when it is rooted at <c>%resource</c>, <c>%rootResource</c> or <c>%context</c> - which are
-/// fixed for an evaluation and cannot be redefined - and continues only through child navigation, parentheses,
-/// <c>|</c> of invariant operands, and function calls with no arguments or with a type name as their only argument
-/// (<c>as</c>, <c>ofType</c>, <c>is</c>). Any other argument could read the enclosing iteration's focus, <c>$this</c>
-/// or a variable, so it disqualifies the expression. <c>resolve()</c> is excluded because it calls host code.
+/// The test is deliberately narrow, because a subexpression wrongly judged invariant would return a stale value or
+/// skip a side effect. An expression is invariant when it is rooted at <c>%resource</c>, <c>%rootResource</c> or
+/// <c>%context</c> - which are fixed for an evaluation and cannot be redefined - and continues only through child
+/// navigation, parentheses, <c>|</c> of invariant operands, and calls to the built-in functions listed here: pure
+/// functions of their focus taking no arguments, and the type functions taking only a type name. Any other argument
+/// could read the enclosing iteration's focus, <c>$this</c> or a variable; any other function could have an effect
+/// (<c>trace()</c>), read the clock (<c>now()</c>), call host code (<c>resolve()</c>) or be a host's own function.
 /// </para>
 /// </remarks>
 internal static class LoopInvariance
 {
-    private static readonly ConditionalWeakTable<Expression, StrongBox<bool>> Verdicts = new();
+    private const byte Unknown = 0;
+    private const byte Variant = 1;
+    private const byte Invariant = 2;
+
+    private static readonly FrozenSet<string> PureFunctions = new[]
+    {
+        "children", "descendants",
+        "count", "exists", "empty", "first", "last", "tail", "single", "distinct", "isDistinct",
+        "not", "allTrue", "anyTrue", "allFalse", "anyFalse", "hasValue",
+        "toString", "toInteger", "toDecimal", "toBoolean", "toQuantity", "toDate", "toDateTime", "toTime",
+        "length", "upper", "lower", "trim",
+    }.ToFrozenSet(StringComparer.Ordinal);
+
+    private static readonly FrozenSet<string> TypeFunctions =
+        new[] { "as", "ofType", "is" }.ToFrozenSet(StringComparer.Ordinal);
 
     /// <summary>
     /// Whether <paramref name="expression"/> is invariant and does enough work to be worth remembering: a bare
-    /// variable reference is invariant but costs nothing to re-read.
+    /// variable reference is invariant but costs nothing to re-read. The verdict is cached on the node.
     /// </summary>
-    public static bool IsWorthMemoising(Expression expression) =>
-        expression is not VariableRefExpression && Verdicts.GetValue(expression, e => new StrongBox<bool>(IsInvariant(e))).Value;
+    public static bool IsWorthMemoising(Expression expression)
+    {
+        var verdict = expression._loopInvarianceVerdict;
+        if (verdict == Unknown)
+        {
+            verdict = expression is not VariableRefExpression && IsInvariant(expression) ? Invariant : Variant;
+            expression._loopInvarianceVerdict = verdict;
+        }
+
+        return verdict == Invariant;
+    }
 
     private static bool IsInvariant(Expression expression)
     {
@@ -51,27 +76,15 @@ internal static class LoopInvariance
             ChildExpression child => child.Focus is { } focus && IsInvariant(focus),
             PropertyAccessExpression property => property.Focus is { } focus && IsInvariant(focus),
             IndexerExpression or UnaryExpression => false,
-            FunctionCallExpression call => call.Focus is { } focus && IsInvariant(focus) && HasInvariantArguments(call),
+            FunctionCallExpression call => call.Focus is { } focus && IsPureCall(call) && IsInvariant(focus),
             _ => false,
         };
     }
 
-    private static bool HasInvariantArguments(FunctionCallExpression call)
+    private static bool IsPureCall(FunctionCallExpression call) => call.Arguments.Count switch
     {
-        if (call.FunctionName.Equals("resolve", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        if (call.Arguments.Count == 0)
-        {
-            return true;
-        }
-
-        return call.Arguments.Count == 1
-            && call.Arguments[0] is IdentifierExpression
-            && (call.FunctionName.Equals("as", StringComparison.OrdinalIgnoreCase)
-                || call.FunctionName.Equals("ofType", StringComparison.OrdinalIgnoreCase)
-                || call.FunctionName.Equals("is", StringComparison.OrdinalIgnoreCase));
-    }
+        0 => PureFunctions.Contains(call.FunctionName),
+        1 => call.Arguments[0] is IdentifierExpression && TypeFunctions.Contains(call.FunctionName),
+        _ => false,
+    };
 }

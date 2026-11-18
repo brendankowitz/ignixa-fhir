@@ -239,6 +239,25 @@ public class EvaluationBudgetTests
     }
 
     [Fact]
+    public void GivenLongStringsOnBothSides_WhenEquivalenceMatchesEveryPair_ThenEachPairsNormalisationIsCharged()
+    {
+        // Arrange - regression: ~ normalises the whitespace of both Strings for every pair it tries, but only each
+        // operand was charged once. A trailing space makes every pair equivalent, so all 400 pairs of twenty
+        // references a side to a 160,000-character name are normalised: about 600,000 steps for building and
+        // reading the operands, and 8,000,000 for the normalising.
+        var patient = ResourceJsonNode
+            .Parse($$"""{"resourceType":"Patient","id":"p","name":[{"family":"{{new string('a', 160_000)}}"}]}""")
+            .ToElement(FhirVersion.R4.GetSchemaProvider());
+        var context = WithLimits(FhirPathEvaluationLimits.Default with { MaxSteps = 2_000_000 });
+        var expression = _parser.Parse(
+            $"{TwentyItems}.select(%context.name.family) ~ {TwentyItems}.select(%context.name.family & ' ')");
+
+        // Act & Assert
+        Should.Throw<FhirPathResourceLimitExceededException>(() => _evaluator.Evaluate(patient, expression, context).ToList())
+            .Message.ShouldContain("step budget");
+    }
+
+    [Fact]
     public void GivenAShortTimeout_WhenNestedSelectsBuildACrossProduct_ThenEvaluationStopsAtTheTimeout()
     {
         // Arrange
