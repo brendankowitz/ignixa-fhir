@@ -24,6 +24,9 @@ public class SingleItemArgumentTests
 
     [Theory]
     [InlineData("indexOf", "'abc'.indexOf('a' | 'b')")]
+    [InlineData("lastIndexOf", "'abc'.lastIndexOf('a' | 'b')")]
+    [InlineData("join", "('a' | 'b').join(',' | ';')")]
+    [InlineData("extension", "name.extension('u' | 'v').count()")]
     [InlineData("substring", "'abc'.substring(1 | 2)")]
     [InlineData("substring", "'abc'.substring(0, 1 | 2)")]
     [InlineData("startsWith", "'abc'.startsWith('a' | 'b')")]

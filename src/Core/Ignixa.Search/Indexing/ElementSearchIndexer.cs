@@ -603,8 +603,9 @@ public partial class ElementSearchIndexer : ISearchIndexer
     /// for the exception types a bad literal or a malformed custom expression actually surfaces as
     /// today: <see cref="FormatException"/> (e.g. <c>PartialDateTime.Parse</c> on a <c>Timing.event</c>
     /// that fails, or <c>FhirPathParser</c> failing to tokenize/parse an expression), <see cref="ArgumentException"/>
-    /// (e.g. an empty custom search parameter expression), and <see cref="OverflowException"/> (a numeric
-    /// literal outside the target type's range). False for anything else - a <see cref="NullReferenceException"/>
+    /// (e.g. an empty custom search parameter expression). A numeric literal outside the target type's range
+    /// is a <see cref="FormatException"/> from the parser, and math overflow evaluates to empty, so no
+    /// <see cref="OverflowException"/> is expected. False for anything else - a <see cref="NullReferenceException"/>
     /// or <see cref="InvalidCastException"/> reaching an indexing catch block means the indexer or a converter
     /// has a bug, not that the data or the expression was bad, and must not be logged the same way.
     /// </summary>
@@ -620,7 +621,7 @@ public partial class ElementSearchIndexer : ISearchIndexer
     /// this predicate was added to draw.
     /// </remarks>
     private static bool IsExpectedEvaluationFailure(Exception ex) =>
-        ex is FhirPathEvaluationException or NotSupportedException or FormatException or OverflowException
+        ex is FhirPathEvaluationException or NotSupportedException or FormatException
         || (ex is ArgumentException and not (ArgumentNullException or ArgumentOutOfRangeException));
 
     /// <summary>

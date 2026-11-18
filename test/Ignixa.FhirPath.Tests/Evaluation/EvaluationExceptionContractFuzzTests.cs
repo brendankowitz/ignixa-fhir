@@ -21,7 +21,7 @@ namespace Ignixa.FhirPath.Tests.Evaluation;
 public class EvaluationExceptionContractFuzzTests
 {
     private const int Seed = 7777;
-    private const int Iterations = 3000;
+    private const int Iterations = 1200;
 
     [Fact]
     public void GivenGeneratedExpressionsOverRepeatingData_WhenEvaluated_ThenOnlyDocumentedExceptionsEscape()

@@ -79,11 +79,8 @@ internal static class StringFunctions
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var substringResult = evaluateExpression(context.Focus, arguments[0], context).ToList();
-        if (substringResult.Count == 0)
-            return [];
-
-        if (substringResult[0].Value is not string substring)
+        var substringResult = FunctionHelpers.SingleArgument("lastIndexOf", evaluateExpression(context.Focus, arguments[0], context));
+        if (substringResult?.Value is not string substring)
             return [];
 
         if (substring.Length == 0)
@@ -523,8 +520,8 @@ internal static class StringFunctions
         var separator = string.Empty;
         if (arguments.Count > 0)
         {
-            var sepResult = evaluateExpression(focusElements, arguments[0], context).ToList();
-            if (sepResult.Count > 0 && sepResult[0].Value is string sepStr)
+            var sepResult = FunctionHelpers.SingleArgument("join", evaluateExpression(focusElements, arguments[0], context));
+            if (sepResult?.Value is string sepStr)
             {
                 separator = sepStr;
             }

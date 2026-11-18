@@ -44,7 +44,7 @@ internal static class FhirSpecificFunctions
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
         var urlArgument = arguments[0];
-        var urlResult = evaluateExpression(context.Focus, urlArgument, context).FirstOrDefault();
+        var urlResult = FunctionHelpers.SingleArgument("extension", evaluateExpression(context.Focus, urlArgument, context));
 
         if (urlResult == null)
             yield break;

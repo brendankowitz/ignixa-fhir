@@ -45,8 +45,9 @@ internal static class MathFunctions
             if (precisionResult?.Value is not int p)
                 return [];
 
-            // §round: a negative precision is an error. decimal holds at most 28 fractional digits, so a
-            // larger precision cannot be honoured and is rejected explicitly rather than by Math.Round.
+            // §round: a negative precision is an error. The upper bound is an implementation limit
+            // (System.Decimal holds at most 28 fractional digits), not a spec rule; it is rejected explicitly
+            // rather than by Math.Round.
             if (p is < 0 or > MaxRoundPrecision)
             {
                 throw new FhirPathEvaluationException(
