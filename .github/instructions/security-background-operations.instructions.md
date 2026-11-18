@@ -1,5 +1,5 @@
 ---
-applyTo: "src/Application/Ignixa.Application.BackgroundOperations/**,src/Application/Ignixa.Application.Operations/**,src/Application/Ignixa.Application/Features/BulkDelete/**,src/Application/Ignixa.Application/Features/Export/**,src/Application/Ignixa.Api/Endpoints/BulkDelete*,src/Application/Ignixa.Api/Endpoints/ExportEndpoints.cs,src/Application/Ignixa.Api/Endpoints/ImportEndpoints.cs,src/Application/Ignixa.Api/Endpoints/ReindexEndpoints.cs"
+applyTo: "src/Application/Ignixa.Application.BackgroundOperations/**,src/Application/Ignixa.Application.Operations/**,src/Application/Ignixa.Domain/**,src/Application/Ignixa.Application/Features/BulkDelete/**,src/Application/Ignixa.Application/Features/Export/**,src/Application/Ignixa.Api/Endpoints/BulkDelete*,src/Application/Ignixa.Api/Endpoints/ExportEndpoints.cs,src/Application/Ignixa.Api/Endpoints/ImportEndpoints.cs,src/Application/Ignixa.Api/Endpoints/ReindexEndpoints.cs"
 excludeAgent: "cloud-agent"
 ---
 
@@ -12,7 +12,7 @@ Export, import, reindex, bulk delete, and other jobs are authorized at kickoff a
 1. **Authorize what the job will do.** The route filter authorizes one interaction on the route's type. A job can reach further. The kickoff must authorize every interaction on every type the job can touch, as `BulkDeleteKickoffAuthorizer` does for deletes, cascades through `_include` and `_revinclude`, and reference rewrites. When the type set cannot be known, require the `*` grant.
 2. **Refuse grants the job cannot honor.** A grant with a compartment or search constraint (`RestrictsData`) must be refused unless the job definition stores the restriction and every activity applies it.
 3. **Options only narrow.** An option that excludes types or resources must not be used to decide what authority is needed. An option that widens the job must be part of the authorization.
-4. **The definition is trusted state.** The tenant, the criteria, and anything that carries authority in the job definition must be set by server code from the authorized request. Request input must not set them directly.
+4. **The definition is trusted state.** Job definitions live in `Ignixa.Domain/Models`. The tenant, the criteria, and anything that carries authority in the job definition must be set by server code from the authorized request. Request input must not set them directly.
 
 ## Execution
 
