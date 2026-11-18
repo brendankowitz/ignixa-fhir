@@ -69,4 +69,27 @@ public static class LogSafeText
         || c is '\u2028' or '\u2029' or '\u061C' or '\u200E' or '\u200F'
         || c is >= '\u202A' and <= '\u202E'
         || c is >= '\u2066' and <= '\u2069';
+
+    /// <summary>
+    /// Describes an exception and its inner exceptions by type and stack trace only, for logging a failure whose
+    /// messages can quote request or resource values.
+    /// </summary>
+    /// <param name="exception">The exception to describe.</param>
+    public static string DescribeWithoutMessages(Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+
+        var builder = new StringBuilder();
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (builder.Length > 0)
+            {
+                builder.Append(" ---> ");
+            }
+
+            builder.Append(current.GetType().FullName).Append(Environment.NewLine).Append(current.StackTrace);
+        }
+
+        return builder.ToString();
+    }
 }

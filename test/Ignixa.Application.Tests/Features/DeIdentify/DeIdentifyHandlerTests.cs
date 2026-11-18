@@ -119,6 +119,24 @@ public class DeIdentifyHandlerTests
     }
 
     [Fact]
+    public async Task GivenARuleThatExceededAnEvaluationLimit_WhenDeIdentifying_ThenTheRequestIsTooCostly()
+    {
+        // Arrange: the rule failed closed with the limit as its cause, wrapped as the pipeline reports it.
+        var resource = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"patient-123"}""");
+        var library = LibraryConfigurationLoader.CreateLibraryResource("lib-4", "SAFE_HARBOR", CreateSafeHarborOptions());
+        var command = new DeIdentifyCommand(1, resource, "SAFE_HARBOR", library);
+        SetupFhirContext();
+        var cause = new InvalidOperationException(
+            "rule failed", new Ignixa.FhirPath.Evaluation.FhirPathResourceLimitExceededException("step budget exceeded"));
+        _pipeline.ExecuteAsync(Arg.Any<DeIdContext>(), Arg.Any<CancellationToken>())
+            .Returns(Result<DeIdResult>.Failure(new DeIdError("RULE_EVALUATION_FAILED", "rule failed", ErrorSeverity.Error, cause)));
+
+        // Act & Assert
+        await Should.ThrowAsync<Ignixa.Domain.Exceptions.RequestTooCostlyException>(
+            () => _handler.HandleAsync(command, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task GivenPipelineFailureWhoseMessageQuotesData_WhenDeIdentifying_ThenLogOmitsTheMessageAndCallerStillReceivesIt()
     {
         // Arrange

@@ -324,11 +324,9 @@ public class FhirPathInvariantCheck : IValidationCheck
             // benign warning, so it cannot silently pass a resource or inflate conformance metrics.
             // Logged by type and stack only: the message can quote the instance's values.
             _logger?.LogError(
-                "Unexpected error evaluating constraint {ConstraintKey} ({ExceptionType}){NewLine}{StackTrace}",
+                "Unexpected error evaluating constraint {ConstraintKey}: {Exception}",
                 _constraint.Key,
-                ex.GetType().Name,
-                Environment.NewLine,
-                ex.StackTrace);
+                LogSafeText.DescribeWithoutMessages(ex));
 
             var issue = ValidationIssue.FromTemplate(
                 IssueSeverity.Error,

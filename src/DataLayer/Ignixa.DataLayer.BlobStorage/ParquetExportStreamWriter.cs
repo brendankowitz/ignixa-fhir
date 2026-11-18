@@ -11,6 +11,7 @@ using Parquet.Schema;
 using Ignixa.Abstractions;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.FhirPath;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.SqlOnFhir.Evaluation;
@@ -136,11 +137,7 @@ public partial class ParquetExportStreamWriter : IExportStreamWriter
         catch (Exception ex)
         {
             // Logged by type and stack only: the message can quote values from the resource being written.
-            _logger.LogError(
-                "Error writing resource to Parquet buffer ({ExceptionType}){NewLine}{StackTrace}",
-                ex.GetType().Name,
-                Environment.NewLine,
-                ex.StackTrace);
+            _logger.LogError("Error writing resource to Parquet buffer: {Exception}", LogSafeText.DescribeWithoutMessages(ex));
             throw;
         }
     }

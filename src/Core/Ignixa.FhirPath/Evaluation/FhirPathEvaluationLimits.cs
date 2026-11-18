@@ -22,9 +22,11 @@ namespace Ignixa.FhirPath.Evaluation;
 /// <para>
 /// The limits apply to each call of <see cref="FhirPathEvaluator.Evaluate"/> (and so of
 /// <see cref="TypedElementExtensions.Select"/>) separately, and cover all enumeration of the sequence it returns.
-/// Every value except <see cref="Timeout"/> is counted, not timed, so a given expression over given data either
-/// fits or does not regardless of machine load; <see cref="Timeout"/> is off by default for that reason and is
-/// for hosts that want a wall-clock bound on top.
+/// Most of <see cref="MaxSteps"/> is counted, not timed, but UCUM unit conversion and regular-expression work is
+/// charged by its elapsed time, so an expression whose cost lies near the limit can fit on an idle machine and
+/// exceed it on a loaded one (a search parameter that close to the limit may then be skipped while indexing). The
+/// other limits are counted. <see cref="Timeout"/> is off by default and is for hosts that want a wall-clock bound
+/// on top.
 /// </para>
 /// <para>
 /// The defaults are sized to leave the shipped search-parameter and invariant corpus untouched while stopping

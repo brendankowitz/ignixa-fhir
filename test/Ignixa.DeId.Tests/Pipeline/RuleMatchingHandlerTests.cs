@@ -67,7 +67,13 @@ public class RuleMatchingHandlerTests
         var handler = new RuleMatchingHandler(NullLogger<RuleMatchingHandler>.Instance);
         var resource = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"p1","name":[{"family":"Doe"}]}""");
         const string tenItems = "(1|2|3|4|5|6|7|8|9|10)";
-        var crossProduct = string.Concat(Enumerable.Repeat(tenItems + ".select(", 8)) + tenItems + new string(')', 8);
+        // Each level counts its projection, so no collection grows: only the step budget (seconds away) or the token
+        // can end the evaluation, and the token fires long before the budget could.
+        var crossProduct = "1";
+        for (var level = 0; level < 8; level++)
+        {
+            crossProduct = $"{tenItems}.select({crossProduct}).count()";
+        }
         var options = new DeIdOptions
         {
             FhirVersion = "R4",
@@ -77,7 +83,7 @@ public class RuleMatchingHandlerTests
         };
         var context = new DeIdContext(resource, new R4CoreSchemaProvider(), new RequestOptions(), options);
         PipelineDelegate next = (ctx, ct) => ValueTask.FromResult(Result<DeIdResult>.Success(ctx.BuildResult()));
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(20));
 
         // Act & Assert - cancellation surfaces as itself, not as a rule that failed to evaluate.
         await Should.ThrowAsync<OperationCanceledException>(
