@@ -416,7 +416,7 @@ public class FhirPathIntegrationTests
         // Act
         var exception = Should.Throw<FhirPathResourceLimitExceededException>(() => integration.Evaluate(expression, patient));
 
-        // Assert - regression: the wrapper rewrapped this as a plain FhirPathEvaluationException, so a host could no
+        // Assert - guard (new behaviour, not a regression): the wrapper rewrapped this as a plain FhirPathEvaluationException, so a host could no
         // longer report it as too costly.
         exception.Message.ShouldBe($"Failed to evaluate FHIRPath expression: {expression}");
         exception.InnerException.ShouldBeOfType<FhirPathResourceLimitExceededException>();

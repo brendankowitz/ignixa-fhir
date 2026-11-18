@@ -1135,7 +1135,7 @@ public class SqlOnFhirEvaluatorTests
     public void GivenAColumnThatExceedsAnEvaluationLimit_WhenBatchEvaluated_ThenTheLimitTypeSurvivesTheContextWrapping()
     {
         // The lookahead forces the backtracking engine and (a+)+ inside it is exponential on a run of 'a' with no
-        // 'b', so the match times out (one second). Regression: the evaluator rewrapped the resulting resource-limit
+        // 'b', so the match times out (one second). Guard (new behaviour, not a regression): the evaluator rewrapped the resulting resource-limit
         // exception as a plain FhirPathEvaluationException, so an export could not tell "this view asks too much"
         // from an ill-formed expression.
         var patient = CreateTypedElement(new Dictionary<string, object?>

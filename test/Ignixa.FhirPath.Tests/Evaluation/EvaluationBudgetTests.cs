@@ -224,7 +224,7 @@ public class EvaluationBudgetTests
     [InlineData("sort().count()")]
     public void GivenALongStringFromTheResource_WhenAMultipliedCollectionOfItIsDedupedOrCompared_ThenTheTextIsCharged(string operation)
     {
-        // Arrange - regression: strings read from the resource were hashed and compared for a single step each, so
+        // Arrange - guard (new behaviour, not a regression): strings read from the resource were hashed and compared for a single step each, so
         // twenty references to a 160,000-character family name cost almost nothing; at attack scale (half a million
         // references to a 10 MB string) that is tens of minutes of CPU. Each now costs a step per 16 characters.
         var patient = ResourceJsonNode
@@ -241,7 +241,7 @@ public class EvaluationBudgetTests
     [Fact]
     public void GivenLongStringsOnBothSides_WhenEquivalenceMatchesEveryPair_ThenEachPairsNormalisationIsCharged()
     {
-        // Arrange - regression: ~ normalises the whitespace of both Strings for every pair it tries, but only each
+        // Arrange - guard (new behaviour, not a regression): ~ normalises the whitespace of both Strings for every pair it tries, but only each
         // operand was charged once. A trailing space makes every pair equivalent, so all 400 pairs of twenty
         // references a side to a 160,000-character name are normalised: about 600,000 steps for building and
         // reading the operands, and 8,000,000 for the normalising.
@@ -261,7 +261,8 @@ public class EvaluationBudgetTests
     public void GivenAShortTimeout_WhenNestedSelectsBuildACrossProduct_ThenEvaluationStopsAtTheTimeout()
     {
         // Arrange
-        var context = WithLimits(FhirPathEvaluationLimits.Default with { Timeout = TimeSpan.FromMilliseconds(20) });
+        // The step budget is raised far past what 20 ms can spend, so only the timeout can stop the evaluation.
+        var context = WithLimits(FhirPathEvaluationLimits.Default with { MaxSteps = long.MaxValue / 4, Timeout = TimeSpan.FromMilliseconds(20) });
 
         // Act
         var exception = Should.Throw<FhirPathResourceLimitExceededException>(() => Evaluate(CrossProduct, context));
@@ -284,8 +285,13 @@ public class EvaluationBudgetTests
     public void GivenATokenCancelledMidEvaluation_WhenEvaluating_ThenTheInterpreterStopsTheRunningExpression()
     {
         // Arrange
+        // The step budget is raised far past what 20 ms can spend, so only the cancellation can stop the evaluation.
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(20));
-        var context = new EvaluationContext { CancellationToken = cancellation.Token };
+        var context = new EvaluationContext
+        {
+            Limits = FhirPathEvaluationLimits.Default with { MaxSteps = long.MaxValue / 4 },
+            CancellationToken = cancellation.Token,
+        };
 
         // Act & Assert
         Should.Throw<OperationCanceledException>(() => Evaluate(CrossProduct, context));

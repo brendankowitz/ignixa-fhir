@@ -3,6 +3,7 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Shouldly;
@@ -39,11 +40,8 @@ public class McpResourceTypeValidationGuardTests
     [Fact]
     public void GivenMcpToolMethodsTakingAResourceType_WhenScanned_ThenEachValidatesItOrIsAllowlisted()
     {
-        var root = Path.Combine(RepoRoot.Find(), "src");
-        var methods = Directory
-            .EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
-            .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
-            .SelectMany(file => FindToolMethods(File.ReadAllText(file)))
+        var methods = ProductionSyntaxTrees.All
+            .SelectMany(source => FindToolMethods(source.Tree))
             .ToList();
 
         methods.Count.ShouldBeGreaterThanOrEqualTo(5,
@@ -119,7 +117,10 @@ public class McpResourceTypeValidationGuardTests
     }
 
     private static IEnumerable<(string Name, bool Validates, bool PassesVersionContext)> FindToolMethods(string source) =>
-        CSharpSyntaxTree.ParseText(source).GetRoot()
+        FindToolMethods(CSharpSyntaxTree.ParseText(source));
+
+    private static IEnumerable<(string Name, bool Validates, bool PassesVersionContext)> FindToolMethods(SyntaxTree tree) =>
+        tree.GetRoot()
             .DescendantNodes()
             .OfType<ClassDeclarationSyntax>()
             .Where(type => type.BaseList?.Types.Any(b => b.Type.ToString().EndsWith("TenantAwareMcpTool", StringComparison.Ordinal)) == true)

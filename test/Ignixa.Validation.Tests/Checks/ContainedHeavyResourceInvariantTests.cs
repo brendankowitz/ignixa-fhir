@@ -36,7 +36,7 @@ public class ContainedHeavyResourceInvariantTests
     [Fact]
     public void GivenAQuestionnaireWithAHundredAndFiftyContainedValueSetExpansions_WhenValidatingDom3UnderDefaultLimits_ThenItPasses()
     {
-        // Arrange - regression: with navigation charged per item, dom-3's four walks of the whole resource per
+        // Arrange - guard (new behaviour, not a regression): with navigation charged per item, dom-3's four walks of the whole resource per
         // contained ValueSet came to over ten million steps here (about 37,000 nodes, 150 contained), so the limit
         // failed a valid resource. The walks are loop-invariant and are now computed once per evaluation.
         var questionnaire = QuestionnaireWithContainedValueSets(valueSets: 150, codesPerValueSet: 60);

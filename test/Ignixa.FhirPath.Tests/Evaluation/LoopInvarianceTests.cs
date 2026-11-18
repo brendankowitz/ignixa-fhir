@@ -58,7 +58,7 @@ public class LoopInvarianceTests
     [Fact]
     public void GivenATraceHandler_WhenAResourceRootedTraceRunsInALoop_ThenItTracesEveryIteration()
     {
-        // Arrange - regression: trace() takes no argument here, so the path was computed once and traced once.
+        // Arrange - guard (new behaviour, not a regression): trace() takes no argument here, so the path was computed once and traced once.
         var patient = Patient("""[{"given":["a"]}]""");
         var traces = new List<TraceEntry>();
         var context = Bound(patient).WithTraceHandler(traces.Add);

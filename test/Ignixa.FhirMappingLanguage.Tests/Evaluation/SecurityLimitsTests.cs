@@ -533,7 +533,7 @@ public class SecurityLimitsTests
     [Fact]
     public void GivenAWhereConditionThatExceedsTheFhirPathLimits_WhenExecutedInLenientMode_ThenTheLimitPropagates()
     {
-        // Arrange - regression: lenient mode recorded the limit as a rule error and carried on to the next rule,
+        // Arrange - guard (new behaviour, not a regression): lenient mode recorded the limit as a rule error and carried on to the next rule,
         // so a map could exhaust the budget once per rule. A limit is a capacity outcome, not a data error.
         var forty = "(" + string.Join(" | ", Enumerable.Range(1, 40)) + ")";
         var crossProduct = $"{forty}.select({forty}.select({forty}.select({forty}))).count() > 0";

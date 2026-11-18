@@ -67,14 +67,13 @@ public class FhirPathInterpolationGuardTests
     [Fact]
     public void GivenSourceFiles_WhenScanned_ThenNoValueIsInterpolatedIntoFhirPathOutsideTheAllowlist()
     {
-        var root = Path.Combine(RepoRoot.Find(), SourcePath);
-        var sources = Sources(root);
+        var sources = ProductionSyntaxTrees.All;
         sources.Count.ShouldBeGreaterThan(500,
             $"Found too few .cs files under {SourcePath} for this scan to be meaningful; the scan path is probably wrong.");
 
         var found = sources
-            .SelectMany(file => FindInterpolations(File.ReadAllText(file))
-                .Select(hit => (File: Relative(root, file), Hit: hit)))
+            .SelectMany(source => FindInterpolations(source.Tree)
+                .Select(hit => (File: source.RelativePath, Hit: hit)))
             .ToList();
 
         var offenders = found
@@ -136,10 +135,11 @@ public class FhirPathInterpolationGuardTests
         FindInterpolations(source).ShouldBeEmpty("The scan reports text that does not interpolate a value into FHIRPath.");
     }
 
-    private static IReadOnlyList<(int Line, string Literal)> FindInterpolations(string source)
-    {
-        var tree = CSharpSyntaxTree.ParseText(source);
+    private static IReadOnlyList<(int Line, string Literal)> FindInterpolations(string source) =>
+        FindInterpolations(CSharpSyntaxTree.ParseText(source));
 
+    private static IReadOnlyList<(int Line, string Literal)> FindInterpolations(SyntaxTree tree)
+    {
         return tree.GetRoot()
             .DescendantNodes()
             .OfType<InterpolatedStringExpressionSyntax>()
@@ -177,12 +177,4 @@ public class FhirPathInterpolationGuardTests
         }
     }
 
-    private static List<string> Sources(string root) =>
-        [.. Directory
-            .EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
-            .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
-            .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))];
-
-    private static string Relative(string root, string file) =>
-        Path.GetRelativePath(root, file).Replace(Path.DirectorySeparatorChar, '/');
 }

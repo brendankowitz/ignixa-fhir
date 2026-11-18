@@ -46,9 +46,9 @@ public class FhirPathEvaluatorWithTimeoutTests
     [Fact]
     public void GivenAnUnboundedCrossProduct_WhenEvaluateUnderAShortTimeout_ThenItStopsWithAResourceLimitAtTheTimeout()
     {
-        // Arrange - regression for #531: the class used to time only the queueing of a Task.Run, so a runaway
+        // Arrange - new behaviour for #531 (does not compile at the branch base): the class used to time only the queueing of a Task.Run, so a runaway
         // expression ran to completion whatever the timeout said.
-        var evaluatorWithTimeout = CreateEvaluator(TimeSpan.FromMilliseconds(50));
+        var evaluatorWithTimeout = CreateUnbudgetedEvaluator(TimeSpan.FromMilliseconds(50));
         var element = new TestElement("Patient", "Patient");
 
         // Act
@@ -74,8 +74,8 @@ public class FhirPathEvaluatorWithTimeoutTests
     [Fact]
     public void GivenATokenCancelledDuringEvaluation_WhenEvaluate_ThenTheRunningExpressionStops()
     {
-        // Arrange - regression for #531: the token used to be observed only before evaluation started.
-        var evaluatorWithTimeout = CreateEvaluator(TimeSpan.FromSeconds(30));
+        // Arrange - new behaviour for #531 (does not compile at the branch base): the token used to be observed only before evaluation started.
+        var evaluatorWithTimeout = CreateUnbudgetedEvaluator(TimeSpan.FromSeconds(30));
         var element = new TestElement("Patient", "Patient");
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
 
@@ -133,6 +133,15 @@ public class FhirPathEvaluatorWithTimeoutTests
         Should.Throw<FhirPathEvaluationException>(
             () => evaluatorWithTimeout.Evaluate("(1 | 2 | 3) & 'b'", element, CancellationToken.None));
     }
+
+    // The step budget raised far past what the test's deadline can spend, so only the timeout or the token stops it.
+    private static FhirPathEvaluatorWithTimeout CreateUnbudgetedEvaluator(TimeSpan timeout) =>
+        new(
+            new FhirPathExpressionCache(new FhirPathParser(), NullLogger<FhirPathExpressionCache>.Instance),
+            new FhirPathEvaluator(),
+            NullLogger<FhirPathEvaluatorWithTimeout>.Instance,
+            timeout,
+            FhirPathEvaluationLimits.Default with { MaxSteps = long.MaxValue / 4 });
 
     private static FhirPathEvaluatorWithTimeout CreateEvaluator(TimeSpan timeout) =>
         new(
