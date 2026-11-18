@@ -7,6 +7,7 @@ using System.Net;
 using System.Text.Json;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Conformance;
+using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Models;
 using Ignixa.Serialization;
@@ -37,7 +38,9 @@ public class FhirExceptionMiddleware
         }
         catch (FhirException fhirEx)
         {
-            _logger.LogWarning(fhirEx, "FHIR exception occurred: {ExceptionType}", fhirEx.GetType().Name);
+            // Logged without messages: they, and those of the exceptions inside, can quote request text and resource
+            // values. The client still receives the OperationOutcome.
+            _logger.LogWarning("FHIR exception occurred: {Exception}", LogSafeText.DescribeWithoutMessages(fhirEx));
             await HandleExceptionAsync(context, fhirEx);
         }
         catch (BadHttpRequestException badRequestEx)
@@ -57,12 +60,12 @@ public class FhirExceptionMiddleware
         catch (FhirPathResourceLimitExceededException limitEx)
         {
             // An expression asked for more work than an evaluation allows: the request is too costly, not a fault.
-            _logger.LogWarning("FHIRPath evaluation limit exceeded: {ExceptionType}", limitEx.GetType().Name);
+            _logger.LogWarning("FHIRPath evaluation limit exceeded: {Exception}", LogSafeText.DescribeWithoutMessages(limitEx));
             await HandleExceptionAsync(context, limitEx);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unhandled exception occurred");
+            _logger.LogError("Unhandled exception occurred: {Exception}", LogSafeText.DescribeWithoutMessages(ex));
             await HandleExceptionAsync(context, ex);
         }
     }

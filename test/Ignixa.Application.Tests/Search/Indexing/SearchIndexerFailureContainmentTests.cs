@@ -152,6 +152,27 @@ public class SearchIndexerFailureContainmentTests
     }
 
     [Fact]
+    public void GivenATimingWithAnUnparseableEvent_WhenIndexed_ThenTheLoggedFailureDoesNotQuoteTheValue()
+    {
+        // Arrange - the converter's FormatException quotes the literal it could not read, which is resource data.
+        const string malformed = "Zebra-not-a-date";
+        var captured = new List<(LogLevel Level, string Message)>();
+        var indexer = SearchIndexerFactory.CreateInstance(
+            _schemaProvider,
+            new CapturingLoggerFactory(captured),
+            _searchParameterDefinitionManager,
+            NullFhirBaseUriProvider.Instance);
+        var element = ServiceRequestWithTiming($$"""{"event":["{{malformed}}"]}""").ToElement(_schemaProvider);
+
+        // Act
+        indexer.Extract(element);
+
+        // Assert
+        captured.ShouldNotBeEmpty();
+        captured.ShouldAllBe(entry => !entry.Message.Contains(malformed));
+    }
+
+    [Fact]
     public void GivenATimingWithAParseableEvent_WhenIndexed_ThenTheOccurrenceParameterStillIndexes()
     {
         // Arrange - the control for the test above. Containment must come from catching the failure, not from
@@ -490,7 +511,8 @@ internal sealed class CapturingLoggerFactory(List<(LogLevel Level, string Messag
             Exception? exception,
             Func<TState, Exception?, string> formatter)
         {
-            captured.Add((logLevel, formatter(state, exception)));
+            // Recorded as a log provider would write it: the formatted message followed by the exception.
+            captured.Add((logLevel, formatter(state, exception) + Environment.NewLine + exception));
         }
     }
 }

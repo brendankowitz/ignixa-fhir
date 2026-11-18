@@ -110,7 +110,8 @@ public class TransformResourceHandler(
         {
             ErrorMode = ErrorMode.Strict, // Fail fast on errors
             ResourceCreator = CreateResourceElement,
-            Logger = msg => logger.LogDebug("Mapping execution: {Message}", msg.SanitizeForLog()),
+            // The map's log statements can quote source values, so their text is bounded as well as sanitized.
+            Logger = msg => logger.LogDebug("Mapping execution: {Message}", msg.SanitizeForLog(LogSanitizationExtensions.MaxExpressionLogLength)),
         };
 
         // FML signature: (conceptMapUrl, sourceSystem, sourceCode); the service's: (sourceCode, sourceSystem, mapUrl,
@@ -296,13 +297,13 @@ public class TransformResourceHandler(
                     logger.LogDebug("Supporting map already registered: {Url}", map.Url);
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
             {
+                // Logged by type: the message can quote the request's map.
                 logger.LogWarning(
-                    ex,
-                    "Failed to parse supporting map {Url}: {Message}",
-                    supportingMap.Url,
-                    ex.Message);
+                    "Failed to parse supporting map {Url} ({ExceptionType})",
+                    supportingMap.Url.SanitizeForLog(),
+                    ex.GetType().Name);
 
                 // Continue with other supporting maps
             }
@@ -325,13 +326,12 @@ public class TransformResourceHandler(
         catch (Exception ex)
         {
             logger.LogError(
-                ex,
-                "Failed to create resource element of type '{ResourceType}': {Message}",
-                resourceType,
-                ex.Message);
+                "Failed to create resource element of type '{ResourceType}': {Exception}",
+                resourceType.SanitizeForLog(),
+                LogSafeText.DescribeWithoutMessages(ex));
 
             throw new InvalidOperationException(
-                $"Cannot create resource of type '{resourceType}': {ex.Message}",
+                $"Cannot create resource of type '{LogSafeText.Sanitize(resourceType)}': {LogSafeText.Sanitize(ex.Message)}",
                 ex);
         }
     }

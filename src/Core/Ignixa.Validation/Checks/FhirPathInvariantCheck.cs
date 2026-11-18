@@ -116,7 +116,11 @@ public class FhirPathInvariantCheck : IValidationCheck
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "Failed to parse FHIRPath expression for constraint {ConstraintKey} - constraint will not be evaluated", _constraint.Key);
+                // Logged without messages: the parser's message quotes the constraint's expression text.
+                _logger?.LogError(
+                    "Failed to parse FHIRPath expression for constraint {ConstraintKey} - constraint will not be evaluated: {Exception}",
+                    _constraint.Key,
+                    LogSafeText.DescribeWithoutMessages(ex));
                 return null;
             }
         });
@@ -257,9 +261,9 @@ public class FhirPathInvariantCheck : IValidationCheck
             // parse-failure path above, so we never reject a resource on our own engine gap.
             // (Reference validators likewise never hard-fail a resource on an unevaluable constraint.)
             _logger?.LogWarning(
-                ex,
-                "Constraint {ConstraintKey} uses an unsupported FHIRPath feature; treating as non-failing",
-                _constraint.Key);
+                "Constraint {ConstraintKey} uses an unsupported FHIRPath feature ({ExceptionType}); treating as non-failing",
+                _constraint.Key,
+                ex.GetType().Name);
 
             var issue = ValidationIssue.FromTemplate(
                 IssueSeverity.Warning,

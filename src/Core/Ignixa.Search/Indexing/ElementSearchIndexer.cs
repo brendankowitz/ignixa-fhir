@@ -579,7 +579,7 @@ public partial class ElementSearchIndexer : ISearchIndexer
         }
         catch (Exception ex) when (IsExpectedEvaluationFailure(ex))
         {
-            Log.ConverterFailed(_logger, ex, converter.GetType().Name, LogSafeText.Sanitize(fhirPathExpression)!, searchParameterDefinitionUrl, resourceIdentity);
+            Log.ConverterFailed(_logger, ex.GetType().Name, converter.GetType().Name, LogSafeText.Sanitize(fhirPathExpression)!, searchParameterDefinitionUrl, resourceIdentity);
             return [];
         }
         catch (Exception ex)
@@ -592,7 +592,7 @@ public partial class ElementSearchIndexer : ISearchIndexer
             // stays contained. But it must not be logged identically to an expected miss: Error, not
             // Warning, so it surfaces to whatever is watching Error-level logs instead of blending into
             // routine "this literal didn't parse" noise.
-            Log.UnexpectedConverterFailure(_logger, ex, converter.GetType().Name, LogSafeText.Sanitize(fhirPathExpression)!, searchParameterDefinitionUrl, resourceIdentity);
+            Log.UnexpectedConverterFailure(_logger, ex.GetType().Name, LogSafeText.DescribeWithoutMessages(ex), converter.GetType().Name, LogSafeText.Sanitize(fhirPathExpression)!, searchParameterDefinitionUrl, resourceIdentity);
             return [];
         }
     }
@@ -687,11 +687,13 @@ public partial class ElementSearchIndexer : ISearchIndexer
         [LoggerMessage(Level = LogLevel.Warning, Message = "Skipping element with null or empty InstanceType for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}' during search indexing.")]
         public static partial void SkippingElementNullOrEmptyInstanceType(ILogger logger, string searchParameterUrl, string resourceIdentity);
 
-        [LoggerMessage(Level = LogLevel.Warning, Message = "Converter '{ConverterType}' failed on a value extracted by '{FhirPathExpression}' for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}'. Skipping this value.")]
-        public static partial void ConverterFailed(ILogger logger, Exception ex, string converterType, string fhirPathExpression, string searchParameterUrl, string resourceIdentity);
+        // Logged by exception type: a converter's message can quote the value it could not read (a malformed date).
+        [LoggerMessage(Level = LogLevel.Warning, Message = "Converter '{ConverterType}' failed on a value extracted by '{FhirPathExpression}' for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}' ({ExceptionType}). Skipping this value.")]
+        public static partial void ConverterFailed(ILogger logger, string exceptionType, string converterType, string fhirPathExpression, string searchParameterUrl, string resourceIdentity);
 
-        [LoggerMessage(Level = LogLevel.Error, Message = "Converter '{ConverterType}' raised an unexpected error on a value extracted by '{FhirPathExpression}' for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}'. This is not an expected evaluation failure and likely indicates a defect in the converter. Skipping this value.")]
-        public static partial void UnexpectedConverterFailure(ILogger logger, Exception ex, string converterType, string fhirPathExpression, string searchParameterUrl, string resourceIdentity);
+        // Logged by exception type and stack only: the message can quote the value being converted.
+        [LoggerMessage(Level = LogLevel.Error, Message = "Converter '{ConverterType}' raised an unexpected error on a value extracted by '{FhirPathExpression}' for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}' ({ExceptionType}). This is not an expected evaluation failure and likely indicates a defect in the converter. Skipping this value. Detail: {ExceptionDetail}")]
+        public static partial void UnexpectedConverterFailure(ILogger logger, string exceptionType, string exceptionDetail, string converterType, string fhirPathExpression, string searchParameterUrl, string resourceIdentity);
 
         [LoggerMessage(Level = LogLevel.Warning, Message = "The FHIR element '{ElementType}' is not supported for search parameter '{SearchParameterUrl}'.")]
         public static partial void FhirElementTypeNotSupported(ILogger logger, string elementType, string searchParameterUrl);

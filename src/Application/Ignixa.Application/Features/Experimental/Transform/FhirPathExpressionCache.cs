@@ -79,9 +79,11 @@ public class FhirPathExpressionCache
         }
         catch (FormatException ex)
         {
-            _logger.LogError(
-                ex,
-                "Failed to parse FHIRPath expression: {Expression}",
+            // A request-supplied expression that does not parse is a client error; logged by type, because the
+            // parser's message quotes the expression.
+            _logger.LogWarning(
+                "Failed to parse FHIRPath expression ({ExceptionType}): {Expression}",
+                ex.GetType().Name,
                 expression.SanitizeExpressionForLog());
             throw;
         }

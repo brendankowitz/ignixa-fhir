@@ -575,7 +575,7 @@ internal class SqlOnFhirEvaluationVisitor
         catch (Exception ex)
         {
             throw new InvalidOperationException(
-                $"Cannot convert value '{value}' ({value.GetType().Name}) to SQL type '{targetType}'", ex);
+                $"Cannot convert a {value.GetType().Name} value to SQL type '{targetType}'", ex);
         }
     }
 

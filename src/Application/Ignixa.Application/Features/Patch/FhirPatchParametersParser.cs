@@ -254,7 +254,7 @@ public class FhirPatchParametersParser
                 break;
 
             default:
-                throw new FhirPatchException($"Unknown operation type: {type}");
+                throw new FhirPatchException($"Unknown operation type: {type.ToString().SanitizeExpressionForLog()}");
         }
     }
 }

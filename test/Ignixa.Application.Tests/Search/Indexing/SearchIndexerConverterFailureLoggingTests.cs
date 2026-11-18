@@ -68,7 +68,7 @@ public class SearchIndexerConverterFailureLoggingTests
         indices.Select(i => i.SearchParameter.Code).ShouldNotContain("gender");
         recordingLogger.Entries.ShouldNotBeEmpty();
         recordingLogger.Entries.ShouldAllBe(e => e.Level == LogLevel.Error);
-        recordingLogger.Entries.ShouldAllBe(e => e.Exception is NullReferenceException);
+        recordingLogger.Entries.ShouldAllBe(e => e.ExceptionType == nameof(NullReferenceException));
     }
 
     [Fact]
@@ -88,7 +88,7 @@ public class SearchIndexerConverterFailureLoggingTests
         indices.Select(i => i.SearchParameter.Code).ShouldNotContain("gender");
         recordingLogger.Entries.ShouldNotBeEmpty();
         recordingLogger.Entries.ShouldAllBe(e => e.Level == LogLevel.Error);
-        recordingLogger.Entries.ShouldAllBe(e => e.Exception is InvalidCastException);
+        recordingLogger.Entries.ShouldAllBe(e => e.ExceptionType == nameof(InvalidCastException));
     }
 
     [Fact]
@@ -110,7 +110,7 @@ public class SearchIndexerConverterFailureLoggingTests
         indices.Select(i => i.SearchParameter.Code).ShouldNotContain("gender");
         recordingLogger.Entries.ShouldNotBeEmpty();
         recordingLogger.Entries.ShouldAllBe(e => e.Level == LogLevel.Warning);
-        recordingLogger.Entries.ShouldAllBe(e => e.Exception is NotSupportedException);
+        recordingLogger.Entries.ShouldAllBe(e => e.ExceptionType == nameof(NotSupportedException));
     }
 
     [Fact]
@@ -134,7 +134,7 @@ public class SearchIndexerConverterFailureLoggingTests
         indices.Select(i => i.SearchParameter.Code).ShouldNotContain("gender");
         recordingLogger.Entries.ShouldNotBeEmpty();
         recordingLogger.Entries.ShouldAllBe(e => e.Level == LogLevel.Error);
-        recordingLogger.Entries.ShouldAllBe(e => e.Exception is ArgumentOutOfRangeException);
+        recordingLogger.Entries.ShouldAllBe(e => e.ExceptionType == nameof(ArgumentOutOfRangeException));
     }
 
     [Fact]
@@ -156,7 +156,7 @@ public class SearchIndexerConverterFailureLoggingTests
         indices.Select(i => i.SearchParameter.Code).ShouldNotContain("gender");
         recordingLogger.Entries.ShouldNotBeEmpty();
         recordingLogger.Entries.ShouldAllBe(e => e.Level == LogLevel.Warning);
-        recordingLogger.Entries.ShouldAllBe(e => e.Exception is FormatException);
+        recordingLogger.Entries.ShouldAllBe(e => e.ExceptionType == nameof(FormatException));
     }
 
     /// <summary>
@@ -193,7 +193,7 @@ public class SearchIndexerConverterFailureLoggingTests
         indices.Select(i => i.SearchParameter.Code).ShouldNotContain("gender");
         recordingLogger.Entries.ShouldNotBeEmpty();
         recordingLogger.Entries.ShouldAllBe(e => e.Level == LogLevel.Warning);
-        recordingLogger.Entries.ShouldAllBe(e => e.Exception is FhirPathEvaluationException);
+        recordingLogger.Entries.ShouldAllBe(e => e.ExceptionType == nameof(FhirPathEvaluationException));
     }
 
     [Fact]
@@ -242,7 +242,9 @@ public class SearchIndexerConverterFailureLoggingTests
         {"resourceType":"Patient","id":"p1","gender":"male"}
         """);
 
-    private sealed record LogEntry(LogLevel Level, string Message, Exception? Exception);
+    // The indexer logs a contained failure by its exception's type, not with the exception, whose message can
+    // quote the value being converted.
+    private sealed record LogEntry(LogLevel Level, string Message, string? ExceptionType);
 
     private sealed class RecordingLogger : ILogger<ElementSearchIndexer>
     {
@@ -261,7 +263,10 @@ public class SearchIndexerConverterFailureLoggingTests
             Func<TState, Exception?, string> formatter)
         {
             ArgumentNullException.ThrowIfNull(formatter);
-            Entries.Add(new LogEntry(logLevel, formatter(state, exception), exception));
+            Entries.Add(new LogEntry(
+                logLevel,
+                formatter(state, exception),
+                (state as IReadOnlyList<KeyValuePair<string, object?>>)?.FirstOrDefault(field => field.Key == "ExceptionType").Value as string));
         }
     }
 
