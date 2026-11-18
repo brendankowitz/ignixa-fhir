@@ -10,6 +10,7 @@ using ModelContextProtocol.Server;
 using Ignixa.Application.Features.Experimental.Mcp.Tools;
 using Ignixa.Application.Features.Patch;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -27,14 +28,17 @@ namespace Ignixa.Application.Features.Experimental.Mcp.Tools.FhirOperations;
 public class PatchResourceTool : TenantAwareMcpTool
 {
     private readonly IMediator _mediator;
+    private readonly IFhirVersionContext _versionContext;
 
     public PatchResourceTool(
         IFhirRequestContextAccessor fhirRequestContextAccessor,
         ITenantConfigurationStore tenantStore,
-        IMediator mediator)
+        IMediator mediator,
+        IFhirVersionContext versionContext)
         : base(fhirRequestContextAccessor, tenantStore)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
+        _versionContext = versionContext ?? throw new ArgumentNullException(nameof(versionContext));
     }
 
     [McpServerTool(Name = "patch_fhir_resource")]
@@ -101,6 +105,17 @@ public class PatchResourceTool : TenantAwareMcpTool
             {
                 Success = false,
                 ErrorMessage = $"Tenant resolution failed: {ex.Message}",
+                PatchedResource = null
+            };
+        }
+
+        var resourceTypeError = await ValidateResourceTypeAsync(resourceType, resolvedTenantId, _versionContext, cancellationToken);
+        if (resourceTypeError != null)
+        {
+            return new PatchResourceResultDto
+            {
+                Success = false,
+                ErrorMessage = resourceTypeError,
                 PatchedResource = null
             };
         }

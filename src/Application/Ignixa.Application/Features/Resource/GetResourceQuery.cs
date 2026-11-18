@@ -23,5 +23,10 @@ public record GetResourceQuery(string ResourceType, string Id, string? VersionId
     /// Checks if CapabilityStatement advertises 'read' interaction for the resource type.
     /// </summary>
     public string GetCapabilityRequirementExpression() =>
-        $"rest.resource.where(type = '{ResourceType}').interaction.where(code = 'read').exists()";
+        "rest.resource.where(type = %resourceType).interaction.where(code = 'read').exists()";
+
+    /// <summary>
+    /// Supplies the resource type as <c>%resourceType</c> so caller-controlled text is never part of the expression.
+    /// </summary>
+    public string? CapabilityResourceType => ResourceType;
 }

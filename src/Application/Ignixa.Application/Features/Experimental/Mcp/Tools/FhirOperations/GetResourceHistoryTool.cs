@@ -10,6 +10,7 @@ using ModelContextProtocol.Server;
 using Ignixa.Application.Features.Experimental.Mcp.Dtos;
 using Ignixa.Application.Features.Experimental.Mcp.Tools;
 using Ignixa.Application.Features.History;
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -25,15 +26,18 @@ public class GetResourceHistoryTool : TenantAwareMcpTool
 {
     private readonly IMediator _mediator;
     private readonly IFhirRequestContextAccessor _fhirRequestContextAccessor;
+    private readonly IFhirVersionContext _versionContext;
 
     public GetResourceHistoryTool(
         IFhirRequestContextAccessor fhirRequestContextAccessor,
         ITenantConfigurationStore tenantStore,
-        IMediator mediator)
+        IMediator mediator,
+        IFhirVersionContext versionContext)
         : base(fhirRequestContextAccessor, tenantStore)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
         _fhirRequestContextAccessor = fhirRequestContextAccessor;
+        _versionContext = versionContext ?? throw new ArgumentNullException(nameof(versionContext));
     }
 
     [McpServerTool(Name = "get_fhir_resource_history")]
@@ -68,6 +72,12 @@ Example: resourceType='Patient', id='123', count=5")]
 
         // Resolve tenant using base class logic
         var resolvedTenantId = await ResolveTenantIdAsync(tenantId, cancellationToken);
+
+        var resourceTypeError = await ValidateResourceTypeAsync(resourceType, resolvedTenantId, _versionContext, cancellationToken);
+        if (resourceTypeError != null)
+        {
+            throw new ArgumentException(resourceTypeError);
+        }
 
         // Enforce default count=10, max=50 (LLM optimization per design guidelines)
         var effectiveCount = Math.Min(count ?? 10, 50);

@@ -33,7 +33,9 @@ namespace Ignixa.Application.Infrastructure.Behaviors;
 /// public record GetResourceQuery(...) : IRequest&lt;...&gt;, IRequiresCapability
 /// {
 ///     public string GetCapabilityRequirementExpression() =>
-///         $"rest.resource.where(type = '{ResourceType}').interaction.where(code = 'read').exists()";
+///         "rest.resource.where(type = %resourceType).interaction.where(code = 'read').exists()";
+///
+///     public string? CapabilityResourceType => ResourceType;
 /// }
 /// </code>
 /// </para>
@@ -102,8 +104,15 @@ public class CapabilityEnforcementBehavior<TRequest, TResponse> : IPipelineBehav
         // Get FHIRPath expression from request
         var expression = capabilityRequest.GetCapabilityRequirementExpression();
 
+        // The expression text is constant; request values enter only as the %resourceType variable.
+        var evaluationContext = new EvaluationContext();
+        if (capabilityRequest.CapabilityResourceType is { } resourceType)
+        {
+            evaluationContext = evaluationContext.WithEnvironmentVariable("resourceType", resourceType);
+        }
+
         // Evaluate FHIRPath expression against CapabilityStatement
-        var result = ((Ignixa.Abstractions.IElement)typedElement).Select(expression).FirstOrDefault();
+        var result = ((Ignixa.Abstractions.IElement)typedElement).Select(expression, evaluationContext).FirstOrDefault();
 
         // Check if capability is supported (expression should return boolean true)
         var isSupported = result?.Value is bool supported && supported;

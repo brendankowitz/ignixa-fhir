@@ -16,6 +16,7 @@ using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Definition;
+using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -86,6 +87,110 @@ public class CapabilityEnforcementBehaviorTests
                 CancellationToken.None));
 
         exception.StatusCode.ShouldBe(403);
+    }
+
+    // Regression for #536: a resource type containing a quote was interpolated into the expression, so
+    // this value turned the predicate into `type = 'Patient' or true or type = ''` and passed the check.
+    [Fact]
+    public async Task GivenAResourceTypeContainingExpressionSyntax_WhenHandling_ThenTheTextIsNotParsedAndTheRequestIsForbidden()
+    {
+        var behavior = CreateBehavior(new PatientReadCapabilitySegment());
+
+        await Should.ThrowAsync<ForbiddenException>(async () => await behavior.HandleAsync(
+            new GetResourceQuery("Patient' or true or type = '", "1"),
+            () => Task.FromResult<SearchEntryResult?>(null),
+            CancellationToken.None));
+    }
+
+    // Guard: the %resourceType binding must keep allowing a declared type and denying an undeclared one.
+    [Theory]
+    [InlineData("Patient", true)]
+    [InlineData("Observation", false)]
+    public async Task GivenADeclaredReadInteraction_WhenHandling_ThenOnlyThatResourceTypeIsAllowed(string resourceType, bool allowed)
+    {
+        var behavior = CreateBehavior(new PatientReadCapabilitySegment());
+        var reachedHandler = false;
+
+        var handle = async () => await behavior.HandleAsync(
+            new GetResourceQuery(resourceType, "1"),
+            () =>
+            {
+                reachedHandler = true;
+                return Task.FromResult<SearchEntryResult?>(null);
+            },
+            CancellationToken.None);
+
+        if (allowed)
+        {
+            await handle();
+        }
+        else
+        {
+            await Should.ThrowAsync<ForbiddenException>(handle);
+        }
+
+        reachedHandler.ShouldBe(allowed);
+    }
+
+    private static CapabilityEnforcementBehavior<GetResourceQuery, SearchEntryResult?> CreateBehavior(ICapabilitySegment segment)
+    {
+        var cache = Substitute.For<ICapabilityCache>();
+        cache.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<CapabilityCacheEntry?>((CapabilityCacheEntry?)null));
+
+        var tenantConfigStore = Substitute.For<ITenantConfigurationStore>();
+        tenantConfigStore.GetAllTenantsAsync(Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<IReadOnlyList<TenantConfiguration>>(Array.Empty<TenantConfiguration>()));
+
+        var versionInfo = Substitute.For<IApplicationVersionInfo>();
+        versionInfo.Version.Returns("1.0.0");
+
+        var versionContext = new FhirVersionContext(
+            Substitute.For<ILoggerFactory>(),
+            new SearchParameterResolutionOptions(),
+            NullFhirBaseUriProvider.Instance);
+
+        var capabilityService = new CapabilityStatementService(
+            [segment],
+            cache,
+            tenantConfigStore,
+            versionContext,
+            versionInfo,
+            NullLogger<CapabilityStatementService>.Instance);
+
+        var contextAccessor = Substitute.For<IFhirRequestContextAccessor>();
+        contextAccessor.RequestContext.Returns((IFhirRequestContext?)null);
+
+        return new CapabilityEnforcementBehavior<GetResourceQuery, SearchEntryResult?>(
+            capabilityService,
+            tenantConfigStore,
+            contextAccessor,
+            versionContext,
+            NullLogger<CapabilityEnforcementBehavior<GetResourceQuery, SearchEntryResult?>>.Instance);
+    }
+
+    /// <summary>Declares a rest component whose only resource is Patient with the read interaction.</summary>
+    private sealed class PatientReadCapabilitySegment : ICapabilitySegment
+    {
+        public string SegmentKey => "test-patient-read";
+
+        public int Priority => 1;
+
+        public ValueTask ApplyAsync(
+            CapabilityStatementJsonNode statement,
+            CapabilityContext context,
+            CancellationToken cancellationToken)
+        {
+            var rest = new RestComponentJsonNode { Mode = RestComponentJsonNode.RestfulCapabilityMode.Server };
+            var patient = new ResourceComponentJsonNode { FhirVersion = context.FhirVersion, Type = "Patient" };
+            patient.Interaction.Add(new ResourceInteractionJsonNode { Code = TypeRestfulInteraction.Read });
+            rest.Resource.Add(patient);
+            statement.Rest.Add(rest);
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask<string> GetVersionHashAsync(CapabilityContext context, CancellationToken cancellationToken) =>
+            ValueTask.FromResult("static");
     }
 
     /// <summary>

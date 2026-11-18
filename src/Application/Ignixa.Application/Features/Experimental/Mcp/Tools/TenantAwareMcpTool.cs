@@ -4,10 +4,12 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Application.Features.Experimental.Mcp.Authorization;
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
+using Ignixa.Serialization;
 
 namespace Ignixa.Application.Features.Experimental.Mcp.Tools;
 
@@ -125,6 +127,38 @@ public abstract class TenantAwareMcpTool
         // Multi-tenant mode requires explicit tenant
         throw new BadRequestException(
             "Multi-tenant mode detected. Please specify tenantId parameter or use /tenant/{id}/mcp route");
+    }
+
+    /// <summary>
+    /// Checks a caller-supplied resource type against the resource type names of the tenant's FHIR version.
+    /// Tool input is untrusted: the value flows into capability expressions, storage keys and request paths,
+    /// so it must be a known schema type before any query or command is constructed.
+    /// </summary>
+    /// <param name="resourceType">Resource type supplied by the MCP caller.</param>
+    /// <param name="tenantId">Resolved tenant ID.</param>
+    /// <param name="versionContext">Provides the schema provider for the tenant's FHIR version.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>An error message when the type is unknown, otherwise <c>null</c>.</returns>
+    protected async Task<string?> ValidateResourceTypeAsync(
+        string resourceType,
+        int tenantId,
+        IFhirVersionContext versionContext,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(versionContext);
+
+        var tenantConfig = await _tenantConfigurationStore.GetTenantConfigurationAsync(tenantId, cancellationToken);
+        if (tenantConfig == null)
+        {
+            return $"Tenant {tenantId} does not exist";
+        }
+
+        var fhirVersion = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
+        var schemaProvider = versionContext.GetBaseSchemaProvider(fhirVersion);
+
+        return schemaProvider.ResourceTypeNames.Contains(resourceType)
+            ? null
+            : $"Resource type '{resourceType}' is not supported by this server (FHIR {tenantConfig.FhirVersion})";
     }
 
     /// <summary>

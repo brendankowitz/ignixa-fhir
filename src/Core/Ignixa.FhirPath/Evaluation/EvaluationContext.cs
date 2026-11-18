@@ -374,6 +374,17 @@ public record EvaluationContext
     }
 
     /// <summary>
+    /// Creates a new context with the specified environment variable set to a System.String value.
+    /// Use this to feed untrusted text into an expression as <c>%name</c> rather than interpolating it
+    /// into the expression text, so the text stays constant and the value can never be parsed as syntax.
+    /// </summary>
+    public EvaluationContext WithEnvironmentVariable(string name, string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        return WithEnvironmentVariable(name, new StringElement(value));
+    }
+
+    /// <summary>
     /// Creates a new context with the specified environment variable set to a collection.
     /// </summary>
     public EvaluationContext WithEnvironmentVariable(string name, IEnumerable<IElement> elements)

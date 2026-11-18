@@ -22,5 +22,10 @@ public record IncludesResourceQuery(string ResourceType, SearchOptions SearchOpt
     /// The $includes operation requires the same search capability as the original search.
     /// </summary>
     public string GetCapabilityRequirementExpression() =>
-        $"rest.resource.where(type = '{ResourceType}').interaction.where(code = 'search-type').exists()";
+        "rest.resource.where(type = %resourceType).interaction.where(code = 'search-type').exists()";
+
+    /// <summary>
+    /// Supplies the resource type as <c>%resourceType</c> so caller-controlled text is never part of the expression.
+    /// </summary>
+    public string? CapabilityResourceType => ResourceType;
 }

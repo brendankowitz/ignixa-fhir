@@ -86,6 +86,12 @@ Example: resourceType='Patient', searchParams={'name': 'Smith'}, elements='id,na
         // Resolve tenant using base class logic
         var resolvedTenantId = await ResolveTenantIdAsync(tenantId, cancellationToken);
 
+        var resourceTypeError = await ValidateResourceTypeAsync(resourceType, resolvedTenantId, _versionContext, cancellationToken);
+        if (resourceTypeError != null)
+        {
+            throw new ArgumentException(resourceTypeError);
+        }
+
         // Enforce default count=10, max=50 (LLM optimization per design guidelines)
         var effectiveCount = Math.Min(count ?? 10, 50);
 
