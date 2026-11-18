@@ -15,16 +15,16 @@ A search request is authorized for one interaction on one resource type in one t
 
 ## Paging and history
 
-4. **Continuation tokens are caller input.** `ContinuationToken`, `IncludesContinuationToken`, and `KeysetContinuationToken` can be crafted or replayed by another caller or in another tenant. Each page must be authorized for the current caller and must not take its tenant, type, or filter from the token alone.
+4. **Continuation tokens are caller input.** `ContinuationToken`, `IncludesContinuationToken`, and `KeysetContinuationToken` can be crafted or replayed by another caller or in another tenant. The route filter authorizes each page for the current caller. Check that the handler does not take its tenant, resource type, or filter from the token alone.
 5. **History and version reads.** Authorize the versions that are returned, in the caller's tenant. A check on the current version does not cover a historical or deleted one.
 
 ## Execution paths and providers
 
-6. **Alternate paths must agree.** A new query plan, lowering rule, cache, in-memory index, or fast path must return the same rows the ordinary path would allow. Flag a path that skips a predicate the ordinary path applies.
+6. **Alternate paths must agree.** A new query plan, lowering rule, cache, in-memory index, or fast path that a caller's request can reach must return the same rows the ordinary path would allow. Flag a path that skips a predicate the ordinary path applies.
 7. **SQL Server and FileSystem must agree.** A restriction enforced in one provider needs the matching change, or a stated reason, in the other.
-8. **Tenant scoping in storage.** Every query, stored procedure, and file path must be bound to the resolved tenant. Flag a query that omits the tenant or partition predicate, a cache key without the tenant, and a repository or search service obtained outside `IFhirRepositoryFactory` or `ISearchServiceFactory`.
+8. **Tenant scoping in storage.** SQL Server isolates tenants by database, so the control is which connection is selected. Check that the repository or search service comes from `IFhirRepositoryFactory` or `ISearchServiceFactory` for the resolved tenant. Do not ask for a tenant predicate on tables that have no tenant column. Ask for one only where storage shares rows, files, or cache entries across tenants.
 9. **Definitions are policy inputs.** Search parameter and compartment definitions can be shared across tenants. A change one tenant can make must not alter what another tenant's searches match.
-10. **Lossy matching.** Truncated, case-folded, or approximate index values are candidates. Where a predicate enforces a boundary, the final decision must use the exact value.
+10. **Lossy matching.** Truncated, case-folded, or approximate index values are candidates. Where a predicate enforces a boundary, the final decision must use the exact value. Normalization that only affects ordinary search matching is not a finding.
 
 ## Query construction
 
