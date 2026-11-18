@@ -698,9 +698,59 @@ Patterns in `matches()`, `matchesFull()` and `replaceMatches()` come from expres
 - A pattern runs on .NET's linear-time engine (`RegexOptions.NonBacktracking`), so a pattern such as `^(a+)+$` cannot backtrack catastrophically.
 - A pattern that engine refuses runs on the backtracking engine instead. It refuses a lookahead or lookbehind, a backreference, an atomic group, a conditional or `\G`, and any pattern whose automaton would be too large (for example an alternation of a few thousand branches).
 - Either engine runs under a 1-second match timeout. Linear time is not small time: a large bounded repetition over a long input, such as `(a|aa){1000}b` over a million characters, can take tens of seconds, so the timeout is what bounds both engines. Exceeding it throws `FhirPathResourceLimitExceededException` (a `FhirPathEvaluationException`), with the `RegexMatchTimeoutException` as its inner exception; it never reads as "no match".
-- One cost is not yet bounded: the linear engine does not check the timeout while it computes capture groups, which `replaceMatches()` needs when its substitution names a group (`$1`). On a 1,000,000-character input, `replaceMatches('(.*a){80}', '$1')` ran for about 21 seconds under the 1-second timeout; the cost grows with input length times repetition count.
+- The linear engine does not check the timeout while it computes captures, which `replaceMatches()` needs whenever its substitution contains a reference (`$0`, `$&`, `$1`, `${name}`, `$+`, `` $` ``, `$'`, `$_`). On a 1,000,000-character input, `replaceMatches('(.*a){80}', '$1')` ran for about 21 seconds under the 1-second timeout. Such a call therefore accepts at most `MaxRegexCaptureInputLength` characters of input (16,384 by default); measured, the capture phase then adds at most about 0.8 s to a match the timeout already bounds. A literal substitution, or `$$`, computes no captures and is not limited.
+- `replaceMatches()` bounds the length of its result before building it, so a pattern that matches the empty string at every position cannot multiply its input.
 - Case-insensitive matching (the `i` flag of `matchesFull()`, or an inline `(?i)`) uses invariant-culture case rules, so `'I'.matches('(?i)i')` is `true` on every host, including tr-TR.
 - Constructed patterns are cached (bounded), so `where(x.matches(p))` over many items compiles `p` once.
+
+### Evaluation Limits and Cancellation
+
+A short expression can ask for exponential work regardless of the resource it runs on - `aggregate($total & $total, 'a')` doubles a string per item, nested `select()` calls multiply CPU with flat memory - so every evaluation runs under a budget carried by `EvaluationContext`:
+
+| Limit (`FhirPathEvaluationLimits`) | Default | What it bounds |
+|---|---|---|
+| `MaxSteps` | 10,000,000 | Units of work: one per expression node evaluated, per item a projection yields, per equality comparison a collection operation makes (and per child pair a deep comparison descends into), and per 16 characters of string built. About 1.5-2.5 s of CPU at the limit. |
+| `MaxCollectionSize` | 1,000,000 | Items in a collection the evaluator builds larger than its inputs: `combine()`, `\|`, `aggregate()`, `select()`, `repeat()`, `repeatAll()`, `split()`, `toChars()`, and the pairing matrix behind `~`. Navigating the resource is not limited. |
+| `MaxStringLength` | 16,777,216 | Characters in a string built by `&`, `replace()`, `replaceMatches()`, `join()` or `encode()`, checked before it is allocated. Strings read from the resource are not limited. |
+| `MaxRegexCaptureInputLength` | 16,384 | Input to a `replaceMatches()` whose substitution contains a reference (see Regular Expressions). |
+| `Timeout` | none | Wall-clock time. Off by default so results do not depend on machine load; checked every 1,024 steps. |
+
+Exceeding any limit throws `FhirPathResourceLimitExceededException`, a `FhirPathEvaluationException`. The limits apply to each `FhirPathEvaluator.Evaluate` (and `Select`) call separately and cover all enumeration of the sequence it returns, so a context reused across evaluations never carries one evaluation's count into the next. The defaults leave every shipped search parameter, invariant and conformance test unchanged: the whole suite still passes with the step budget lowered tenfold.
+
+```csharp
+var context = new EvaluationContext
+{
+    Limits = FhirPathEvaluationLimits.Default with { MaxSteps = 1_000_000, Timeout = TimeSpan.FromSeconds(2) },
+    CancellationToken = cancellationToken,
+};
+
+try
+{
+    var results = patient.Select(untrustedExpression, context).ToList();
+}
+catch (FhirPathResourceLimitExceededException)
+{
+    // The expression asked for more than the evaluation allows: report it as too costly.
+}
+```
+
+`CancellationToken` is observed when evaluation starts and every 1,024 steps, on both the interpreter and the compiled-delegate path (which checks it on entry and per item of a compiled `where()`); cancellation throws `OperationCanceledException`, not the limit exception, because "the caller gave up" and "the expression asked for too much" need different handling. Neither the token nor `Timeout` interrupts a single regular-expression call, which is bounded by the match timeout and the capture-input limit instead.
+
+Duplicate elimination in `|`, `distinct()`, `isDistinct()`, `intersect()`, `exclude()`, `in`, `contains` and `repeat()` hashes every element whose equality allows it (strings, numbers, Booleans, codings and other complex elements) and groups quantities by unit and value, so it is linear in the collection size; only temporals and unreadable quantities are still compared pairwise, within the step budget. `subsetOf()` and `supersetOf()` use a stricter, type-aware equality and remain pairwise. `repeat()` additionally keeps its own limits of 10,000 iterations and 15,000,000 comparisons, and `repeatAll()` its 100,000 iterations; all three throw `FhirPathResourceLimitExceededException`.
+
+How hosts react to the exception:
+
+| Host | Outcome |
+|---|---|
+| Search indexing | The parameter is skipped and logged at Warning; the write succeeds. |
+| Validation (`FhirPathInvariantCheck`, slicing) | The instance fails with an Error, because data crafted to exhaust a limit must not pass the invariant. |
+| FHIRPath Patch | `RequestTooCostlyException` (OperationOutcome `too-costly`). |
+| `$transform` | `RequestTooCostlyException`. Each expression and the transformation as a whole are bounded by `Experimental:Transform:TimeoutSeconds`. |
+| GraphQL `fhirpath:` argument | A GraphQL error with code `FHIRPATH_TOO_COSTLY`. |
+| De-identification | The rule fails closed (`RULE_EVALUATION_FAILED`). |
+| SQL-on-FHIR | Rethrown as `FhirPathResourceLimitExceededException` with the resource type in the message. |
+
+Every host passes its request's cancellation token into evaluation.
 
 ### Host Culture and Clock
 

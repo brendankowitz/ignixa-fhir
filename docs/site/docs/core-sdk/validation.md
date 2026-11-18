@@ -288,8 +288,10 @@ to `Timing.repeat.when`, which can repeat; an instance with two `when` values ma
 resource passes with a warning instead of being checked. Treat a `Warning` that says a constraint was not evaluated as
 "not checked", not as "conformant".
 
-The exception is an evaluation stopped at an engine limit, `FhirPathResourceLimitExceededException` - today a regular
-expression that exceeds its match timeout. The data can trigger that (the same constraint finishes on ordinary input),
+The exception is an evaluation stopped at an engine limit, `FhirPathResourceLimitExceededException` - a regular
+expression that exceeds its match timeout, or any of the evaluation limits described in
+[FHIRPath: Evaluation Limits and Cancellation](./fhirpath.md#evaluation-limits-and-cancellation), including `repeat()`'s
+and `repeatAll()`'s iteration caps, which earlier produced a non-failing warning. The data can trigger that (the same constraint finishes on ordinary input),
 so excusing it would let an instance crafted to exhaust the limit pass the invariant. It fails the resource with an
 `Error` instead, whatever severity the constraint declares.
 
