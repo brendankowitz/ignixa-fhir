@@ -1,5 +1,5 @@
 ---
-applyTo: "src/Core/Ignixa.Search/**,src/Core/Ignixa.Search.Sql/**,src/Application/Ignixa.Application/Features/Search/**,src/Application/Ignixa.Application/Features/Compartment/**,src/Application/Ignixa.Application/Features/History/**,src/DataLayer/**"
+applyTo: "src/Core/Ignixa.Search/**,src/Core/Ignixa.Search.Sql/**,src/Application/Ignixa.Application/Features/Search/**,src/Application/Ignixa.Application/Features/Compartment/**,src/Application/Ignixa.Application/Features/History/**,src/Application/Ignixa.Application/Features/Resource/**,src/Application/Ignixa.Application/Features/Experimental/GraphQl/**,src/Application/Ignixa.Application/Features/Experimental/Mcp/Tools/**,src/Application/Ignixa.Application.Operations/Features/PatientEverything/**,src/Application/Ignixa.Application.Operations/Features/MemberMatch/**,src/Application/Ignixa.Api/Endpoints/SearchRequestHandling.cs,src/Application/Ignixa.Api/Endpoints/FhirEndpoints.cs,src/Application/Ignixa.Api/Endpoints/CompartmentEndpoints.cs,src/Application/Ignixa.Api/Endpoints/HistoryEndpoints.cs,src/DataLayer/**"
 excludeAgent: "cloud-agent"
 ---
 

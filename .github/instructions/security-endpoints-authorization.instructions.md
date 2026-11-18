@@ -10,11 +10,11 @@ These files decide who the caller is and what one request is allowed to do. Noth
 ## Endpoints
 
 1. **Every route is authorized or deliberately public.** A new route needs `RequireFhirAuthorization()`. Only discovery and liveness routes belong in `PublicRoutes` in `EndpointAuthorizationCoverageTests`. Flag any addition to that list that returns or changes resource data.
-2. **The declared interaction must match the work.** Check `FhirAuthorizationMetadata` against what the handler does. A route declared as `Read` or `SearchSystem` must not create, update, or delete unless the handler authorizes the stronger interaction explicitly, as the GraphQL mutation path does. A route that can touch every type must declare `*`.
+2. **The declared interaction must match the work.** Check `FhirAuthorizationMetadata` against what the handler does. A route declared as `Read` or `SearchSystem` must not create, update, or delete. If the handler can do more than the route declares, it must authorize the stronger interaction explicitly or refuse it, as `GraphQlEndpoints.RefuseMutation` refuses mutations while authorization is enabled. A route that can touch every type must declare `*`.
 3. **Operations have no permission of their own.** Each `$operation` route must declare the interaction it authorizes as. An operation that both reads and writes needs the stronger one, or a second explicit authorization.
 4. **Server-wide effects need server-wide authority.** An operation that changes state shared by all tenants needs `RequireServerWideAuthority()` after `RequireFhirAuthorization()`.
 5. **Filter order.** `TenantResolutionMiddleware` must run before authorization. A filter or middleware that returns early must not let a request reach a handler unauthorized.
-6. **Other entry points.** MCP tools must authorize through `IMcpAuthorizationService`, and a tool that acts on tenant data derives from `TenantAwareMcpTool`. GraphQL queries and mutations must be authorized for the interaction each one performs, not only for the route. Check that an IDE or debug surface does not run mutations unauthenticated.
+6. **Other entry points.** MCP tools must authorize through `IMcpAuthorizationService`, and a tool that acts on tenant data derives from `TenantAwareMcpTool`. GraphQL routes are authorized as a search on `*`, and mutations are refused while authorization is enabled because they have no per-resource check. A change that lets mutations run must authorize each one for the interaction and type it performs. Check that an IDE or debug surface does not run mutations unauthenticated.
 
 ## The handler pipeline
 
