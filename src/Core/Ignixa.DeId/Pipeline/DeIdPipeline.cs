@@ -61,7 +61,7 @@ public sealed class DeIdPipeline : IDeIdPipeline
             _logger.LogDebug("Pipeline execution was cancelled");
             throw;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             _logger.LogError(ex, "Pipeline execution failed with unexpected error");
             return Result<DeIdResult>.Failure(new DeIdError(

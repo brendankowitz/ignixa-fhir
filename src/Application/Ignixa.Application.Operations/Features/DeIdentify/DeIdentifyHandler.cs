@@ -88,6 +88,13 @@ public class DeIdentifyHandler : IRequestHandler<DeIdentifyCommand, DeIdentifyRe
             return new DeIdentifyResult(false, null, result.Error.Message);
         }
 
+        if (result.Value.Warnings.Length > 0)
+        {
+            _logger.LogWarning(
+                "De-identification completed with {WarningCount} warning(s); see the processor log entries for detail",
+                result.Value.Warnings.Length);
+        }
+
         return new DeIdentifyResult(true, result.Value.Resource, null, result.Value.Warnings);
     }
 }

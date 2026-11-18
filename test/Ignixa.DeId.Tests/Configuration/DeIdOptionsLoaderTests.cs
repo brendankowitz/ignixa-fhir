@@ -67,6 +67,25 @@ public class DeIdOptionsLoaderTests
     }
 
     [Fact]
+    public void GivenGeneralizeRuleWithUnparseableCase_WhenLoadFromJson_ThenConfigurationIsRejected()
+    {
+        // Regression: Generalize case expressions were only parsed (and failed) at request time.
+        var json = """
+        {
+            "fhirVersion": "R4",
+            "fhirPathRules": [
+                { "path": "Patient.birthDate", "method": "generalize", "cases": { "$this >= (": "'x'" }, "otherValues": "redact" }
+            ]
+        }
+        """;
+
+        var result = DeIdOptionsLoader.LoadFromJson(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.Code.ShouldBe("CONFIG_INVALID_RULE_PATH");
+    }
+
+    [Fact]
     public void GivenInvalidJson_WhenLoadFromJson_ThenReturnsJsonError()
     {
         // Act

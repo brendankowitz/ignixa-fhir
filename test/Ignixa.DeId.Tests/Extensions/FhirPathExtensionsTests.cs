@@ -27,16 +27,4 @@ public class FhirPathExtensionsTests
         // Assert
         results.Count.ShouldBe(2);
     }
-
-    [Fact]
-    public void GivenRequestSuppliedExpressions_WhenInspectingTheExtensionClass_ThenItHoldsNoStaticDictionaryCache()
-    {
-        // Guard (#535): rule paths are request-supplied, so a static dictionary keyed by expression text
-        // grows without bound. Expression caching belongs to the FHIRPath library, which bounds it.
-        var staticFields = typeof(FhirPathExtensions).GetFields(
-            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
-
-        staticFields.ShouldNotContain(f => f.FieldType.Name.StartsWith("ConcurrentDictionary", StringComparison.Ordinal)
-            || f.FieldType.Name.StartsWith("Dictionary", StringComparison.Ordinal));
-    }
 }

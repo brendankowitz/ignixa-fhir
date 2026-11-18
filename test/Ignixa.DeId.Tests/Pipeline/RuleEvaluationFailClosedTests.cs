@@ -3,15 +3,9 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 using System.Collections.Immutable;
-using Ignixa.Abstractions;
 using Ignixa.DeId.Configuration;
-using Ignixa.DeId.Extensions;
 using Ignixa.DeId.Models;
-using Ignixa.Specification.Generated;
-using Ignixa.Validation.Abstractions;
-using Ignixa.Validation.Schema;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
+using Ignixa.DeId.Tests.Utilities;
 
 namespace Ignixa.DeId.Tests.Pipeline;
 
@@ -33,7 +27,7 @@ public class RuleEvaluationFailClosedTests
     public async Task GivenRegexRuleWithInvalidPattern_WhenDeidentifying_ThenOperationFailsAndNothingIsReturnedInClear()
     {
         // Regression: the swallowed exception left the name in clear with IsSuccess == true.
-        var engine = CreateEngine(RuleOptions("Patient.name.where(family.matches('['))"));
+        var engine = DeIdTestHelpers.CreateEngine(RuleOptions("Patient.name.where(family.matches('['))"));
 
         var result = await engine.DeidentifyAsync(OneGivenNamePatient);
 
@@ -47,7 +41,7 @@ public class RuleEvaluationFailClosedTests
     {
         // Regression: a path that cannot parse was downgraded to a warning. Built by hand because the
         // loader now rejects it; this covers an options instance that reaches the engine unvalidated.
-        var engine = CreateEngine(RuleOptions("Patient.name.where(family = 99999999999999999999999999)"));
+        var engine = DeIdTestHelpers.CreateEngine(RuleOptions("Patient.name.where(family = 99999999999999999999999999)"));
 
         var result = await engine.DeidentifyAsync(OneGivenNamePatient);
 
@@ -59,7 +53,7 @@ public class RuleEvaluationFailClosedTests
     public async Task GivenPathThatThrowsOnlyForSomeResources_WhenDeidentifyingAffectedResource_ThenOperationFails()
     {
         // Regression: the same rule redacted one resource and left another untouched with a success.
-        var engine = CreateEngine(RuleOptions(DataDependentPath));
+        var engine = DeIdTestHelpers.CreateEngine(RuleOptions(DataDependentPath));
 
         var result = await engine.DeidentifyAsync(TwoGivenNamesPatient);
 
@@ -70,8 +64,9 @@ public class RuleEvaluationFailClosedTests
     [Fact]
     public async Task GivenPathThatThrowsOnlyForSomeResources_WhenDeidentifyingUnaffectedResource_ThenRuleIsApplied()
     {
-        // Guard: the data-dependent rule still works when the data does not trigger the failure.
-        var engine = CreateEngine(RuleOptions(DataDependentPath));
+        // Regression: at the base commit this rule redacted nothing even for data that does not trigger
+        // the failure (the swallowed error left the name in clear), so it is not a mere guard.
+        var engine = DeIdTestHelpers.CreateEngine(RuleOptions(DataDependentPath));
 
         var result = await engine.DeidentifyAsync(OneGivenNamePatient);
 
@@ -83,7 +78,7 @@ public class RuleEvaluationFailClosedTests
     public async Task GivenRuleThatMatchesNothing_WhenDeidentifying_ThenOperationSucceedsWithoutWarnings()
     {
         // Guard: an absent element is legitimate and must stay distinguishable from an evaluation failure.
-        var engine = CreateEngine(RuleOptions("Patient.address"));
+        var engine = DeIdTestHelpers.CreateEngine(RuleOptions("Patient.address"));
 
         var result = await engine.DeidentifyAsync(OneGivenNamePatient);
 
@@ -97,7 +92,7 @@ public class RuleEvaluationFailClosedTests
     {
         // Regression: the default StopOnError mode recorded a warning and returned the partially
         // de-identified resource as a success.
-        var engine = CreateEngine(GeneralizeOptions(errorHandling: null));
+        var engine = DeIdTestHelpers.CreateEngine(GeneralizeOptions(errorHandling: null));
 
         var result = await engine.DeidentifyAsync(OneGivenNamePatient);
 
@@ -109,7 +104,7 @@ public class RuleEvaluationFailClosedTests
     public async Task GivenGeneralizeCaseThatCannotBeEvaluated_WhenDeidentifyingWithFailFast_ThenOperationFails()
     {
         // Guard: FailFast already failed the operation.
-        var engine = CreateEngine(GeneralizeOptions(ErrorHandlingMode.FailFast));
+        var engine = DeIdTestHelpers.CreateEngine(GeneralizeOptions(ErrorHandlingMode.FailFast));
 
         var result = await engine.DeidentifyAsync(OneGivenNamePatient);
 
@@ -121,7 +116,7 @@ public class RuleEvaluationFailClosedTests
     {
         // Guard: LogAndContinue is an explicit opt-in, so the operation continues, but the failure
         // must be visible to the caller rather than only in logs.
-        var engine = CreateEngine(GeneralizeOptions(ErrorHandlingMode.LogAndContinue));
+        var engine = DeIdTestHelpers.CreateEngine(GeneralizeOptions(ErrorHandlingMode.LogAndContinue));
 
         var result = await engine.DeidentifyAsync(OneGivenNamePatient);
 
@@ -138,7 +133,7 @@ public class RuleEvaluationFailClosedTests
             FhirVersion = "R4",
             Rules = [new FhirPathRule { Path = "Patient.name", Method = "NOSUCHMETHOD" }]
         };
-        var engine = CreateEngine(options);
+        var engine = DeIdTestHelpers.CreateEngine(options);
 
         var result = await engine.DeidentifyAsync(OneGivenNamePatient);
 
@@ -168,17 +163,4 @@ public class RuleEvaluationFailClosedTests
         ],
         Processing = errorHandling is null ? null : new ProcessingOptions { ErrorHandling = errorHandling.Value }
     };
-
-    private static IDeIdEngine CreateEngine(DeIdOptions options)
-    {
-        var services = new ServiceCollection();
-        services.AddSingleton<IFhirSchemaProvider>(new R4CoreSchemaProvider());
-        services.AddSingleton<IValidationSchemaResolver>(sp =>
-            new CachedValidationSchemaResolver(
-                new StructureDefinitionSchemaResolver(sp.GetRequiredService<IFhirSchemaProvider>())));
-        services.AddLogging();
-        services.AddSingleton<IOptions<DeIdOptions>>(Options.Create(options));
-        services.AddFhirDeId();
-        return services.BuildServiceProvider().GetRequiredService<IDeIdEngine>();
-    }
 }

@@ -26,7 +26,7 @@ namespace Ignixa.Api.Endpoints;
 public static class DeIdOperationEndpoints
 {
     /// <summary>
-    /// Response header carrying one value per non-fatal de-identification warning.
+    /// Response header present when de-identification completed with warnings; its value is <c>count=N</c>.
     /// </summary>
     public const string DeIdWarningHeader = "X-Ignixa-DeId-Warning";
 
@@ -196,7 +196,7 @@ public static class DeIdOperationEndpoints
 
         if (result.IsSuccess)
         {
-            AddWarningHeaders(context, result.Warnings);
+            AddWarningHeader(context, result.Warnings);
             return Results.Ok(result.OutputResource!.MutableNode);
         }
 
@@ -207,24 +207,24 @@ public static class DeIdOperationEndpoints
     }
 
     /// <summary>
-    /// The success body is the bare de-identified resource, so warnings travel in a response header
-    /// rather than being dropped. Control characters are stripped because header values are single-line.
+    /// The success body is the bare de-identified resource, so the presence of warnings travels in a response
+    /// header rather than being dropped. The value is a fixed, ASCII-only count and never echoes warning text:
+    /// warnings can embed resource values (PHI), and header values end up in proxy logs and must be valid
+    /// single-line ASCII or Kestrel fails the response. Detail stays in the server logs.
     /// </summary>
-    private static void AddWarningHeaders(HttpContext context, IReadOnlyList<string>? warnings)
+    internal static void AddWarningHeader(HttpContext context, IReadOnlyList<string>? warnings)
     {
-        if (warnings is null)
+        if (warnings is null || warnings.Count == 0)
         {
             return;
         }
 
-        foreach (var warning in warnings)
-        {
-            var singleLine = new string(warning.Where(c => !char.IsControl(c)).ToArray());
-            context.Response.Headers.Append(DeIdWarningHeader, singleLine);
-        }
+        context.Response.Headers.Append(
+            DeIdWarningHeader,
+            $"count={warnings.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
     }
 
-    private static ResourceJsonNode CreateBootstrapLibrary(string policy)
+    internal static ResourceJsonNode CreateBootstrapLibrary(string policy)
     {
         var options = policy switch
         {

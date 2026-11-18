@@ -58,7 +58,7 @@ public class EncryptProcessor : IDeIdProcessor
 
             return ValueTask.FromResult(Result<ProcessorResult>.Success(newResult));
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             return ValueTask.FromResult(Result<ProcessorResult>.Failure(new DeIdError(
                 "PROCESSOR_ERROR",

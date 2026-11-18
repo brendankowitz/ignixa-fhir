@@ -43,7 +43,7 @@ public static class BootstrapPolicies
             },
             Processing = new ProcessingOptions
             {
-                ErrorHandling = ErrorHandlingMode.LogAndContinue
+                ErrorHandling = ErrorHandlingMode.StopOnError
             }
         };
     }

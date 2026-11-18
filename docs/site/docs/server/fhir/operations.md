@@ -149,9 +149,9 @@ De-identification fails closed. The operation returns a `400` OperationOutcome, 
 - a configuration rule path is not a valid FHIRPath expression (rejected when the configuration is loaded);
 - a rule path cannot be evaluated against the submitted resource (for example an invalid regular expression, or a function argument that resolves to more than one item for that resource);
 - a rule names a method with no registered processor;
-- a processor fails and `processing.errorHandling` is `StopOnError` (the default) or `FailFast`.
+- a processor fails and `processing.processingErrors` is `StopOnError` (the default) or `FailFast`.
 
-A rule that simply matches nothing (the element is absent) is not an error. With `processing.errorHandling: "LogAndContinue"` a processor failure does not fail the operation; each one is reported in an `X-Ignixa-DeId-Warning` response header, one header value per warning, and the affected element is left as it was.
+A rule that simply matches nothing (the element is absent) is not an error. The built-in policies fail closed (`StopOnError` for Safe Harbor, `FailFast` for Expert Determination), and `StopOnError` and `FailFast` behave identically. `LogAndContinue` is the only fail-open mode and requires an explicit opt-in in a custom configuration (`processing.processingErrors`). Under it a processor failure does not fail the operation, the affected element is left as it was, and the response carries an `X-Ignixa-DeId-Warning: count=N` header. The header never contains warning text, because warnings can embed resource values; detail is in the server logs.
 
 See [DeId Core SDK](/docs/core-sdk/deid) for configuration format and supported de-identification methods.
 

@@ -51,12 +51,14 @@ internal sealed class RuleMatchingHandler(ILogger<RuleMatchingHandler> logger) :
             {
                 matchedElements = rootElement.Select(rule.Path);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (ex is not (OperationCanceledException or OutOfMemoryException))
             {
                 // The expression is operator-supplied and the library reports bad ones with a mix of
                 // exception types (FormatException, FhirPathEvaluationException, and raw framework
                 // exceptions such as OverflowException or InvalidOperationException for a multi-item
-                // argument), so every non-cancellation failure is a rule that could not be evaluated.
+                // argument), so every such failure is a rule that could not be evaluated. That includes
+                // InsufficientExecutionStackException from an over-deep path. OutOfMemoryException is
+                // process-critical and deliberately not caught.
                 // Fail closed: skipping an unevaluable rule would return the data it targets in clear.
                 logger.LogError(ex, "Failed to evaluate FHIRPath rule '{Path}'", rule.Path);
 
