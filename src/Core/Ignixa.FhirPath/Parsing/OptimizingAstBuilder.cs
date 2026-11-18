@@ -408,8 +408,8 @@ internal class OptimizingAstBuilder : AstBuilder
         }
         if ((left is int || left is decimal) && (right is int || right is decimal))
         {
-            var ld = Convert.ToDecimal(left);
-            var rd = Convert.ToDecimal(right);
+            var ld = Convert.ToDecimal(left, CultureInfo.InvariantCulture);
+            var rd = Convert.ToDecimal(right, CultureInfo.InvariantCulture);
             result = ld > rd;
             return true;
         }
@@ -431,8 +431,8 @@ internal class OptimizingAstBuilder : AstBuilder
         }
         if ((left is int || left is decimal) && (right is int || right is decimal))
         {
-            var ld = Convert.ToDecimal(left);
-            var rd = Convert.ToDecimal(right);
+            var ld = Convert.ToDecimal(left, CultureInfo.InvariantCulture);
+            var rd = Convert.ToDecimal(right, CultureInfo.InvariantCulture);
             result = ld >= rd;
             return true;
         }
@@ -454,8 +454,8 @@ internal class OptimizingAstBuilder : AstBuilder
         }
         if ((left is int || left is decimal) && (right is int || right is decimal))
         {
-            var ld = Convert.ToDecimal(left);
-            var rd = Convert.ToDecimal(right);
+            var ld = Convert.ToDecimal(left, CultureInfo.InvariantCulture);
+            var rd = Convert.ToDecimal(right, CultureInfo.InvariantCulture);
             result = ld < rd;
             return true;
         }
@@ -477,8 +477,8 @@ internal class OptimizingAstBuilder : AstBuilder
         }
         if ((left is int || left is decimal) && (right is int || right is decimal))
         {
-            var ld = Convert.ToDecimal(left);
-            var rd = Convert.ToDecimal(right);
+            var ld = Convert.ToDecimal(left, CultureInfo.InvariantCulture);
+            var rd = Convert.ToDecimal(right, CultureInfo.InvariantCulture);
             result = ld <= rd;
             return true;
         }

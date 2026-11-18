@@ -94,45 +94,40 @@ public class RegexFunctionHardeningTests
         exception.InnerException.ShouldBeAssignableTo<ArgumentException>();
     }
 
-    [Fact]
-    public void GivenABacktrackingPatternThatExceedsItsTimeout_WhenMatching_ThenAnEvaluationErrorCarriesTheTimeout()
+    [Theory]
+    [InlineData("%s.matches('(?=(a+)+b)')", "matches", "(?=(a+)+b)")]
+    [InlineData("%s.matchesFull('(?=(a+)+b).*')", "matchesFull", "(?=(a+)+b).*")]
+    [InlineData("%s.replaceMatches('(?=(a+)+b)a', 'x')", "replaceMatches", "(?=(a+)+b)a")]
+    public void GivenABacktrackingPatternThatExceedsItsTimeout_WhenEvaluated_ThenAResourceLimitErrorCarriesTheTimeout(
+        string expression,
+        string functionName,
+        string pattern)
     {
         // Arrange: the lookahead forces the backtracking engine; (a+)+ inside it is exponential.
-        var regex = FhirPathRegex.Create("(?=(a+)+b)", RegexOptions.None, "matches", TimeSpan.FromMilliseconds(50));
+        var context = new EvaluationContext().WithEnvironmentVariable("s", FunctionHelpers.CreateString(new string('a', 40)));
+        using var scope = new FhirPathRegex.TimeoutScope(TimeSpan.FromMilliseconds(50));
 
         // Act
-        var exception = Should.Throw<FhirPathEvaluationException>(
-            () => FhirPathRegex.IsMatch(regex, new string('a', 40), "matches"));
+        var exception = Should.Throw<FhirPathResourceLimitExceededException>(() => Evaluate(expression, context).ToList());
 
-        // Assert
-        exception.Message.ShouldContain("matches()");
+        // Assert: the message quotes the pattern as written, not matchesFull()'s anchored wrapping of it.
+        exception.Message.ShouldContain($"'{pattern}' in {functionName}()");
         exception.InnerException.ShouldBeOfType<RegexMatchTimeoutException>();
     }
 
     [Fact]
-    public void GivenABacktrackingPatternThatExceedsItsTimeout_WhenReplacing_ThenAnEvaluationErrorCarriesTheTimeout()
+    public void GivenALinearEnginePatternOnALargeInput_WhenMatching_ThenItFailsWithinTheTimeout()
     {
-        // Arrange
-        var regex = FhirPathRegex.Create("(?=(a+)+b)a", RegexOptions.None, "replaceMatches", TimeSpan.FromMilliseconds(50));
+        // Arrange: linear in the input, but with a large constant - without a timeout this ran for 36 s.
+        var context = new EvaluationContext().WithEnvironmentVariable("s", FunctionHelpers.CreateString(new string('a', 1_000_000)));
+        using var scope = new FhirPathRegex.TimeoutScope(TimeSpan.FromMilliseconds(100));
 
-        // Act
-        var exception = Should.Throw<FhirPathEvaluationException>(
-            () => FhirPathRegex.Replace(regex, new string('a', 40), "x", "replaceMatches"));
-
-        // Assert
-        exception.Message.ShouldContain("replaceMatches()");
-        exception.InnerException.ShouldBeOfType<RegexMatchTimeoutException>();
-    }
-
-    [Fact]
-    public void GivenAPatternTheLinearEngineSupports_WhenBuilt_ThenItRunsOnTheLinearEngine()
-    {
-        // Act
-        var regex = FhirPathRegex.Create("^(a+)+$", RegexOptions.Singleline, "matches", TimeSpan.FromMilliseconds(50));
-
-        // Assert: NonBacktracking is what makes the pattern safe; a backtracking build here would only be bounded
-        // by the timeout, and a regression to it would show up as slow evaluation rather than a failure.
-        regex.Options.ShouldBe(RegexOptions.Singleline | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
+        // Act & Assert
+        Should.CompleteIn(
+            () => Should.Throw<FhirPathResourceLimitExceededException>(
+                () => Evaluate("%s.matches('(a|aa){1000}b')", context).ToList()),
+            TimeSpan.FromSeconds(10),
+            "The linear-time engine ran without its match timeout.");
     }
 
     private IEnumerable<IElement> Evaluate(string expression, EvaluationContext? context = null) =>

@@ -279,10 +279,14 @@ an abstract type the matcher cannot decide on that element (`CanonicalResource` 
 
 An invariant whose expression the FHIRPath engine refuses to evaluate does not fail the resource. When evaluation
 throws `FhirPathEvaluationException` (an operator or function handed a collection it requires to be a single item,
-an invalid regular expression, a regular expression that exceeds its match timeout) or `NotSupportedException` (a
-function the engine does not implement), the constraint is reported as a non-failing `Warning` naming the constraint
-key, whatever severity the constraint declares. This follows the Firely validator, which degrades any invariant
-evaluation exception to a warning.
+an invalid regular expression) or `NotSupportedException` (a function the engine does not implement), the constraint
+is reported as a non-failing `Warning` naming the constraint key, whatever severity the constraint declares. This
+follows the Firely validator, which degrades any invariant evaluation exception to a warning.
+
+The exception is an evaluation stopped at an engine limit, `FhirPathResourceLimitExceededException` - today a regular
+expression that exceeds its match timeout. The data can trigger that (the same constraint finishes on ordinary input),
+so excusing it would let an instance crafted to exhaust the limit pass the invariant. It fails the resource with an
+`Error` instead, whatever severity the constraint declares.
 
 The consequence is that such an invariant is not enforced for that instance. R4's `tim-9`, for example, applies `in`
 to `Timing.repeat.when`, which can repeat; an instance with two `when` values makes the expression an error, so the

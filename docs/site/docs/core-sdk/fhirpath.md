@@ -629,7 +629,7 @@ var parser = new FhirPathParser(new CompilationOptions
 Raise them only for trusted expressions, and only after measuring on the smallest thread stack the host uses. As a further safeguard, every recursive stage calls `RuntimeHelpers.EnsureSufficientExecutionStack()` as it recurses, so a thread whose stack is too small for an expression gets an exception rather than terminating the process:
 
 - the parser's grammar checks at every bracket level and reports a `FormatException` (with the `InsufficientExecutionStackException` as its inner exception), so `TryParse` returns `false`;
-- the AST builders, the delegate compiler, the evaluator and `FhirPathAnalyzer.Analyze` throw `InsufficientExecutionStackException`.
+- the AST builders, the delegate compiler, the evaluator and `FhirPathAnalyzer.Analyze` throw `InsufficientExecutionStackException`. `TryParse` lets it propagate rather than returning `false`, as it does cancellation and out-of-memory: none of them says the expression is invalid.
 
 The limits keep these fallbacks off the normal path; they do not replace them.
 
@@ -693,10 +693,12 @@ FHIRPath follows propagation semantics for empty collections - operations on emp
 
 ### Regular Expressions
 
-Patterns in `matches()`, `matchesFull()` and `replaceMatches()` come from expression text, so the engine bounds what one can cost:
+Patterns in `matches()`, `matchesFull()` and `replaceMatches()` come from expression text, so the engine limits what one can cost:
 
-- A pattern runs on .NET's linear-time engine (`RegexOptions.NonBacktracking`), so a pattern such as `^(a+)+$` cannot backtrack catastrophically on a long input.
-- A pattern that needs a construct only the backtracking engine has - a lookahead or lookbehind, a backreference, an atomic group, a conditional or `\G` - runs on that engine with a 1-second match timeout. Exceeding it throws `FhirPathEvaluationException`, with the `RegexMatchTimeoutException` as its inner exception; it never reads as "no match".
+- A pattern runs on .NET's linear-time engine (`RegexOptions.NonBacktracking`), so a pattern such as `^(a+)+$` cannot backtrack catastrophically.
+- A pattern that engine refuses runs on the backtracking engine instead. It refuses a lookahead or lookbehind, a backreference, an atomic group, a conditional or `\G`, and any pattern whose automaton would be too large (for example an alternation of a few thousand branches).
+- Either engine runs under a 1-second match timeout. Linear time is not small time: a large bounded repetition over a long input, such as `(a|aa){1000}b` over a million characters, can take tens of seconds, so the timeout is what bounds both engines. Exceeding it throws `FhirPathResourceLimitExceededException` (a `FhirPathEvaluationException`), with the `RegexMatchTimeoutException` as its inner exception; it never reads as "no match".
+- One cost is not yet bounded: the linear engine does not check the timeout while it computes capture groups, which `replaceMatches()` needs when its substitution names a group (`$1`). On a 1,000,000-character input, `replaceMatches('(.*a){80}', '$1')` ran for about 21 seconds under the 1-second timeout; the cost grows with input length times repetition count.
 - Case-insensitive matching (the `i` flag of `matchesFull()`, or an inline `(?i)`) uses invariant-culture case rules, so `'I'.matches('(?i)i')` is `true` on every host, including tr-TR.
 - Constructed patterns are cached (bounded), so `where(x.matches(p))` over many items compiles `p` once.
 

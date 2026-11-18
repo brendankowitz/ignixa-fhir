@@ -337,7 +337,7 @@ internal static class StringFunctions
 
         // FHIRPath uses single-line mode where '.' matches any character including newlines
         var regex = FhirPathRegex.Get(pattern, RegexOptions.Singleline, "matches");
-        return FunctionHelpers.ReturnBoolean(FhirPathRegex.IsMatch(regex, str, "matches"));
+        return FunctionHelpers.ReturnBoolean(FhirPathRegex.IsMatch(regex, pattern, str, "matches"));
     }
 
     /// <summary>
@@ -378,24 +378,8 @@ internal static class StringFunctions
             }
         }
 
-        // Validate the user's raw pattern first: wrapping can turn an invalid pattern (e.g. "a)|(b") into a valid one,
-        // and the error should quote the text the caller wrote.
-        FhirPathRegex.Get(pattern, options, "matchesFull");
-
-        // The raw pattern is valid, so the only way wrapping it can fail is a trailing '#' comment (x flag or inline
-        // "(?x)") running to end of line and swallowing the closing. Retry once with a newline, which ends the comment
-        // and is ignorable whitespace in comment mode. A failure on the retry propagates.
-        Regex regex;
-        try
-        {
-            regex = FhirPathRegex.Get("^(?:" + pattern + ")$", options, "matchesFull");
-        }
-        catch (FhirPathEvaluationException)
-        {
-            regex = FhirPathRegex.Get("^(?:" + pattern + "\n)$", options, "matchesFull");
-        }
-
-        return FunctionHelpers.ReturnBoolean(FhirPathRegex.IsMatch(regex, str, "matchesFull"));
+        var regex = FhirPathRegex.GetAnchored(pattern, options, "matchesFull");
+        return FunctionHelpers.ReturnBoolean(FhirPathRegex.IsMatch(regex, pattern, str, "matchesFull"));
     }
 
     private static RegexOptions ParseRegexFlags(string flags)
@@ -449,7 +433,7 @@ internal static class StringFunctions
             return [FunctionHelpers.CreateString(str)];
 
         var regex = FhirPathRegex.Get(pattern, RegexOptions.None, "replaceMatches");
-        var result = FhirPathRegex.Replace(regex, str, substitution, "replaceMatches");
+        var result = FhirPathRegex.Replace(regex, pattern, str, substitution, "replaceMatches");
         return [FunctionHelpers.CreateString(result)];
     }
 
@@ -748,7 +732,7 @@ internal static class StringFunctions
                 default:
                     if (c < 0x20)
                     {
-                        sb.Append($"\\u{(int)c:X4}");
+                        sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"\\u{(int)c:X4}");
                     }
                     else
                     {

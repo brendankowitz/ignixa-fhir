@@ -4,6 +4,8 @@
     <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- CA1305 is suppressed repo-wide; FHIRPath results must not depend on the host culture (#539), so it is enforced here. -->
+    <NoWarn>$(NoWarn.Replace('CA1305', ''))</NoWarn>
   </PropertyGroup>
 
   <!-- NuGet Package Configuration -->
@@ -31,6 +33,7 @@
     <InternalsVisibleTo Include="Ignixa.Search" />
     <InternalsVisibleTo Include="Ignixa.FhirPath.Tests" />
     <InternalsVisibleTo Include="Ignixa.RepoGuards.Tests" />
+    <InternalsVisibleTo Include="Ignixa.Validation.Tests" />
   </ItemGroup>
 
 </Project>

@@ -40,7 +40,10 @@ namespace Ignixa.Validation.Checks;
 /// engine correctly refuses to evaluate (<see cref="FhirPathEvaluationException"/>) never fails
 /// the resource. The fhir-server ingestion seam sits downstream of this check and must not start
 /// rejecting resources Firely accepts over a constraint neither engine can evaluate - HAPI's
-/// stricter reading would do exactly that. An exception of any other type is treated as a genuine
+/// stricter reading would do exactly that. The one exception to the warning is
+/// <see cref="FhirPathResourceLimitExceededException"/> (for example a regex match timeout): the data
+/// can trigger it, so excusing it would let a crafted instance bypass the invariant, and it fails the
+/// resource as an Error. An exception of any other type is treated as a genuine
 /// engine defect and fails loudly, so it cannot silently pass a resource or inflate conformance
 /// metrics.
 /// </para>
@@ -267,6 +270,26 @@ public class FhirPathInvariantCheck : IValidationCheck
                 ex.Message);
 
             return new ValidationResult(isValid: true, issues: new[] { issue });
+        }
+        catch (FhirPathResourceLimitExceededException ex)
+        {
+            // Evaluation was STOPPED at an engine limit (a regex match timeout), which the data can trigger:
+            // the same constraint finishes on ordinary input. Excusing it like an ill-formed constraint below
+            // would let an instance crafted to exhaust the limit pass the invariant, so it fails instead.
+            _logger?.LogWarning(
+                ex,
+                "Constraint {ConstraintKey} exceeded an evaluation limit; failing the instance",
+                _constraint.Key);
+
+            var issue = ValidationIssue.FromTemplate(
+                IssueSeverity.Error,
+                _constraint.Key,
+                element.Location ?? string.Empty,
+                IssueTemplates.InvariantEvaluationError,
+                _constraint.Key,
+                ex.Message);
+
+            return ValidationResult.Failure(issue);
         }
         catch (FhirPathEvaluationException ex)
         {
