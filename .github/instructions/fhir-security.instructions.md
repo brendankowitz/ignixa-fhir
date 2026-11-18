@@ -20,7 +20,7 @@ For each one, name the caller, the input, the missing check, and what the caller
 1. **Work beyond the declared interaction.** A handler that touches a resource type or performs an action the endpoint's `FhirAuthorizationMetadata` did not declare. Examples are `_include` and `_revinclude` targets, bundle entries, conditional lookups, cascades, and reference rewrites.
 2. **A new way in.** A new endpoint, MCP tool, GraphQL field, background job trigger, or hosted service that reaches resource data. It needs `RequireFhirAuthorization()` with the right metadata, or an equivalent explicit authorization call.
 3. **A restricted grant served unrestricted.** A SMART grant with a compartment or search constraint (`FhirAuthorizationFilter.RestrictsData`) is refused today because no query path applies it. A change that accepts such a grant must apply the restriction on every path that returns or changes data, including includes, paging, history, and jobs.
-4. **Crossing tenants.** A repository, search service, cache, job, or file path chosen from caller input instead of the resolved `TenantContext`. Tenant `0` is for system operations and must never be reachable through a route.
+4. **Crossing tenants.** A repository, search service, cache, job, or file path chosen from caller input instead of the resolved `TenantContext`. Tenant `0` is for system operations and must never be reachable through a route. Unqualified routes are valid in single-tenant mode. Multi-tenant mode requires `/tenant/{id}` routes.
 5. **Trust taken from the request.** Authority must come from the validated token and server state. A header, route value, query parameter, body field, or continuation token selects a resource. It is not proof of permission.
 6. **Enforcement behind a switch.** A new or changed option that relaxes a check, such as `AuthorizationOptions.Enabled`, `RequireAuthentication`, `EnforceTenantIsolation`, or `EnforceCapabilities`. The default must enforce.
 7. **Absent context read as allowed.** Missing or malformed identity, tenant, patient, or scope must refuse the request. Check null and empty cases on `SmartContext`, `Roles`, and `Filter`.
@@ -40,5 +40,5 @@ For each one, name the caller, the input, the missing check, and what the caller
 
 - A security finding needs a concrete boundary and an unauthorized outcome. If you cannot trace one, ask a question instead of asserting a vulnerability.
 - Do not report a missing best practice, a guessed deployment, or a fix in another FHIR server as a defect in this revision.
-- A new check needs a test that fails without it. Use two principals, two patients, or two tenants: one request that must succeed and one that must be refused.
+- A new check needs a test that fails without it. For a claimed regression, use the base-fails and head-passes standard in `AGENTS.md`, and inspect skipped cases and weakened assertions. Use two principals, two patients, or two tenants: one request that must succeed and one that must be refused.
 - Tests with mocked authorization or `AuthorizationOptions.Enabled = false` do not prove enforcement. Say which provider, FHIR version, and tenancy mode the tests exercise.
