@@ -109,6 +109,9 @@ public record EvaluationContext
     private static readonly ImmutableDictionary<string, ImmutableList<IElement>> EmptyOrdinalEnvironment =
         ImmutableDictionary<string, ImmutableList<IElement>>.Empty.WithComparers(StringComparer.Ordinal);
 
+    /// <summary>Steps charged for entering a per-item scope; see <see cref="PushThis"/>.</summary>
+    private const int ScopeSteps = 4;
+
     private readonly FhirPathEvaluationLimits _limits = FhirPathEvaluationLimits.Default;
 
     /// <summary>
@@ -314,6 +317,9 @@ public record EvaluationContext
     /// </remarks>
     public EvaluationContext PushThis(IElement element)
     {
+        // A scope is a full context copy plus a variable frame: several node evaluations' worth of work, charged
+        // as such so per-item iteration (where, select, all, aggregate) cannot spend the step budget cheaply.
+        Budget.Charge(ScopeSteps);
         return this with { ThisStack = ThisStack.Push(element), Variables = Variables.Fork() };
     }
 

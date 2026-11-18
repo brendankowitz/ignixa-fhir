@@ -709,9 +709,9 @@ A short expression can ask for exponential work regardless of the resource it ru
 
 | Limit (`FhirPathEvaluationLimits`) | Default | What it bounds |
 |---|---|---|
-| `MaxSteps` | 10,000,000 | Units of work: one per expression node evaluated, per item a projection yields, per equality comparison a collection operation makes (and per child pair a deep comparison descends into), and per 16 characters of string built. About 1.5-2.5 s of CPU at the limit. |
-| `MaxCollectionSize` | 1,000,000 | Items in a collection the evaluator builds larger than its inputs: `combine()`, `\|`, `aggregate()`, `select()`, `repeat()`, `repeatAll()`, `split()`, `toChars()`, and the pairing matrix behind `~`. Navigating the resource is not limited. |
-| `MaxStringLength` | 16,777,216 | Characters in a string built by `&`, `replace()`, `replaceMatches()`, `join()` or `encode()`, checked before it is allocated. Strings read from the resource are not limited. |
+| `MaxSteps` | 10,000,000 | Units of work: one per expression node evaluated, per item navigated or yielded (paths, `children()`, `descendants()`, projections), four per per-item scope (`where`, `select`, `all`, `aggregate` and the like), per equality comparison a collection operation makes and per child a comparison descends into, ten per child a dedup key hashes, per 16 characters of text a function scans or builds, and 64 per UCUM unit parse or cross-unit conversion. Measured at the limit, an evaluation stops after 0.1-2.3 s of CPU depending on the work; the slowest is pairwise comparison of large unkeyed elements. Set `Timeout` for a wall-clock bound. |
+| `MaxCollectionSize` | 1,000,000 | Items in a collection the evaluator builds larger than its inputs: `descendants()`, `combine()`, `\|`, `aggregate()`, `select()`, `repeat()`, `repeatAll()`, `split()`, `toChars()`, and the pairing matrix behind `~`. Navigating the resource is not limited, but `descendants()` is: its input can be a multiplied collection. |
+| `MaxStringLength` | 16,777,216 | Characters in a string built by `&`, `+`, `replace()`, `replaceMatches()`, `join()`, `encode()` or `escape()`, checked before it is allocated; any other engine-built string a function returns is checked as it is returned. Strings read from the resource are not limited. |
 | `MaxRegexCaptureInputLength` | 16,384 | Input to a `replaceMatches()` whose substitution contains a reference (see Regular Expressions). |
 | `Timeout` | none | Wall-clock time. Off by default so results do not depend on machine load; checked every 1,024 steps. |
 
@@ -736,7 +736,7 @@ catch (FhirPathResourceLimitExceededException)
 
 `CancellationToken` is observed when evaluation starts and every 1,024 steps, on both the interpreter and the compiled-delegate path (which checks it on entry and per item of a compiled `where()`); cancellation throws `OperationCanceledException`, not the limit exception, because "the caller gave up" and "the expression asked for too much" need different handling. Neither the token nor `Timeout` interrupts a single regular-expression call, which is bounded by the match timeout and the capture-input limit instead.
 
-Duplicate elimination in `|`, `distinct()`, `isDistinct()`, `intersect()`, `exclude()`, `in`, `contains` and `repeat()` hashes every element whose equality allows it (strings, numbers, Booleans, codings and other complex elements) and groups quantities by unit and value, so it is linear in the collection size; only temporals and unreadable quantities are still compared pairwise, within the step budget. `subsetOf()` and `supersetOf()` use a stricter, type-aware equality and remain pairwise. `repeat()` additionally keeps its own limits of 10,000 iterations and 15,000,000 comparisons, and `repeatAll()` its 100,000 iterations; all three throw `FhirPathResourceLimitExceededException`.
+Duplicate elimination in `|`, `distinct()`, `isDistinct()`, `intersect()`, `exclude()`, `in`, `contains` and `repeat()` hashes every element whose equality allows it (strings, numbers, Booleans, codings and other complex elements) and groups quantities by unit compatibility (UCUM dimension) and value, so for such data its cost grows linearly with the collection. Three cases still compare pairwise, within the step budget: temporals (equal instants can have different literals, and a date and a datetime of the same day are indeterminate, so no key fits all of them), unreadable quantities, and quantities in many different but mutually compatible units (each pair needs a conversion). `subsetOf()` and `supersetOf()` use a stricter, type-aware equality and remain pairwise. `repeat()` additionally keeps its own limits of 10,000 iterations and 15,000,000 comparisons, and `repeatAll()` its 100,000 iterations; all three throw `FhirPathResourceLimitExceededException`.
 
 How hosts react to the exception:
 
@@ -750,7 +750,7 @@ How hosts react to the exception:
 | De-identification | The rule fails closed (`RULE_EVALUATION_FAILED`). |
 | SQL-on-FHIR | Rethrown as `FhirPathResourceLimitExceededException` with the resource type in the message. |
 
-Every host passes its request's cancellation token into evaluation.
+Every host that evaluates an expression taken from a request - Patch, `$transform`, GraphQL, MCP, de-identification and SQL-on-FHIR export - passes the request's cancellation token into evaluation. Search indexing and validation evaluate the server's own expressions, have no token to pass, and run under the default limits.
 
 ### Host Culture and Clock
 

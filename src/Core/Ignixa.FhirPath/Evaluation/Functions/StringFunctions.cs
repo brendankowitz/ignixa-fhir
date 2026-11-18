@@ -42,7 +42,7 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new FhirPathEvaluationException("indexOf() requires a substring argument");
 
-        if (!FunctionHelpers.TryGetSingleString(focus, "indexOf", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "indexOf", context.Budget, out var str))
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
@@ -75,7 +75,7 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new FhirPathEvaluationException("lastIndexOf() requires a substring argument");
 
-        if (!FunctionHelpers.TryGetSingleString(focus, "lastIndexOf", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "lastIndexOf", context.Budget, out var str))
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
@@ -110,7 +110,7 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new FhirPathEvaluationException("substring() requires a start argument");
 
-        if (!FunctionHelpers.TryGetSingleString(focus, "substring", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "substring", context.Budget, out var str))
             return [];
 
         // Non-scoped function: evaluate arguments in outer context (don't change $this)
@@ -158,7 +158,7 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new FhirPathEvaluationException("startsWith() requires a prefix argument");
 
-        if (!FunctionHelpers.TryGetSingleString(focus, "startsWith", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "startsWith", context.Budget, out var str))
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
@@ -188,7 +188,7 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new FhirPathEvaluationException("endsWith() requires a suffix argument");
 
-        if (!FunctionHelpers.TryGetSingleString(focus, "endsWith", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "endsWith", context.Budget, out var str))
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
@@ -209,9 +209,9 @@ internal static class StringFunctions
         MaxArguments = 0,
         Category = "String",
         Description = "Converts a string to uppercase")]
-    public static IEnumerable<IElement> Upper(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> Upper(IEnumerable<IElement> focus, EvaluationContext context)
     {
-        if (!FunctionHelpers.TryGetSingleString(focus, "upper", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "upper", context.Budget, out var str))
             return [];
 
         return [FunctionHelpers.CreateString(str.ToUpperInvariant())];
@@ -227,9 +227,9 @@ internal static class StringFunctions
         MaxArguments = 0,
         Category = "String",
         Description = "Converts a string to lowercase")]
-    public static IEnumerable<IElement> Lower(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> Lower(IEnumerable<IElement> focus, EvaluationContext context)
     {
-        if (!FunctionHelpers.TryGetSingleString(focus, "lower", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "lower", context.Budget, out var str))
             return [];
 
         // FhirPath lower() function explicitly requires lowercase, ToLowerInvariant is intentional
@@ -248,9 +248,9 @@ internal static class StringFunctions
         MaxArguments = 0,
         Category = "String",
         Description = "Returns the number of characters in a string")]
-    public static IEnumerable<IElement> Length(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> Length(IEnumerable<IElement> focus, EvaluationContext context)
     {
-        if (!FunctionHelpers.TryGetSingleString(focus, "length", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "length", context.Budget, out var str))
             return [];
 
         return [FunctionHelpers.CreateInteger(str.Length)];
@@ -275,7 +275,7 @@ internal static class StringFunctions
         if (arguments.Count < 2)
             throw new FhirPathEvaluationException("replace() requires pattern and substitution arguments");
 
-        if (!FunctionHelpers.TryGetSingleString(focus, "replace", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "replace", context.Budget, out var str))
             return [];
 
         // Non-scoped function: evaluate arguments in outer context (don't change $this)
@@ -355,7 +355,7 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new FhirPathEvaluationException("matches() requires a regex argument");
 
-        if (!FunctionHelpers.TryGetSingleString(focus, "matches", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "matches", context.Budget, out var str))
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
@@ -388,7 +388,7 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new FhirPathEvaluationException("matchesFull() requires a regex argument");
 
-        if (!FunctionHelpers.TryGetSingleString(focus, "matchesFull", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "matchesFull", context.Budget, out var str))
             return [];
 
         // Non-scoped function: evaluate arguments in outer context (don't change $this)
@@ -446,7 +446,7 @@ internal static class StringFunctions
         if (arguments.Count < 2)
             throw new FhirPathEvaluationException("replaceMatches() requires pattern and substitution arguments");
 
-        if (!FunctionHelpers.TryGetSingleString(focus, "replaceMatches", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "replaceMatches", context.Budget, out var str))
             return [];
 
         // Non-scoped function: evaluate arguments in outer context (don't change $this)
@@ -488,7 +488,7 @@ internal static class StringFunctions
         Description = "Splits a string into individual characters")]
     public static IEnumerable<IElement> ToChars(IEnumerable<IElement> focus, EvaluationContext context)
     {
-        if (!FunctionHelpers.TryGetSingleString(focus, "toChars", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "toChars", context.Budget, out var str))
             return [];
 
         context.Budget.EnsureCollectionSize(str.Length, "toChars()");
@@ -558,9 +558,9 @@ internal static class StringFunctions
         MaxArguments = 0,
         Category = "String",
         Description = "Removes leading and trailing whitespace")]
-    public static IEnumerable<IElement> Trim(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> Trim(IEnumerable<IElement> focus, EvaluationContext context)
     {
-        if (!FunctionHelpers.TryGetSingleString(focus, "trim", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "trim", context.Budget, out var str))
             return [];
 
         return [FunctionHelpers.CreateString(str.Trim())];
@@ -586,7 +586,7 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new FhirPathEvaluationException("split() requires a delimiter argument");
 
-        if (!FunctionHelpers.TryGetSingleString(focus, "split", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "split", context.Budget, out var str))
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
@@ -619,7 +619,7 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new FhirPathEvaluationException("contains() requires a substring argument");
 
-        if (!FunctionHelpers.TryGetSingleString(focus, "contains", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "contains", context.Budget, out var str))
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
@@ -650,6 +650,8 @@ internal static class StringFunctions
         var element = FunctionHelpers.SingleInput("encode", focus);
         if (element?.Value is not string str)
             return [];
+
+        context.Budget.ChargeText(str.Length);
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
         var encodingTypeResult = FunctionHelpers.SingleArgument("encode", evaluateExpression(context.Focus, arguments[0], context));
@@ -701,6 +703,8 @@ internal static class StringFunctions
         if (element?.Value is not string str)
             return [];
 
+        context.Budget.ChargeText(str.Length);
+
         // Non-scoped function: evaluate argument in outer context (don't change $this)
         var encodingTypeResult = FunctionHelpers.SingleArgument("decode", evaluateExpression(context.Focus, arguments[0], context));
         var encodingType = encodingTypeResult?.Value?.ToString();
@@ -748,6 +752,8 @@ internal static class StringFunctions
         if (element?.Value is not string str)
             return [];
 
+        context.Budget.ChargeText(str.Length);
+
         // Non-scoped function: evaluate argument in outer context (don't change $this)
         var escapeTypeResult = FunctionHelpers.SingleArgument("escape", evaluateExpression(context.Focus, arguments[0], context));
         var escapeType = escapeTypeResult?.Value?.ToString();
@@ -756,14 +762,54 @@ internal static class StringFunctions
             return [];
 
 #pragma warning disable CA1308 // Normalize strings to uppercase
-        return escapeType.ToLowerInvariant() switch
+        var kind = escapeType.ToLowerInvariant();
+#pragma warning restore CA1308 // Normalize strings to uppercase
+
+        // Escaping lengthens its input - json doubles a run of backslashes - so the result is bounded before it is
+        // built, or aggregate($total.escape('json'), '\\') doubles a string per item.
+        context.Budget.EnsureStringLength(EscapedLengthBound(str, kind), "escape()");
+
+        return kind switch
         {
             "html" => [FunctionHelpers.CreateString(WebUtility.HtmlEncode(str))],
             "json" => [FunctionHelpers.CreateString(EscapeJsonString(str))],
             "url" => [FunctionHelpers.CreateString(Uri.EscapeDataString(str))],
             _ => []
         };
-#pragma warning restore CA1308 // Normalize strings to uppercase
+    }
+
+    /// <summary>
+    /// An upper bound on the length <c>escape()</c> produces: exact for json, and the longest replacement each
+    /// character can get for html (a numeric character reference) and url (three percent-encoded UTF-8 bytes per
+    /// byte).
+    /// </summary>
+    private static long EscapedLengthBound(string text, string kind)
+    {
+        long length = 0;
+        foreach (var c in text)
+        {
+            length += kind switch
+            {
+                "json" => c switch
+                {
+                    '"' or '\\' or '\b' or '\f' or '\n' or '\r' or '\t' => 2,
+                    < (char)0x20 => 6,
+                    _ => 1,
+                },
+                "html" => c switch
+                {
+                    '&' or '\'' => 5,
+                    '<' or '>' => 4,
+                    '"' => 6,
+                    < (char)0xA0 => 1,
+                    _ => 10,
+                },
+                "url" => c < 0x80 ? 3 : 9,
+                _ => 1,
+            };
+        }
+
+        return length;
     }
 
     /// <summary>
@@ -819,6 +865,8 @@ internal static class StringFunctions
         var element = FunctionHelpers.SingleInput("unescape", focus);
         if (element?.Value is not string str)
             return [];
+
+        context.Budget.ChargeText(str.Length);
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
         var escapeTypeResult = FunctionHelpers.SingleArgument("unescape", evaluateExpression(context.Focus, arguments[0], context));

@@ -1179,6 +1179,16 @@ internal static class CollectionFunctions
         {
             return ordered.ToList();
         }
+        catch (InvalidOperationException ex) when (ex.InnerException is OperationCanceledException cancelled)
+        {
+            // Cancellation inside a sort key surfaces as itself, not as a failed comparison.
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(cancelled);
+            throw;
+        }
+        catch (InvalidOperationException ex) when (ex.InnerException is FhirPathResourceLimitExceededException inner)
+        {
+            throw new FhirPathResourceLimitExceededException(inner.Message, ex);
+        }
         catch (InvalidOperationException ex) when (ex.InnerException is FhirPathEvaluationException inner)
         {
             throw new FhirPathEvaluationException(inner.Message, ex);

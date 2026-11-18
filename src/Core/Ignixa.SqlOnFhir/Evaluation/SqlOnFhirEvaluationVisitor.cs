@@ -314,8 +314,11 @@ internal class SqlOnFhirEvaluationVisitor
             {
                 results = _fhirPath.Evaluate(resource, col.Path, context).ToList();
             }
-            catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or ArgumentException)
+            catch (Exception ex) when (ex is (InvalidOperationException or NotSupportedException or ArgumentException)
+                and not FhirPathResourceLimitExceededException)
             {
+                // A limit derives from InvalidOperationException but is not a path that missed: nulling the column
+                // would let a view that asks for too much export a quietly incomplete row.
                 // Path evaluation against the base resource is expected to fail for expressions
                 // that navigate into the forEach element (e.g. "family" when the element is absent).
                 // Context-only expressions like %rowIndex succeed and return their value normally.

@@ -26,12 +26,15 @@ internal static class TreeNavigationFunctions
         MaxArguments = 0,
         Category = "TreeNavigation",
         Description = "Returns all immediate children of the focus elements")]
-    public static IEnumerable<IElement> Children(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> Children(IEnumerable<IElement> focus, EvaluationContext context)
     {
+        var budget = context.Budget;
         foreach (var element in focus)
         {
+            budget.Step();
             foreach (var child in element.Children())
             {
+                budget.Step();
                 yield return child;
             }
         }
@@ -48,8 +51,15 @@ internal static class TreeNavigationFunctions
         MaxArguments = 0,
         Category = "TreeNavigation",
         Description = "Returns all descendants of the focus elements recursively")]
-    public static IEnumerable<IElement> Descendants(IEnumerable<IElement> focus)
+    /// <remarks>
+    /// Eager, so every node is charged a step and counted against
+    /// <see cref="FhirPathEvaluationLimits.MaxCollectionSize"/> as it is appended: the input can be a collection the
+    /// expression multiplied (<c>%resource</c> combined with itself), whose descendants are that many copies of the
+    /// whole tree.
+    /// </remarks>
+    public static IEnumerable<IElement> Descendants(IEnumerable<IElement> focus, EvaluationContext context)
     {
+        var budget = context.Budget;
         List<IElement> result = [];
         var queue = new Queue<IElement>(focus);
 
@@ -58,7 +68,9 @@ internal static class TreeNavigationFunctions
             var current = queue.Dequeue();
             foreach (var child in current.Children())
             {
+                budget.Step();
                 result.Add(child);
+                budget.EnsureCollectionSize(result.Count, "descendants()");
                 queue.Enqueue(child);
             }
         }

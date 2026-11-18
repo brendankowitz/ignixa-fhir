@@ -78,15 +78,23 @@ internal static class ElementEqualityKey
     private static readonly FrozenSet<string> QuantityChildNames =
         new[] { "id", "extension", "value", "comparator", "unit", "system", "code" }.ToFrozenSet(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Steps charged per child hashed. Hashing sorts each element's children and materialises them, which measured at
+    /// several times the cost of evaluating a node; a cheaper charge let one evaluation hash for over five seconds.
+    /// </summary>
+    private const int HashedChildSteps = 10;
+
     private static readonly FhirPrimitive[] TemporalKinds =
         [FhirPrimitive.Date, FhirPrimitive.DateTime, FhirPrimitive.Instant, FhirPrimitive.Time];
 
     /// <summary>
-    /// Computes the key of <paramref name="element"/>.
+    /// Computes the key of <paramref name="element"/>, charging <paramref name="budget"/> a step for every child it
+    /// hashes: one key can walk a whole subtree, and a collection can hold many copies of a large one.
     /// </summary>
     /// <returns><see langword="false"/> when the element has no key and must be compared against everything.</returns>
-    public static bool TryGetKey(IElement element, out int key)
+    public static bool TryGetKey(IElement element, EvaluationBudget budget, out int key)
     {
+        ArgumentNullException.ThrowIfNull(budget);
         key = 0;
 
         if (ValueOrdering.IsQuantity(element) || TemporalOperand.IsTemporal(element.Value, element.InstanceType))
@@ -97,7 +105,7 @@ internal static class ElementEqualityKey
         switch (element.Value)
         {
             case null:
-                return TryHashChildren(element, depth: 0, out key);
+                return TryHashChildren(element, depth: 0, budget, out key);
             case int or long or decimal:
                 FunctionHelpers.TryConvertToDecimal(element.Value, out var number);
                 key = NumberKey(number);
@@ -130,14 +138,25 @@ internal static class ElementEqualityKey
     /// Whether every child of <paramref name="element"/> has a name a quantity's child can have - the shape a
     /// complex element needs to equal a quantity child by child.
     /// </summary>
-    public static bool HasOnlyQuantityChildNames(IElement element) =>
-        element.Children().All(child => QuantityChildNames.Contains(child.Name));
+    public static bool HasOnlyQuantityChildNames(IElement element, EvaluationBudget budget)
+    {
+        foreach (var child in element.Children())
+        {
+            budget.Step();
+            if (!QuantityChildNames.Contains(child.Name))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     /// <summary>
     /// The contribution of a child to its parent's key; see the remarks on this type for why it differs from the
     /// top-level key.
     /// </summary>
-    private static bool TryGetContribution(IElement child, int depth, out int contribution)
+    private static bool TryGetContribution(IElement child, int depth, EvaluationBudget budget, out int contribution)
     {
         contribution = 0;
 
@@ -145,11 +164,6 @@ internal static class ElementEqualityKey
         {
             contribution = QuantityLikeTag;
             return true;
-        }
-
-        if (child.Value is null && ValueOrdering.IsQuantity(child))
-        {
-            return TryGetQuantityElementContribution(child, depth, out contribution);
         }
 
         if (TemporalOperand.IsTemporal(child.Value, child.InstanceType)
@@ -162,7 +176,7 @@ internal static class ElementEqualityKey
         switch (child.Value)
         {
             case null:
-                return TryGetComplexContribution(child, depth, out contribution);
+                return TryGetComplexContribution(child, depth, budget, out contribution);
             case bool boolean:
                 contribution = HashCode.Combine(BooleanTag, boolean);
                 return true;
@@ -181,64 +195,48 @@ internal static class ElementEqualityKey
     }
 
     /// <summary>
-    /// A complex element of a quantity type: quantity-like when it reads as a quantity, otherwise compared only child
-    /// by child and so hashed like any other complex element.
-    /// </summary>
-    private static bool TryGetQuantityElementContribution(IElement quantity, int depth, out int contribution)
-    {
-        contribution = 0;
-
-        if (ValueOrdering.AsQuantity(quantity) is null)
-        {
-            return TryHashChildren(quantity, depth, out contribution);
-        }
-
-        // Its child-by-child twins are recognised by QuantityChildNames, so a quantity with any other child would
-        // escape that recognition; no real quantity has one, so it simply goes unkeyed.
-        if (!HasOnlyQuantityChildNames(quantity))
-        {
-            return false;
-        }
-
-        contribution = QuantityLikeTag;
-        return true;
-    }
-
-    /// <summary>
-    /// A complex element of any other type: quantity-like when it could equal a readable quantity child by child -
-    /// its names are a quantity's and its <c>value</c> could be the magnitude
+    /// A complex child, of a quantity type or not: quantity-like when it could equal a quantity child by child - its
+    /// names are a quantity's and its <c>value</c> could be the magnitude
     /// <c>QuantityEvaluator.ExtractQuantityFromChildren</c> reads - otherwise a hash of its children.
     /// </summary>
-    private static bool TryGetComplexContribution(IElement element, int depth, out int contribution)
+    /// <remarks>
+    /// One test decides for a quantity and for its untyped twin, which is what keeps their contributions equal: a
+    /// readable quantity always passes it, and an unreadable one is compared only child by child, exactly as its
+    /// twin is. A readable quantity with a child no quantity has would escape that recognition, so it goes unkeyed;
+    /// no real quantity has one.
+    /// </remarks>
+    private static bool TryGetComplexContribution(IElement element, int depth, EvaluationBudget budget, out int contribution)
     {
         contribution = 0;
 
-        if (!TryHashChildren(element, depth, out var structural))
+        if (ValueOrdering.IsQuantity(element)
+            && ValueOrdering.AsQuantity(element) is not null
+            && !HasOnlyQuantityChildNames(element, budget))
         {
             return false;
         }
 
-        if (LooksLikeAQuantity(element, depth))
+        if (!TryHashChildren(element, depth, budget, out var structural))
         {
-            contribution = QuantityLikeTag;
-            return true;
+            return false;
         }
 
-        contribution = structural;
+        contribution = LooksLikeAQuantity(element, depth, budget) ? QuantityLikeTag : structural;
         return true;
     }
 
-    private static bool LooksLikeAQuantity(IElement element, int depth)
+    private static bool LooksLikeAQuantity(IElement element, int depth, EvaluationBudget budget)
     {
         var hasQuantityLikeValue = false;
         foreach (var child in element.Children())
         {
+            budget.Step();
             if (!QuantityChildNames.Contains(child.Name))
             {
                 return false;
             }
 
-            if (child.Name == "value" && CouldEqualAMagnitude(child, depth))
+            if (child.Name == "value" && CouldEqualAMagnitude(child, depth, budget))
             {
                 hasQuantityLikeValue = true;
             }
@@ -251,15 +249,15 @@ internal static class ElementEqualityKey
     /// Whether a <c>value</c> child could equal the child a quantity reads its magnitude from: a number or a String
     /// that parses as one, or something quantity-like, which a bare number equals.
     /// </summary>
-    private static bool CouldEqualAMagnitude(IElement value, int depth) => value.Value switch
+    private static bool CouldEqualAMagnitude(IElement value, int depth, EvaluationBudget budget) => value.Value switch
     {
         FhirQuantity => true,
         string text => decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out _),
-        null => TryGetContribution(value, depth + 1, out var contribution) && contribution == QuantityLikeTag,
+        null => TryGetContribution(value, depth + 1, budget, out var contribution) && contribution == QuantityLikeTag,
         var other => IsNumber(other),
     };
 
-    private static bool TryHashChildren(IElement element, int depth, out int hash)
+    private static bool TryHashChildren(IElement element, int depth, EvaluationBudget budget, out int hash)
     {
         hash = 0;
 
@@ -275,7 +273,8 @@ internal static class ElementEqualityKey
         // Same order FunctionHelpers.AreElementsEqual compares children in: a stable ordinal sort by name.
         foreach (var child in element.Children().OrderBy(c => c.Name, StringComparer.Ordinal))
         {
-            if (!TryGetContribution(child, depth + 1, out var childHash))
+            budget.Charge(HashedChildSteps);
+            if (!TryGetContribution(child, depth + 1, budget, out var childHash))
             {
                 return false;
             }

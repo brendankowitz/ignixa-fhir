@@ -119,9 +119,10 @@ public class HashedDedupSemanticsTests
     public void GivenFiveThousandDistinctComponents_WhenDeduplicated_ThenTheCostIsLinear(string expression)
     {
         // Arrange - combo-code's shape (#533). Pairwise, five thousand items cost about 12.5 million comparisons;
-        // hashed, a few steps each. A budget of 100,000 steps admits only the latter.
+        // hashed, under two hundred steps each for navigation and hashing. A budget of 1,000,000 steps admits only
+        // the latter.
         var root = Parse(ObservationWithComponents(5_000));
-        var context = new EvaluationContext { Limits = FhirPathEvaluationLimits.Default with { MaxSteps = 100_000 } };
+        var context = new EvaluationContext { Limits = FhirPathEvaluationLimits.Default with { MaxSteps = 1_000_000 } };
 
         // Act
         var result = _evaluator.Evaluate(root, _parser.Parse(expression), context).ToList();
@@ -162,7 +163,41 @@ public class HashedDedupSemanticsTests
         result.Single().Value.ShouldBe(1);
     }
 
+    [Fact]
+    public void GivenAThousandQuantitiesInDistinctUnits_WhenUnioned_ThenTheCostIsLinear()
+    {
+        // Arrange - combo-value-quantity over components whose units all differ (m1, m2, ... m1000 are a thousand
+        // dimensions). Grouped by unit alone, every lookup tested every unit: about 500,000 probes, each a UCUM
+        // parse. Grouped by compatibility class, each unit is parsed once and a lookup tests only its own class.
+        var root = Parse(ObservationWithDistinctUnits(1_000));
+        var context = new EvaluationContext { Limits = FhirPathEvaluationLimits.Default with { MaxSteps = 300_000 } };
+
+        // Act
+        var result = _evaluator.Evaluate(root, _parser.Parse("(component.value | component.value).count()"), context).ToList();
+
+        // Assert
+        result.Single().Value.ShouldBe(1_000);
+    }
+
     private static IElement Parse(string json) => ResourceJsonNode.Parse(json).ToElement(Schema);
+
+    private static string ObservationWithDistinctUnits(int count)
+    {
+        var json = new StringBuilder("""{"resourceType":"Observation","id":"o","status":"final","code":{"text":"x"},"component":[""");
+        for (var i = 1; i <= count; i++)
+        {
+            if (i > 1)
+            {
+                json.Append(',');
+            }
+
+            json.Append("""{"code":{"text":"c"},"valueQuantity":{"value":1,"system":"http://unitsofmeasure.org","code":"m""")
+                .Append(i)
+                .Append("\"}}");
+        }
+
+        return json.Append("]}").ToString();
+    }
 
     private static IElement Node(string name, string type, object? value, params IElement[] children) =>
         new TestNode(name, type, value, children);

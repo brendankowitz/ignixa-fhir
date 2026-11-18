@@ -118,8 +118,16 @@ public class FhirPathQueryCapabilityStatementTool : TenantAwareMcpTool
             // The request was cancelled; that is not an evaluation error to report back to it.
             throw;
         }
+        catch (FhirPathResourceLimitExceededException ex)
+        {
+            // Reported as its own outcome, and without the results gathered before the limit stopped evaluation: a
+            // prefix of the answer presented as the answer would be wrong.
+            results.Clear();
+            errors.Add($"FHIRPath evaluation exceeded an evaluation limit: {ex.Message}");
+        }
         catch (Exception ex)
         {
+            results.Clear();
             errors.Add($"FHIRPath evaluation error: {ex.Message}");
         }
 

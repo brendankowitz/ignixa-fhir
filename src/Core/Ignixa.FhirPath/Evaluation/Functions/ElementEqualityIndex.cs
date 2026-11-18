@@ -26,8 +26,9 @@ namespace Ignixa.FhirPath.Evaluation.Functions;
 /// and <c>Observation.component.value as Quantity</c> needs.
 /// </para>
 /// <para>
-/// The cross-kind cases are probed explicitly. A quantity is looked up in each unit group as the value
-/// <see cref="ValueOrdering.TryExpressIn"/> gives in that group's unit, which is the value equality itself would
+/// The cross-kind cases are probed explicitly. A quantity is looked up in each unit group of its compatibility class
+/// (<see cref="ValueOrdering.CompatibilityClass"/>) as the value <see cref="ValueOrdering.TryExpressIn"/> gives in
+/// that group's unit, which is the value equality itself would
 /// compare; where no conversion applies, equality falls through to comparing the quantities as they are, so only
 /// the same unit and value can match. A number is also a quantity in unit <c>'1'</c>, so numbers and quantities probe
 /// each other. And a quantity is compared child by child with a complex element of another type that has its
@@ -46,9 +47,17 @@ internal sealed class ElementEqualityIndex
     private readonly Dictionary<int, List<IElement>> _keyed = [];
     private readonly List<IElement> _unkeyed = [];
     private readonly List<IElement> _quantityShaped = [];
-    private readonly Dictionary<string, Dictionary<decimal, List<IElement>>> _quantitiesByUnit = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Dictionary<string, Dictionary<decimal, List<IElement>>>> _quantitiesByClass = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _classByUnit = new(StringComparer.Ordinal);
     private readonly List<IElement> _quantities = [];
     private int _numberCount;
+
+    /// <summary>
+    /// Steps charged for work that parses a UCUM unit: computing a unit's compatibility class, or converting a value
+    /// between two different units. Each costs tens of microseconds rather than the fraction of one a step stands
+    /// for, so a collection of quantities in many units drains the budget in proportion to what it costs.
+    /// </summary>
+    private const int UnitAlgebraSteps = 64;
 
     /// <param name="budget">The evaluation budget charged for each key and comparison.</param>
     /// <param name="beforeComparison">Called before each comparison, for a caller enforcing its own comparison limit.</param>
@@ -94,13 +103,13 @@ internal sealed class ElementEqualityIndex
         {
             // A complex quantity is also compared child by child with quantity-shaped elements, which are recognised
             // by their child names; one with any other child would escape that, so it is scanned instead.
-            var groupable = element.Value is FhirQuantity || ElementEqualityKey.HasOnlyQuantityChildNames(element);
+            var groupable = element.Value is FhirQuantity || ElementEqualityKey.HasOnlyQuantityChildNames(element, _budget);
             return groupable && ValueOrdering.AsQuantity(element) is { } quantity
                 ? new Entry(element, EntryKind.Quantity, Key: 0, quantity, Number: null)
                 : new Entry(element, EntryKind.Unkeyed, Key: 0, Quantity: null, Number: null);
         }
 
-        if (!ElementEqualityKey.TryGetKey(element, out var key))
+        if (!ElementEqualityKey.TryGetKey(element, _budget, out var key))
         {
             return new Entry(element, EntryKind.Unkeyed, Key: 0, Quantity: null, Number: null);
         }
@@ -109,7 +118,7 @@ internal sealed class ElementEqualityIndex
             ? value
             : (decimal?)null;
 
-        var kind = element.Value is null && ElementEqualityKey.HasOnlyQuantityChildNames(element)
+        var kind = element.Value is null && ElementEqualityKey.HasOnlyQuantityChildNames(element, _budget)
             ? EntryKind.QuantityShaped
             : EntryKind.Keyed;
 
@@ -157,10 +166,17 @@ internal sealed class ElementEqualityIndex
 
     private void AddQuantity(IElement element, FhirQuantity quantity)
     {
-        if (!_quantitiesByUnit.TryGetValue(quantity.Unit, out var byValue))
+        var compatibilityClass = ClassOf(quantity.Unit);
+        if (!_quantitiesByClass.TryGetValue(compatibilityClass, out var byUnit))
+        {
+            byUnit = new Dictionary<string, Dictionary<decimal, List<IElement>>>(StringComparer.Ordinal);
+            _quantitiesByClass[compatibilityClass] = byUnit;
+        }
+
+        if (!byUnit.TryGetValue(quantity.Unit, out var byValue))
         {
             byValue = [];
-            _quantitiesByUnit[quantity.Unit] = byValue;
+            byUnit[quantity.Unit] = byValue;
         }
 
         if (!byValue.TryGetValue(quantity.Value, out var members))
@@ -184,7 +200,10 @@ internal sealed class ElementEqualityIndex
 
             case EntryKind.Quantity:
                 return AnyQuantityEqual(entry.Quantity!, candidate)
-                    || (_numberCount > 0 && ValueOrdering.TryExpressIn(entry.Quantity!, "1", out var asNumber) && BucketContains(ElementEqualityKey.NumberKey(asNumber), candidate))
+                    || (_numberCount > 0
+                        && string.Equals(ClassOf(entry.Quantity!.Unit), ClassOf("1"), StringComparison.Ordinal)
+                        && ValueOrdering.TryExpressIn(entry.Quantity!, "1", out var asNumber)
+                        && BucketContains(ElementEqualityKey.NumberKey(asNumber), candidate))
                     || AnyEqual(_quantityShaped, candidate)
                     || AnyEqual(_unkeyed, candidate);
 
@@ -198,14 +217,27 @@ internal sealed class ElementEqualityIndex
 
     /// <summary>
     /// Finds a quantity member equal to <paramref name="candidate"/>, read as <paramref name="quantity"/>: in each unit
-    /// group, the members holding the value equality would compare, or - where no conversion relates the units and
-    /// equality falls through to the quantities as they are - the members with the same unit and value.
+    /// group of the quantity's compatibility class, the members holding the value equality would compare, or - where
+    /// no conversion relates the units and equality falls through to the quantities as they are - the members with the
+    /// same unit and value. Units of another class are incompatible, so equality could only fall through for them, and
+    /// that needs the same unit.
     /// </summary>
     private bool AnyQuantityEqual(FhirQuantity quantity, IElement candidate)
     {
-        foreach (var (unit, byValue) in _quantitiesByUnit)
+        // Checked first because computing a class parses the unit: a union of plain numbers must not pay for it.
+        if (_quantitiesByClass.Count == 0)
         {
-            _budget.Step();
+            return false;
+        }
+
+        if (!_quantitiesByClass.TryGetValue(ClassOf(quantity.Unit), out var byUnit))
+        {
+            return false;
+        }
+
+        foreach (var (unit, byValue) in byUnit)
+        {
+            _budget.Charge(string.Equals(unit, quantity.Unit, StringComparison.Ordinal) ? 1 : UnitAlgebraSteps);
 
             if (ValueOrdering.TryExpressIn(quantity, unit, out var converted))
             {
@@ -223,6 +255,21 @@ internal sealed class ElementEqualityIndex
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// The compatibility class of a unit, computed once per distinct unit this index sees.
+    /// </summary>
+    private string ClassOf(string unit)
+    {
+        if (!_classByUnit.TryGetValue(unit, out var compatibilityClass))
+        {
+            _budget.Charge(UnitAlgebraSteps);
+            compatibilityClass = ValueOrdering.CompatibilityClass(unit);
+            _classByUnit[unit] = compatibilityClass;
+        }
+
+        return compatibilityClass;
     }
 
     private bool BucketContains(int key, IElement candidate) =>

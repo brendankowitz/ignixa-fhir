@@ -1157,6 +1157,28 @@ public class SqlOnFhirEvaluatorTests
     }
 
     [Fact]
+    public void GivenAnEmptyForEachOrNullWhoseColumnExceedsAnEvaluationLimit_WhenEvaluated_ThenTheLimitIsNotANullColumn()
+    {
+        // forEachOrNull over an empty collection evaluates its columns against the resource and nulls a column whose
+        // path fails. A limit derives from InvalidOperationException, so it was nulled too - a view that asked for
+        // too much exported a quietly incomplete row. The lookahead forces the backtracking engine and (a+)+ inside
+        // it is exponential on a run of 'a' with no 'b', so the match times out (one second).
+        var patient = CreateTypedElement(new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "p1" }
+        });
+
+        var path = $"'{new string('a', 40)}'.matches('(?=(a+)+b)')";
+        var viewJson = $$"""
+            { "resource": "Patient", "select": [{ "forEachOrNull": "name", "column": [{ "name": "slow", "path": "{{path}}", "type": "boolean" }] }] }
+            """;
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(viewJson)!, "ViewDefinition");
+
+        Assert.Throws<FhirPathResourceLimitExceededException>(() => _evaluator.EvaluateBatch(sourceNode, [patient]).ToList());
+    }
+
+    [Fact]
     public void GivenACancelledToken_WhenBatchEvaluated_ThenTheCancellationSurfacesUnwrapped()
     {
         // The export path passes its request token; a cancelled one must stop the view as itself, not as an

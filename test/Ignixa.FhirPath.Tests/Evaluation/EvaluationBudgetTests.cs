@@ -39,6 +39,12 @@ public class EvaluationBudgetTests
         // Geometric string growth through a self-referencing accumulator.
         { TwentyItems + ".aggregate($total & $total, 'aaaaaaaa')", "Operator '&'" },
 
+        // The same through '+', which also concatenates Strings.
+        { TwentyItems + ".aggregate($total + $total, 'aaaaaaaa')", "Operator '+'" },
+
+        // escape('json') doubles a run of backslashes, so escaping the accumulator doubles it per item.
+        { TwentyItems + ".aggregate($total.escape('json'), '\\\\')", "escape()" },
+
         // The same doubling through chained variable definitions.
         { DefineVariableChain(20) + ".select(%v20)", "Operator '&'" },
 
@@ -69,6 +75,9 @@ public class EvaluationBudgetTests
         // The pairing matrix behind '~' grows with the square of equal items.
         { TwentyItems + ".select('a') ~ " + TwentyItems + ".select('a')", "Operator '~'" },
 
+        // descendants() of a collection the expression multiplied: forty copies of the resource's tree.
+        { TwentyItems + ".select(%context).combine(" + TwentyItems + ".select(%context)).descendants()", "descendants()" },
+
         // split() and toChars() build a collection from one string.
         { "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'.toChars()", "toChars()" },
         { "'a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a'.split(',')", "split()" },
@@ -87,7 +96,7 @@ public class EvaluationBudgetTests
     /// A budget the temporals fit when only built (see the control test), and any pairwise operation over them
     /// does not.
     /// </summary>
-    private const long PairwiseBudget = 2_000;
+    private const long PairwiseBudget = 3_000;
 
     public static TheoryData<string> PairwiseSetOperations => new()
     {
@@ -267,9 +276,9 @@ public class EvaluationBudgetTests
     [Fact]
     public void GivenOneContextReusedForTwoEvaluations_WhenEachFitsTheBudget_ThenNeitherIsChargedForTheOther()
     {
-        // Arrange - every Evaluate call meters itself from scratch. The expression costs 331 steps, so a shared
-        // count would exhaust 500 on the second call.
-        var context = WithLimits(FhirPathEvaluationLimits.Default with { MaxSteps = 500 });
+        // Arrange - every Evaluate call meters itself from scratch. The expression costs 415 steps, so a shared
+        // count would exhaust 700 on the second call.
+        var context = WithLimits(FhirPathEvaluationLimits.Default with { MaxSteps = 700 });
         var expression = TwentyItems + ".select($this + 1).count()";
 
         // Act

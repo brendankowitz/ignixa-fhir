@@ -82,7 +82,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         // Push the root element onto the $this stack so $this resolves correctly throughout evaluation.
         // Every call meters itself from scratch, so a context reused across evaluations carries its limits
         // and token forward but never a previous evaluation's count.
-        context = context.PushThis(input).StartBudget();
+        context = context.StartBudget().PushThis(input);
 
         return EvaluateExpression([input], expression, context);
     }
@@ -135,10 +135,14 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             ? EvaluateExpression(context.Focus, expression.Focus, context)
             : context.Focus;
 
+        // Navigation is charged per item, so a collection multiplied by combine() cannot be walked for free.
+        var budget = context.Budget;
         foreach (var element in focusElements)
         {
+            budget.Step();
             foreach (var childElement in element.Children(expression.ChildName))
             {
+                budget.Step();
                 yield return childElement;
             }
         }
@@ -166,7 +170,33 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return EvaluateDefineVariable(expression, focusElements, context);
         }
 
-        return DispatchFunctionCall(expression.FunctionName, focusElements, expression.Arguments, context);
+        return BoundEngineStrings(
+            DispatchFunctionCall(expression.FunctionName, focusElements, expression.Arguments, context),
+            context.Budget,
+            expression.FunctionName);
+    }
+
+    /// <summary>
+    /// The backstop for <see cref="FhirPathEvaluationLimits.MaxStringLength"/>: rejects a string a function built
+    /// that is longer than the limit.
+    /// </summary>
+    /// <remarks>
+    /// Every function whose output can outgrow its input checks the length before allocating. This catches one
+    /// that does not - including any added later - after a single allocation, so a doubling loop still stops at
+    /// its next step. Only engine-built values (<see cref="ISystemValueElement"/>) are checked: strings read from
+    /// the resource are not limited.
+    /// </remarks>
+    private static IEnumerable<IElement> BoundEngineStrings(IEnumerable<IElement> results, EvaluationBudget budget, string functionName)
+    {
+        foreach (var result in results)
+        {
+            if (result is ISystemValueElement && result.Value is string text)
+            {
+                budget.EnsureStringLength(text.Length, functionName + "()");
+            }
+
+            yield return result;
+        }
     }
 
     /// <summary>
@@ -235,8 +265,10 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             ? EvaluateExpression(context.Focus, expression.Focus, context)
             : context.Focus;
 
+        var budget = context.Budget;
         foreach (var element in focusElements)
         {
+            budget.Step();
             if (expression.PropertyName.Length > 0 && char.IsUpper(expression.PropertyName[0]))
             {
                 string[] baseClasses = ["Resource", "DomainResource"];
@@ -249,6 +281,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
             foreach (var child in element.Children(expression.PropertyName))
             {
+                budget.Step();
                 yield return child;
             }
         }
@@ -256,8 +289,10 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     public IEnumerable<IElement> VisitIdentifier(IdentifierExpression expression, EvaluationContext context)
     {
+        var budget = context.Budget;
         foreach (var element in context.Focus)
         {
+            budget.Step();
             if (expression.Name.Length > 0 && char.IsUpper(expression.Name[0]))
             {
                 string[] baseClasses = ["Resource", "DomainResource"];
@@ -270,6 +305,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
             foreach (var child in element.Children(expression.Name))
             {
+                budget.Step();
                 yield return child;
             }
         }
@@ -306,7 +342,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         if (operatorName is "+" or "-" or "*" or "/" or "div" or "mod")
         {
-            return EvaluateArithmetic(operatorName, leftResult, rightResult);
+            return EvaluateArithmetic(operatorName, leftResult, rightResult, context.Budget);
         }
 
         return operatorName switch
@@ -577,13 +613,13 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// from <see cref="UndefinedForOperandTypes"/>, which this does not intercept.
     /// </para>
     /// </remarks>
-    private IEnumerable<IElement> EvaluateArithmetic(string operatorName, List<IElement> left, List<IElement> right)
+    private IEnumerable<IElement> EvaluateArithmetic(string operatorName, List<IElement> left, List<IElement> right, EvaluationBudget budget)
     {
         try
         {
             return operatorName switch
             {
-                "+" => EvaluateAddition(left, right),
+                "+" => EvaluateAddition(left, right, budget),
                 "-" => EvaluateSubtraction(left, right),
                 "*" => EvaluateMultiplication(left, right),
                 "/" => EvaluateDivision(left, right),
@@ -597,7 +633,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         }
     }
 
-    private IEnumerable<IElement> EvaluateAddition(List<IElement> left, List<IElement> right)
+    private IEnumerable<IElement> EvaluateAddition(List<IElement> left, List<IElement> right, EvaluationBudget budget)
     {
         if (left.Count != 1 || right.Count != 1)
             return [];
@@ -627,6 +663,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         // String concatenation via + operator
         if (WireValue.AsWireString(leftValue) is { } leftStringVal && WireValue.AsWireString(rightValue) is { } rightStringVal)
         {
+            // Checked before allocating, as for '&': $total + $total under aggregate() doubles per item.
+            budget.EnsureStringLength((long)leftStringVal.Length + rightStringVal.Length, "Operator '+'");
             return [CreateString(leftStringVal + rightStringVal)];
         }
 

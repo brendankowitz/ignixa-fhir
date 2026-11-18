@@ -179,6 +179,34 @@ internal static class ValueOrdering
     }
 
     /// <summary>
+    /// A name for the set of units <paramref name="unit"/> is compatible with: two units are compatible for a
+    /// comparison exactly when their classes are equal.
+    /// </summary>
+    /// <remarks>
+    /// Mirrors <see cref="IQuantityUnitConverter.IsCompatible"/>: a year or month is compatible only with the same
+    /// unit spelled in the same form (calendar keyword or UCUM code), any other unit with every unit of the same UCUM
+    /// dimension, and a unit UCUM cannot read only with itself. Computing it once per unit is what lets
+    /// <see cref="ElementEqualityIndex"/> look a quantity up among compatible units only, instead of testing every
+    /// unit it holds.
+    /// </remarks>
+    internal static string CompatibilityClass(string unit)
+    {
+        ArgumentNullException.ThrowIfNull(unit);
+
+        var isKeyword = CalendarDuration.IsCalendarKeyword(unit);
+        var ucum = isKeyword ? CalendarDuration.GetUcumUnit(unit) ?? unit : unit;
+
+        if (ucum is "a" or "mo")
+        {
+            return string.Concat("variable:", ucum, isKeyword ? ":keyword" : ":ucum");
+        }
+
+        return UnitConverter.GetDimensionality(ucum) is { } dimension
+            ? "dimension:" + dimension
+            : "unit:" + unit;
+    }
+
+    /// <summary>
     /// Expresses <paramref name="quantity"/> in <paramref name="unit"/> exactly as <see cref="TryAlignUnits"/>
     /// expresses its right operand in its left operand's unit.
     /// </summary>

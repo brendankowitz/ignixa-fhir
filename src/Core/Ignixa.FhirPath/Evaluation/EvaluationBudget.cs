@@ -117,6 +117,13 @@ internal sealed class EvaluationBudget
     }
 
     /// <summary>
+    /// Charges for scanning or transforming <paramref name="length"/> characters of existing text - case mapping,
+    /// searching, splitting, decoding - at the same rate as building it.
+    /// </summary>
+    /// <exception cref="FhirPathResourceLimitExceededException">The step budget is exhausted.</exception>
+    public void ChargeText(long length) => Charge(length / CharactersPerStep);
+
+    /// <summary>
     /// Checks the size of a collection the evaluator is building.
     /// </summary>
     /// <param name="count">The size the collection has reached, or will reach.</param>

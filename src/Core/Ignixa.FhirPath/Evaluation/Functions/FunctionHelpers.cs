@@ -249,6 +249,24 @@ internal static class FunctionHelpers
     /// <returns>True if valid, false if empty collection</returns>
     /// <exception cref="FhirPathEvaluationException">If collection has multiple items or a value with no string representation</exception>
     public static bool TryGetSingleString(IEnumerable<IElement> focus, string functionName, out string str)
+        => TryGetSingleString(focus, functionName, budget: null, out str);
+
+    /// <summary>
+    /// <see cref="TryGetSingleString(IEnumerable{IElement}, string, out string)"/>, charging
+    /// <paramref name="budget"/> for the characters the calling function is about to scan.
+    /// </summary>
+    /// <remarks>
+    /// The string functions each do work proportional to their input; charging here, where they all obtain it,
+    /// is what keeps a large string repeated across a multiplied collection from scanning for free.
+    /// </remarks>
+    public static bool TryGetSingleString(IEnumerable<IElement> focus, string functionName, EvaluationBudget? budget, out string str)
+    {
+        var found = TryGetSingleStringCore(focus, functionName, out str);
+        budget?.ChargeText(str.Length);
+        return found;
+    }
+
+    private static bool TryGetSingleStringCore(IEnumerable<IElement> focus, string functionName, out string str)
     {
         str = string.Empty;
         var list = focus.ToList();
