@@ -208,6 +208,11 @@ public class FhirPathParser
     /// <param name="result">The parsed expression, or null if parsing failed</param>
     /// <param name="errorMessage">Error message if parsing failed, or null if successful</param>
     /// <returns>True if parsing succeeded, false otherwise</returns>
+    /// <remarks>
+    /// Any parse failure is reported as <see langword="false"/>, including the grammar running out of stack,
+    /// which it reports as a <see cref="FormatException"/>. Cancellation, memory exhaustion and an
+    /// <see cref="InsufficientExecutionStackException"/> from a later stage are not parse failures and propagate.
+    /// </remarks>
     public bool TryParse(string expression, out Expression? result, out string? errorMessage)
     {
         try
@@ -216,7 +221,7 @@ public class FhirPathParser
             errorMessage = null;
             return true;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
         {
             result = null;
             errorMessage = ex.Message;
@@ -231,6 +236,11 @@ public class FhirPathParser
     /// <param name="result">The parse tree, or null if parsing failed</param>
     /// <param name="errorMessage">Error message if parsing failed, or null if successful</param>
     /// <returns>True if parsing succeeded, false otherwise</returns>
+    /// <remarks>
+    /// Any parse failure is reported as <see langword="false"/>, including the grammar running out of stack,
+    /// which it reports as a <see cref="FormatException"/>. Cancellation, memory exhaustion and an
+    /// <see cref="InsufficientExecutionStackException"/> from a later stage are not parse failures and propagate.
+    /// </remarks>
     internal bool TryParseToTree(string expression, out ParseNode? result, out string? errorMessage)
     {
         try
@@ -239,7 +249,7 @@ public class FhirPathParser
             errorMessage = null;
             return true;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
         {
             result = null;
             errorMessage = ex.Message;

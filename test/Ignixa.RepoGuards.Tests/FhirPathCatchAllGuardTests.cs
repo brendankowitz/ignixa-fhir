@@ -3,6 +3,7 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text;
 using System.Text.RegularExpressions;
 using Shouldly;
 using Xunit;
@@ -18,17 +19,22 @@ namespace Ignixa.RepoGuards.Tests;
 /// handler returns - usually empty. In this library that changed answers: an invalid regex made a negated
 /// invariant true for every resource, and a regex timeout, cancellation or stack-guard exception thrown
 /// inside such a block would have been reported as "no match". A handler must name the exception it means,
-/// or filter <c>catch (Exception)</c> with <c>when</c> (normally <c>!ExceptionFilters.IsCritical(ex)</c>).
+/// or filter <c>catch (Exception)</c> with a <c>when</c> that excludes something (normally
+/// <c>!ExceptionFilters.IsCritical(ex)</c>). A filter that excludes nothing - <c>when (true)</c>,
+/// <c>when (ex is not null)</c> - is a catch-all and is reported as one.
 /// </para>
 /// <para>
 /// The scan cannot judge whether a filter is <em>correct</em>, only that one was written; that is what
-/// review is for. It runs over whole-file text with comment lines blanked, so <c>catch</c> and its
-/// <c>{</c> on separate lines are still seen, and documentation that mentions a bare <c>catch</c> is not.
+/// review is for. Comments are blanked (string literals are left alone, so a <c>"//"</c> in a URL does not
+/// hide the code after it) and matching runs over whole-file text, so a comment between <c>catch</c> and its
+/// <c>{</c>, or a line break there, cannot hide a catch-all.
 /// </para>
 /// </remarks>
 public class FhirPathCatchAllGuardTests
 {
     private const string LibraryPath = "src/Core/Ignixa.FhirPath";
+
+    private const string ExceptionType = @"(?:global::)?(?:System\s*\.\s*)?Exception";
 
     private static readonly Regex[] CatchAllPatterns =
     [
@@ -36,56 +42,38 @@ public class FhirPathCatchAllGuardTests
         new(@"\bcatch\s*\{", RegexOptions.Compiled | RegexOptions.CultureInvariant),
 
         // catch (Exception) { / catch (System.Exception ex) { - no 'when' between ')' and '{'.
-        new(@"\bcatch\s*\(\s*(?:global::)?(?:System\s*\.\s*)?Exception(?:\s+\w+)?\s*\)\s*\{", RegexOptions.Compiled | RegexOptions.CultureInvariant),
+        new($@"\bcatch\s*\(\s*{ExceptionType}(?:\s+\w+)?\s*\)\s*\{{", RegexOptions.Compiled | RegexOptions.CultureInvariant),
+
+        // catch (Exception ex) when (true) / when (ex is not null) / when (ex != null) - a filter that excludes nothing.
+        new(
+            $@"\bcatch\s*\(\s*{ExceptionType}(?:\s+(?<name>\w+))?\s*\)\s*when\s*\(\s*(?:true|\k<name>\s*(?:is\s+not\s+null|!=\s*null))\s*\)",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant),
     ];
 
-    /// <summary>
-    /// Catch-alls that are deliberate, with the reason. Keyed by path relative to <see cref="LibraryPath"/>;
-    /// the value is how many the file may hold. An entry whose count no longer matches fails the scan, so the
-    /// list cannot outlive the code it excuses.
-    /// </summary>
-    private static readonly Dictionary<string, (int Count, string Reason)> Allowlist = new(StringComparer.Ordinal)
-    {
-        ["Parser/FhirPathParser.cs"] = (2,
-            "TryParse / TryParseToTree are the Try-pattern over Parse: their contract is to report any parse "
-            + "failure as false with its message. Narrowing them to FormatException (and letting OOM and "
-            + "cancellation through) is tracked separately; the file is owned by the parse-limit work."),
-    };
-
     [Fact]
-    public void GivenFhirPathSources_WhenScanned_ThenNoCatchAllOutsideTheAllowlist()
+    public void GivenFhirPathSources_WhenScanned_ThenNoneHoldsACatchAll()
     {
         var root = Path.Combine(RepoRoot.Find(), LibraryPath);
         var sources = LibrarySources(root);
         sources.Count.ShouldBeGreaterThan(50,
             $"Found too few .cs files under {LibraryPath} for this scan to be meaningful; the scan path is probably wrong.");
 
-        var found = sources
-            .Select(file => (File: Relative(root, file), CatchAlls: FindCatchAlls(File.ReadAllText(file))))
-            .Where(entry => entry.CatchAlls.Count > 0)
-            .ToList();
-
-        var offenders = found
-            .Where(entry => !Allowlist.TryGetValue(entry.File, out var allowed) || allowed.Count != entry.CatchAlls.Count)
-            .SelectMany(entry => entry.CatchAlls.Select(catchAll => $"{LibraryPath}/{entry.File}({catchAll.Line}): {catchAll.Text}"))
-            .ToList();
-
-        var staleEntries = Allowlist.Keys
-            .Where(file => found.All(entry => !string.Equals(entry.File, file, StringComparison.Ordinal)))
+        var offenders = sources
+            .SelectMany(file => FindCatchAlls(File.ReadAllText(file))
+                .Select(catchAll => $"{LibraryPath}/{Relative(root, file)}({catchAll.Line}): {catchAll.Text}"))
             .ToList();
 
         offenders.ShouldBeEmpty(
             "A bare catch or an unfiltered catch (Exception) converts every failure - including cancellation, "
             + "memory exhaustion, stack exhaustion and regex timeouts - into the handler's result. Catch the "
-            + "exception the handler means, or add a 'when' filter such as !ExceptionFilters.IsCritical(ex). "
-            + "If a catch-all is genuinely intended, add it to the allowlist in this file with a reason."
+            + "exception the handler means, or add a 'when' filter such as !ExceptionFilters.IsCritical(ex)."
             + Environment.NewLine + string.Join(Environment.NewLine, offenders));
-        staleEntries.ShouldBeEmpty("These allowlist entries no longer hold a catch-all; remove them.");
     }
 
     /// <summary>
     /// The positive control: without it a defect in the matcher would let the scan report green over files
-    /// it never really examined.
+    /// it never really examined. The comment rows defeated an earlier revision that blanked only whole
+    /// comment lines.
     /// </summary>
     [Theory]
     [InlineData("try { x(); } catch { return []; }")]
@@ -94,13 +82,21 @@ public class FhirPathCatchAllGuardTests
     [InlineData("catch (Exception ex)\n{\n    Log(ex);\n}")]
     [InlineData("catch (System.Exception ex) { }")]
     [InlineData("catch (global::System.Exception ex) { }")]
+    [InlineData("catch (Exception ex) // swallow\n{ }")]
+    [InlineData("catch (Exception ex) /* swallow */ { }")]
+    [InlineData("catch /* all */ { }")]
+    [InlineData("catch // all\n{ }")]
+    [InlineData("catch (Exception ex) when (true) { }")]
+    [InlineData("catch (Exception ex) when (ex is not null) { }")]
+    [InlineData("catch (Exception e) when ( e != null ) { }")]
+    [InlineData("var url = \"http://example.org\"; try { } catch { }")]
     public void GivenACatchAll_WhenScanned_ThenItIsDetected(string source)
     {
         FindCatchAlls(source).ShouldNotBeEmpty("The scan does not see this catch-all, so it is inert for code written this way.");
     }
 
     /// <summary>
-    /// The negative control: typed and filtered handlers, and documentation, are not catch-alls.
+    /// The negative control: typed and genuinely filtered handlers, comments and string literals are not catch-alls.
     /// </summary>
     [Theory]
     [InlineData("catch (FormatException) { return []; }")]
@@ -110,6 +106,8 @@ public class FhirPathCatchAllGuardTests
     [InlineData("catch (ExceptionWrapper ex) { }")]
     [InlineData("/// The old bare <c>catch</c> folded overflow into empty: catch { return []; }")]
     [InlineData("// catch (Exception ex) { } was removed")]
+    [InlineData("/* catch { } */ int x;")]
+    [InlineData("var message = \"never write catch { } here\";")]
     public void GivenAHandlerThatIsNotACatchAll_WhenScanned_ThenItIsNotReported(string source)
     {
         FindCatchAlls(source).ShouldBeEmpty("The scan reports a handler that names or filters its exception.");
@@ -117,10 +115,9 @@ public class FhirPathCatchAllGuardTests
 
     private static IReadOnlyList<(int Line, string Text)> FindCatchAlls(string source)
     {
-        var lines = source.ReplaceLineEndings("\n").Split('\n');
-        var scannable = string.Join(
-            '\n',
-            lines.Select(line => line.TrimStart().StartsWith("//", StringComparison.Ordinal) ? string.Empty : line));
+        var normalized = source.ReplaceLineEndings("\n");
+        var lines = normalized.Split('\n');
+        var scannable = BlankCommentsAndStrings(normalized);
 
         return CatchAllPatterns
             .SelectMany(pattern => pattern.Matches(scannable).Cast<Match>())
@@ -129,6 +126,85 @@ public class FhirPathCatchAllGuardTests
             .OrderBy(catchAll => catchAll.Line)
             .ToList();
     }
+
+    /// <summary>
+    /// Replaces the contents of comments and string/char literals with spaces, keeping newlines so line
+    /// numbers still address the original text. Literals are tracked only so their contents can neither
+    /// open a comment nor be mistaken for code; interpolation holes are treated as literal text, which is
+    /// conservative for this scan.
+    /// </summary>
+    private static string BlankCommentsAndStrings(string source)
+    {
+        var output = new StringBuilder(source.Length);
+        var i = 0;
+        while (i < source.Length)
+        {
+            if (StartsWith(source, i, "//"))
+            {
+                i = Blank(source, output, i, source.IndexOf('\n', i) is var end and >= 0 ? end : source.Length);
+            }
+            else if (StartsWith(source, i, "/*"))
+            {
+                var close = source.IndexOf("*/", i + 2, StringComparison.Ordinal);
+                i = Blank(source, output, i, close >= 0 ? close + 2 : source.Length);
+            }
+            else if (source[i] is '"' or '\'')
+            {
+                i = Blank(source, output, i, EndOfLiteral(source, i));
+            }
+            else
+            {
+                output.Append(source[i]);
+                i++;
+            }
+        }
+
+        return output.ToString();
+    }
+
+    private static int EndOfLiteral(string source, int start)
+    {
+        var quote = source[start];
+        var verbatim = quote == '"' && start > 0 && source[start - 1] == '@';
+        if (quote == '"' && StartsWith(source, start, "\"\"\""))
+        {
+            var close = source.IndexOf("\"\"\"", start + 3, StringComparison.Ordinal);
+            return close >= 0 ? close + 3 : source.Length;
+        }
+
+        for (var i = start + 1; i < source.Length; i++)
+        {
+            if (!verbatim && source[i] == '\\')
+            {
+                i++;
+            }
+            else if (source[i] == quote)
+            {
+                if (verbatim && i + 1 < source.Length && source[i + 1] == '"')
+                {
+                    i++;
+                    continue;
+                }
+
+                return i + 1;
+            }
+        }
+
+        return source.Length;
+    }
+
+    private static int Blank(string source, StringBuilder output, int start, int end)
+    {
+        for (var i = start; i < end; i++)
+        {
+            output.Append(source[i] == '\n' ? '\n' : ' ');
+        }
+
+        return end;
+    }
+
+    private static bool StartsWith(string source, int index, string value) =>
+        string.CompareOrdinal(source, index, value, 0, value.Length) == 0;
 
     private static (int Line, string Text) LineAt(string scannable, string[] lines, int index)
     {

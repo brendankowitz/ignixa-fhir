@@ -379,10 +379,14 @@ public class QuantityUnitConverter : IQuantityUnitConverter
     /// <item><see cref="OverflowException"/>: an exponent beyond <see cref="short"/> (<c>m40000</c>), or a magnitude
     /// beyond <see cref="decimal"/> (<c>km30000</c>, or multiplying two large canonical values).</item>
     /// </list>
-    /// Anything else - cancellation, memory or stack exhaustion, a defect - propagates.
+    /// <see cref="ArgumentNullException"/> and <see cref="ArgumentOutOfRangeException"/> are excluded: the package
+    /// throws neither for a bad unit (no explicit throw in the decompiled source, and none in 20,000 fuzzed
+    /// unit strings), so either one here is a defect. Anything else - cancellation, memory or stack
+    /// exhaustion, a defect - propagates too.
     /// </remarks>
     private static bool IsUnitAlgebraFailure(Exception ex) =>
-        ex is ArgumentException or InvalidCastException or FormatException or OverflowException;
+        ex is (ArgumentException and not (ArgumentNullException or ArgumentOutOfRangeException))
+            or InvalidCastException or FormatException or OverflowException;
 
     /// <summary>
     /// Checks if two quantities have the same dimensionality.

@@ -89,7 +89,7 @@ public class FhirPathDelegateCompiler
                 _ => null
             };
         }
-        catch (Exception ex) when (ex is not (InsufficientExecutionStackException or OperationCanceledException or OutOfMemoryException))
+        catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
         {
             // A compilation failure falls back to the interpreter. Stack exhaustion, cancellation and
             // memory exhaustion are not compilation failures: falling back would hide them, and the
