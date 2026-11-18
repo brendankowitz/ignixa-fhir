@@ -1,5 +1,5 @@
 ---
-applyTo: "src/Application/Ignixa.Api/**,src/Application/Ignixa.Api.OpenIddict/**,src/Application/Ignixa.Application/Features/Authorization/**,src/Application/Ignixa.Application/Features/Experimental/**"
+applyTo: "src/Application/Ignixa.Api/**,src/Application/Ignixa.Api.OpenIddict/**,src/Application/Ignixa.Application/Features/Authorization/**,src/Application/Ignixa.Application/Features/Experimental/**,src/Application/Ignixa.Application/Features/Metadata/**,src/Application/Ignixa.Web/**"
 excludeAgent: "cloud-agent"
 ---
 
@@ -13,7 +13,7 @@ These files decide who the caller is and what one request is allowed to do. Noth
 2. **The declared interaction must match the work.** Check `FhirAuthorizationMetadata` against what the handler does. A route declared as `Read` or `SearchSystem` must not create, update, or delete. If the handler can do more than the route declares, it must authorize each further interaction explicitly or refuse it, as `GraphQlEndpoints.RefuseMutation` refuses mutations while authorization is enabled. A route that can touch every type must declare `*`.
 3. **Operations have no permission of their own.** Each `$operation` route must declare the interaction it authorizes as. Read, search, and write permissions are independent, so an operation that performs more than one interaction needs authority for each of them.
 4. **Server-wide effects need server-wide authority.** An operation that changes state shared by all tenants needs `RequireServerWideAuthority()` after `RequireFhirAuthorization()`.
-5. **Filter order.** `TenantResolutionMiddleware` must run before authorization. A filter or middleware that returns early must not let a request reach a handler unauthorized.
+5. **Filter order.** `TenantResolutionMiddleware` must run before authorization, and `MiddlewareRegistration` composes that order. A filter or middleware that returns early must not let a request reach a handler unauthorized.
 6. **Other entry points.** MCP tools must authorize through `IMcpAuthorizationService`, and a tool that acts on tenant data derives from `TenantAwareMcpTool`. GraphQL routes are authorized as a search on `*`, and mutations are refused while authorization is enabled because they have no per-resource check. A change that lets mutations run must authorize each one for the interaction and type it performs. Check that an IDE or debug surface does not run mutations unauthenticated.
 
 ## The handler pipeline
