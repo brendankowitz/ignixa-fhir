@@ -213,7 +213,7 @@ internal sealed class ElementEqualityIndex
             members.UnscaledUnits.Add(quantity.Unit);
         }
 
-        if (IsNearTheScaleLimit(quantity.Value))
+        if (IsImprecise(quantity.Value, scale))
         {
             members.Imprecise.Add((element, quantity.Unit));
         }
@@ -276,19 +276,20 @@ internal sealed class ElementEqualityIndex
             return false;
         }
 
-        if (IsNearTheScaleLimit(quantity.Value))
+        var unitScale = ScaleOf(quantity.Unit, members);
+        if (IsImprecise(quantity.Value, unitScale))
         {
             // A conversion that lands near decimal's 28-place limit keeps few significant digits, so an equal member
             // can sit any distance away by magnitude or converted value: compare with every member of the class.
-            return AnyEqualIn(members.All, quantity.Unit, candidate);
+            return AnyEqualIn(members.All, candidate);
         }
 
-        if (AnyEqualIn(members.Imprecise, quantity.Unit, candidate))
+        if (AnyEqualIn(members.Imprecise, candidate))
         {
             return true;
         }
 
-        if (ScaleOf(quantity.Unit, members) is not { } scale)
+        if (unitScale is not { } scale)
         {
             // Without a scale the candidate cannot be placed among the scaled members, so it probes every unit.
             return AnyEqualInUnits(quantity, candidate, members, members.ByUnit.Keys);
@@ -297,7 +298,7 @@ internal sealed class ElementEqualityIndex
         var bucket = BucketOf(quantity.Value, scale);
         for (var neighbour = bucket.Magnitude - 1; neighbour <= bucket.Magnitude + 1; neighbour++)
         {
-            if (members.ByMagnitude.TryGetValue((bucket.Sign, neighbour), out var near) && AnyEqualIn(near, quantity.Unit, candidate))
+            if (members.ByMagnitude.TryGetValue((bucket.Sign, neighbour), out var near) && AnyEqualIn(near, candidate))
             {
                 return true;
             }
@@ -312,6 +313,15 @@ internal sealed class ElementEqualityIndex
     /// values, so a pair can only be mis-bucketed when one of their values is this small.
     /// </summary>
     private static bool IsNearTheScaleLimit(decimal value) => value != 0m && Math.Abs(value) < PreciseMagnitude;
+
+    /// <summary>
+    /// Whether a quantity's value, or its magnitude in the class's first unit, is near decimal's scale limit. The
+    /// magnitude matters too: a value that underflows to zero when converted equals a zero member pairwise, but its
+    /// non-zero magnitude would bucket it away from zero, so such a quantity is compared with every member instead.
+    /// </summary>
+    private static bool IsImprecise(decimal value, double? scale) =>
+        IsNearTheScaleLimit(value)
+        || (value != 0m && scale is { } factor && Math.Abs((double)value * factor) < (double)PreciseMagnitude);
 
     /// <summary>
     /// In each of <paramref name="units"/>, finds a member holding the value equality would compare with
@@ -343,12 +353,12 @@ internal sealed class ElementEqualityIndex
     }
 
     /// <summary>
-    /// Compares the candidate with members of nearly the same magnitude, charging a conversion for each member in
-    /// another unit, since equality converts between them.
+    /// Compares the candidate with each of <paramref name="near"/>, a step each; the UCUM work a comparison between
+    /// different units does is charged by the evaluation's metered converter.
     /// </summary>
-    private bool AnyEqualIn(List<(IElement Element, string Unit)> near, string candidateUnit, IElement candidate)
+    private bool AnyEqualIn(List<(IElement Element, string Unit)> near, IElement candidate)
     {
-        foreach (var (member, unit) in near)
+        foreach (var (member, _) in near)
         {
             _beforeComparison?.Invoke();
             _budget.Step();

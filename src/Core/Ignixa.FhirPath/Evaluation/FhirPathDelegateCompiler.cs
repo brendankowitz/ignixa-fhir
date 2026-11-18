@@ -30,12 +30,13 @@ namespace Ignixa.FhirPath.Evaluation;
 /// implements the full language. Declining is always safe; it costs speed, never correctness.
 /// </para>
 /// <para>
-/// <b>Limits and cancellation.</b> None of the compiled forms can do more work than the data in front of it:
-/// each is navigation, a filter or a count over the input, with no construction, recursion or set operation.
-/// So the step, size and string limits of <see cref="FhirPathEvaluationLimits"/>, which exist to stop an
-/// expression amplifying its input, have nothing to bound here. Cancellation does apply: a compiled delegate
-/// observes <see cref="EvaluationContext.CancellationToken"/> when it is invoked and per item inside
-/// <c>where()</c>, the one loop it runs.
+/// <b>Limits and cancellation.</b> None of the compiled forms can amplify its input: each is navigation, a filter
+/// or a count over it, with no construction, recursion or set operation. Its comparisons still go through the
+/// interpreter's, which charge the evaluation's budget for the text they read and the unit conversions they make,
+/// so a compiled delegate runs under a budget of its own, started from the context's limits and token on every
+/// call (<c>TypedElementExtensions.InvokeCompiled</c>). It observes
+/// <see cref="EvaluationContext.CancellationToken"/> when it is invoked and per item inside <c>where()</c>, the one
+/// loop it runs.
 /// </para>
 /// <para>
 /// This summary previously claimed coverage of "92% of common search parameter patterns", with a

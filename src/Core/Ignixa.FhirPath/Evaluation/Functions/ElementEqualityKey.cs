@@ -253,10 +253,15 @@ internal static class ElementEqualityKey
     {
         FhirQuantity => true,
         null => TryGetContribution(value, depth + 1, budget, out var contribution) && contribution == QuantityLikeTag,
-        var other when WireValue.AsWireString(other) is { } text =>
-            decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out _),
+        var other when WireValue.AsWireString(other) is { } text => ParsesAsMagnitude(text, budget),
         var other => IsNumber(other),
     };
+
+    private static bool ParsesAsMagnitude(string text, EvaluationBudget budget)
+    {
+        budget.ChargeText(text.Length);
+        return ValueOrdering.TryParseNumericText(text, out _);
+    }
 
     private static bool TryHashChildren(IElement element, int depth, EvaluationBudget budget, out int hash)
     {

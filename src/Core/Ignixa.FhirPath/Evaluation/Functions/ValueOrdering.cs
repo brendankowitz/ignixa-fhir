@@ -333,11 +333,32 @@ internal static class ValueOrdering
             case float floatValue:
                 return TryNarrow(floatValue, out result);
             case string text when IsNumericInstanceType(element.InstanceType):
-                return decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out result);
+                return TryParseNumericText(text, out result);
             default:
                 result = 0m;
                 return false;
         }
+    }
+
+    /// <summary>
+    /// The longest text read as a number. <see cref="decimal"/> holds 29 significant digits, so longer text is a
+    /// number it cannot hold - treated as such, like any other overflow - and parsing it would only cost time in
+    /// proportion to text the caller supplied.
+    /// </summary>
+    internal const int MaxNumericTextLength = 256;
+
+    /// <summary>
+    /// Parses number text as <see cref="decimal"/>, refusing text longer than <see cref="MaxNumericTextLength"/>.
+    /// </summary>
+    internal static bool TryParseNumericText(string text, out decimal result)
+    {
+        if (text.Length > MaxNumericTextLength)
+        {
+            result = 0m;
+            return false;
+        }
+
+        return decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out result);
     }
 
     /// <summary>

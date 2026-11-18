@@ -179,9 +179,39 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         }
 
         return BoundEngineStrings(
-            DispatchFunctionCall(expression.FunctionName, focusElements, expression.Arguments, context),
+            DispatchFunctionCall(expression.FunctionName, ChargeStringInputs(focusElements, context.Budget), expression.Arguments, context),
             context.Budget,
             expression.FunctionName);
+    }
+
+    /// <summary>
+    /// Evaluates a function's argument, or its per-item expression, for the function: the callback every
+    /// expression-taking function receives.
+    /// </summary>
+    /// <remarks>
+    /// Charges the text of every String it yields, as <see cref="VisitFunctionCall"/> does for the focus. A String
+    /// can reach a function through a handle that costs one step - a variable, a resource element - while the
+    /// function scans all of it (parsing, matching, formatting), so the charge is made where the function receives
+    /// the value rather than left to each function.
+    /// </remarks>
+    private IEnumerable<IElement> EvaluateFunctionArgument(IEnumerable<IElement> focus, Expression expression, EvaluationContext context) =>
+        ChargeStringInputs(EvaluateExpression(focus, expression, context), context.Budget);
+
+    /// <summary>
+    /// Yields <paramref name="items"/> unchanged, charging the text of each String at the budget's character rate as
+    /// it is read.
+    /// </summary>
+    private static IEnumerable<IElement> ChargeStringInputs(IEnumerable<IElement> items, EvaluationBudget budget)
+    {
+        foreach (var item in items)
+        {
+            if (item.Value is string text)
+            {
+                budget.ChargeText(text.Length);
+            }
+
+            yield return item;
+        }
     }
 
     /// <summary>
@@ -1354,10 +1384,13 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 return context.Focus;
 
             case "total":
-                // $total is used in aggregate() - retrieve from environment
+                // $total is used in aggregate() - retrieve from environment. Charged per item like a %variable read:
+                // the accumulator is a collection handed out whole on every read.
                 var totalValue = context.GetEnvironmentVariable("total");
+                if (totalValue is IReadOnlyCollection<IElement> totalCollection)
+                    return ChargedRead(totalCollection, context.Budget);
                 if (totalValue is IEnumerable<IElement> totalElements)
-                    return totalElements;
+                    return context.Budget.PerItem(totalElements);
                 if (totalValue is IElement totalElement)
                     return [totalElement];
                 return [];

@@ -433,7 +433,7 @@ public class FhirPathFunctionGenerator : IIncrementalGenerator
         // Full signature: (focus, arguments, context, evaluator)
         if (sig.HasFocus && sig.HasArguments && sig.HasContext && sig.HasEvaluator)
         {
-            return $"{className}.{methodName}(focus, arguments, context, EvaluateExpression)";
+            return $"{className}.{methodName}(focus, arguments, context, EvaluateFunctionArgument)";
         }
 
         // (focus, arguments, context) - no evaluator

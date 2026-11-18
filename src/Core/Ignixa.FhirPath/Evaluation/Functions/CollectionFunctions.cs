@@ -932,6 +932,8 @@ internal static class CollectionFunctions
         var index = 0;
         foreach (var element in focus)
         {
+            // Binding $total copies the accumulator into the scope, so each iteration costs its size.
+            context.Budget.Charge(total.Count);
             var innerContext = context
                 .PushThis(element)
                 .PushIndex(index++)

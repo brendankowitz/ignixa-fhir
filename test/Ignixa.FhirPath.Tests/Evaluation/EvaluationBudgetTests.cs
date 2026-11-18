@@ -97,7 +97,7 @@ public class EvaluationBudgetTests
     /// does not. Measured: building them costs 1,986 steps, and the cheapest operation (isDistinct(),
     /// subsetOf()) 3,816 including the build.
     /// </summary>
-    private const long PairwiseBudget = 3_000;
+    private const long PairwiseBudget = 3_500;
 
     public static TheoryData<string> PairwiseSetOperations => new()
     {
