@@ -11,7 +11,7 @@ A search request is authorized for one interaction on one resource type in one t
 
 1. **Included types need authority too.** `_include`, `_revinclude`, `:iterate`, chaining, `_has`, and `$everything` return or test resources of types the route did not name. Check that the caller holds read or search on each type that can be returned, not only on the route's type.
 2. **Existence leaks.** Totals, `next` links, and distinct errors or status codes must not reveal resources the caller cannot read. A chained or `_has` predicate on a forbidden type is an oracle even when nothing of that type is returned.
-3. **Compartments.** `CompartmentSearchExpression`, the compartment lowering rules, and `HiddenCompartmentMembership` decide membership. A change that widens membership, or that treats an unresolved or foreign reference as a member, widens access. Keep documented shared-resource exceptions.
+3. **Compartments.** `CompartmentSearchExpression`, the compartment lowering rules, and the compartment definitions decide membership. A change that widens membership, or that treats an unresolved or foreign reference as a member, widens access. Keep documented shared-resource exceptions. `HiddenCompartmentMembership` does not decide membership. It reports membership parameters the tenant cannot search yet, so that an incomplete result carries a warning. Keep that warning.
 
 ## Paging and history
 
