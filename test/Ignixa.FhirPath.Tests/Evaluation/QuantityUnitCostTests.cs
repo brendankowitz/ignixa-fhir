@@ -45,7 +45,9 @@ public class QuantityUnitCostTests
     public void GivenTheSameComparisonRepeated_WhenEvaluatedUnderALowStepLimit_ThenItIsAnsweredFromTheMemo()
     {
         // Arrange: one conversion repeated 2,000 times converts once; the repeats cost a step each. Without the memo each
-        // repeat would be charged hundreds of steps of UCUM time, far past the million allowed here.
+        // repeat would be charged hundreds of steps of UCUM time, far past the million allowed here. UCUM is warmed
+        // first so its one-time table load, charged by elapsed time, is not counted against this budget.
+        _ = _evaluator.Evaluate(Patient, _parser.Parse("1 'cm' < 1 'm'"), new EvaluationContext()).ToList();
         var expression = "'" + new string('a', 2_000) + "'.toChars().select(1 'cm' < 1 'm').count()";
         var context = new EvaluationContext { Limits = FhirPathEvaluationLimits.Default with { MaxSteps = 1_000_000 } };
 

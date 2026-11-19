@@ -272,11 +272,15 @@ public class HashedDedupSemanticsTests
     {
         // Arrange - combo-value-quantity over components whose units all differ (m1, m2, ... m1000 are a thousand
         // dimensions). Grouped by unit alone, every lookup tested every unit: about 500,000 probes, each a UCUM
-        // parse of hundreds of microseconds. Grouped by compatibility class, each unit is read once (charged by
-        // elapsed time) and a lookup tests only its own class, so a thousand units fit the default budget with a wide
-        // margin even on a loaded machine.
+        // parse of hundreds of microseconds. Grouped by compatibility class, each unit is read once and a lookup
+        // tests only its own class: about a thousandth of that work. UCUM work is charged by elapsed time, so the
+        // budget is ten times the default (about 25 s of UCUM time) - room for a loaded CI runner and the one-time
+        // UCUM table load on the linear path, while the quadratic path still exceeds it several times over.
         var root = Parse(ObservationWithDistinctUnits(1_000));
-        var context = new EvaluationContext();
+        var context = new EvaluationContext
+        {
+            Limits = new FhirPathEvaluationLimits { MaxSteps = 10 * FhirPathEvaluationLimits.Default.MaxSteps },
+        };
 
         // Act
         var result = _evaluator.Evaluate(root, _parser.Parse("(component.value | component.value).count()"), context).ToList();
