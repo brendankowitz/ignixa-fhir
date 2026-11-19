@@ -38,7 +38,8 @@ public sealed record FhirPathRule
 
     /// <summary>
     /// True for a rule the server defines (a bootstrap policy), whose path is evaluated in the server expression tier;
-    /// false for a rule from request-supplied configuration. Not settable from configuration.
+    /// false for a rule from request-supplied configuration. Neither read from nor written to configuration.
     /// </summary>
-    internal bool IsServerDefined { get; init; }
+    [JsonIgnore]
+    public bool IsServerDefined { get; internal init; }
 }

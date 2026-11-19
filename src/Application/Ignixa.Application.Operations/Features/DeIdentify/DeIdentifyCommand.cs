@@ -15,12 +15,13 @@ namespace Ignixa.Application.Operations.Features.DeIdentify;
 /// <param name="TenantId">The tenant ID for multi-tenant isolation.</param>
 /// <param name="InputResource">The FHIR resource to de-identify.</param>
 /// <param name="Policy">The de-identification policy code (e.g., HHS_SAFE_HARBOR_DETERMINISTIC_METHOD).</param>
-/// <param name="ConfigurationLibrary">The Library resource containing DeIdOptions configuration.</param>
+/// <param name="ConfigurationLibrary">A request-supplied Library resource containing DeIdOptions configuration, or null
+/// to use the built-in policy named by <paramref name="Policy"/>.</param>
 public record DeIdentifyCommand(
     int TenantId,
     ResourceJsonNode InputResource,
     string Policy,
-    ResourceJsonNode ConfigurationLibrary) : IRequest<DeIdentifyResult>;
+    ResourceJsonNode? ConfigurationLibrary) : IRequest<DeIdentifyResult>;
 
 /// <summary>
 /// Result of a FHIR $de-identify operation.

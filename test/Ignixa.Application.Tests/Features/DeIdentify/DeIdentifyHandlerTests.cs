@@ -10,9 +10,11 @@ using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Operations.Features.DeIdentify;
 using Ignixa.Application.Tests.TestDoubles;
 using Ignixa.DeId.Configuration;
+using Ignixa.DeId.Darts;
 using Ignixa.DeId.Darts.Configuration;
 using Ignixa.DeId.Models;
 using Ignixa.DeId.Pipeline;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
@@ -279,6 +281,86 @@ public class DeIdentifyHandlerTests
         await _pipeline.Received(1).ExecuteAsync(
             Arg.Any<DeIdContext>(),
             Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(DartsConstants.PolicySafeHarbor)]
+    [InlineData(DartsConstants.PolicyExpertDetermination)]
+    public async Task GivenNoConfigurationLibrary_WhenDeIdentifyingWithABuiltInPolicy_ThenItsRulesAreEvaluatedAsServerDefined(string policy)
+    {
+        // Regression: the built-in policy was round-tripped through a Library, which dropped the rules' server-defined
+        // provenance, so their paths shared the bounded request-supplied expression tier with custom-rule traffic.
+        var resource = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"patient-123"}""");
+        var command = new DeIdentifyCommand(1, resource, policy, null);
+        SetupFhirContext();
+        SetupPipelineSuccess(resource);
+
+        await _handler.HandleAsync(command, CancellationToken.None);
+
+        var options = ReceivedOptions();
+        options.Rules.ShouldNotBeEmpty();
+        options.Rules.ShouldAllBe(rule => rule.IsServerDefined);
+    }
+
+    [Fact]
+    public async Task GivenNoConfigurationLibraryAndSafeHarborPolicy_WhenDeIdentifying_ThenProcessorFailuresStopTheOperation()
+    {
+        // Regression (moved from the endpoint, which no longer builds the policy): the default SAFE_HARBOR policy
+        // loaded with LogAndContinue, so by default a processor failure left data in clear and returned 200.
+        var resource = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"patient-123"}""");
+        var command = new DeIdentifyCommand(1, resource, DartsConstants.PolicySafeHarbor, null);
+        SetupFhirContext();
+        SetupPipelineSuccess(resource);
+
+        await _handler.HandleAsync(command, CancellationToken.None);
+
+        ReceivedOptions().Processing!.ErrorHandling.ShouldBe(ErrorHandlingMode.StopOnError);
+    }
+
+    [Fact]
+    public async Task GivenNoConfigurationLibraryAndAnUnknownPolicy_WhenDeIdentifying_ThenTheRequestIsRejectedNamingTheSupportedPolicies()
+    {
+        var resource = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"patient-123"}""");
+        var command = new DeIdentifyCommand(1, resource, "NO_SUCH_POLICY", null);
+        SetupFhirContext();
+
+        var ex = await Should.ThrowAsync<BadRequestException>(() => _handler.HandleAsync(command, CancellationToken.None));
+
+        ex.Message.ShouldBe(
+            $"Unknown de-identification policy: 'NO_SUCH_POLICY'. Supported policies: {DartsConstants.PolicySafeHarbor}, {DartsConstants.PolicyExpertDetermination}.");
+        await _pipeline.DidNotReceiveWithAnyArgs().ExecuteAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task GivenConfigurationLibraryClaimingServerDefinedRules_WhenDeIdentifying_ThenItsRulesStayRequestSupplied()
+    {
+        // Guard: a request-supplied Library cannot promote its rules into the server expression tier.
+        var resource = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"patient-123"}""");
+        const string optionsJson = """
+            {"fhirVersion":"R4","fhirPathRules":[{"path":"Patient.name","method":"redact","isServerDefined":true}]}
+            """;
+        var library = ResourceJsonNode.Parse($$"""
+            {
+                "resourceType": "Library",
+                "status": "active",
+                "type": { "coding": [{ "system": "{{DartsConstants.LibraryTypeSystem}}", "code": "{{DartsConstants.LibraryTypeCode}}" }] },
+                "content": [{ "contentType": "application/json", "data": "{{Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(optionsJson))}}" }]
+            }
+            """);
+        var command = new DeIdentifyCommand(1, resource, DartsConstants.PolicySafeHarbor, library);
+        SetupFhirContext();
+        SetupPipelineSuccess(resource);
+
+        var result = await _handler.HandleAsync(command, CancellationToken.None);
+
+        result.ErrorMessage.ShouldBeNull();
+        ReceivedOptions().Rules.ShouldHaveSingleItem().IsServerDefined.ShouldBeFalse();
+    }
+
+    private DeIdOptions ReceivedOptions()
+    {
+        var call = _pipeline.ReceivedCalls().ShouldHaveSingleItem();
+        return ((DeIdContext)call.GetArguments()[0]!).Options;
     }
 
     private void SetupFhirContext()

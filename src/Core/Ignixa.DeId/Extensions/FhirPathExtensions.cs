@@ -49,12 +49,22 @@ public static class FhirPathExtensions
         element.Select(expression, CancellationToken.None);
 
     /// <summary>
-    /// Parses an expression so that an invalid one is rejected up front rather than when first evaluated.
+    /// Parses an expression so that an invalid one is rejected up front rather than when first evaluated, compiling
+    /// it into the tier <see cref="Select(IElement, string, bool, CancellationToken)"/> will later read.
     /// </summary>
+    /// <param name="expression">The FHIRPath expression.</param>
+    /// <param name="requestSupplied">Whether the expression came from the request rather than the server.</param>
     /// <exception cref="Exception">The expression cannot be parsed.</exception>
-    public static void EnsureParses(string expression)
+    public static void EnsureParses(string expression, bool requestSupplied)
     {
-        TypedElementExtensions.PrecompileRequestSupplied(expression);
+        if (requestSupplied)
+        {
+            TypedElementExtensions.PrecompileRequestSupplied(expression);
+        }
+        else
+        {
+            TypedElementExtensions.Precompile(expression);
+        }
     }
 
     /// <summary>

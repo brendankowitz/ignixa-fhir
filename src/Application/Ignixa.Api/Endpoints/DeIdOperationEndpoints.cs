@@ -8,7 +8,6 @@ using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.Operations.Features.DeIdentify;
 using Ignixa.DeId.Darts;
-using Ignixa.DeId.Darts.Configuration;
 using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
@@ -169,23 +168,7 @@ public static class DeIdOperationEndpoints
                 ?? DartsConstants.PolicySafeHarbor;
         }
 
-        // If no custom Library configuration was provided, use a built-in bootstrap policy.
-        // Future enhancement: load Library resource from database by policy code.
-        if (configLibrary is null)
-        {
-            try
-            {
-                configLibrary = CreateBootstrapLibrary(policy);
-            }
-            catch (ArgumentException ex)
-            {
-                return FhirResults.BadRequest(CreateOperationOutcome(
-                    OperationOutcomeIssue.IssueSeverityCode.Error,
-                    OperationOutcomeIssue.IssueTypeCommon.Invalid,
-                    ex.Message));
-            }
-        }
-
+        // Without a configuration Library, the handler applies the built-in policy the code names.
         var command = new DeIdentifyCommand(
             tenantId,
             resourceNode,
@@ -222,21 +205,6 @@ public static class DeIdOperationEndpoints
         context.Response.Headers.Append(
             DeIdWarningHeader,
             $"count={warnings.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
-    }
-
-    internal static ResourceJsonNode CreateBootstrapLibrary(string policy)
-    {
-        var options = policy switch
-        {
-            DartsConstants.PolicySafeHarbor => BootstrapPolicies.CreateSafeHarborOptions(),
-            DartsConstants.PolicyExpertDetermination => BootstrapPolicies.CreateExpertDeterminationOptions(),
-            _ => throw new ArgumentException($"Unknown de-identification policy: '{policy}'. Supported policies: {DartsConstants.PolicySafeHarbor}, {DartsConstants.PolicyExpertDetermination}.")
-        };
-
-        return LibraryConfigurationLoader.CreateLibraryResource(
-            $"deid-{policy.ToUpperInvariant()}",
-            policy,
-            options);
     }
 
     private static OperationOutcome CreateOperationOutcome(

@@ -2,6 +2,7 @@
 // Copyright (c) Ignixa Contributors.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
+using System.Diagnostics.CodeAnalysis;
 using Ignixa.DeId.Configuration;
 
 namespace Ignixa.DeId.Darts.Configuration;
@@ -11,6 +12,23 @@ namespace Ignixa.DeId.Darts.Configuration;
 /// </summary>
 public static class BootstrapPolicies
 {
+    /// <summary>
+    /// Creates the built-in configuration for a DARTS policy code. Its rules are server-defined, so their paths are
+    /// evaluated in the server expression tier rather than the request-supplied one.
+    /// </summary>
+    /// <returns>False when <paramref name="policy"/> names no built-in policy.</returns>
+    public static bool TryCreate(string policy, [NotNullWhen(true)] out DeIdOptions? options)
+    {
+        options = policy switch
+        {
+            DartsConstants.PolicySafeHarbor => CreateSafeHarborOptions(),
+            DartsConstants.PolicyExpertDetermination => CreateExpertDeterminationOptions(),
+            _ => null
+        };
+
+        return options is not null;
+    }
+
     /// <summary>
     /// Creates the Safe Harbor de-identification policy configuration.
     /// </summary>

@@ -3,9 +3,6 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 using Ignixa.Api.Endpoints;
-using Ignixa.DeId.Configuration;
-using Ignixa.DeId.Darts;
-using Ignixa.DeId.Darts.Configuration;
 using Microsoft.AspNetCore.Http;
 using Shouldly;
 
@@ -52,17 +49,5 @@ public class DeIdOperationEndpointsTests
         DeIdOperationEndpoints.AddWarningHeader(context, null);
 
         context.Response.Headers.ContainsKey(DeIdOperationEndpoints.DeIdWarningHeader).ShouldBeFalse();
-    }
-
-    [Fact]
-    public void GivenNoCallerSuppliedPolicy_WhenBuildingTheDefaultLibrary_ThenProcessorFailuresStopTheOperation()
-    {
-        // Regression: the default (SAFE_HARBOR) policy loaded with LogAndContinue, so by default a processor
-        // failure left data in clear and returned 200.
-        var library = DeIdOperationEndpoints.CreateBootstrapLibrary(DartsConstants.PolicySafeHarbor);
-
-        var options = new LibraryConfigurationLoader().LoadFromLibrary(library);
-
-        options.Processing!.ErrorHandling.ShouldBe(ErrorHandlingMode.StopOnError);
     }
 }

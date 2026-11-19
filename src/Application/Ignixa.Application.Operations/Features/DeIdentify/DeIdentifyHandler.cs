@@ -6,6 +6,7 @@
 using Ignixa.Application.Infrastructure;
 using Ignixa.DeId;
 using Ignixa.DeId.Configuration;
+using Ignixa.DeId.Darts;
 using Ignixa.DeId.Darts.Configuration;
 using Ignixa.DeId.Models;
 using Ignixa.DeId.Pipeline;
@@ -49,20 +50,27 @@ public class DeIdentifyHandler : IRequestHandler<DeIdentifyCommand, DeIdentifyRe
             LogSafeText.Sanitize(request.Policy));
 
         DeIdOptions options;
-        try
+        if (request.ConfigurationLibrary is null)
         {
-            options = _configLoader.LoadFromLibrary(request.ConfigurationLibrary);
+            options = CreateBootstrapOptions(request.Policy);
         }
-        catch (Exception ex)
+        else
         {
-            // Logged by type: the message can quote rule paths from the request's configuration.
-            _logger.LogError(
-                "Failed to load de-identification configuration from Library resource ({ExceptionType}).",
-                ex.GetType().Name);
-            return new DeIdentifyResult(
-                false,
-                null,
-                $"Configuration error: {ex.Message}");
+            try
+            {
+                options = _configLoader.LoadFromLibrary(request.ConfigurationLibrary);
+            }
+            catch (Exception ex)
+            {
+                // Logged by type: the message can quote rule paths from the request's configuration.
+                _logger.LogError(
+                    "Failed to load de-identification configuration from Library resource ({ExceptionType}).",
+                    ex.GetType().Name);
+                return new DeIdentifyResult(
+                    false,
+                    null,
+                    $"Configuration error: {ex.Message}");
+            }
         }
 
         var context = _contextAccessor.RequestContext
@@ -114,5 +122,15 @@ public class DeIdentifyHandler : IRequestHandler<DeIdentifyCommand, DeIdentifyRe
         }
 
         return new DeIdentifyResult(true, result.Value.Resource, null, result.Value.Warnings);
+    }
+
+    // Built directly rather than round-tripped through a Library, which would drop the rules' server-defined
+    // provenance and evaluate them in the bounded request-supplied expression tier.
+    private static DeIdOptions CreateBootstrapOptions(string policy)
+    {
+        return BootstrapPolicies.TryCreate(policy, out var options)
+            ? options
+            : throw new BadRequestException(
+                $"Unknown de-identification policy: '{policy}'. Supported policies: {DartsConstants.PolicySafeHarbor}, {DartsConstants.PolicyExpertDetermination}.");
     }
 }

@@ -34,7 +34,7 @@ internal static class FhirPathRuleValidator
     {
         try
         {
-            FhirPathExtensions.EnsureParses(rule.Path);
+            FhirPathExtensions.EnsureParses(rule.Path, requestSupplied: !rule.IsServerDefined);
         }
         catch (Exception ex) when (ex is not (OperationCanceledException or OutOfMemoryException))
         {
