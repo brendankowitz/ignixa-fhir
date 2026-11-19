@@ -105,6 +105,17 @@ internal sealed class ProcessorHandler : DeIdPipelineHandler
                 processor,
                 cancellationToken).ConfigureAwait(false);
 
+            if (!processorResult.IsSuccess && processorResult.Error.IsResourceLimit)
+            {
+                // Not subject to the error-handling mode: continuing would return the value unchanged as a success
+                // when the request asked for more evaluation than it is allowed.
+                _logger.LogWarning(
+                    "Processor exceeded a FHIRPath evaluation limit for rule {Path} ({ErrorCode}). Stopping further rule processing.",
+                    LogSafeText.Sanitize(matchedRule.Rule.Path),
+                    processorResult.Error.Code);
+                return Result<DeIdResult>.Failure(processorResult.Error);
+            }
+
             if (!processorResult.IsSuccess)
             {
                 var errorHandling = context.Options.Processing?.ErrorHandling ?? ErrorHandlingMode.StopOnError;

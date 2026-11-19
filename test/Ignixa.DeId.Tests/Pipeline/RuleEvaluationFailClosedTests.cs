@@ -125,6 +125,20 @@ public class RuleEvaluationFailClosedTests
     }
 
     [Fact]
+    public async Task GivenGeneralizeCaseThatExceedsAnEvaluationLimit_WhenDeidentifyingWithLogAndContinue_ThenOperationFailsWithTheLimit()
+    {
+        // Regression: the limit was downgraded to a warning and the value returned unchanged as a success.
+        var overlongPattern = new string('a', 4097);
+        var engine = DeIdTestHelpers.CreateEngine(
+            GeneralizeOptions(ErrorHandlingMode.LogAndContinue, $"$this.matches('{overlongPattern}')"));
+
+        var result = await engine.DeidentifyAsync(OneGivenNamePatient);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.IsResourceLimit.ShouldBeTrue();
+    }
+
+    [Fact]
     public async Task GivenRuleWithUnregisteredMethod_WhenDeidentifying_ThenOperationFails()
     {
         // Regression: the rule was skipped with a warning and the data returned in clear.
@@ -147,7 +161,7 @@ public class RuleEvaluationFailClosedTests
         Rules = [new FhirPathRule { Path = path, Method = "REDACT" }]
     };
 
-    private static DeIdOptions GeneralizeOptions(ErrorHandlingMode? errorHandling) => new()
+    private static DeIdOptions GeneralizeOptions(ErrorHandlingMode? errorHandling, string casePredicate = "$this.matches('[')") => new()
     {
         FhirVersion = "R4",
         Rules =
@@ -157,7 +171,7 @@ public class RuleEvaluationFailClosedTests
                 Path = "Patient.name.family",
                 Method = "GENERALIZE",
                 Settings = ImmutableDictionary<string, object>.Empty
-                    .Add("cases", """{"$this.matches('[')":"'x'"}""")
+                    .Add("cases", $$"""{"{{casePredicate}}":"'x'"}""")
                     .Add("otherValues", "keep")
             }
         ],
