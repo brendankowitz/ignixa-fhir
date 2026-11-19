@@ -11,7 +11,8 @@ using Ignixa.DeId.Extensions;
 namespace Ignixa.DeId.Configuration;
 
 /// <summary>
-/// Rejects de-identification configurations whose rule paths or processor FHIRPath settings cannot be parsed.
+/// Rejects de-identification configurations whose rule paths cannot be parsed or whose Generalize or Perturb
+/// settings are invalid.
 /// </summary>
 /// <remarks>
 /// A rule that cannot be parsed can never match, so accepting it would leave the data it was meant
@@ -20,7 +21,7 @@ namespace Ignixa.DeId.Configuration;
 /// </remarks>
 internal static class FhirPathRuleValidator
 {
-    /// <exception cref="ConfigurationException">A rule path or Generalize case is not valid.</exception>
+    /// <exception cref="ConfigurationException">A rule path, Generalize case or Perturb setting is not valid.</exception>
     public static void EnsureValid(ImmutableArray<FhirPathRule> rules)
     {
         foreach (var rule in rules)
@@ -47,10 +48,18 @@ internal static class FhirPathRuleValidator
     }
 
     // Generalize cases are FHIRPath expressions evaluated per node; validating them here rejects a bad case at
-    // load rather than failing (or, under LogAndContinue, being skipped) at request time.
+    // load rather than failing (or, under LogAndContinue, being skipped) at request time. Perturb defaults a
+    // missing span to zero, which returns the value unchanged as a successful perturbation.
     private static void EnsureSettingsValid(FhirPathRule rule)
     {
-        if (!string.Equals(rule.Method, "GENERALIZE", StringComparison.OrdinalIgnoreCase))
+        Action<Dictionary<string, object>>? validate = rule.Method?.ToUpperInvariant() switch
+        {
+            "GENERALIZE" => GeneralizeSetting.ValidateRuleSettings,
+            "PERTURB" => PerturbSetting.ValidateRuleSettings,
+            _ => null
+        };
+
+        if (validate is null)
         {
             return;
         }
@@ -62,6 +71,6 @@ internal static class FhirPathRuleValidator
             [Constants.MethodKey] = rule.Method
         };
 
-        GeneralizeSetting.ValidateRuleSettings(settings);
+        validate(settings);
     }
 }

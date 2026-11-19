@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Collections.Immutable;
 using Ignixa.DeId.Configuration;
 using Ignixa.DeId.Darts;
 using Ignixa.DeId.Exceptions;
@@ -91,6 +92,33 @@ public class LibraryConfigurationLoaderTests
 
         Should.Throw<ConfigurationException>(() => _loader.LoadFromLibrary(library))
             .Message.ShouldContain("Patient.name.where(");
+    }
+
+    [Theory]
+    [InlineData("rangeType", "fixed")]
+    [InlineData("span", "five")]
+    public void GivenLibraryWithInvalidPerturbSettings_WhenLoadingConfiguration_ThenConfigurationExceptionIsThrown(
+        string key,
+        string value)
+    {
+        // Regression: Perturb settings were never validated, and a rule without a span perturbed by zero,
+        // returning the value unchanged as a success.
+        var options = new DeIdOptions
+        {
+            FhirVersion = "R4",
+            Rules =
+            [
+                new FhirPathRule
+                {
+                    Path = "Observation.valueQuantity",
+                    Method = "perturb",
+                    Settings = ImmutableDictionary<string, object>.Empty.Add(key, value)
+                }
+            ]
+        };
+        var library = LibraryConfigurationLoader.CreateLibraryResource("lib-perturb", "BAD", options);
+
+        Should.Throw<ConfigurationException>(() => _loader.LoadFromLibrary(library));
     }
 
     [Fact]
