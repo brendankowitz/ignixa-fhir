@@ -7,10 +7,12 @@ using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Tests.TestDoubles;
 
-/// <summary>Records every formatted message so a test can assert on what reached the log.</summary>
+/// <summary>Records every formatted message, and every exception attached to an entry, so a test can assert on what reached the log.</summary>
 internal sealed class CapturingLogger<T> : ILogger<T>
 {
     public List<string> Messages { get; } = [];
+
+    public List<Exception> Exceptions { get; } = [];
 
     IDisposable? ILogger.BeginScope<TState>(TState state) => null;
 
@@ -21,6 +23,12 @@ internal sealed class CapturingLogger<T> : ILogger<T>
         EventId eventId,
         TState state,
         Exception? exception,
-        Func<TState, Exception?, string> formatter) =>
+        Func<TState, Exception?, string> formatter)
+    {
         Messages.Add(formatter(state, exception));
+        if (exception is not null)
+        {
+            Exceptions.Add(exception);
+        }
+    }
 }
