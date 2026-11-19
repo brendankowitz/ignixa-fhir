@@ -36,7 +36,7 @@ public class FhirPathDelegateCompilerTests
         var compiled = _delegateCompiler.TryCompile(ast);
         if (compiled != null)
         {
-            return compiled(input, new EvaluationContext());
+            return compiled(input, new EvaluationContext().StartBudget());
         }
         // Fallback if not compiled
         return _evaluator.Evaluate(input, ast);

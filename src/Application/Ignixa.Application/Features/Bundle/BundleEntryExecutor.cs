@@ -16,6 +16,7 @@ using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
+using Ignixa.FhirPath;
 using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
@@ -222,12 +223,14 @@ public class BundleEntryExecutor
         {
             // FHIR exceptions have proper HTTP status codes and OperationOutcomes
             // Examples: ValidationException (400), etc.
+            // Logged by type and stack only, as FhirExceptionMiddleware does for the same exceptions outside a
+            // bundle: the message can quote request text (a FHIRPath Patch path) or resource values.
             _logger.LogWarning(
-                "FHIR error in bundle entry {Index} {Verb} {Url}: {Message}",
+                "FHIR error in bundle entry {Index} {Verb} {Url}: {Exception}",
                 entry.Index,
                 entry.HttpVerb,
                 entry.RequestUrl,
-                fhirEx.Message);
+                LogSafeText.DescribeWithoutMessages(fhirEx));
 
             var operationOutcome = fhirEx.OperationOutcome;
             var resourceJson = operationOutcome.SerializeToString();
@@ -245,12 +248,13 @@ public class BundleEntryExecutor
         catch (Exception ex)
         {
             // Non-FHIR exceptions: Create OperationOutcome with detailed error information
+            // Logged by type and stack only, as FhirExceptionMiddleware does outside a bundle.
             _logger.LogError(
-                ex,
-                "Unexpected error executing bundle entry {Index}: {Verb} {Url}",
+                "Unexpected error executing bundle entry {Index}: {Verb} {Url}: {Exception}",
                 entry.Index,
                 entry.HttpVerb,
-                entry.RequestUrl);
+                entry.RequestUrl,
+                LogSafeText.DescribeWithoutMessages(ex));
 
             // Determine if this is a conflict (optimistic concurrency) or internal error
             var isConflict = ex.Message.Contains("recently updated", StringComparison.OrdinalIgnoreCase) ||

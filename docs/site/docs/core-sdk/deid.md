@@ -122,6 +122,17 @@ else
 }
 ```
 
+De-identification fails closed: a failure is never reported as a success with the data left in clear.
+
+| Code | Cause |
+|------|-------|
+| `CONFIG_INVALID_RULE_PATH` | A rule is invalid: its `path` is not a valid FHIRPath expression, `DeIdOptionsLoader` found no `path` or `method`, or its Generalize or Perturb settings are invalid (a Perturb rule requires a non-negative `span`). Returned by `DeIdOptionsLoader` at load time; `LibraryConfigurationLoader` throws `ConfigurationException`. |
+| `RULE_EVALUATION_FAILED` | A rule path parsed but could not be evaluated against this resource (invalid regex, over-limit expression, or a function argument that resolves to several items). A rule that matches nothing is not an error. |
+| `PROCESSOR_NOT_FOUND` | A matched rule names a method with no registered processor. |
+| `PROCESSOR_ERROR` | A processor failed and `processing.processingErrors` is `StopOnError` (default) or `FailFast`. |
+
+`LogAndContinue` is the only fail-open mode and must be chosen explicitly via `processing.processingErrors`: each processor failure is added to `Result.Value.Warnings` and the element is left as it was, so callers must inspect the warnings. `StopOnError` and `FailFast` now behave identically (both return the failure and no resource), matching the documented meaning of `StopOnError`. The built-in `HHS_SAFE_HARBOR_DETERMINISTIC_METHOD` policy uses `StopOnError` and `HHS_EXPERT_DETERMINATION_METHOD` uses `FailFast`. Generalize `cases` expressions are parsed at load. FHIRPath in Generalize cases evaluates `%resource` as the matched primitive node, not the enclosing resource.
+
 ## Request Options
 
 Control de-identification behavior per request using `RequestOptions`:

@@ -5,6 +5,7 @@
 
 using HotChocolate;
 using Ignixa.Application.Features.Experimental.Configuration;
+using Ignixa.FhirPath;
 using Ignixa.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -25,8 +26,14 @@ public sealed class FhirGraphQlErrorFilter(
         var issueType = MapToFhirIssueType(error.Code);
         var message = error.Message ?? "Unexpected GraphQL error.";
 
+        // Logged without exception messages, which can quote query text and resource values.
         if (issueType == IssueTypeCommon.Exception)
-            logger.LogError(error.Exception, "Unexpected GraphQL error: {Message}", message);
+        {
+            logger.LogError(
+                "Unexpected GraphQL error: {Message} {Exception}",
+                LogSafeText.Sanitize(message),
+                error.Exception is null ? string.Empty : LogSafeText.DescribeWithoutMessages(error.Exception));
+        }
 
         var diagnostics = _includeExceptionDetails && error.Exception is not null
             ? $"{message}: {error.Exception.GetType().Name}: {error.Exception.Message}"
@@ -53,6 +60,7 @@ public sealed class FhirGraphQlErrorFilter(
         "FHIR_VERSION_CONFLICT" => IssueTypeCommon.Conflict,
         "INVALID_RESOURCE" => IssueTypeCommon.Invalid,
         "FHIRPATH_INVALID" => IssueTypeCommon.Invalid,
+        "FHIRPATH_TOO_COSTLY" => IssueTypeCommon.TooCostly,
         "FHIR_OPERATION_FAILED" => IssueTypeCommon.Exception,
         "FHIR_SINGLETON_VIOLATION" => IssueTypeCommon.MultipleMatches,
         "FHIR_SYNTAX_ERROR" => IssueTypeCommon.Invalid,

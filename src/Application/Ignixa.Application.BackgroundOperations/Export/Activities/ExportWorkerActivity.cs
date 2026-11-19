@@ -11,6 +11,7 @@ using Ignixa.Application.Infrastructure;
 using Ignixa.DataLayer.BlobStorage;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.FhirPath;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
@@ -304,12 +305,12 @@ public class ExportWorkerActivity : AsyncTaskActivity<ExportWorkerInput, ExportW
                 catch (Exception ex)
                 {
                     _logger.LogError(
-                        ex,
-                        "Export worker failed during processing: Job={JobId}, Type={ResourceType}, Range=[{StartId}..{EndId}]",
+                        "Export worker failed during processing: Job={JobId}, Type={ResourceType}, Range=[{StartId}..{EndId}]: {Exception}",
                         input.JobId,
                         input.ResourceType,
                         input.StartSurrogateId,
-                        input.EndSurrogateId);
+                        input.EndSurrogateId,
+                        LogSafeText.DescribeWithoutMessages(ex));
 
                     throw;
                 }
@@ -322,12 +323,12 @@ public class ExportWorkerActivity : AsyncTaskActivity<ExportWorkerInput, ExportW
         catch (Exception ex)
         {
             _logger.LogError(
-                ex,
-                "Export worker failed: Job={JobId}, Type={ResourceType}, Range=[{StartId}..{EndId}]",
+                "Export worker failed: Job={JobId}, Type={ResourceType}, Range=[{StartId}..{EndId}]: {Exception}",
                 input.JobId,
                 input.ResourceType,
                 input.StartSurrogateId,
-                input.EndSurrogateId);
+                input.EndSurrogateId,
+                LogSafeText.DescribeWithoutMessages(ex));
 
             throw;
         }

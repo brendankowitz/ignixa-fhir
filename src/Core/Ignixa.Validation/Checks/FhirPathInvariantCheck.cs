@@ -40,7 +40,10 @@ namespace Ignixa.Validation.Checks;
 /// engine correctly refuses to evaluate (<see cref="FhirPathEvaluationException"/>) never fails
 /// the resource. The fhir-server ingestion seam sits downstream of this check and must not start
 /// rejecting resources Firely accepts over a constraint neither engine can evaluate - HAPI's
-/// stricter reading would do exactly that. An exception of any other type is treated as a genuine
+/// stricter reading would do exactly that. The one exception to the warning is
+/// <see cref="FhirPathResourceLimitExceededException"/> (for example a regex match timeout): the data
+/// can trigger it, so excusing it would let a crafted instance bypass the invariant, and it fails the
+/// resource as an Error. An exception of any other type is treated as a genuine
 /// engine defect and fails loudly, so it cannot silently pass a resource or inflate conformance
 /// metrics.
 /// </para>
@@ -113,7 +116,11 @@ public class FhirPathInvariantCheck : IValidationCheck
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "Failed to parse FHIRPath expression for constraint {ConstraintKey} - constraint will not be evaluated", _constraint.Key);
+                // Logged without messages: the parser's message quotes the constraint's expression text.
+                _logger?.LogError(
+                    "Failed to parse FHIRPath expression for constraint {ConstraintKey} - constraint will not be evaluated: {Exception}",
+                    _constraint.Key,
+                    LogSafeText.DescribeWithoutMessages(ex));
                 return null;
             }
         });
@@ -254,9 +261,9 @@ public class FhirPathInvariantCheck : IValidationCheck
             // parse-failure path above, so we never reject a resource on our own engine gap.
             // (Reference validators likewise never hard-fail a resource on an unevaluable constraint.)
             _logger?.LogWarning(
-                ex,
-                "Constraint {ConstraintKey} uses an unsupported FHIRPath feature; treating as non-failing",
-                _constraint.Key);
+                "Constraint {ConstraintKey} uses an unsupported FHIRPath feature ({ExceptionType}); treating as non-failing",
+                _constraint.Key,
+                ex.GetType().Name);
 
             var issue = ValidationIssue.FromTemplate(
                 IssueSeverity.Warning,
@@ -268,6 +275,27 @@ public class FhirPathInvariantCheck : IValidationCheck
 
             return new ValidationResult(isValid: true, issues: new[] { issue });
         }
+        catch (FhirPathResourceLimitExceededException ex)
+        {
+            // Evaluation was STOPPED at an engine limit (a regex match timeout), which the data can trigger:
+            // the same constraint finishes on ordinary input. Excusing it like an ill-formed constraint below
+            // would let an instance crafted to exhaust the limit pass the invariant, so it fails instead.
+            // Logged by type: the message can quote the constraint's pattern or the instance's values.
+            _logger?.LogWarning(
+                "Constraint {ConstraintKey} exceeded an evaluation limit ({ExceptionType}); failing the instance",
+                _constraint.Key,
+                ex.GetType().Name);
+
+            var issue = ValidationIssue.FromTemplate(
+                IssueSeverity.Error,
+                _constraint.Key,
+                element.Location ?? string.Empty,
+                IssueTemplates.InvariantEvaluationError,
+                _constraint.Key,
+                ex.Message);
+
+            return ValidationResult.Failure(issue);
+        }
         catch (FhirPathEvaluationException ex)
         {
             // A constraint the engine CORRECTLY REFUSED to evaluate — the expression is ill-formed for
@@ -277,10 +305,11 @@ public class FhirPathInvariantCheck : IValidationCheck
             // case: it feeds a repeating Timing.repeat.when to 'in', which is only defined for a singleton
             // (R5 rewrote it as when.select($this in (…)).allFalse() for exactly this reason). Failing the
             // resource here would reject a perfectly conformant instance for a bug in the spec's own text.
+            // Logged by type: an evaluation error's message can quote the instance's values.
             _logger?.LogWarning(
-                ex,
-                "Constraint {ConstraintKey} is not evaluable against this instance; treating as non-failing",
-                _constraint.Key);
+                "Constraint {ConstraintKey} is not evaluable against this instance ({ExceptionType}); treating as non-failing",
+                _constraint.Key,
+                ex.GetType().Name);
 
             var issue = ValidationIssue.FromTemplate(
                 IssueSeverity.Warning,
@@ -297,10 +326,11 @@ public class FhirPathInvariantCheck : IValidationCheck
             // An UNEXPECTED evaluation failure — a defect in our engine or malformed data, not a known
             // limitation. Surface it loudly (failing Error + Error log) rather than masking it as a
             // benign warning, so it cannot silently pass a resource or inflate conformance metrics.
+            // Logged by type and stack only: the message can quote the instance's values.
             _logger?.LogError(
-                ex,
-                "Unexpected error evaluating constraint {ConstraintKey}",
-                _constraint.Key);
+                "Unexpected error evaluating constraint {ConstraintKey}: {Exception}",
+                _constraint.Key,
+                LogSafeText.DescribeWithoutMessages(ex));
 
             var issue = ValidationIssue.FromTemplate(
                 IssueSeverity.Error,

@@ -6,6 +6,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using EnsureThat;
+using Ignixa.FhirPath;
 using Microsoft.Extensions.Logging;
 using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.FhirPath.Evaluation;
@@ -192,11 +193,11 @@ public partial class ElementSearchIndexer : ISearchIndexer
         }
         catch (Exception ex) when (IsExpectedEvaluationFailure(ex))
         {
-            Log.FailedToExtractValues(_logger, ex, searchParameter.Expression, resource.InstanceType, searchParameter.Url.ToString(), resourceIdentity);
+            Log.FailedToExtractValues(_logger, ex.GetType().Name, LogSafeText.Sanitize(searchParameter.Expression)!, resource.InstanceType, searchParameter.Url.ToString(), resourceIdentity);
         }
         catch (Exception ex)
         {
-            Log.UnexpectedExtractionFailure(_logger, ex, searchParameter.Expression, resource.InstanceType, searchParameter.Url.ToString(), resourceIdentity);
+            Log.UnexpectedExtractionFailure(_logger, ex.GetType().Name, LogSafeText.DescribeWithoutMessages(ex), LogSafeText.Sanitize(searchParameter.Expression)!, resource.InstanceType, searchParameter.Url.ToString(), resourceIdentity);
         }
 
         foreach (IElement rootObject in rootObjects)
@@ -313,11 +314,11 @@ public partial class ElementSearchIndexer : ISearchIndexer
         }
         catch (Exception ex) when (IsExpectedEvaluationFailure(ex))
         {
-            Log.FailedToExtractValues(_logger, ex, fhirPathExpression, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
+            Log.FailedToExtractValues(_logger, ex.GetType().Name, LogSafeText.Sanitize(fhirPathExpression)!, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
         }
         catch (Exception ex)
         {
-            Log.UnexpectedExtractionFailure(_logger, ex, fhirPathExpression, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
+            Log.UnexpectedExtractionFailure(_logger, ex.GetType().Name, LogSafeText.DescribeWithoutMessages(ex), LogSafeText.Sanitize(fhirPathExpression)!, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
         }
 
         Debug.Assert(extractedValues != null, "The extracted values should not be null.");
@@ -421,11 +422,11 @@ public partial class ElementSearchIndexer : ISearchIndexer
         }
         catch (Exception ex) when (IsExpectedEvaluationFailure(ex))
         {
-            Log.FailedToExtractValues(_logger, ex, fhirPathExpression, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
+            Log.FailedToExtractValues(_logger, ex.GetType().Name, LogSafeText.Sanitize(fhirPathExpression)!, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
         }
         catch (Exception ex)
         {
-            Log.UnexpectedExtractionFailure(_logger, ex, fhirPathExpression, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
+            Log.UnexpectedExtractionFailure(_logger, ex.GetType().Name, LogSafeText.DescribeWithoutMessages(ex), LogSafeText.Sanitize(fhirPathExpression)!, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
         }
 
         Debug.Assert(extractedValues != null, "The extracted values should not be null.");
@@ -578,7 +579,7 @@ public partial class ElementSearchIndexer : ISearchIndexer
         }
         catch (Exception ex) when (IsExpectedEvaluationFailure(ex))
         {
-            Log.ConverterFailed(_logger, ex, converter.GetType().Name, fhirPathExpression, searchParameterDefinitionUrl, resourceIdentity);
+            Log.ConverterFailed(_logger, ex.GetType().Name, converter.GetType().Name, LogSafeText.Sanitize(fhirPathExpression)!, searchParameterDefinitionUrl, resourceIdentity);
             return [];
         }
         catch (Exception ex)
@@ -591,7 +592,7 @@ public partial class ElementSearchIndexer : ISearchIndexer
             // stays contained. But it must not be logged identically to an expected miss: Error, not
             // Warning, so it surfaces to whatever is watching Error-level logs instead of blending into
             // routine "this literal didn't parse" noise.
-            Log.UnexpectedConverterFailure(_logger, ex, converter.GetType().Name, fhirPathExpression, searchParameterDefinitionUrl, resourceIdentity);
+            Log.UnexpectedConverterFailure(_logger, ex.GetType().Name, LogSafeText.DescribeWithoutMessages(ex), converter.GetType().Name, LogSafeText.Sanitize(fhirPathExpression)!, searchParameterDefinitionUrl, resourceIdentity);
             return [];
         }
     }
@@ -603,8 +604,9 @@ public partial class ElementSearchIndexer : ISearchIndexer
     /// for the exception types a bad literal or a malformed custom expression actually surfaces as
     /// today: <see cref="FormatException"/> (e.g. <c>PartialDateTime.Parse</c> on a <c>Timing.event</c>
     /// that fails, or <c>FhirPathParser</c> failing to tokenize/parse an expression), <see cref="ArgumentException"/>
-    /// (e.g. an empty custom search parameter expression), and <see cref="OverflowException"/> (a numeric
-    /// literal outside the target type's range). False for anything else - a <see cref="NullReferenceException"/>
+    /// (e.g. an empty custom search parameter expression). A numeric literal outside the target type's range
+    /// is a <see cref="FormatException"/> from the parser, and math overflow evaluates to empty, so no
+    /// <see cref="OverflowException"/> is expected. False for anything else - a <see cref="NullReferenceException"/>
     /// or <see cref="InvalidCastException"/> reaching an indexing catch block means the indexer or a converter
     /// has a bug, not that the data or the expression was bad, and must not be logged the same way.
     /// </summary>
@@ -620,7 +622,7 @@ public partial class ElementSearchIndexer : ISearchIndexer
     /// this predicate was added to draw.
     /// </remarks>
     private static bool IsExpectedEvaluationFailure(Exception ex) =>
-        ex is FhirPathEvaluationException or NotSupportedException or FormatException or OverflowException
+        ex is FhirPathEvaluationException or NotSupportedException or FormatException
         || (ex is ArgumentException and not (ArgumentNullException or ArgumentOutOfRangeException));
 
     /// <summary>
@@ -674,20 +676,24 @@ public partial class ElementSearchIndexer : ISearchIndexer
         [LoggerMessage(Level = LogLevel.Warning, Message = "Component {ComponentIndex} of composite search parameter '{SearchParameterCode}' has null or empty Expression. Skipping this composite value.")]
         public static partial void ComponentNullOrEmptyExpression(ILogger logger, int componentIndex, string searchParameterCode);
 
-        [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to extract the values using '{FhirPathExpression}' against '{ElementType}' for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}'.")]
-        public static partial void FailedToExtractValues(ILogger logger, Exception ex, string fhirPathExpression, string elementType, string searchParameterUrl, string resourceIdentity);
+        // Logged by exception type: an evaluation error's message can quote values from the resource.
+        [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to extract the values using '{FhirPathExpression}' against '{ElementType}' for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}' ({ExceptionType}).")]
+        public static partial void FailedToExtractValues(ILogger logger, string exceptionType, string fhirPathExpression, string elementType, string searchParameterUrl, string resourceIdentity);
 
-        [LoggerMessage(Level = LogLevel.Error, Message = "Unexpected error extracting values using '{FhirPathExpression}' against '{ElementType}' for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}'. This is not an expected FHIRPath evaluation failure and likely indicates a bug in the indexer or evaluator.")]
-        public static partial void UnexpectedExtractionFailure(ILogger logger, Exception ex, string fhirPathExpression, string elementType, string searchParameterUrl, string resourceIdentity);
+        // Logged by exception type and stack only: the message can quote values from the resource.
+        [LoggerMessage(Level = LogLevel.Error, Message = "Unexpected error extracting values using '{FhirPathExpression}' against '{ElementType}' for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}' ({ExceptionType}). This is not an expected FHIRPath evaluation failure and likely indicates a bug in the indexer or evaluator. Detail: {ExceptionDetail}")]
+        public static partial void UnexpectedExtractionFailure(ILogger logger, string exceptionType, string exceptionDetail, string fhirPathExpression, string elementType, string searchParameterUrl, string resourceIdentity);
 
         [LoggerMessage(Level = LogLevel.Warning, Message = "Skipping element with null or empty InstanceType for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}' during search indexing.")]
         public static partial void SkippingElementNullOrEmptyInstanceType(ILogger logger, string searchParameterUrl, string resourceIdentity);
 
-        [LoggerMessage(Level = LogLevel.Warning, Message = "Converter '{ConverterType}' failed on a value extracted by '{FhirPathExpression}' for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}'. Skipping this value.")]
-        public static partial void ConverterFailed(ILogger logger, Exception ex, string converterType, string fhirPathExpression, string searchParameterUrl, string resourceIdentity);
+        // Logged by exception type: a converter's message can quote the value it could not read (a malformed date).
+        [LoggerMessage(Level = LogLevel.Warning, Message = "Converter '{ConverterType}' failed on a value extracted by '{FhirPathExpression}' for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}' ({ExceptionType}). Skipping this value.")]
+        public static partial void ConverterFailed(ILogger logger, string exceptionType, string converterType, string fhirPathExpression, string searchParameterUrl, string resourceIdentity);
 
-        [LoggerMessage(Level = LogLevel.Error, Message = "Converter '{ConverterType}' raised an unexpected error on a value extracted by '{FhirPathExpression}' for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}'. This is not an expected evaluation failure and likely indicates a defect in the converter. Skipping this value.")]
-        public static partial void UnexpectedConverterFailure(ILogger logger, Exception ex, string converterType, string fhirPathExpression, string searchParameterUrl, string resourceIdentity);
+        // Logged by exception type and stack only: the message can quote the value being converted.
+        [LoggerMessage(Level = LogLevel.Error, Message = "Converter '{ConverterType}' raised an unexpected error on a value extracted by '{FhirPathExpression}' for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}' ({ExceptionType}). This is not an expected evaluation failure and likely indicates a defect in the converter. Skipping this value. Detail: {ExceptionDetail}")]
+        public static partial void UnexpectedConverterFailure(ILogger logger, string exceptionType, string exceptionDetail, string converterType, string fhirPathExpression, string searchParameterUrl, string resourceIdentity);
 
         [LoggerMessage(Level = LogLevel.Warning, Message = "The FHIR element '{ElementType}' is not supported for search parameter '{SearchParameterUrl}'.")]
         public static partial void FhirElementTypeNotSupported(ILogger logger, string elementType, string searchParameterUrl);

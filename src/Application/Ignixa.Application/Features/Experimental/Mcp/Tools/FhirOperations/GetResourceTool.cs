@@ -10,6 +10,7 @@ using ModelContextProtocol.Server;
 using Ignixa.Application.Features.Experimental.Mcp.Dtos;
 using Ignixa.Application.Features.Experimental.Mcp.Tools;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 
@@ -24,16 +25,19 @@ public class GetResourceTool : TenantAwareMcpTool
 {
     private readonly IMediator _mediator;
     private readonly IFhirRequestContextAccessor _contextAccessor;
+    private readonly IFhirVersionContext _versionContext;
 
     public GetResourceTool(
         IFhirRequestContextAccessor fhirRequestContextAccessor,
         ITenantConfigurationStore tenantStore,
         IMediator mediator,
-        IFhirRequestContextAccessor contextAccessor)
-        : base(fhirRequestContextAccessor, tenantStore)
+        IFhirRequestContextAccessor contextAccessor,
+        IFhirVersionContext versionContext)
+        : base(fhirRequestContextAccessor, tenantStore, versionContext: versionContext)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
         _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
+        _versionContext = versionContext ?? throw new ArgumentNullException(nameof(versionContext));
     }
 
     [McpServerTool(Name = "get_fhir_resource")]
@@ -63,6 +67,9 @@ Example: resourceType='Patient', id='123', elements='id,name,birthDate'")]
 
         // Resolve tenant using base class logic
         var resolvedTenantId = await ResolveTenantIdAsync(tenantId, cancellationToken);
+
+        var knownResourceType = await RequireKnownResourceTypeAsync(resourceType, resolvedTenantId, cancellationToken);
+        resourceType = knownResourceType.ResourceType;
 
         // Update the FHIR request context with the resolved tenant ID
         // The middleware has already created the context, we just need to update the tenant

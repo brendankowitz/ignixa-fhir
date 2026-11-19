@@ -1072,22 +1072,20 @@ public class FhirPathInvariantCheckTests
     }
 
     /// <summary>
-    /// Pins the tier <c>repeatAll()</c>'s runaway-iteration guard now lands in. The guard fires after
-    /// 100,000 passes (<c>CollectionFunctions.RepeatAll</c>) and signals
-    /// <c>FhirPathEvaluationException</c> rather than the bare <see cref="InvalidOperationException"/> it
-    /// used to, which moves a non-converging constraint expression off the catch-all's
-    /// resource-rejecting Error and onto the non-failing Warning tier.
+    /// Pins the tier <c>repeatAll()</c>'s runaway-iteration guard lands in. The guard fires after 100,000 passes
+    /// (<c>CollectionFunctions.RepeatAll</c>) and, since #531, signals
+    /// <c>FhirPathResourceLimitExceededException</c> like every other evaluation limit, so the instance fails with
+    /// an Error.
     /// <para>
-    /// That is the right tier - the guard bounds a runaway <em>user expression</em>, so a projection
-    /// that never terminates is a defect in the constraint's text and not evidence the instance is
-    /// invalid - but it is a wider behaviour change than the missing-argument refusals it shipped
-    /// alongside, and it is the only one that alters whether a resource is rejected without any
-    /// malformed call being involved. It is pinned separately for that reason.
+    /// This reverses the Warning tier the guard had when it threw a plain <c>FhirPathEvaluationException</c>. That
+    /// tier treated a non-converging projection as a defect in the constraint's text; but whether a limit trips
+    /// depends on the data as well as the expression, and excusing it would let an instance crafted to exhaust a
+    /// limit pass the invariant - the reasoning that already fails a regex timeout.
     /// <c>repeatAll($this)</c> re-enqueues its own input on every pass and therefore never converges.
     /// </para>
     /// </summary>
     [Fact]
-    public void GivenConstraintExceedingRepeatAllIterationLimit_WhenValidating_ThenValidWithWarning()
+    public void GivenConstraintExceedingRepeatAllIterationLimit_WhenValidating_ThenInvalidWithError()
     {
         // Arrange
         var constraint = new Ignixa.Specification.ConstraintDefinition
@@ -1110,12 +1108,11 @@ public class FhirPathInvariantCheckTests
         // Act
         var result = check.Validate(element, settings, state);
 
-        // Assert - a runaway expression is a constraint defect, so it must not reject the instance
-        result.IsValid.ShouldBeTrue();
+        // Assert - a limit fails the instance rather than excusing the constraint
+        result.IsValid.ShouldBeFalse();
         result.Issues.Count.ShouldBe(1);
-        result.Issues[0].Severity.ShouldBe(IssueSeverity.Warning);
+        result.Issues[0].Severity.ShouldBe(IssueSeverity.Error);
         result.Issues[0].Code.ShouldBe("pin-runaway-repeatall");
-        result.Issues[0].Message.ShouldStartWith("Constraint 'pin-runaway-repeatall' could not be evaluated:");
         result.Issues[0].Message.ShouldContain("maximum iteration limit");
     }
 

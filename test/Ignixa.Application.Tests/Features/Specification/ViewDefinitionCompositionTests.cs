@@ -57,8 +57,10 @@ public class ViewDefinitionCompositionTests
 
         var entry = statement.Rest.Single().Resource.Single(r => r.Type == "ViewDefinition");
         entry.Profile.Reference.ShouldBe(Canonical);
-        statement.ToElement(baseSchema).IsTrue(new GetResourceQuery("ViewDefinition", "example")
-            .GetCapabilityRequirementExpression()).ShouldBeTrue();
+        var capabilityQuery = new GetResourceQuery("ViewDefinition", "example");
+        statement.ToElement(baseSchema).IsTrue(
+            capabilityQuery.GetCapabilityRequirementExpression(),
+            new EvaluationContext().WithEnvironmentVariable("resourceType", capabilityQuery.CapabilityResourceType!)).ShouldBeTrue();
         var tenants = Substitute.For<ITenantConfigurationStore>();
         tenants.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>()).Returns(new TenantConfiguration
         {

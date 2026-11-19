@@ -2,8 +2,10 @@ using System;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Features.Patch.Validation;
 using Ignixa.FhirMappingLanguage.Mutator;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
 
@@ -38,13 +40,13 @@ public class ReplaceOperationExecutor(
         // Check for immutable properties
         if (ImmutablePathChecker.IsImmutablePath(operation.Path))
         {
-            throw new FhirPatchException($"Cannot replace immutable property '{operation.Path}'");
+            throw new FhirPatchException($"Cannot replace immutable property '{operation.Path.SanitizeExpressionForLog()}'");
         }
 
         try
         {
             // Use FHIRPath to verify the target path exists (PATCH replace requires existing element)
-            var targetJsonNode = mutator.EvaluateSingle(resource, operation.Path);
+            var targetJsonNode = mutator.EvaluateSingle(resource, operation.Path, cancellationToken);
 
             var valueNode = JsonNodeMutator.SerializeValue(operation.Value)
                 ?? throw new FhirPatchException("Failed to serialize value");
@@ -55,15 +57,21 @@ public class ReplaceOperationExecutor(
             if (parent is JsonArray)
             {
                 // Replacing an array element - use ReplaceArrayElement
-                mutator.ReplaceArrayElement(resource, operation.Path, valueNode);
-                logger.LogDebug("Replaced array element at {Path}", operation.Path);
+                mutator.ReplaceArrayElement(resource, operation.Path, valueNode, cancellationToken);
+                logger.LogDebug("Replaced array element at {Path}", operation.Path.SanitizeExpressionForLog());
             }
             else
             {
                 // Replacing a property - use SetProperty with Replace mode
-                mutator.SetProperty(resource, operation.Path, valueNode, PropertyMutationMode.Replace);
-                logger.LogDebug("Replaced property at {Path}", operation.Path);
+                mutator.SetProperty(resource, operation.Path, valueNode, PropertyMutationMode.Replace, cancellationToken);
+                logger.LogDebug("Replaced property at {Path}", operation.Path.SanitizeExpressionForLog());
             }
+        }
+        catch (FhirPathResourceLimitExceededException)
+        {
+            // Derives from InvalidOperationException, but is not an invalid patch: FhirPatchEngine reports it as
+            // too costly.
+            throw;
         }
         catch (InvalidOperationException ex)
         {

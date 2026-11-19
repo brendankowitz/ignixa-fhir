@@ -251,7 +251,7 @@ public class CoreFunctionTests
         var ex = Assert.Throws<FhirPathEvaluationException>(() =>
             _evaluator.Evaluate(root, expr).ToList());
         Assert.Contains("allTrue()", ex.Message, StringComparison.Ordinal);
-        Assert.Contains("'foo'", ex.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("foo", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -263,7 +263,7 @@ public class CoreFunctionTests
         var ex = Assert.Throws<FhirPathEvaluationException>(() =>
             _evaluator.Evaluate(root, expr).ToList());
         Assert.Contains("anyTrue()", ex.Message, StringComparison.Ordinal);
-        Assert.Contains("'hello'", ex.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("hello", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -275,7 +275,7 @@ public class CoreFunctionTests
         var ex = Assert.Throws<FhirPathEvaluationException>(() =>
             _evaluator.Evaluate(root, expr).ToList());
         Assert.Contains("allFalse()", ex.Message, StringComparison.Ordinal);
-        Assert.Contains("'bar'", ex.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("bar", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -287,7 +287,7 @@ public class CoreFunctionTests
         var ex = Assert.Throws<FhirPathEvaluationException>(() =>
             _evaluator.Evaluate(root, expr).ToList());
         Assert.Contains("anyFalse()", ex.Message, StringComparison.Ordinal);
-        Assert.Contains("'baz'", ex.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("baz", ex.Message, StringComparison.Ordinal);
     }
 
     #endregion

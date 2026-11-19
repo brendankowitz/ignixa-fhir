@@ -4,10 +4,12 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Application.Features.Experimental.Mcp.Authorization;
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
+using Ignixa.Serialization;
 
 namespace Ignixa.Application.Features.Experimental.Mcp.Tools;
 
@@ -25,6 +27,9 @@ public abstract class TenantAwareMcpTool
     private readonly IFhirRequestContextAccessor _fhirRequestContextAccessor;
     private readonly ITenantConfigurationStore _tenantConfigurationStore;
     private readonly IMcpAuthorizationService? _mcpAuthorizationService;
+    private readonly IFhirVersionContext? _versionContext;
+
+    private const int MaxEchoedValueLength = 64;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="TenantAwareMcpTool"/> class.
@@ -32,11 +37,14 @@ public abstract class TenantAwareMcpTool
     /// <param name="fhirRequestContextAccessor">FHIR request context accessor for tenant resolution.</param>
     /// <param name="tenantConfigurationStore">Tenant configuration store.</param>
     /// <param name="mcpAuthorizationService">MCP authorization service (optional for backward compatibility).</param>
+    /// <param name="versionContext">Schema source for <see cref="RequireKnownResourceTypeAsync"/>; required by tools that take a resource type.</param>
     protected TenantAwareMcpTool(
         IFhirRequestContextAccessor fhirRequestContextAccessor,
         ITenantConfigurationStore tenantConfigurationStore,
-        IMcpAuthorizationService? mcpAuthorizationService = null)
+        IMcpAuthorizationService? mcpAuthorizationService = null,
+        IFhirVersionContext? versionContext = null)
     {
+        _versionContext = versionContext;
         _fhirRequestContextAccessor = fhirRequestContextAccessor;
         _tenantConfigurationStore = tenantConfigurationStore;
         _mcpAuthorizationService = mcpAuthorizationService;
@@ -126,6 +134,50 @@ public abstract class TenantAwareMcpTool
         throw new BadRequestException(
             "Multi-tenant mode detected. Please specify tenantId parameter or use /tenant/{id}/mcp route");
     }
+
+    /// <summary>
+    /// Requires a caller-supplied resource type to be one the tenant serves, and returns it in the schema's
+    /// canonical casing together with the tenant's FHIR version. Call this before building any query or
+    /// command from a tool's <c>resourceType</c> parameter: tool input is untrusted and the value reaches
+    /// capability checks, storage keys and request paths.
+    /// </summary>
+    /// <remarks>
+    /// Uses the tenant schema provider, the same source as the HTTP <c>ResourceTypeValidationFilter</c>, so
+    /// package-defined resource types are accepted exactly where they are over HTTP.
+    /// </remarks>
+    /// <param name="resourceType">Resource type supplied by the MCP caller.</param>
+    /// <param name="tenantId">Resolved tenant ID.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <exception cref="BadRequestException">The tenant does not exist or the type is not served.</exception>
+    /// <exception cref="InvalidOperationException">The tool was constructed without an <see cref="IFhirVersionContext"/>.</exception>
+    protected async Task<KnownResourceType> RequireKnownResourceTypeAsync(
+        string resourceType,
+        int tenantId,
+        CancellationToken cancellationToken)
+    {
+        var versionContext = _versionContext
+            ?? throw new InvalidOperationException(
+                $"{GetType().Name} validates resource types but was constructed without an IFhirVersionContext.");
+
+        var tenantConfig = await _tenantConfigurationStore.GetTenantConfigurationAsync(tenantId, cancellationToken)
+            ?? throw new BadRequestException($"Tenant {tenantId} does not exist");
+
+        var fhirVersion = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
+        var resourceTypeNames = versionContext.GetSchemaProvider(fhirVersion, tenantId).ResourceTypeNames;
+
+        // The name set may compare case-insensitively, so Contains cannot tell which casing is canonical;
+        // read the stored name back instead of trusting the caller's.
+        var canonical = resourceTypeNames.FirstOrDefault(name => string.Equals(name, resourceType, StringComparison.Ordinal))
+            ?? resourceTypeNames.FirstOrDefault(name => string.Equals(name, resourceType, StringComparison.OrdinalIgnoreCase));
+
+        return canonical is null
+            ? throw new BadRequestException(
+                $"Resource type '{Truncate(resourceType)}' is not supported by this server (FHIR {tenantConfig.FhirVersion})")
+            : new KnownResourceType(canonical, fhirVersion);
+    }
+
+    private static string Truncate(string value) =>
+        value.Length <= MaxEchoedValueLength ? value : value[..MaxEchoedValueLength] + "...";
 
     /// <summary>
     /// Validates that the tenant exists and is active.

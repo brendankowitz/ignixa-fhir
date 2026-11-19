@@ -3,8 +3,10 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Collections.Immutable;
 using Ignixa.DeId.Configuration;
 using Ignixa.DeId.Darts;
+using Ignixa.DeId.Exceptions;
 using Ignixa.DeId.Darts.Configuration;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
@@ -75,6 +77,48 @@ public class LibraryConfigurationLoaderTests
         result.Parameters.EnablePartialDatesForRedact.ShouldBeTrue();
         result.Parameters.EnablePartialAgesForRedact.ShouldBeFalse();
         result.Processing.ErrorHandling.ShouldBe(ErrorHandlingMode.FailFast);
+    }
+
+    [Fact]
+    public void GivenLibraryWithUnparseableRulePath_WhenLoadingConfiguration_ThenConfigurationExceptionIsThrown()
+    {
+        // Regression: the Library route deserializes rules directly and never parsed their paths.
+        var options = new DeIdOptions
+        {
+            FhirVersion = "R4",
+            Rules = [new FhirPathRule { Path = "Patient.name.where(", Method = "REDACT" }]
+        };
+        var library = LibraryConfigurationLoader.CreateLibraryResource("lib-bad", "BAD", options);
+
+        Should.Throw<ConfigurationException>(() => _loader.LoadFromLibrary(library))
+            .Message.ShouldContain("Patient.name.where(");
+    }
+
+    [Theory]
+    [InlineData("rangeType", "fixed")]
+    [InlineData("span", "five")]
+    public void GivenLibraryWithInvalidPerturbSettings_WhenLoadingConfiguration_ThenConfigurationExceptionIsThrown(
+        string key,
+        string value)
+    {
+        // Regression: Perturb settings were never validated, and a rule without a span perturbed by zero,
+        // returning the value unchanged as a success.
+        var options = new DeIdOptions
+        {
+            FhirVersion = "R4",
+            Rules =
+            [
+                new FhirPathRule
+                {
+                    Path = "Observation.valueQuantity",
+                    Method = "perturb",
+                    Settings = ImmutableDictionary<string, object>.Empty.Add(key, value)
+                }
+            ]
+        };
+        var library = LibraryConfigurationLoader.CreateLibraryResource("lib-perturb", "BAD", options);
+
+        Should.Throw<ConfigurationException>(() => _loader.LoadFromLibrary(library));
     }
 
     [Fact]

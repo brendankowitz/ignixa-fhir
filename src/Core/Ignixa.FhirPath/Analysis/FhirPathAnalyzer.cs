@@ -3,6 +3,7 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Runtime.CompilerServices;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Expressions;
@@ -123,8 +124,10 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         {
             types = expression.AcceptVisitor(this, context);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
         {
+            // Stack exhaustion, cancellation and memory exhaustion propagate: recording them as an issue would
+            // present a partial analysis as a finished one.
             context.AddIssue(ValidationIssueSeverity.Error, $"Analysis failed: {ex.Message}");
         }
 
@@ -139,10 +142,11 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
             var contextForCollection = AnalysisContext.Create(_schema, rootTypeName);
             expression.AcceptVisitor(typeCollector, contextForCollection);
         }
-        catch (Exception)
+        catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
         {
-            // Ignore exceptions during type collection to ensure we return partial type information
-            // Validation errors are already captured in the first pass
+            // Any other failure here only leaves NodeTypes partial: it is the same tree the first pass walked,
+            // and that pass has already recorded its failure as an issue. Stack exhaustion, cancellation and
+            // memory exhaustion are not partial-type cases and propagate, as they do from the first pass.
         }
         
         // Create result with NodeTypes populated
@@ -222,6 +226,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
     public override FhirPathTypeSet VisitPropertyAccess(PropertyAccessExpression expression, AnalysisContext context)
     {
         var result = new FhirPathTypeSet();
+        RuntimeHelpers.EnsureSufficientExecutionStack();
         var visitor = _childVisitor ?? this;
 
         FhirPathTypeSet focusTypes;
@@ -308,6 +313,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
     public override FhirPathTypeSet VisitChild(ChildExpression expression, AnalysisContext context)
     {
         var result = new FhirPathTypeSet();
+        RuntimeHelpers.EnsureSufficientExecutionStack();
         var visitor = _childVisitor ?? this;
 
         FhirPathTypeSet focusTypes;
@@ -395,6 +401,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
     {
         var result = new FhirPathTypeSet();
         var functionName = expression.FunctionName;
+        RuntimeHelpers.EnsureSufficientExecutionStack();
         var visitor = _childVisitor ?? this;
 
         if (functionName == "builtin.children" && expression is not ChildExpression)
@@ -480,7 +487,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
                     validation(expression, funcDef, argTypes, issues);
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
             {
                 issues.Add(new ValidationIssue { Severity = ValidationIssueSeverity.Warning, Message = $"Validation failed for function '{functionName}': {ex.Message}" });
             }
@@ -512,7 +519,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
                         expression);
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
             {
                 context.AddIndeterminateWarning(
                     $"Return type calculation failed for function '{functionName}()' and cannot be analysed: {ex.Message}",
@@ -539,6 +546,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
     public override FhirPathTypeSet VisitBinary(BinaryExpression expression, AnalysisContext context)
     {
         var result = new FhirPathTypeSet();
+        RuntimeHelpers.EnsureSufficientExecutionStack();
         var visitor = _childVisitor ?? this;
 
         // For union operator, fork context so defineVariable in one branch doesn't leak to sibling
@@ -604,6 +612,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
     public override FhirPathTypeSet VisitUnary(UnaryExpression expression, AnalysisContext context)
     {
+        RuntimeHelpers.EnsureSufficientExecutionStack();
         var visitor = _childVisitor ?? this;
         var operandResult = expression.Operand?.AcceptVisitor(visitor, context) ?? new FhirPathTypeSet();
 
@@ -733,6 +742,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
     public override FhirPathTypeSet VisitIndexer(IndexerExpression expression, AnalysisContext context)
     {
+        RuntimeHelpers.EnsureSufficientExecutionStack();
         var visitor = _childVisitor ?? this;
         var collectionResult = expression.Collection?.AcceptVisitor(visitor, context) ?? new FhirPathTypeSet();
         expression.Index?.AcceptVisitor(visitor, context);
@@ -750,6 +760,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
     public override FhirPathTypeSet VisitParenthesized(ParenthesizedExpression expression, AnalysisContext context)
     {
+        RuntimeHelpers.EnsureSufficientExecutionStack();
         var visitor = _childVisitor ?? this;
         return expression.InnerExpression?.AcceptVisitor(visitor, context) ?? new FhirPathTypeSet();
     }
@@ -764,6 +775,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
     public override FhirPathTypeSet VisitInstanceSelector(InstanceSelectorExpression expression, AnalysisContext context)
     {
         var result = new FhirPathTypeSet();
+        RuntimeHelpers.EnsureSufficientExecutionStack();
         var visitor = _childVisitor ?? this;
 
         foreach (var element in expression.Elements)

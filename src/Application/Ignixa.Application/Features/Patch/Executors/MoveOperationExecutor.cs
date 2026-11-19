@@ -1,7 +1,9 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Ignixa.Application.Infrastructure;
 using Ignixa.FhirMappingLanguage.Mutator;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
 
@@ -38,7 +40,7 @@ public class MoveOperationExecutor(
         try
         {
             // Get source value using IJsonNodeMutator
-            var sourceValue = mutator.EvaluateSingle(resource, operation.Source);
+            var sourceValue = mutator.EvaluateSingle(resource, operation.Source, cancellationToken);
 
             // Remove from source
             var deleteOp = new FhirPatchOperation
@@ -57,7 +59,13 @@ public class MoveOperationExecutor(
             };
             resource = await addExecutor.ExecuteAsync(resource, addOp, cancellationToken);
 
-            logger.LogDebug("Moved value from {Source} to {Destination}", operation.Source, operation.Destination);
+            logger.LogDebug("Moved value from {Source} to {Destination}", operation.Source.SanitizeExpressionForLog(), operation.Destination.SanitizeExpressionForLog());
+        }
+        catch (FhirPathResourceLimitExceededException)
+        {
+            // Derives from InvalidOperationException, but is not an invalid patch: FhirPatchEngine reports it as
+            // too costly.
+            throw;
         }
         catch (InvalidOperationException ex)
         {

@@ -23,7 +23,6 @@ public class StructureDefinitionStrategyFactory(
 ) : IStructureDefinitionStrategyFactory
 {
     private const string SectionPath = "Composition.section";
-    private const string LoincSystem = "http://loinc.org";
     private const string IpsCompositionProfile = "http://hl7.org/fhir/uv/ips/StructureDefinition/Composition-uv-ips";
 
     public IIpsGenerationStrategy? CreateFromStructureDefinition(
@@ -106,7 +105,7 @@ public class StructureDefinitionStrategyFactory(
     {
         // Check for section slicing: snapshot.element with path='Composition.section' AND slicing.exists()
         var hasSectionSlicing = structureDefElement
-            .Select($"snapshot.element.where(path = '{SectionPath}' and slicing.exists())")
+            .Select("snapshot.element.where(path = 'Composition.section' and slicing.exists())")
             .Any();
 
         if (!hasSectionSlicing)
@@ -117,7 +116,7 @@ public class StructureDefinitionStrategyFactory(
         // Check for LOINC codes in section slices:
         // Elements with path starting with 'Composition.section:' AND ending with '.code'
         var hasLoincCodes = structureDefElement
-            .Select($"snapshot.element.where(path.startsWith('{SectionPath}:') and path.endsWith('.code')).patternCodeableConcept.coding.where(system = '{LoincSystem}')")
+            .Select("snapshot.element.where(path.startsWith('Composition.section:') and path.endsWith('.code')).patternCodeableConcept.coding.where(system = 'http://loinc.org')")
             .Any();
 
         return hasLoincCodes;
@@ -162,7 +161,7 @@ public class StructureDefinitionStrategyFactory(
     {
         var rootPath = $"{SectionPath}:{sliceName}";
         var rootElement = structureDefElement
-            .Select($"snapshot.element.where(path='{rootPath}')")
+            .Select("snapshot.element.where(path = %path)", StructureDefinitionPathContext.For(rootPath))
             .FirstOrDefault();
 
         if (rootElement is null)
@@ -216,12 +215,12 @@ public class StructureDefinitionStrategyFactory(
 
         // Try pattern first
         var loincCoding = structureDefElement
-            .Select($"snapshot.element.where(path='{codePath}').patternCodeableConcept.coding.where(system='{LoincSystem}')")
+            .Select("snapshot.element.where(path = %path).patternCodeableConcept.coding.where(system='http://loinc.org')", StructureDefinitionPathContext.For(codePath))
             .FirstOrDefault();
 
         // If not found, try fixed
         loincCoding ??= structureDefElement
-            .Select($"snapshot.element.where(path='{codePath}').fixedCodeableConcept.coding.where(system='{LoincSystem}')")
+            .Select("snapshot.element.where(path = %path).fixedCodeableConcept.coding.where(system='http://loinc.org')", StructureDefinitionPathContext.For(codePath))
             .FirstOrDefault();
 
         if (loincCoding is null)
@@ -246,10 +245,10 @@ public class StructureDefinitionStrategyFactory(
         var titlePath = $"{SectionPath}:{sliceName}.title";
 
         // Try fixedString first
-        var title = structureDefElement.Scalar($"snapshot.element.where(path='{titlePath}').fixedString") as string;
+        var title = structureDefElement.Scalar("snapshot.element.where(path = %path).fixedString", StructureDefinitionPathContext.For(titlePath)) as string;
 
         // If not found, try patternString
-        title ??= structureDefElement.Scalar($"snapshot.element.where(path='{titlePath}').patternString") as string;
+        title ??= structureDefElement.Scalar("snapshot.element.where(path = %path).patternString", StructureDefinitionPathContext.For(titlePath)) as string;
 
         return title;
     }
@@ -272,7 +271,7 @@ public class StructureDefinitionStrategyFactory(
 
         // Find Reference type with targetProfile
         var targetProfiles = structureDefElement
-            .Select($"snapshot.element.where(path='{entryPath}').type.where(code='Reference').targetProfile")
+            .Select("snapshot.element.where(path = %path).type.where(code='Reference').targetProfile", StructureDefinitionPathContext.For(entryPath))
             .Select(e => e.Value as string)
             .Where(p => p is not null)
             .ToList();

@@ -659,17 +659,17 @@ public class XverMappingOptimizationTests
         }
         public void MoveTarget(IElement element, int? index = null) => inner.MoveTarget(element, index);
         public void SetProperty(ResourceJsonNode resource, string path, IElement value,
-            PropertyMutationMode mode = PropertyMutationMode.AutoDetect) => inner.SetProperty(resource, path, value, mode);
+            PropertyMutationMode mode = PropertyMutationMode.AutoDetect, CancellationToken cancellationToken = default) => inner.SetProperty(resource, path, value, mode, cancellationToken);
         public void SetProperty(ResourceJsonNode resource, string path, JsonNode value,
-            PropertyMutationMode mode = PropertyMutationMode.AutoDetect) => inner.SetProperty(resource, path, value, mode);
+            PropertyMutationMode mode = PropertyMutationMode.AutoDetect, CancellationToken cancellationToken = default) => inner.SetProperty(resource, path, value, mode, cancellationToken);
         public JsonNode EnsurePropertyPath(ResourceJsonNode resource, string path) => inner.EnsurePropertyPath(resource, path);
-        public void DeleteProperty(ResourceJsonNode resource, string path) => inner.DeleteProperty(resource, path);
-        public void InsertIntoArray(ResourceJsonNode resource, string path, JsonNode value, int index) =>
-            inner.InsertIntoArray(resource, path, value, index);
-        public void ReplaceArrayElement(ResourceJsonNode resource, string path, JsonNode value) =>
-            inner.ReplaceArrayElement(resource, path, value);
-        public IEnumerable<JsonNode> Evaluate(ResourceJsonNode resource, string path) => inner.Evaluate(resource, path);
-        public JsonNode EvaluateSingle(ResourceJsonNode resource, string path) => inner.EvaluateSingle(resource, path);
+        public void DeleteProperty(ResourceJsonNode resource, string path, CancellationToken cancellationToken = default) => inner.DeleteProperty(resource, path, cancellationToken);
+        public void InsertIntoArray(ResourceJsonNode resource, string path, JsonNode value, int index, CancellationToken cancellationToken = default) =>
+            inner.InsertIntoArray(resource, path, value, index, cancellationToken);
+        public void ReplaceArrayElement(ResourceJsonNode resource, string path, JsonNode value, CancellationToken cancellationToken = default) =>
+            inner.ReplaceArrayElement(resource, path, value, cancellationToken);
+        public IEnumerable<JsonNode> Evaluate(ResourceJsonNode resource, string path, CancellationToken cancellationToken = default) => inner.Evaluate(resource, path, cancellationToken);
+        public JsonNode EvaluateSingle(ResourceJsonNode resource, string path, CancellationToken cancellationToken = default) => inner.EvaluateSingle(resource, path, cancellationToken);
     }
     private sealed class ImmutableElement(
         string name,

@@ -147,7 +147,7 @@ public class CompiledVersusInterpretedDifferentialTests
             return;
         }
 
-        var compiledResult = DifferentialFixture.Describe(() => compiled(subject, DifferentialFixture.CreateContext(subject)));
+        var compiledResult = DifferentialFixture.Describe(() => compiled(subject, DifferentialFixture.CreateContext(subject).StartBudget()));
         DifferentialFixture.AssertEvaluated(compiledResult, expression);
 
         compiledResult.ShouldBe(

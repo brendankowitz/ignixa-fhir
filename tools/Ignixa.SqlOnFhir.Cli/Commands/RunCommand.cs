@@ -266,7 +266,7 @@ internal static class RunCommand
             var node = JsonSourceNodeFactory.Parse(line);
             if (node is null) continue;
             var element = node.ToElement(schemaProvider);
-            var rows = evaluator.Evaluate(viewNav, element, vars);
+            var rows = evaluator.Evaluate(viewNav, element, vars, cancellationToken);
             if (rows is null) continue;
             foreach (var row in rows) yield return row;
         }

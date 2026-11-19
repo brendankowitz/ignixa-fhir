@@ -19,19 +19,25 @@ namespace Ignixa.FhirMappingLanguage.Evaluation;
 /// </summary>
 internal class FhirPathIntegration
 {
+    internal const int DefaultCacheCapacity = 512;
+
     private readonly FhirPathParser _parser;
     private readonly FhirPathEvaluator _evaluator;
-    private readonly Dictionary<string, Ignixa.FhirPath.Expressions.Expression> _expressionCache;
+    private readonly FhirPathEvaluationLimits _limits;
+    private readonly BoundedExpressionCache<Ignixa.FhirPath.Expressions.Expression>? _expressionCache;
 
     /// <summary>
     /// Creates a new FhirPathIntegration instance.
     /// </summary>
     /// <param name="cacheExpressions">Whether to cache compiled expressions for performance</param>
-    public FhirPathIntegration(bool cacheExpressions = true)
+    /// <param name="limits">The limits each evaluation runs under; <see cref="FhirPathEvaluationLimits.Default"/> when null.</param>
+    /// <param name="cacheCapacity">Entries retained per cache generation. Expression text comes from the map being evaluated, so the cache evicts rather than grows.</param>
+    public FhirPathIntegration(bool cacheExpressions = true, FhirPathEvaluationLimits? limits = null, int cacheCapacity = DefaultCacheCapacity)
     {
         _parser = new();
         _evaluator = new();
-        _expressionCache = cacheExpressions ? [] : null!;
+        _limits = limits ?? FhirPathEvaluationLimits.Default;
+        _expressionCache = cacheExpressions ? new BoundedExpressionCache<Ignixa.FhirPath.Expressions.Expression>(cacheCapacity) : null;
     }
 
     /// <summary>
@@ -39,7 +45,10 @@ internal class FhirPathIntegration
     /// </summary>
     /// <param name="expression">The FHIRPath expression to evaluate</param>
     /// <param name="element">The element to evaluate against</param>
+    /// <param name="mappingContext">Supplies mapping variables, and the transformation's cancellation token.</param>
     /// <returns>The result elements</returns>
+    /// <exception cref="OperationCanceledException">The transformation was cancelled or timed out.</exception>
+    /// <exception cref="FhirPathResourceLimitExceededException">The expression exceeded an evaluation limit.</exception>
     public IEnumerable<IElement> Evaluate(string expression, IElement element, MappingContext? mappingContext = null)
     {
         if (string.IsNullOrWhiteSpace(expression))
@@ -51,7 +60,11 @@ internal class FhirPathIntegration
         {
             // Get or compile the expression
             var compiledExpression = GetOrCompileExpression(expression);
-            var evaluationContext = new EvaluationContext();
+            var evaluationContext = new EvaluationContext
+            {
+                Limits = _limits,
+                CancellationToken = mappingContext?.CancellationToken ?? CancellationToken.None,
+            };
             if (mappingContext is not null)
             {
                 var variables = new Dictionary<string, IReadOnlyList<IElement>>(StringComparer.Ordinal);
@@ -66,15 +79,27 @@ internal class FhirPathIntegration
             // caller's first enumeration, which would bypass the wrapping below entirely.
             return _evaluator.Evaluate(element, compiledExpression, evaluationContext).ToList();
         }
+        catch (OperationCanceledException)
+        {
+            // The transformation's own timeout or the caller's cancellation, which MappingEvaluator reports.
+            throw;
+        }
+        catch (FhirPathResourceLimitExceededException ex)
+        {
+            // Kept in its own type: "the map asked for more than an evaluation allows" is a capacity
+            // outcome a host reports differently from an ill-formed expression.
+            throw new FhirPathResourceLimitExceededException($"Failed to evaluate FHIRPath expression: {LogSafeText.Sanitize(expression)}", ex);
+        }
         catch (FhirPathEvaluationException ex)
         {
             // Same message and inner exception as the general case, but the type stays distinguishable
             // so callers can tell "this expression is ill-formed for its data" from an engine defect.
-            throw new FhirPathEvaluationException($"Failed to evaluate FHIRPath expression: {expression}", ex);
+            throw new FhirPathEvaluationException($"Failed to evaluate FHIRPath expression: {LogSafeText.Sanitize(expression)}", ex);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
         {
-            throw new InvalidOperationException($"Failed to evaluate FHIRPath expression: {expression}", ex);
+            // Memory and stack exhaustion propagate as themselves; anything else is an engine or parse failure.
+            throw new InvalidOperationException($"Failed to evaluate FHIRPath expression: {LogSafeText.Sanitize(expression)}", ex);
         }
     }
 
@@ -118,18 +143,13 @@ internal class FhirPathIntegration
     {
         if (_expressionCache != null)
         {
-            if (_expressionCache.TryGetValue(expression, out var cached))
-            {
-                return cached;
-            }
-
-            var compiled = _parser.Parse(expression);
-            _expressionCache[expression] = compiled;
-            return compiled;
+            return _expressionCache.GetOrAdd(expression, _parser.Parse);
         }
 
         return _parser.Parse(expression);
     }
+
+    internal int CachedExpressionCount => _expressionCache?.Count ?? 0;
 
     /// <summary>
     /// Clears the expression cache.

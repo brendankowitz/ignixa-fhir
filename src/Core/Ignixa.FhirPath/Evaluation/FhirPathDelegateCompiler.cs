@@ -5,6 +5,7 @@
  * Falls back to interpreted execution for complex/unsupported expressions.
  */
 
+using System.Runtime.CompilerServices;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation.Functions;
 using Ignixa.FhirPath.Expressions;
@@ -29,6 +30,15 @@ namespace Ignixa.FhirPath.Evaluation;
 /// implements the full language. Declining is always safe; it costs speed, never correctness.
 /// </para>
 /// <para>
+/// <b>Limits and cancellation.</b> None of the compiled forms can amplify its input: each is navigation, a filter
+/// or a count over it, with no construction, recursion or set operation. A compiled delegate still runs under a
+/// budget of its own, which the delegate <see cref="TryCompile"/> returns starts from the context's limits and
+/// token on every call. Navigation charges a step per focus element and per child, as
+/// the interpreter's does, so a compiled path over a large resource exhausts the same step budget and observes
+/// <see cref="EvaluationContext.CancellationToken"/> and the deadline at the same interval; its comparisons go
+/// through the interpreter's, which charge for the text they read and the unit conversions they make.
+/// </para>
+/// <para>
 /// This summary previously claimed coverage of "92% of common search parameter patterns", with a
 /// per-form breakdown that summed to 112%. No measurement supported either figure, so both are gone
 /// rather than restated: a coverage number is only worth publishing if it is computed against a named
@@ -48,9 +58,23 @@ public class FhirPathDelegateCompiler
     /// Attempts to compile an expression to a delegate.
     /// Returns null if compilation is not supported (will use fallback interpreter).
     /// </summary>
+    /// <remarks>
+    /// The delegate meters each call under a budget of its own, started from the context's limits and token, as
+    /// <see cref="FhirPathEvaluator.Evaluate"/> does; starting it observes cancellation first.
+    /// </remarks>
     public Func<IElement, EvaluationContext, IEnumerable<IElement>>? TryCompile(Expression expr)
     {
+        var compiled = CompileNode(expr);
+        return compiled is null ? null : (input, ctx) => compiled(input, ctx.StartBudget());
+    }
+
+    private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileNode(Expression expr)
+    {
         ArgumentNullException.ThrowIfNull(expr);
+
+        // Compilation recurses through CompileNode once per tree level; the parser bounds that depth, and
+        // this turns an undersized stack into an exception the filter below lets through.
+        RuntimeHelpers.EnsureSufficientExecutionStack();
 
         try
         {
@@ -84,9 +108,11 @@ public class FhirPathDelegateCompiler
                 _ => null
             };
         }
-        catch
+        catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
         {
-            // If compilation fails for any reason, return null to use interpreter
+            // A compilation failure falls back to the interpreter. Stack exhaustion, cancellation and
+            // memory exhaustion are not compilation failures: falling back would hide them, and the
+            // interpreter would hit the same stack limit with less headroom.
             return null;
         }
     }
@@ -112,11 +138,11 @@ public class FhirPathDelegateCompiler
                     return [input];
                 }
 
-                return input.Children(name);
+                return ChildrenOf(input, name, ctx.Budget);
             };
         }
 
-        return (input, ctx) => input.Children(name);
+        return (input, ctx) => ChildrenOf(input, name, ctx.Budget);
     }
 
     /// <summary>
@@ -157,11 +183,11 @@ public class FhirPathDelegateCompiler
                     {
                         return [input];
                     }
-                    return input.Children(childName);
+                    return ChildrenOf(input, childName, ctx.Budget);
                 };
             }
 
-            return (input, ctx) => input.Children(childName);
+            return (input, ctx) => ChildrenOf(input, childName, ctx.Budget);
         }
 
         // Optimize two-level case: "Patient.identifier" or "name.family"
@@ -184,21 +210,21 @@ public class FhirPathDelegateCompiler
                     }
                     else
                     {
-                        parents = input.Children(parentName);
+                        parents = ChildrenOf(input, parentName, ctx.Budget);
                     }
-                    return parents.SelectMany(parent => parent.Children(childName));
+                    return ChildrenOf(parents, childName, ctx.Budget);
                 };
             }
 
             return (input, ctx) =>
             {
-                var parents = input.Children(parentName);
-                return parents.SelectMany(parent => parent.Children(childName));
+                var parents = ChildrenOf(input, parentName, ctx.Budget);
+                return ChildrenOf(parents, childName, ctx.Budget);
             };
         }
 
         // Recursive compilation for deeper paths (name.foo.bar)
-        var focusFunc = child.Focus != null ? TryCompile(child.Focus) : null;
+        var focusFunc = child.Focus != null ? CompileNode(child.Focus) : null;
         if (focusFunc == null)
             return null; // Cannot compile focus, use fallback
 
@@ -206,7 +232,7 @@ public class FhirPathDelegateCompiler
         return (input, ctx) =>
         {
             var focusResults = focusFunc(input, ctx);
-            return focusResults.SelectMany(el => el.Children(childName2));
+            return ChildrenOf(focusResults, childName2, ctx.Budget);
         };
     }
 
@@ -249,13 +275,13 @@ public class FhirPathDelegateCompiler
         if (predicateExpr is not BinaryExpression binary || binary.Operator != "=")
             return null;
 
-        var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
+        var focusFunc = func.Focus != null ? CompileNode(func.Focus) : null;
         if (focusFunc == null)
             return null;
 
         // Try to compile left and right sides
-        var leftFunc = TryCompile(binary.Left);
-        var rightFunc = TryCompile(binary.Right);
+        var leftFunc = CompileNode(binary.Left);
+        var rightFunc = CompileNode(binary.Right);
 
         if (leftFunc == null || rightFunc == null)
             return null;
@@ -267,10 +293,15 @@ public class FhirPathDelegateCompiler
             // An indeterminate comparison excludes the item, matching the interpreter's where(), which
             // keeps an element only when its criteria evaluates to a non-empty, true result.
             return focusResults.Where(item =>
-                _fallbackEvaluator.CompareEquality(
+            {
+                ctx.CancellationToken.ThrowIfCancellationRequested();
+
+                return _fallbackEvaluator.CompareEquality(
                     leftFunc(item, ctx).ToList(),
                     rightFunc(item, ctx).ToList(),
-                    equals: true) == true);
+                    equals: true,
+                    ctx.Budget) == true;
+            });
         };
     }
 
@@ -285,7 +316,7 @@ public class FhirPathDelegateCompiler
         if (func.Arguments.Count > 0)
             return null;
 
-        var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
+        var focusFunc = func.Focus != null ? CompileNode(func.Focus) : null;
         if (focusFunc == null)
             return null;
 
@@ -322,7 +353,7 @@ public class FhirPathDelegateCompiler
             return (input, ctx) => new[] { CreateBooleanElement(whereFunc(input, ctx).Any()) };
         }
 
-        var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
+        var focusFunc = func.Focus != null ? CompileNode(func.Focus) : null;
         if (focusFunc == null)
             return null;
 
@@ -346,7 +377,7 @@ public class FhirPathDelegateCompiler
         if (func.Arguments.Count > 0)
             return null;
 
-        var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
+        var focusFunc = func.Focus != null ? CompileNode(func.Focus) : null;
         if (focusFunc == null)
             return null;
 
@@ -369,7 +400,7 @@ public class FhirPathDelegateCompiler
         if (func.Arguments.Count > 0)
             return null;
 
-        var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
+        var focusFunc = func.Focus != null ? CompileNode(func.Focus) : null;
         if (focusFunc == null)
             return null;
 
@@ -392,7 +423,7 @@ public class FhirPathDelegateCompiler
         if (func.Arguments.Count > 0)
             return null;
 
-        var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
+        var focusFunc = func.Focus != null ? CompileNode(func.Focus) : null;
         if (focusFunc == null)
             return null;
 
@@ -415,7 +446,7 @@ public class FhirPathDelegateCompiler
         if (func.Arguments.Count > 0)
             return null;
 
-        var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
+        var focusFunc = func.Focus != null ? CompileNode(func.Focus) : null;
         if (focusFunc == null)
             return null;
 
@@ -441,7 +472,7 @@ public class FhirPathDelegateCompiler
         if (func.Arguments.Count > 0)
             return null;
 
-        var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
+        var focusFunc = func.Focus != null ? CompileNode(func.Focus) : null;
         if (focusFunc == null)
             return null;
 
@@ -461,7 +492,7 @@ public class FhirPathDelegateCompiler
         if (func.Arguments[0] is not IdentifierExpression idExpr)
             return null; // Cannot compile dynamic type expressions
 
-        var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
+        var focusFunc = func.Focus != null ? CompileNode(func.Focus) : null;
         if (focusFunc == null)
             return null;
 
@@ -487,8 +518,8 @@ public class FhirPathDelegateCompiler
     /// </summary>
     private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileBinary(BinaryExpression binary)
     {
-        var leftFunc = TryCompile(binary.Left);
-        var rightFunc = TryCompile(binary.Right);
+        var leftFunc = CompileNode(binary.Left);
+        var rightFunc = CompileNode(binary.Right);
 
         if (leftFunc == null || rightFunc == null)
             return null;
@@ -497,13 +528,13 @@ public class FhirPathDelegateCompiler
         return binary.Operator.ToLowerInvariant() switch
 #pragma warning restore CA1308 // Normalize strings to uppercase
         {
-            "=" => CompileComparison(leftFunc, rightFunc, (l, r) => _fallbackEvaluator.CompareEquality(l, r, equals: true)),
-            "!=" => CompileComparison(leftFunc, rightFunc, (l, r) => _fallbackEvaluator.CompareEquality(l, r, equals: false)),
+            "=" => CompileComparison(leftFunc, rightFunc, (l, r, budget) => _fallbackEvaluator.CompareEquality(l, r, equals: true, budget)),
+            "!=" => CompileComparison(leftFunc, rightFunc, (l, r, budget) => _fallbackEvaluator.CompareEquality(l, r, equals: false, budget)),
 
-            "<" => CompileComparison(leftFunc, rightFunc, (l, r) => _fallbackEvaluator.CompareOrder(l, r, greater: false, orEqual: false)),
-            ">" => CompileComparison(leftFunc, rightFunc, (l, r) => _fallbackEvaluator.CompareOrder(l, r, greater: true, orEqual: false)),
-            "<=" => CompileComparison(leftFunc, rightFunc, (l, r) => _fallbackEvaluator.CompareOrder(l, r, greater: false, orEqual: true)),
-            ">=" => CompileComparison(leftFunc, rightFunc, (l, r) => _fallbackEvaluator.CompareOrder(l, r, greater: true, orEqual: true)),
+            "<" => CompileComparison(leftFunc, rightFunc, (l, r, budget) => _fallbackEvaluator.CompareOrder(l, r, greater: false, orEqual: false, budget)),
+            ">" => CompileComparison(leftFunc, rightFunc, (l, r, budget) => _fallbackEvaluator.CompareOrder(l, r, greater: true, orEqual: false, budget)),
+            "<=" => CompileComparison(leftFunc, rightFunc, (l, r, budget) => _fallbackEvaluator.CompareOrder(l, r, greater: false, orEqual: true, budget)),
+            ">=" => CompileComparison(leftFunc, rightFunc, (l, r, budget) => _fallbackEvaluator.CompareOrder(l, r, greater: true, orEqual: true, budget)),
 
             _ => null
         };
@@ -531,7 +562,7 @@ public class FhirPathDelegateCompiler
     private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileParenthesized(ParenthesizedExpression paren)
     {
         // Parentheses are transparent - just compile the inner expression
-        return TryCompile(paren.InnerExpression);
+        return CompileNode(paren.InnerExpression);
     }
 
     /// <summary>
@@ -556,15 +587,15 @@ public class FhirPathDelegateCompiler
                     {
                         return [input];
                     }
-                    return input.Children(propertyName);
+                    return ChildrenOf(input, propertyName, ctx.Budget);
                 };
             }
 
-            return (input, ctx) => input.Children(propertyName);
+            return (input, ctx) => ChildrenOf(input, propertyName, ctx.Budget);
         }
 
         // Multi-level: compile focus and navigate
-        var focusFunc = prop.Focus != null ? TryCompile(prop.Focus) : null;
+        var focusFunc = prop.Focus != null ? CompileNode(prop.Focus) : null;
         if (focusFunc == null)
             return null;
 
@@ -572,7 +603,7 @@ public class FhirPathDelegateCompiler
         return (input, ctx) =>
         {
             var focusResults = focusFunc(input, ctx);
-            return focusResults.SelectMany(el => el.Children(childName));
+            return ChildrenOf(focusResults, childName, ctx.Budget);
         };
     }
 
@@ -582,6 +613,31 @@ public class FhirPathDelegateCompiler
     private bool IsScopeThis(Expression? expr)
     {
         return expr is ScopeExpression scope && scope.ScopeName.Equals("this", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Navigates to the children named <paramref name="name"/>, charging a step for the focus and one per child, as
+    /// the interpreter's navigation does.
+    /// </summary>
+    private static IEnumerable<IElement> ChildrenOf(IElement focus, string name, EvaluationBudget budget)
+    {
+        budget.Step();
+        foreach (var child in focus.Children(name))
+        {
+            budget.Step();
+            yield return child;
+        }
+    }
+
+    private static IEnumerable<IElement> ChildrenOf(IEnumerable<IElement> focus, string name, EvaluationBudget budget)
+    {
+        foreach (var element in focus)
+        {
+            foreach (var child in ChildrenOf(element, name, budget))
+            {
+                yield return child;
+            }
+        }
     }
 
     /// <summary>
@@ -597,10 +653,10 @@ public class FhirPathDelegateCompiler
     private static Func<IElement, EvaluationContext, IEnumerable<IElement>> CompileComparison(
         Func<IElement, EvaluationContext, IEnumerable<IElement>> leftFunc,
         Func<IElement, EvaluationContext, IEnumerable<IElement>> rightFunc,
-        Func<List<IElement>, List<IElement>, bool?> comparer)
+        Func<List<IElement>, List<IElement>, EvaluationBudget, bool?> comparer)
     {
         return (input, ctx) => FunctionHelpers.ReturnBoolean(
-            comparer(leftFunc(input, ctx).ToList(), rightFunc(input, ctx).ToList()));
+            comparer(leftFunc(input, ctx).ToList(), rightFunc(input, ctx).ToList(), ctx.Budget));
     }
 
     /// <summary>

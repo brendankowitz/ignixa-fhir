@@ -33,7 +33,6 @@ public class SearchResourcesTool : TenantAwareMcpTool
     private readonly IMediator _mediator;
     private readonly ISearchOptionsBuilderFactory _builderFactory;
     private readonly IFhirVersionContext _versionContext;
-    private readonly ITenantConfigurationStore _tenantConfigurationStore;
     private readonly IFhirRequestContextAccessor _contextAccessor;
 
     public SearchResourcesTool(
@@ -43,12 +42,11 @@ public class SearchResourcesTool : TenantAwareMcpTool
         ISearchOptionsBuilderFactory builderFactory,
         IFhirVersionContext versionContext,
         IFhirRequestContextAccessor contextAccessor)
-        : base(fhirRequestContextAccessor, tenantStore)
+        : base(fhirRequestContextAccessor, tenantStore, versionContext: versionContext)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
         _builderFactory = builderFactory ?? throw new ArgumentNullException(nameof(builderFactory));
         _versionContext = versionContext ?? throw new ArgumentNullException(nameof(versionContext));
-        _tenantConfigurationStore = tenantStore ?? throw new ArgumentNullException(nameof(tenantStore));
         _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
     }
 
@@ -86,6 +84,9 @@ Example: resourceType='Patient', searchParams={'name': 'Smith'}, elements='id,na
         // Resolve tenant using base class logic
         var resolvedTenantId = await ResolveTenantIdAsync(tenantId, cancellationToken);
 
+        var knownResourceType = await RequireKnownResourceTypeAsync(resourceType, resolvedTenantId, cancellationToken);
+        resourceType = knownResourceType.ResourceType;
+
         // Enforce default count=10, max=50 (LLM optimization per design guidelines)
         var effectiveCount = Math.Min(count ?? 10, 50);
 
@@ -118,10 +119,11 @@ Example: resourceType='Patient', searchParams={'name': 'Smith'}, elements='id,na
         }
 
         // Get FHIR version for the tenant to resolve correct schema provider
-        var fhirVersion = await ResolveFhirVersionAsync(resolvedTenantId, cancellationToken);
+        var fhirVersion = knownResourceType.FhirVersion;
 
-        // Get the appropriate schema provider for this FHIR version
-        var schemaProvider = _versionContext.GetBaseSchemaProvider(fhirVersion);
+        // The tenant provider, as on the HTTP search path: package-defined types and search parameters
+        // exist only there, and validation above already used it.
+        var schemaProvider = _versionContext.GetSchemaProvider(fhirVersion, resolvedTenantId);
 
         // Use SearchOptionsBuilder to parse all parameters and build expressions
         var builder = _builderFactory.Create(fhirVersion, resolvedTenantId);
@@ -187,29 +189,5 @@ Example: resourceType='Patient', searchParams={'name': 'Smith'}, elements='id,na
             HasMore = hasMore,
             ContinuationToken = hasMore ? result.ContinuationToken : null
         };
-    }
-
-    /// <summary>
-    /// Resolve the FHIR version from tenant configuration, with fallback to R4 default.
-    /// </summary>
-    private async Task<FhirVersion> ResolveFhirVersionAsync(int tenantId, CancellationToken cancellationToken)
-    {
-        // Default to R4
-        var fhirVersion = FhirVersion.R4;
-
-        try
-        {
-            var tenantConfig = await _tenantConfigurationStore.GetTenantConfigurationAsync(tenantId, cancellationToken);
-            if (tenantConfig != null && !string.IsNullOrEmpty(tenantConfig.FhirVersion))
-            {
-                fhirVersion = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
-            }
-        }
-        catch
-        {
-            // If tenant resolution fails, use default R4
-        }
-
-        return fhirVersion;
     }
 }

@@ -11,6 +11,8 @@ using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Registry;
 using Ignixa.FhirMappingLanguage.Transforms;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirMappingLanguage.Mutator;
 using Ignixa.Serialization.SourceNodes;
 
@@ -62,7 +64,7 @@ public class MappingEvaluator
     {
         _options = MappingEvaluatorOptions.Default;
         _options.Validate();
-        _fhirPathIntegration = enableFhirPath ? new() : null;
+        _fhirPathIntegration = enableFhirPath ? new(limits: FhirPathLimits(_options)) : null;
         _importResolver = null;
     }
 
@@ -74,7 +76,7 @@ public class MappingEvaluator
     {
         _options = options ?? MappingEvaluatorOptions.Default;
         _options.Validate();
-        _fhirPathIntegration = new FhirPathIntegration();
+        _fhirPathIntegration = new FhirPathIntegration(limits: FhirPathLimits(_options));
         _importResolver = null;
     }
 
@@ -87,7 +89,7 @@ public class MappingEvaluator
     {
         _options = MappingEvaluatorOptions.Default;
         _options.Validate();
-        _fhirPathIntegration = enableFhirPath ? new() : null;
+        _fhirPathIntegration = enableFhirPath ? new(limits: FhirPathLimits(_options)) : null;
         _importResolver = importResolver;
     }
 
@@ -100,7 +102,7 @@ public class MappingEvaluator
     {
         _options = options ?? MappingEvaluatorOptions.Default;
         _options.Validate();
-        _fhirPathIntegration = new FhirPathIntegration();
+        _fhirPathIntegration = new FhirPathIntegration(limits: FhirPathLimits(_options));
         _importResolver = importResolver;
     }
 
@@ -113,7 +115,7 @@ public class MappingEvaluator
     {
         _options = options ?? MappingEvaluatorOptions.Default;
         _options.Validate();
-        _fhirPathIntegration = new FhirPathIntegration();
+        _fhirPathIntegration = new FhirPathIntegration(limits: FhirPathLimits(_options));
         _mutator = mutator;
         _importResolver = null;
     }
@@ -128,7 +130,7 @@ public class MappingEvaluator
     {
         _options = options ?? MappingEvaluatorOptions.Default;
         _options.Validate();
-        _fhirPathIntegration = new FhirPathIntegration();
+        _fhirPathIntegration = new FhirPathIntegration(limits: FhirPathLimits(_options));
         _mutator = mutator;
         _importResolver = importResolver;
     }
@@ -197,12 +199,16 @@ public class MappingEvaluator
     /// The transformation failed, or did not finish within <see cref="MappingEvaluatorOptions.TransformTimeout"/> (code <c>TRANSFORM_TIMEOUT</c>).
     /// </exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
-    public void ExecuteGroup(MapExpression map, string groupName, MappingContext context, CancellationToken cancellationToken) =>
-        WithinTimeout(() => ExecuteGroupCore(map, groupName, context), cancellationToken);
+    public void ExecuteGroup(MapExpression map, string groupName, MappingContext context, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        WithinTimeout(context, () => ExecuteGroupCore(map, groupName, context), cancellationToken);
+    }
 
     // TransformTimeout bounds the whole call: a map of a few dozen groups that call each other twice each would otherwise run for
-    // years without ever reaching MaxRecursionDepth or MaxElementsCreated.
-    private void WithinTimeout(Action execute, CancellationToken cancellationToken)
+    // years without ever reaching MaxRecursionDepth or MaxElementsCreated. The linked token is also published on the context,
+    // so FHIRPath evaluation observes it mid-expression rather than only at the next rule.
+    private void WithinTimeout(MappingContext context, Action execute, CancellationToken cancellationToken)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         if (_options.TransformTimeout.TotalMilliseconds <= int.MaxValue)
@@ -210,7 +216,9 @@ public class MappingEvaluator
             timeout.CancelAfter(_options.TransformTimeout);
         }
 
+        var enclosingToken = context.CancellationToken;
         _cancellationToken = timeout.Token;
+        context.CancellationToken = timeout.Token;
         try
         {
             execute();
@@ -225,8 +233,16 @@ public class MappingEvaluator
         finally
         {
             _cancellationToken = CancellationToken.None;
+            context.CancellationToken = enclosingToken;
         }
     }
+
+    /// <summary>
+    /// The limits the built-in FHIRPath integration evaluates under: the defaults, with
+    /// <see cref="MappingEvaluatorOptions.FhirPathTimeout"/> as each evaluation's time limit.
+    /// </summary>
+    private static FhirPathEvaluationLimits FhirPathLimits(MappingEvaluatorOptions options) =>
+        FhirPathEvaluationLimits.Default with { Timeout = options.FhirPathTimeout };
 
     private void ExecuteGroupCore(MapExpression map, string groupName, MappingContext context)
     {
@@ -439,7 +455,7 @@ public class MappingEvaluator
                 VisitRule(group.Rules[i], context, group.Name);
             }
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && !ExceptionFilters.IsCritical(ex))
         {
             CheckErrorLimit(context);
             context.AddError($"Error executing group: {ex.Message}", location, "GROUP_EXECUTION_ERROR", ex, groupName: group.Name);
@@ -468,7 +484,7 @@ public class MappingEvaluator
 
             ExecuteRuleSources(rule, context, 0, new Dictionary<string, IEnumerable<IElement>>(), groupName, location);
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && !ExceptionFilters.IsCritical(ex))
         {
             CheckErrorLimit(context);
             context.AddError(
@@ -568,7 +584,7 @@ public class MappingEvaluator
                     throw new NotSupportedException($"Dependent expression type {dependent.GetType().Name} not supported");
             }
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && !ExceptionFilters.IsCritical(ex))
         {
             context.AddError(
                 $"Error executing dependent expression: {ex.Message}",
@@ -733,7 +749,7 @@ public class MappingEvaluator
                 }
             }
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && !ExceptionFilters.IsCritical(ex))
         {
             context.AddError(
                 $"Error invoking group '{invocation.GroupName}': {ex.Message}",
@@ -776,7 +792,7 @@ public class MappingEvaluator
                         var result = EvaluateSourceExpression(fhirPathCondition, source, element, context).ToList();
                         return result.Count == 1 && result[0].Value is true;
                     }
-                    catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+                    catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && !ExceptionFilters.IsCritical(ex))
                     {
                         context.AddError($"Error evaluating where condition: {ex.Message}",
                             location, "WHERE_ERROR", ex, ruleName: _currentRuleName,
@@ -868,7 +884,7 @@ public class MappingEvaluator
                         }
                     }
                 }
-                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && !ExceptionFilters.IsCritical(ex))
                 {
                     context.AddError(
                         $"Check condition failed: {ex.Message}",
@@ -953,7 +969,7 @@ public class MappingEvaluator
                         }
                     }
                 }
-                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && !ExceptionFilters.IsCritical(ex))
                 {
                     context.AddError(
                         $"Error executing log statement: {ex.Message}",
@@ -977,7 +993,7 @@ public class MappingEvaluator
 
             return contextValuesList;
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && !ExceptionFilters.IsCritical(ex))
         {
             CheckErrorLimit(context);
             context.AddError(
@@ -1100,7 +1116,7 @@ public class MappingEvaluator
                 }
             }
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && !ExceptionFilters.IsCritical(ex))
         {
             context.AddError(
                 $"Error visiting target: {ex.Message}",
@@ -1478,7 +1494,7 @@ public class MappingEvaluator
                     var argValue = argValues[0];
                     args.Add(transform.FunctionName is "reference" or "pointer" or "cast" ? argValue : argValue.Value ?? argValue);
                 }
-                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && !ExceptionFilters.IsCritical(ex))
                 {
                     context.AddError(
                         $"Error evaluating transform argument: {ex.Message}",
@@ -1538,7 +1554,7 @@ public class MappingEvaluator
             }
             return result;
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && !ExceptionFilters.IsCritical(ex))
         {
             context.AddError(
                 $"Error executing transform '{transform.FunctionName}': {ex.Message}",
@@ -1588,7 +1604,7 @@ public class MappingEvaluator
                 _ => throw new NotSupportedException($"Expression type {expr.GetType().Name} not supported in this context")
             };
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && !ExceptionFilters.IsCritical(ex))
         {
             context.AddError(
                 $"Error evaluating expression: {ex.Message}",
@@ -1985,9 +2001,9 @@ public class MappingEvaluator
             _targetRoots.Add(JsonRoot(targetNode));
 
             // Apply mutation
-            _mutator!.SetProperty(targetResource, fhirPath, element, mutationMode);
+            _mutator!.SetProperty(targetResource, fhirPath, element, mutationMode, _cancellationToken);
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && ex is not OperationCanceledException)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient && !ExceptionFilters.IsCritical(ex))
         {
             context.AddError(
                 $"Failed to mutate target property: {ex.Message}",

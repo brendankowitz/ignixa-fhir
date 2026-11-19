@@ -77,7 +77,7 @@ public static class ExperimentalAutofacRegistration
         // Feature: Transform - FHIR Mapping Language
         if (options.Features.Transform.Enabled)
         {
-            builder.RegisterTransformHandlers();
+            builder.RegisterTransformHandlers(options.Features.Transform);
         }
 
         // Feature: Terminology - $expand, $translate, $subsumes
@@ -117,7 +117,7 @@ public static class ExperimentalAutofacRegistration
         // via assembly scanning when endpoints are mapped
     }
 
-    private static void RegisterTransformHandlers(this ContainerBuilder builder)
+    private static void RegisterTransformHandlers(this ContainerBuilder builder, TransformExperimentalOptions transformOptions)
     {
         // Register Transform handler
         builder.RegisterType<TransformResourceHandler>()
@@ -150,12 +150,14 @@ public static class ExperimentalAutofacRegistration
             .AsSelf()
             .SingleInstance();
 
-        // FHIRPath evaluator used by mapping transformations. Despite the class name it enforces no
-        // execution-time timeout - see the remarks on FhirPathEvaluatorWithTimeout.
+        // FHIRPath evaluator used by mapping transformations. TimeoutSeconds bounds each evaluation through the
+        // evaluator's own budget, and TransformResourceHandler applies it to the transformation as a whole.
+        var transformTimeout = TimeSpan.FromSeconds(transformOptions.TimeoutSeconds);
         builder.Register(c => new FhirPathEvaluatorWithTimeout(
                 c.Resolve<FhirPathExpressionCache>(),
                 c.Resolve<FhirPathEvaluator>(),
-                c.Resolve<ILogger<FhirPathEvaluatorWithTimeout>>()))
+                c.Resolve<ILogger<FhirPathEvaluatorWithTimeout>>(),
+                transformTimeout))
             .AsSelf()
             .SingleInstance();
 

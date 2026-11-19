@@ -9,6 +9,7 @@ using HotChocolate;
 using HotChocolate.Resolvers;
 using Ignixa.Abstractions;
 using Ignixa.Application.Infrastructure;
+using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization.SourceNodes;
@@ -17,6 +18,12 @@ namespace Ignixa.Application.Features.Experimental.GraphQl.Resolvers;
 
 internal static class FieldResolver
 {
+    /// <summary>
+    /// The error code for a FHIRPath filter that exceeded an evaluation limit. The execution service fails the whole
+    /// request as too costly when any field reports it, rather than returning partial data.
+    /// </summary>
+    internal const string TooCostlyErrorCode = "FHIRPATH_TOO_COSTLY";
+
     private static readonly FhirPathParser FhirPathExpressionParser = new(preserveTrivia: false);
 
     internal static JsonElement ParseResourceBytes(ReadOnlyMemory<byte> bytes)
@@ -74,7 +81,7 @@ internal static class FieldResolver
         {
             var fhirVersion = context.Service<IFhirRequestContextAccessor>().RequestContext?.FhirVersion ?? FhirVersion.R4;
             var schemaProvider = context.Service<Func<FhirVersion, IFhirSchemaProvider>>()(fhirVersion);
-            items = ApplyFhirPathFilter(items, fhirpathOpt.Value, schemaProvider, instanceType);
+            items = ApplyFhirPathFilter(items, fhirpathOpt.Value, schemaProvider, instanceType, context.RequestAborted);
         }
 
         // Apply sub-property filters (e.g., name(use: "official"))
@@ -106,8 +113,17 @@ internal static class FieldResolver
         return items.ToList();
     }
 
+    /// <remarks>
+    /// The expression comes from the request, so each evaluation runs under the default FHIRPath evaluation limits
+    /// and observes the request's <paramref name="cancellationToken"/>. A limit is reported as its own error code
+    /// rather than as an invalid expression, because the expression is valid and only too costly.
+    /// </remarks>
     internal static IEnumerable<JsonElement> ApplyFhirPathFilter(
-        IEnumerable<JsonElement> items, string expression, IFhirSchemaProvider schemaProvider, string? instanceType)
+        IEnumerable<JsonElement> items,
+        string expression,
+        IFhirSchemaProvider schemaProvider,
+        string? instanceType,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(expression))
             return items;
@@ -135,17 +151,26 @@ internal static class FieldResolver
 
                 var sourceNode = JsonNodeSourceNode.Create(node, instanceType ?? "root");
                 var element = sourceNode.ToElement(schemaProvider);
-                return element.IsTrue(expression);
+                return element.IsTrue(expression, new EvaluationContext { CancellationToken = cancellationToken, ExpressionIsRequestSupplied = true });
             }
             catch (OperationCanceledException)
             {
                 throw;
             }
-            catch (Exception ex)
+            catch (FhirPathResourceLimitExceededException ex)
             {
                 throw new GraphQLException(
                     ErrorBuilder.New()
-                        .SetMessage($"Error evaluating FHIRPath expression '{expression}': {ex.Message}")
+                        .SetMessage($"FHIRPath expression '{expression.SanitizeExpressionForLog()}' exceeded an evaluation limit: {LogSafeText.Sanitize(ex.Message)}")
+                        .SetCode(TooCostlyErrorCode)
+                        .SetException(ex)
+                        .Build());
+            }
+            catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
+            {
+                throw new GraphQLException(
+                    ErrorBuilder.New()
+                        .SetMessage($"Error evaluating FHIRPath expression '{expression.SanitizeExpressionForLog()}': {LogSafeText.Sanitize(ex.Message)}")
                         .SetCode("FHIRPATH_INVALID")
                         .SetException(ex)
                         .Build());
@@ -159,7 +184,7 @@ internal static class FieldResolver
         {
             throw new GraphQLException(
                 ErrorBuilder.New()
-                    .SetMessage($"Invalid FHIRPath expression '{expression}': {errorMessage}")
+                    .SetMessage($"Invalid FHIRPath expression '{expression.SanitizeExpressionForLog()}': {errorMessage}")
                     .SetCode("FHIRPATH_INVALID")
                     .Build());
         }

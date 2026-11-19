@@ -8,7 +8,6 @@ using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.Operations.Features.DeIdentify;
 using Ignixa.DeId.Darts;
-using Ignixa.DeId.Darts.Configuration;
 using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
@@ -25,6 +24,11 @@ namespace Ignixa.Api.Endpoints;
 /// </summary>
 public static class DeIdOperationEndpoints
 {
+    /// <summary>
+    /// Response header present when de-identification completed with warnings; its value is <c>count=N</c>.
+    /// </summary>
+    public const string DeIdWarningHeader = "X-Ignixa-DeId-Warning";
+
     /// <summary>
     /// Registers FHIR $de-identify operation endpoints.
     /// </summary>
@@ -164,23 +168,7 @@ public static class DeIdOperationEndpoints
                 ?? DartsConstants.PolicySafeHarbor;
         }
 
-        // If no custom Library configuration was provided, use a built-in bootstrap policy.
-        // Future enhancement: load Library resource from database by policy code.
-        if (configLibrary is null)
-        {
-            try
-            {
-                configLibrary = CreateBootstrapLibrary(policy);
-            }
-            catch (ArgumentException ex)
-            {
-                return FhirResults.BadRequest(CreateOperationOutcome(
-                    OperationOutcomeIssue.IssueSeverityCode.Error,
-                    OperationOutcomeIssue.IssueTypeCommon.Invalid,
-                    ex.Message));
-            }
-        }
-
+        // Without a configuration Library, the handler applies the built-in policy the code names.
         var command = new DeIdentifyCommand(
             tenantId,
             resourceNode,
@@ -189,27 +177,34 @@ public static class DeIdOperationEndpoints
 
         var result = await mediator.SendAsync(command, cancellationToken);
 
-        return result.IsSuccess
-            ? Results.Ok(result.OutputResource!.MutableNode)
-            : FhirResults.BadRequest(CreateOperationOutcome(
+        if (result.IsSuccess)
+        {
+            AddWarningHeader(context, result.Warnings);
+            return Results.Ok(result.OutputResource!.MutableNode);
+        }
+
+        return FhirResults.BadRequest(CreateOperationOutcome(
                 OperationOutcomeIssue.IssueSeverityCode.Error,
                 OperationOutcomeIssue.IssueTypeCommon.Processing,
                 result.ErrorMessage!));
     }
 
-    private static ResourceJsonNode CreateBootstrapLibrary(string policy)
+    /// <summary>
+    /// The success body is the bare de-identified resource, so the presence of warnings travels in a response
+    /// header rather than being dropped. The value is a fixed, ASCII-only count and never echoes warning text:
+    /// warnings can embed resource values (PHI), and header values end up in proxy logs and must be valid
+    /// single-line ASCII or Kestrel fails the response. Detail stays in the server logs.
+    /// </summary>
+    internal static void AddWarningHeader(HttpContext context, IReadOnlyList<string>? warnings)
     {
-        var options = policy switch
+        if (warnings is null || warnings.Count == 0)
         {
-            DartsConstants.PolicySafeHarbor => BootstrapPolicies.CreateSafeHarborOptions(),
-            DartsConstants.PolicyExpertDetermination => BootstrapPolicies.CreateExpertDeterminationOptions(),
-            _ => throw new ArgumentException($"Unknown de-identification policy: '{policy}'. Supported policies: {DartsConstants.PolicySafeHarbor}, {DartsConstants.PolicyExpertDetermination}.")
-        };
+            return;
+        }
 
-        return LibraryConfigurationLoader.CreateLibraryResource(
-            $"deid-{policy.ToUpperInvariant()}",
-            policy,
-            options);
+        context.Response.Headers.Append(
+            DeIdWarningHeader,
+            $"count={warnings.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
     }
 
     private static OperationOutcome CreateOperationOutcome(

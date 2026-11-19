@@ -36,6 +36,18 @@ internal readonly record struct SourceLocation(int Line, int Column, int Positio
 /// </summary>
 internal abstract record ParseNode(SourceLocation Location)
 {
+    /// <summary>
+    /// The height of the subtree rooted here: 1 for a leaf, otherwise one more than the deepest child.
+    /// </summary>
+    /// <remarks>
+    /// Computed once at construction from the children's already-computed heights, so the parser can bound
+    /// the tree's depth without recursing over it - the recursion it is guarding against.
+    /// </remarks>
+    public virtual int Depth => 1;
+
+    protected static int DeepestOf(IEnumerable<ParseNode> nodes) =>
+        nodes.Select(node => node.Depth).DefaultIfEmpty(0).Max();
+
     public abstract TResult Accept<TContext, TResult>(IParseTreeVisitor<TContext, TResult> visitor, TContext context);
 }
 
@@ -49,6 +61,8 @@ internal sealed record BinaryParseNode(
     ParseNode Right,
     SourceLocation Location) : ParseNode(Location)
 {
+    public override int Depth { get; } = 1 + Math.Max(Left.Depth, Right.Depth);
+
     public override TResult Accept<TContext, TResult>(IParseTreeVisitor<TContext, TResult> visitor, TContext context)
         => visitor.VisitBinary(this, context);
 }
@@ -62,6 +76,8 @@ internal sealed record UnaryParseNode(
     ParseNode Operand,
     SourceLocation Location) : ParseNode(Location)
 {
+    public override int Depth { get; } = 1 + Operand.Depth;
+
     public override TResult Accept<TContext, TResult>(IParseTreeVisitor<TContext, TResult> visitor, TContext context)
         => visitor.VisitUnary(this, context);
 }
@@ -76,6 +92,8 @@ internal sealed record FunctionCallParseNode(
     IReadOnlyList<ParseNode> Arguments,
     SourceLocation Location) : ParseNode(Location)
 {
+    public override int Depth { get; } = 1 + Math.Max(Focus?.Depth ?? 0, DeepestOf(Arguments));
+
     public override TResult Accept<TContext, TResult>(IParseTreeVisitor<TContext, TResult> visitor, TContext context)
         => visitor.VisitFunctionCall(this, context);
 }
@@ -89,6 +107,8 @@ internal sealed record ChildParseNode(
     string ChildName,
     SourceLocation Location) : ParseNode(Location)
 {
+    public override int Depth { get; } = 1 + Focus.Depth;
+
     public override TResult Accept<TContext, TResult>(IParseTreeVisitor<TContext, TResult> visitor, TContext context)
         => visitor.VisitChild(this, context);
 }
@@ -128,6 +148,8 @@ internal sealed record PropertyAccessParseNode(
     string PropertyName,
     SourceLocation Location) : ParseNode(Location)
 {
+    public override int Depth { get; } = 1 + (Focus?.Depth ?? 0);
+
     public override TResult Accept<TContext, TResult>(IParseTreeVisitor<TContext, TResult> visitor, TContext context)
         => visitor.VisitPropertyAccess(this, context);
 }
@@ -161,6 +183,8 @@ internal sealed record IndexerParseNode(
     ParseNode Index,
     SourceLocation Location) : ParseNode(Location)
 {
+    public override int Depth { get; } = 1 + Math.Max(Collection.Depth, Index.Depth);
+
     public override TResult Accept<TContext, TResult>(IParseTreeVisitor<TContext, TResult> visitor, TContext context)
         => visitor.VisitIndexer(this, context);
 }
@@ -173,6 +197,8 @@ internal sealed record ParenthesizedParseNode(
     ParseNode InnerExpression,
     SourceLocation Location) : ParseNode(Location)
 {
+    public override int Depth { get; } = 1 + InnerExpression.Depth;
+
     public override TResult Accept<TContext, TResult>(IParseTreeVisitor<TContext, TResult> visitor, TContext context)
         => visitor.VisitParenthesized(this, context);
 }
@@ -243,6 +269,8 @@ internal sealed record InstanceSelectorParseNode(
     bool IsEmpty,
     SourceLocation Location) : ParseNode(Location)
 {
+    public override int Depth { get; } = 1 + DeepestOf(Elements.Select(element => element.ValueExpression));
+
     public override TResult Accept<TContext, TResult>(IParseTreeVisitor<TContext, TResult> visitor, TContext context)
         => visitor.VisitInstanceSelector(this, context);
 }

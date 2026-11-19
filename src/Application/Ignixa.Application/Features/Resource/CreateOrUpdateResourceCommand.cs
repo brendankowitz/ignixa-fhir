@@ -46,5 +46,10 @@ public record CreateOrUpdateResourceCommand(
     /// Note: FHIR PUT is an upsert operation (create-or-update), but we check 'update' as it's more restrictive.
     /// </summary>
     public string GetCapabilityRequirementExpression() =>
-        $"rest.resource.where(type = '{ResourceType}').interaction.where(code = 'update').exists()";
+        "rest.resource.where(type = %resourceType).interaction.where(code = 'update').exists()";
+
+    /// <summary>
+    /// Supplies the resource type as <c>%resourceType</c> so caller-controlled text is never part of the expression.
+    /// </summary>
+    public string? CapabilityResourceType => ResourceType;
 }

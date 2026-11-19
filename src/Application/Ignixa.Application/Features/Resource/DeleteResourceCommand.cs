@@ -21,5 +21,10 @@ public record DeleteResourceCommand(string ResourceType, string Id) : IRequest<b
     /// Checks if CapabilityStatement advertises 'delete' interaction for the resource type.
     /// </summary>
     public string GetCapabilityRequirementExpression() =>
-        $"rest.resource.where(type = '{ResourceType}').interaction.where(code = 'delete').exists()";
+        "rest.resource.where(type = %resourceType).interaction.where(code = 'delete').exists()";
+
+    /// <summary>
+    /// Supplies the resource type as <c>%resourceType</c> so caller-controlled text is never part of the expression.
+    /// </summary>
+    public string? CapabilityResourceType => ResourceType;
 }

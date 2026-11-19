@@ -3,40 +3,84 @@
 // Copyright (c) Ignixa Contributors.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
-using System.Collections.Concurrent;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
-using Ignixa.FhirPath.Expressions;
-using Ignixa.FhirPath.Parser;
 
 namespace Ignixa.DeId.Extensions;
 
 /// <summary>
 /// Extension methods for evaluating FHIRPath expressions on IElement nodes.
-/// Uses cached parser/evaluator instances for performance.
+/// Delegates to the FHIRPath library, whose expression caches are size-bounded. Rule paths come from
+/// request-supplied configuration, so a cache owned here would grow with attacker-chosen text.
 /// </summary>
 public static class FhirPathExtensions
 {
-    private static readonly FhirPathParser Parser = new();
-    private static readonly FhirPathEvaluator Evaluator = new();
-    private static readonly ConcurrentDictionary<string, Expression> ExpressionCache = new();
+    /// <summary>
+    /// Selects nodes matching a FHIRPath expression. Results are materialized here so that a
+    /// failure during lazy evaluation surfaces from this call rather than from a later enumeration.
+    /// </summary>
+    /// <param name="element">The node to evaluate against.</param>
+    /// <param name="expression">The FHIRPath expression.</param>
+    /// <param name="cancellationToken">Stops the evaluation, which also runs under the default evaluation limits.</param>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    /// <exception cref="Exception">The expression cannot be parsed or evaluated against this element. The
+    /// library reports these with several exception types, so callers treat any failure as an unevaluable expression.</exception>
+    public static IReadOnlyList<IElement> Select(this IElement element, string expression, CancellationToken cancellationToken) =>
+        element.Select(expression, requestSupplied: true, cancellationToken);
 
     /// <summary>
-    /// Selects nodes matching a FHIRPath expression.
+    /// Selects nodes matching a FHIRPath expression, evaluated in the request-supplied expression tier or, for an
+    /// expression the server itself defines, the server tier.
     /// </summary>
-    public static IReadOnlyList<IElement> Select(this IElement element, string expression)
+    /// <param name="element">The node to evaluate against.</param>
+    /// <param name="expression">The FHIRPath expression.</param>
+    /// <param name="requestSupplied">Whether the expression came from the request rather than the server.</param>
+    /// <param name="cancellationToken">Stops the evaluation, which also runs under the default evaluation limits.</param>
+    public static IReadOnlyList<IElement> Select(this IElement element, string expression, bool requestSupplied, CancellationToken cancellationToken)
     {
-        var compiled = GetOrParseExpression(expression);
-        return Evaluator.Evaluate(element, compiled).ToList();
+        return TypedElementExtensions.Select(element, expression, new EvaluationContext { CancellationToken = cancellationToken, ExpressionIsRequestSupplied = requestSupplied }).ToList();
+    }
+
+    /// <summary>
+    /// Selects nodes matching a FHIRPath expression, without cancellation. A separate overload rather than an optional
+    /// parameter, so a two-argument call stays unambiguous against <see cref="TypedElementExtensions.Select"/>.
+    /// </summary>
+    public static IReadOnlyList<IElement> Select(this IElement element, string expression) =>
+        element.Select(expression, CancellationToken.None);
+
+    /// <summary>
+    /// Parses an expression so that an invalid one is rejected up front rather than when first evaluated, compiling
+    /// it into the tier <see cref="Select(IElement, string, bool, CancellationToken)"/> will later read.
+    /// </summary>
+    /// <param name="expression">The FHIRPath expression.</param>
+    /// <param name="requestSupplied">Whether the expression came from the request rather than the server.</param>
+    /// <exception cref="Exception">The expression cannot be parsed.</exception>
+    public static void EnsureParses(string expression, bool requestSupplied)
+    {
+        if (requestSupplied)
+        {
+            TypedElementExtensions.PrecompileRequestSupplied(expression);
+        }
+        else
+        {
+            TypedElementExtensions.Precompile(expression);
+        }
     }
 
     /// <summary>
     /// Evaluates a FHIRPath predicate expression against a node.
     /// Returns true if the expression evaluates to a truthy value.
     /// </summary>
-    public static bool Predicate(this IElement element, string expression)
+    public static bool Predicate(this IElement element, string expression) =>
+        element.Predicate(expression, CancellationToken.None);
+
+    /// <summary>
+    /// Evaluates a FHIRPath predicate expression against a node, stopping when <paramref name="cancellationToken"/> is cancelled.
+    /// Returns true if the expression evaluates to a truthy value.
+    /// </summary>
+    public static bool Predicate(this IElement element, string expression, CancellationToken cancellationToken)
     {
-        var results = element.Select(expression);
+        var results = element.Select(expression, cancellationToken);
         if (results.Count == 0) return false;
         if (results.Count == 1)
         {
@@ -55,14 +99,16 @@ public static class FhirPathExtensions
     /// <summary>
     /// Evaluates a FHIRPath expression and returns a single scalar value.
     /// </summary>
-    public static object? Scalar(this IElement element, string expression)
-    {
-        var results = element.Select(expression);
-        return results.Count > 0 ? results[0].Value : null;
-    }
+    public static object? Scalar(this IElement element, string expression) =>
+        element.Scalar(expression, CancellationToken.None);
 
-    private static Expression GetOrParseExpression(string expression)
+    /// <summary>
+    /// Evaluates a FHIRPath expression and returns a single scalar value, stopping when <paramref name="cancellationToken"/>
+    /// is cancelled.
+    /// </summary>
+    public static object? Scalar(this IElement element, string expression, CancellationToken cancellationToken)
     {
-        return ExpressionCache.GetOrAdd(expression, expr => Parser.Parse(expr));
+        var results = element.Select(expression, cancellationToken);
+        return results.Count > 0 ? results[0].Value : null;
     }
 }

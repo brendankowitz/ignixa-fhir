@@ -5,6 +5,8 @@
 
 using System.Text.Json;
 using Ignixa.Api.Middleware;
+using Ignixa.Api.Tests.TestDoubles;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.Validation.Abstractions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -84,6 +86,67 @@ public class FhirExceptionMiddlewareTests
         // Assert
         context.Response.StatusCode.ShouldBe(StatusCodes.Status400BadRequest);
         IssueCode(body).ShouldBe("invalid");
+    }
+
+    [Fact]
+    public async Task GivenAFhirPathEvaluationLimitExceeded_WhenHandled_ThenRespondsWithTooCostlyOutcome()
+    {
+        // Arrange: the limit derives from InvalidOperationException, which on its own maps to a processing error.
+        var (context, body) = CreateContext();
+        var middleware = new FhirExceptionMiddleware(
+            _ => throw new FhirPathResourceLimitExceededException("FHIRPath evaluation exceeded its step budget."),
+            NullLogger<FhirExceptionMiddleware>.Instance);
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        context.Response.StatusCode.ShouldBe(StatusCodes.Status400BadRequest);
+        IssueCode(body).ShouldBe("too-costly");
+    }
+
+    [Fact]
+    public async Task GivenTheClientAbortedTheRequest_WhenCancellationSurfaces_ThenRespondsClientClosedRequestWithoutABody()
+    {
+        // Arrange
+        var (context, body) = CreateContext();
+        using var aborted = new CancellationTokenSource();
+        aborted.Cancel();
+        context.RequestAborted = aborted.Token;
+        var middleware = new FhirExceptionMiddleware(
+            _ => throw new OperationCanceledException(aborted.Token),
+            NullLogger<FhirExceptionMiddleware>.Instance);
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        context.Response.StatusCode.ShouldBe(StatusCodes.Status499ClientClosedRequest);
+        body.Length.ShouldBe(0);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task GivenAnExceptionWhoseMessageQuotesRequestText_WhenHandled_ThenTheLogOmitsItAndTheResponseKeepsIt(bool clientError)
+    {
+        // Arrange
+        const string quoted = "Zebra-Quoted-Text";
+        var (context, body) = CreateContext();
+        var logger = new RecordingLogger<FhirExceptionMiddleware>();
+        var inner = new InvalidOperationException($"inner '{quoted}'");
+        Exception thrown = clientError
+            ? new Ignixa.Domain.Exceptions.BadRequestException($"outer '{quoted}'", inner)
+            : new ArgumentException($"outer '{quoted}'", inner);
+        var middleware = new FhirExceptionMiddleware(_ => throw thrown, logger);
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        logger.Entries.ShouldNotBeEmpty();
+        logger.Entries.ShouldAllBe(entry => !entry.Contains(quoted));
+        System.Text.Encoding.UTF8.GetString(body.ToArray()).ShouldContain(quoted);
     }
 
     private static (DefaultHttpContext Context, MemoryStream Body) CreateContext()

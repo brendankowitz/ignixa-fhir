@@ -7,11 +7,14 @@ using System.ComponentModel;
 using System.Text.Json.Nodes;
 using Medino;
 using ModelContextProtocol.Server;
+using Ignixa.FhirPath;
 using Ignixa.Application.Features.Experimental.Mcp.Tools;
 using Ignixa.Application.Features.Patch;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Models;
 using Ignixa.Serialization;
@@ -27,14 +30,17 @@ namespace Ignixa.Application.Features.Experimental.Mcp.Tools.FhirOperations;
 public class PatchResourceTool : TenantAwareMcpTool
 {
     private readonly IMediator _mediator;
+    private readonly IFhirVersionContext _versionContext;
 
     public PatchResourceTool(
         IFhirRequestContextAccessor fhirRequestContextAccessor,
         ITenantConfigurationStore tenantStore,
-        IMediator mediator)
-        : base(fhirRequestContextAccessor, tenantStore)
+        IMediator mediator,
+        IFhirVersionContext versionContext)
+        : base(fhirRequestContextAccessor, tenantStore, versionContext: versionContext)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
+        _versionContext = versionContext ?? throw new ArgumentNullException(nameof(versionContext));
     }
 
     [McpServerTool(Name = "patch_fhir_resource")]
@@ -79,12 +85,12 @@ public class PatchResourceTool : TenantAwareMcpTool
         {
             operations = ParseOperationsJson(operationsJson);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
         {
             return new PatchResourceResultDto
             {
                 Success = false,
-                ErrorMessage = $"Invalid operationsJson: {ex.Message}",
+                ErrorMessage = $"Invalid operationsJson: {LogSafeText.Sanitize(ex.Message)}",
                 PatchedResource = null
             };
         }
@@ -95,12 +101,27 @@ public class PatchResourceTool : TenantAwareMcpTool
         {
             resolvedTenantId = await ResolveTenantIdAsync(tenantId, cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
         {
             return new PatchResourceResultDto
             {
                 Success = false,
-                ErrorMessage = $"Tenant resolution failed: {ex.Message}",
+                ErrorMessage = $"Tenant resolution failed: {LogSafeText.Sanitize(ex.Message)}",
+                PatchedResource = null
+            };
+        }
+
+        // Like tenant resolution above, a rejected resource type is reported in the result, not thrown.
+        try
+        {
+            resourceType = (await RequireKnownResourceTypeAsync(resourceType, resolvedTenantId, cancellationToken)).ResourceType;
+        }
+        catch (BadRequestException ex)
+        {
+            return new PatchResourceResultDto
+            {
+                Success = false,
+                ErrorMessage = LogSafeText.Sanitize(ex.Message),
                 PatchedResource = null
             };
         }
@@ -137,12 +158,12 @@ public class PatchResourceTool : TenantAwareMcpTool
                 PatchedResource = patchedResource.Resource
             };
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
         {
             return new PatchResourceResultDto
             {
                 Success = false,
-                ErrorMessage = $"Patch operation failed: {ex.Message}",
+                ErrorMessage = $"Patch operation failed: {LogSafeText.Sanitize(ex.Message)}",
                 PatchedResource = null
             };
         }

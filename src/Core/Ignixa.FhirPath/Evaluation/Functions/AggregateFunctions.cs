@@ -64,8 +64,6 @@ namespace Ignixa.FhirPath.Evaluation.Functions;
 /// </remarks>
 internal static class AggregateFunctions
 {
-    private static readonly IQuantityUnitConverter UnitConverter = QuantityUnitConverter.Instance;
-
     /// <summary>
     /// Computes the sum of a collection of numeric values or quantities.
     /// </summary>
@@ -88,9 +86,9 @@ internal static class AggregateFunctions
     /// from. The official HL7 suite has no <c>{}.sum()</c> case, in r4 or r5, so nothing pinned either
     /// reading; checked 2026-08-19.
     /// </remarks>
-    public static IEnumerable<IElement> Sum(IEnumerable<IElement> elements)
+    public static IEnumerable<IElement> Sum(IEnumerable<IElement> elements, EvaluationContext context)
     {
-        return Total(Materialize(elements), "sum()", average: false);
+        return Total(Materialize(elements, context.Budget), "sum()", average: false, context.Budget.Units);
     }
 
     /// <summary>
@@ -106,7 +104,8 @@ internal static class AggregateFunctions
         MaxArguments = 0,
         Category = "Aggregate",
         Description = "Finds the minimum value in a collection")]
-    public static IEnumerable<IElement> Min(IEnumerable<IElement> elements) => Extreme(elements, "min()", isMax: false);
+    public static IEnumerable<IElement> Min(IEnumerable<IElement> elements, EvaluationContext context) =>
+        Extreme(elements, "min()", isMax: false, context.Budget);
 
     /// <summary>
     /// Finds the maximum value in a collection.
@@ -121,7 +120,8 @@ internal static class AggregateFunctions
         MaxArguments = 0,
         Category = "Aggregate",
         Description = "Finds the maximum value in a collection")]
-    public static IEnumerable<IElement> Max(IEnumerable<IElement> elements) => Extreme(elements, "max()", isMax: true);
+    public static IEnumerable<IElement> Max(IEnumerable<IElement> elements, EvaluationContext context) =>
+        Extreme(elements, "max()", isMax: true, context.Budget);
 
     /// <summary>
     /// Computes the average of a collection of numeric values or quantities.
@@ -136,9 +136,9 @@ internal static class AggregateFunctions
         MaxArguments = 0,
         Category = "Aggregate",
         Description = "Computes the average of a collection of numeric values or quantities")]
-    public static IEnumerable<IElement> Avg(IEnumerable<IElement> elements)
+    public static IEnumerable<IElement> Avg(IEnumerable<IElement> elements, EvaluationContext context)
     {
-        return Total(Materialize(elements), "avg()", average: true);
+        return Total(Materialize(elements, context.Budget), "avg()", average: true, context.Budget.Units);
     }
 
     /// <summary>
@@ -163,9 +163,9 @@ internal static class AggregateFunctions
     /// minimum is the same element either way and is determinately less than both of the others.
     /// </para>
     /// </remarks>
-    private static IEnumerable<IElement> Extreme(IEnumerable<IElement> elements, string function, bool isMax)
+    private static IEnumerable<IElement> Extreme(IEnumerable<IElement> elements, string function, bool isMax, EvaluationBudget budget)
     {
-        var list = Materialize(elements);
+        var list = Materialize(elements, budget);
 
         if (list.Count == 0)
         {
@@ -176,7 +176,7 @@ internal static class AggregateFunctions
 
         for (var index = 1; index < list.Count; index++)
         {
-            var comparison = ValueOrdering.CompareValues(list[index], extreme, function);
+            var comparison = ValueOrdering.CompareValues(list[index], extreme, function, budget.Units);
 
             if (comparison is not null && (isMax ? comparison > 0 : comparison < 0))
             {
@@ -209,7 +209,7 @@ internal static class AggregateFunctions
     /// because it is the pair case.
     /// </para>
     /// </remarks>
-    private static IEnumerable<IElement> Total(List<IElement> list, string function, bool average)
+    private static IEnumerable<IElement> Total(List<IElement> list, string function, bool average, IQuantityUnitConverter units)
     {
         if (list.Count == 0)
         {
@@ -219,7 +219,7 @@ internal static class AggregateFunctions
         try
         {
             return list.Exists(ValueOrdering.IsQuantity)
-                ? TotalQuantities(list, function, average)
+                ? TotalQuantities(list, function, average, units)
                 : TotalNumbers(list, function, average);
         }
         catch (OverflowException)
@@ -231,9 +231,9 @@ internal static class AggregateFunctions
     /// <summary>
     /// Totals a collection of quantities, converting each into the most granular unit present.
     /// </summary>
-    private static IEnumerable<IElement> TotalQuantities(List<IElement> list, string function, bool average)
+    private static IEnumerable<IElement> TotalQuantities(List<IElement> list, string function, bool average, IQuantityUnitConverter units)
     {
-        var unit = MostGranularUnit(list, function);
+        var unit = MostGranularUnit(list, function, units);
 
         if (unit is null)
         {
@@ -246,7 +246,7 @@ internal static class AggregateFunctions
         {
             // ConvertTo returns the value untouched for an exact unit match, so a unit UCUM has never
             // heard of still totals against itself rather than collapsing to empty.
-            var converted = AsQuantity(element, function).ConvertTo(unit, UnitConverter);
+            var converted = AsQuantity(element, function).ConvertTo(unit, units);
 
             if (converted is null)
             {
@@ -283,14 +283,14 @@ internal static class AggregateFunctions
     /// <c>((5 'mg') | (1 'kg')).sum()</c>, could not tell the two rules apart.
     /// </para>
     /// </remarks>
-    private static string? MostGranularUnit(List<IElement> list, string function)
+    private static string? MostGranularUnit(List<IElement> list, string function, IQuantityUnitConverter units)
     {
         var unit = AsQuantity(list[0], function).Unit;
 
         for (var index = 1; index < list.Count; index++)
         {
             var candidate = AsQuantity(list[index], function).Unit;
-            var candidateInUnit = UnitConverter.Convert(1m, candidate, unit);
+            var candidateInUnit = units.Convert(1m, candidate, unit);
 
             if (candidateInUnit is null)
             {
@@ -354,12 +354,21 @@ internal static class AggregateFunctions
     /// are children - so screening on the value alone discarded every quantity that came off the wire
     /// before the quantity path could read it, and <c>Observation.value.sum()</c> was empty on data whose
     /// individual elements compared fine.
+    /// A step is charged per element: every aggregate visits each one at least once.
     /// </remarks>
-    private static List<IElement> Materialize(IEnumerable<IElement> elements)
+    private static List<IElement> Materialize(IEnumerable<IElement> elements, EvaluationBudget budget)
     {
-        return elements
-            .Where(element => element is not null && (element.Value is not null || ValueOrdering.AsQuantity(element) is not null))
-            .ToList();
+        var list = new List<IElement>();
+        foreach (var element in elements)
+        {
+            budget.Step();
+            if (element is not null && (element.Value is not null || ValueOrdering.AsQuantity(element) is not null))
+            {
+                list.Add(element);
+            }
+        }
+
+        return list;
     }
 
     private static FhirQuantity AsQuantity(IElement element, string function)

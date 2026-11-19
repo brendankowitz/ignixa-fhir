@@ -100,7 +100,7 @@ public class GeneralizeSetting
             {
                 throw;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OutOfMemoryException)
             {
                 throw new ConfigurationException($"Invalid cases expression {key}: {value}", ex);
             }

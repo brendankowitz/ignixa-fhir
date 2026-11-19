@@ -574,7 +574,7 @@ Enable or disable experimental features:
 | Feature | Description |
 |---------|-------------|
 | `Mcp` | Model Context Protocol for AI integration |
-| `Transform` | FHIR Mapping Language `$transform` operation |
+| `Transform` | FHIR Mapping Language `$transform` operation. `TimeoutSeconds` (default 30) bounds the whole transformation and each FHIRPath expression in the map; exceeding it, or any FHIRPath evaluation limit, returns `too-costly` |
 | `Terminology` | `$expand`, `$translate`, `$subsumes` operations |
 | `Summary` | Patient `$summary` (IPS) operation |
 | `GraphQl` | FHIR `$graphql` operation. Off by default (see below) |

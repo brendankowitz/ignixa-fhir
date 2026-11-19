@@ -26,5 +26,10 @@ public record SearchResourcesQuery(string? ResourceType, SearchOptions SearchOpt
     public string GetCapabilityRequirementExpression() =>
         ResourceType == null
             ? "true" // System-wide search is always allowed
-            : $"rest.resource.where(type = '{ResourceType}').interaction.where(code = 'search-type').exists()";
+            : "rest.resource.where(type = %resourceType).interaction.where(code = 'search-type').exists()";
+
+    /// <summary>
+    /// Supplies the resource type as <c>%resourceType</c> so caller-controlled text is never part of the expression.
+    /// </summary>
+    public string? CapabilityResourceType => ResourceType;
 }

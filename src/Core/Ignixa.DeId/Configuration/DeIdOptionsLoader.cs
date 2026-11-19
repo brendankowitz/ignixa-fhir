@@ -5,6 +5,7 @@
 using System.Collections.Immutable;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Ignixa.DeId.Exceptions;
 using Ignixa.DeId.Models;
 
 namespace Ignixa.DeId.Configuration;
@@ -73,6 +74,7 @@ public static class DeIdOptionsLoader
             }
 
             var rules = ParseRules(rulesArray);
+            FhirPathRuleValidator.EnsureValid(rules);
             var parameters = ParseParameters(root["parameters"]);
             var processing = ParseProcessing(root["processing"]);
 
@@ -85,6 +87,13 @@ public static class DeIdOptionsLoader
             };
 
             return Result<DeIdOptions>.Success(options);
+        }
+        catch (ConfigurationException ex)
+        {
+            return Result<DeIdOptions>.Failure(new DeIdError(
+                "CONFIG_INVALID_RULE_PATH",
+                ex.Message,
+                Exception: ex));
         }
         catch (JsonException ex)
         {
@@ -106,16 +115,18 @@ public static class DeIdOptionsLoader
     {
         var builder = ImmutableArray.CreateBuilder<FhirPathRule>(rulesArray.Count);
 
-        foreach (var ruleNode in rulesArray)
+        for (var index = 0; index < rulesArray.Count; index++)
         {
-            if (ruleNode is null) continue;
+            // Rejected rather than skipped: a dropped rule leaves the data it targets in clear.
+            var ruleNode = rulesArray[index]
+                ?? throw new ConfigurationException($"Rule {index} is null.");
 
             var path = ruleNode["path"]?.GetValue<string>();
             var method = ruleNode["method"]?.GetValue<string>();
 
             if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(method))
             {
-                continue;
+                throw new ConfigurationException($"Rule {index} must specify a non-empty 'path' and 'method'.");
             }
 
             var resourceType = ruleNode["resourceType"]?.GetValue<string>();

@@ -8,10 +8,13 @@ using Ignixa.Abstractions;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Operations.Features.DeIdentify;
+using Ignixa.Application.Tests.TestDoubles;
 using Ignixa.DeId.Configuration;
+using Ignixa.DeId.Darts;
 using Ignixa.DeId.Darts.Configuration;
 using Ignixa.DeId.Models;
 using Ignixa.DeId.Pipeline;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
@@ -73,6 +76,23 @@ public class DeIdentifyHandlerTests
     }
 
     [Fact]
+    public async Task GivenPipelineSucceedsWithWarnings_WhenDeIdentifying_ThenWarningsAreReturnedToTheCaller()
+    {
+        // Regression: the handler returned only the resource, dropping every warning.
+        var resource = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"patient-123"}""");
+        var library = LibraryConfigurationLoader.CreateLibraryResource("lib-w", "SAFE_HARBOR", CreateSafeHarborOptions());
+        var command = new DeIdentifyCommand(1, resource, "SAFE_HARBOR", library);
+
+        SetupFhirContext();
+        SetupPipelineSuccess(resource, "Processor failed for rule 'Patient.name'");
+
+        var result = await _handler.HandleAsync(command, CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Warnings.ShouldHaveSingleItem().ShouldBe("Processor failed for rule 'Patient.name'");
+    }
+
+    [Fact]
     public async Task GivenPipelineReturnsFailure_WhenDeIdentifying_ThenReturnsFailureWithErrorMessage()
     {
         // Arrange
@@ -98,6 +118,46 @@ public class DeIdentifyHandlerTests
         result.IsSuccess.ShouldBeFalse();
         result.ErrorMessage.ShouldBe("Rule evaluation failed");
         result.OutputResource.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GivenARuleThatExceededAnEvaluationLimit_WhenDeIdentifying_ThenTheRequestIsTooCostly()
+    {
+        // Arrange: the rule failed closed with the limit as its cause, wrapped as the pipeline reports it.
+        var resource = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"patient-123"}""");
+        var library = LibraryConfigurationLoader.CreateLibraryResource("lib-4", "SAFE_HARBOR", CreateSafeHarborOptions());
+        var command = new DeIdentifyCommand(1, resource, "SAFE_HARBOR", library);
+        SetupFhirContext();
+        var cause = new InvalidOperationException(
+            "rule failed", new Ignixa.FhirPath.Evaluation.FhirPathResourceLimitExceededException("step budget exceeded"));
+        _pipeline.ExecuteAsync(Arg.Any<DeIdContext>(), Arg.Any<CancellationToken>())
+            .Returns(Result<DeIdResult>.Failure(new DeIdError("RULE_EVALUATION_FAILED", "rule failed", ErrorSeverity.Error, cause)));
+
+        // Act & Assert
+        await Should.ThrowAsync<Ignixa.Domain.Exceptions.RequestTooCostlyException>(
+            () => _handler.HandleAsync(command, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GivenPipelineFailureWhoseMessageQuotesData_WhenDeIdentifying_ThenLogOmitsTheMessageAndCallerStillReceivesIt()
+    {
+        // Arrange
+        const string sensitive = "Zebra-Sensitive-Value";
+        var logger = new CapturingLogger<DeIdentifyHandler>();
+        var handler = new DeIdentifyHandler(_pipeline, _configLoader, _contextAccessor, logger);
+        var resource = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"patient-123"}""");
+        var library = LibraryConfigurationLoader.CreateLibraryResource("lib-3", "SAFE_HARBOR", CreateSafeHarborOptions());
+        var command = new DeIdentifyCommand(1, resource, "SAFE_HARBOR", library);
+        SetupFhirContext();
+        SetupPipelineFailure($"The value '{sensitive}' was not recognized");
+
+        // Act
+        var result = await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert
+        logger.Messages.ShouldNotBeEmpty();
+        logger.Messages.ShouldAllBe(message => !message.Contains(sensitive));
+        result.ErrorMessage.ShouldContain(sensitive);
     }
 
     [Fact]
@@ -223,6 +283,86 @@ public class DeIdentifyHandlerTests
             Arg.Any<CancellationToken>());
     }
 
+    [Theory]
+    [InlineData(DartsConstants.PolicySafeHarbor)]
+    [InlineData(DartsConstants.PolicyExpertDetermination)]
+    public async Task GivenNoConfigurationLibrary_WhenDeIdentifyingWithABuiltInPolicy_ThenItsRulesAreEvaluatedAsServerDefined(string policy)
+    {
+        // Regression: the built-in policy was round-tripped through a Library, which dropped the rules' server-defined
+        // provenance, so their paths shared the bounded request-supplied expression tier with custom-rule traffic.
+        var resource = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"patient-123"}""");
+        var command = new DeIdentifyCommand(1, resource, policy, null);
+        SetupFhirContext();
+        SetupPipelineSuccess(resource);
+
+        await _handler.HandleAsync(command, CancellationToken.None);
+
+        var options = ReceivedOptions();
+        options.Rules.ShouldNotBeEmpty();
+        options.Rules.ShouldAllBe(rule => rule.IsServerDefined);
+    }
+
+    [Fact]
+    public async Task GivenNoConfigurationLibraryAndSafeHarborPolicy_WhenDeIdentifying_ThenProcessorFailuresStopTheOperation()
+    {
+        // Regression (moved from the endpoint, which no longer builds the policy): the default SAFE_HARBOR policy
+        // loaded with LogAndContinue, so by default a processor failure left data in clear and returned 200.
+        var resource = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"patient-123"}""");
+        var command = new DeIdentifyCommand(1, resource, DartsConstants.PolicySafeHarbor, null);
+        SetupFhirContext();
+        SetupPipelineSuccess(resource);
+
+        await _handler.HandleAsync(command, CancellationToken.None);
+
+        ReceivedOptions().Processing!.ErrorHandling.ShouldBe(ErrorHandlingMode.StopOnError);
+    }
+
+    [Fact]
+    public async Task GivenNoConfigurationLibraryAndAnUnknownPolicy_WhenDeIdentifying_ThenTheRequestIsRejectedNamingTheSupportedPolicies()
+    {
+        var resource = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"patient-123"}""");
+        var command = new DeIdentifyCommand(1, resource, "NO_SUCH_POLICY", null);
+        SetupFhirContext();
+
+        var ex = await Should.ThrowAsync<BadRequestException>(() => _handler.HandleAsync(command, CancellationToken.None));
+
+        ex.Message.ShouldBe(
+            $"Unknown de-identification policy: 'NO_SUCH_POLICY'. Supported policies: {DartsConstants.PolicySafeHarbor}, {DartsConstants.PolicyExpertDetermination}.");
+        await _pipeline.DidNotReceiveWithAnyArgs().ExecuteAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task GivenConfigurationLibraryClaimingServerDefinedRules_WhenDeIdentifying_ThenItsRulesStayRequestSupplied()
+    {
+        // Guard: a request-supplied Library cannot promote its rules into the server expression tier.
+        var resource = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"patient-123"}""");
+        const string optionsJson = """
+            {"fhirVersion":"R4","fhirPathRules":[{"path":"Patient.name","method":"redact","isServerDefined":true}]}
+            """;
+        var library = ResourceJsonNode.Parse($$"""
+            {
+                "resourceType": "Library",
+                "status": "active",
+                "type": { "coding": [{ "system": "{{DartsConstants.LibraryTypeSystem}}", "code": "{{DartsConstants.LibraryTypeCode}}" }] },
+                "content": [{ "contentType": "application/json", "data": "{{Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(optionsJson))}}" }]
+            }
+            """);
+        var command = new DeIdentifyCommand(1, resource, DartsConstants.PolicySafeHarbor, library);
+        SetupFhirContext();
+        SetupPipelineSuccess(resource);
+
+        var result = await _handler.HandleAsync(command, CancellationToken.None);
+
+        result.ErrorMessage.ShouldBeNull();
+        ReceivedOptions().Rules.ShouldHaveSingleItem().IsServerDefined.ShouldBeFalse();
+    }
+
+    private DeIdOptions ReceivedOptions()
+    {
+        var call = _pipeline.ReceivedCalls().ShouldHaveSingleItem();
+        return ((DeIdContext)call.GetArguments()[0]!).Options;
+    }
+
     private void SetupFhirContext()
     {
         var tenantConfig = new TenantConfiguration
@@ -245,7 +385,7 @@ public class DeIdentifyHandlerTests
         _contextAccessor.RequestContext.Returns(fhirContext);
     }
 
-    private void SetupPipelineSuccess(ResourceJsonNode outputResource)
+    private void SetupPipelineSuccess(ResourceJsonNode outputResource, params string[] warnings)
     {
         var deIdResult = new DeIdResult
         {
@@ -257,6 +397,7 @@ public class DeIdentifyHandlerTests
                 Duration = TimeSpan.Zero,
                 OperationCounts = new Dictionary<string, int> { ["redact"] = 1 }.ToImmutableDictionary()
             },
+            Warnings = [.. warnings],
             AppliedLabels = new AppliedSecurityLabels { IsRedacted = true }
         };
 
