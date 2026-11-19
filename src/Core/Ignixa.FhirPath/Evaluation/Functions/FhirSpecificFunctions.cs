@@ -53,14 +53,23 @@ internal static class FhirSpecificFunctions
         if (string.IsNullOrEmpty(urlValue))
             yield break;
 
-        // Navigate to "extension" children and filter by url
+        // Navigate to "extension" children and filter by url. Every extension visited is charged, matching or not:
+        // a scan that finds nothing still costs work proportional to the extensions it walked.
+        var budget = context.Budget;
         foreach (var element in focus)
         {
             foreach (var extension in element.Children("extension"))
             {
-                // Check if this extension has a url child with matching value
+                budget.Step();
+
                 var urlChildren = extension.Children("url");
-                if (urlChildren.Count > 0 && urlChildren[0].Value?.ToString() == urlValue)
+                if (urlChildren.Count == 0 || urlChildren[0].Value?.ToString() is not { } candidateUrl)
+                {
+                    continue;
+                }
+
+                budget.ChargeText(Math.Min(candidateUrl.Length, urlValue.Length));
+                if (candidateUrl == urlValue)
                 {
                     yield return extension;
                 }
