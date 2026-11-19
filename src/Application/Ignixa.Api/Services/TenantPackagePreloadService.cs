@@ -15,6 +15,7 @@ using Ignixa.Application.Features.Search;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
+using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Search.Definition;
 using Ignixa.Serialization;
@@ -362,13 +363,15 @@ public class TenantPackagePreloadService : BackgroundService
             catch (Exception ex)
             {
                 failed++;
+
+                // Logged by type chain: a parse failure's message quotes the literal it could not parse.
                 _logger.LogWarning(
-                    ex,
                     "Could not pre-compile FHIRPath for search parameter {Url} on tenant {TenantId}: {Expression}. "
-                    + "It will be retried, and will fail the same way, on first use.",
+                    + "It will be retried, and will fail the same way, on first use. {Exception}",
                     searchParameter.Url,
                     tenantId,
-                    expression.SanitizeExpressionForLog());
+                    expression.SanitizeExpressionForLog(),
+                    LogSafeText.DescribeWithoutMessages(ex));
             }
         }
 
