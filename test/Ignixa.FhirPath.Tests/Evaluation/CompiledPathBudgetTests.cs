@@ -5,6 +5,7 @@
 
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
+using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Extensions;
 using Shouldly;
@@ -23,6 +24,17 @@ public class CompiledPathBudgetTests
 
     private static readonly IElement Observation = ResourceJsonNode
         .Parse("{\"resourceType\":\"Observation\",\"id\":\"o\",\"status\":\"final\",\"code\":{\"text\":\"x\"},\"component\":[{\"code\":{\"text\":\"" + new string('a', 20_000) + "\"}}]}")
+        .ToElement(FhirVersion.R4.GetSchemaProvider());
+
+    // Plain navigation, which the delegate compiler accepts; 5,000 children cross several cancellation checks.
+    private const string CompiledNavigation = "name.given";
+
+    private static readonly FhirPathDelegateCompiler Compiler = new(new FhirPathEvaluator());
+
+    private static readonly IElement PatientWithManyGivenNames = ResourceJsonNode
+        .Parse("{\"resourceType\":\"Patient\",\"id\":\"p\",\"name\":[{\"given\":["
+            + string.Join(",", Enumerable.Range(0, 5_000).Select(i => $"\"g{i}\""))
+            + "]}]}")
         .ToElement(FhirVersion.R4.GetSchemaProvider());
 
     [Fact]
@@ -46,6 +58,31 @@ public class CompiledPathBudgetTests
 
         // Act & Assert
         Should.Throw<FhirPathResourceLimitExceededException>(() => Observation.Select(CompiledComparison, context).ToList());
+    }
+
+    [Fact]
+    public void GivenALowStepLimit_WhenACompiledPathNavigatesMoreChildrenThanItAllows_ThenTheLimitApplies()
+    {
+        // Arrange: the interpreter charges a step per navigated child, so the compiled spelling must too.
+        Compiler.TryCompile(new FhirPathParser().Parse(CompiledNavigation)).ShouldNotBeNull();
+        var context = new EvaluationContext { Limits = FhirPathEvaluationLimits.Default with { MaxSteps = 100 } };
+
+        // Act & Assert
+        Should.Throw<FhirPathResourceLimitExceededException>(() => PatientWithManyGivenNames.Select(CompiledNavigation, context).ToList());
+    }
+
+    [Fact]
+    public void GivenACompiledPathOverManyChildren_WhenCancelledMidEnumeration_ThenEnumerationStops()
+    {
+        // Arrange
+        using var cancellation = new CancellationTokenSource();
+        var results = PatientWithManyGivenNames.Select(CompiledNavigation, new EvaluationContext { CancellationToken = cancellation.Token });
+
+        // Act
+        cancellation.Cancel();
+
+        // Assert
+        Should.Throw<OperationCanceledException>(() => results.ToList());
     }
 
     [Fact]

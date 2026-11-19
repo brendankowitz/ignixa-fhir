@@ -203,14 +203,14 @@ public static class TypedElementExtensions
     }
 
     /// <summary>
-    /// Runs a compiled delegate under a budget of its own, started from the context's limits and token exactly as
-    /// the interpreter starts one; starting it observes cancellation first, as the interpreter does on entry.
+    /// Runs a compiled delegate, which starts a budget of its own from the context's limits and token exactly as the
+    /// interpreter starts one (<see cref="FhirPathDelegateCompiler.TryCompile"/>).
     /// </summary>
     private static IEnumerable<IElement> InvokeCompiled(
         Func<IElement, EvaluationContext, IEnumerable<IElement>> compiled,
         IElement input,
         EvaluationContext context) =>
-        compiled(input, context.StartBudget());
+        compiled(input, context);
 
     /// <summary>
     /// Evaluates a FhirPath expression and returns a single scalar value.
