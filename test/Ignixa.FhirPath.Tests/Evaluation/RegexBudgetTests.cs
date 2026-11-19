@@ -85,10 +85,12 @@ public class RegexBudgetTests
         FhirPathRegex.IsMatch(regex, "ab", input, "matches", budget);
         stopwatch.Stop();
 
-        // Assert - the stopwatch also spans work outside the charged window (and any GC pause there), so only half
-        // of its time is required; an uncharged match would cost a single step.
-        (budget.StepsTaken - before).ShouldBeGreaterThanOrEqualTo(
-            (long)(stopwatch.Elapsed.TotalNanoseconds / EvaluationBudget.NanosecondsPerStep * 0.5));
+        // Assert - the outer stopwatch can include pauses outside the charged window, so it bounds the charge only from
+        // above. Scanning a million characters takes far longer than 100 steps (25 microseconds) on any machine, while
+        // an uncharged match would cost a single step.
+        var charged = budget.StepsTaken - before;
+        charged.ShouldBeGreaterThan(100);
+        charged.ShouldBeLessThanOrEqualTo((long)(stopwatch.Elapsed.TotalNanoseconds / EvaluationBudget.NanosecondsPerStep) + 1);
     }
 
     private IEnumerable<IElement> Evaluate(string expression, EvaluationContext context) =>
