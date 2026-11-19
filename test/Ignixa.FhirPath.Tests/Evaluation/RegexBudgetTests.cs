@@ -85,9 +85,10 @@ public class RegexBudgetTests
         FhirPathRegex.IsMatch(regex, "ab", input, "matches", budget);
         stopwatch.Stop();
 
-        // Assert
+        // Assert - the stopwatch also spans work outside the charged window (and any GC pause there), so only half
+        // of its time is required; an uncharged match would cost a single step.
         (budget.StepsTaken - before).ShouldBeGreaterThanOrEqualTo(
-            (long)(stopwatch.Elapsed.TotalNanoseconds / EvaluationBudget.NanosecondsPerStep * 0.9));
+            (long)(stopwatch.Elapsed.TotalNanoseconds / EvaluationBudget.NanosecondsPerStep * 0.5));
     }
 
     private IEnumerable<IElement> Evaluate(string expression, EvaluationContext context) =>
