@@ -1,6 +1,7 @@
 # ADR-2512: Event-Sourced Conformance Management
 
 **Status**: Proposed
+**Superseded in part by**: [ADR-2611](adr-2611-per-tenant-conformance.md) (scope of package-controlled resources)
 **Date**: 2025-12-20
 **Feature**: search, packages
 
@@ -16,7 +17,7 @@ Additionally, we need a clear stance on which conformance resources should be pa
 
 These resources affect server-wide behavior and require explicit package activation. A malformed resource can break the entire server. They are:
 
-- **Global scope** - affect all tenants and all API operations
+- **Global scope** - affect all tenants and all API operations *(superseded: per tenant in Isolated mode, system partition in Distributed mode; see ADR-2611)*
 - **Versioned** - tied to specific package versions
 - **Activated explicitly** - require admin action to enable
 - **Immutable once active** - changes require new package version
