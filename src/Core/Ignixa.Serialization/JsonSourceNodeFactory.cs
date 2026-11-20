@@ -3,11 +3,14 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Buffers;
+using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
+using Microsoft.IO;
 
 #pragma warning disable CS0618 // Type or member is obsolete
 
@@ -20,19 +23,15 @@ public static class JsonSourceNodeFactory
         AllowTrailingCommas = false,
         PropertyNameCaseInsensitive = true,
         ReadCommentHandling = JsonCommentHandling.Disallow,
-        Encoder = JavaScriptEncoder.Default,
         Converters = { new JsonNodeConverterFactory() }
     };
 
-    private static readonly JsonSerializerOptions _indentedJsonSerializerOptions = new()
+    // Bounded so buffers retained after a burst of large resources are released rather than kept for the process lifetime.
+    private static readonly RecyclableMemoryStreamManager _memoryStreamManager = new(new RecyclableMemoryStreamManager.Options
     {
-        AllowTrailingCommas = false,
-        PropertyNameCaseInsensitive = true,
-        ReadCommentHandling = JsonCommentHandling.Disallow,
-        Encoder = JavaScriptEncoder.Default,
-        WriteIndented = true,
-        Converters = { new JsonNodeConverterFactory() }
-    };
+        MaximumSmallPoolFreeBytes = 16 * 1024 * 1024,
+        MaximumLargePoolFreeBytes = 32 * 1024 * 1024,
+    });
 
     public static TResource Parse<TResource>(string json)
         where TResource : ResourceJsonNode
@@ -112,56 +111,124 @@ public static class JsonSourceNodeFactory
         return Parse<ResourceJsonNode>(jsonNode);
     }
 
-    public static string SerializeToString(this ResourceJsonNode resource, bool pretty = false)
+    /// <inheritdoc cref="SerializeToString(ResourceJsonNode, JsonWriterOptions)"/>
+    /// <param name="resource">The resource to serialize.</param>
+    /// <param name="pretty">Whether to indent the output.</param>
+    public static string SerializeToString(this ResourceJsonNode resource, bool pretty = false) =>
+        resource.SerializeToString(JsonEscaping.Minimal, pretty);
+
+    /// <inheritdoc cref="SerializeToString(ResourceJsonNode, JsonWriterOptions)"/>
+    /// <param name="resource">The resource to serialize.</param>
+    /// <param name="escaping">How strings are escaped.</param>
+    /// <param name="pretty">Whether to indent the output.</param>
+    public static string SerializeToString(this ResourceJsonNode resource, JsonEscaping escaping, bool pretty = false) =>
+        resource.SerializeToString(WriterOptions(pretty, escaping));
+
+    /// <summary>
+    /// Serializes the resource as FHIR JSON, omitting null properties and empty objects or arrays.
+    /// </summary>
+    /// <remarks>
+    /// Unlike System.Text.Json, a null <see cref="JsonWriterOptions.Encoder"/> selects <see cref="MinimalJsonEncoder.Instance"/>.
+    /// </remarks>
+    /// <param name="resource">The resource to serialize.</param>
+    /// <param name="options">Writer options; use <see cref="JavaScriptEncoder.Default"/> as the encoder for HTML-safe output.</param>
+    public static string SerializeToString(this ResourceJsonNode resource, JsonWriterOptions options)
     {
-        var options = pretty ? _indentedJsonSerializerOptions : _jsonSerializerOptions;
-        return resource.MutableNode.ToJsonString(options);
+        using RecyclableMemoryStream buffer = WriteToBuffer(resource, options);
+        return Encoding.UTF8.GetString(buffer.GetReadOnlySequence());
     }
 
-    public static void SerializeToStream(this ResourceJsonNode resource, Stream outStream, bool pretty = false)
+    /// <inheritdoc cref="SerializeToString(ResourceJsonNode, JsonWriterOptions)"/>
+    public static ReadOnlyMemory<byte> SerializeToBytes(this ResourceJsonNode resource, bool pretty = false) =>
+        resource.SerializeToBytes(JsonEscaping.Minimal, pretty);
+
+    /// <inheritdoc cref="SerializeToString(ResourceJsonNode, JsonWriterOptions)"/>
+    public static ReadOnlyMemory<byte> SerializeToBytes(this ResourceJsonNode resource, JsonEscaping escaping, bool pretty = false) =>
+        resource.SerializeToBytes(WriterOptions(pretty, escaping));
+
+    /// <inheritdoc cref="SerializeToString(ResourceJsonNode, JsonWriterOptions)"/>
+    public static ReadOnlyMemory<byte> SerializeToBytes(this ResourceJsonNode resource, JsonWriterOptions options)
     {
-        var options = pretty ? _indentedJsonSerializerOptions : _jsonSerializerOptions;
-        JsonSerializer.Serialize(outStream, resource.MutableNode, options);
+        using RecyclableMemoryStream buffer = WriteToBuffer(resource, options);
+        return buffer.GetReadOnlySequence().ToArray();
     }
-    
-    /// <summary>
-    /// Writes the resource to <paramref name="outStream"/> asynchronously, element by element for top-level
-    /// arrays (such as Bundle.entry), flushing whenever <paramref name="flushThresholdBytes"/> are pending. The
-    /// output is identical to <see cref="SerializeToString"/>, but a large resource is never held as one
-    /// string or byte array, and the stream is only written asynchronously (Kestrel disallows synchronous I/O).
-    /// </summary>
-    public static async Task SerializeToStreamAsync(
+
+    /// <inheritdoc cref="SerializeToString(ResourceJsonNode, JsonWriterOptions)"/>
+    public static void SerializeToStream(this ResourceJsonNode resource, Stream outStream, bool pretty = false) =>
+        resource.SerializeToStream(outStream, JsonEscaping.Minimal, pretty);
+
+    /// <inheritdoc cref="SerializeToString(ResourceJsonNode, JsonWriterOptions)"/>
+    public static void SerializeToStream(this ResourceJsonNode resource, Stream outStream, JsonEscaping escaping, bool pretty = false) =>
+        resource.SerializeToStream(outStream, WriterOptions(pretty, escaping));
+
+    /// <inheritdoc cref="SerializeToString(ResourceJsonNode, JsonWriterOptions)"/>
+    public static void SerializeToStream(this ResourceJsonNode resource, Stream outStream, JsonWriterOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(resource);
+        ArgumentNullException.ThrowIfNull(outStream);
+
+        using var writer = new Utf8JsonWriter(outStream, WithDefaultEncoder(options));
+        FhirJsonNodeWriter.Write(writer, resource.MutableNode, _jsonSerializerOptions);
+    }
+
+    /// <inheritdoc cref="SerializeToStreamAsync(ResourceJsonNode, Stream, JsonWriterOptions, int, CancellationToken)"/>
+    public static Task SerializeToStreamAsync(
         this ResourceJsonNode resource,
         Stream outStream,
         bool pretty = false,
+        int flushThresholdBytes = DefaultStreamFlushThresholdBytes,
+        CancellationToken cancellationToken = default) =>
+        resource.SerializeToStreamAsync(outStream, JsonEscaping.Minimal, pretty, flushThresholdBytes, cancellationToken);
+
+    /// <inheritdoc cref="SerializeToStreamAsync(ResourceJsonNode, Stream, JsonWriterOptions, int, CancellationToken)"/>
+    public static Task SerializeToStreamAsync(
+        this ResourceJsonNode resource,
+        Stream outStream,
+        JsonEscaping escaping,
+        bool pretty = false,
+        int flushThresholdBytes = DefaultStreamFlushThresholdBytes,
+        CancellationToken cancellationToken = default) =>
+        resource.SerializeToStreamAsync(outStream, WriterOptions(pretty, escaping), flushThresholdBytes, cancellationToken);
+
+    /// <summary>
+    /// Writes the resource to <paramref name="outStream"/> asynchronously, element by element for top-level
+    /// arrays (such as Bundle.entry), flushing whenever <paramref name="flushThresholdBytes"/> are pending. The
+    /// output is identical to <see cref="SerializeToString(ResourceJsonNode, JsonWriterOptions)"/>, but a large
+    /// resource is never held as one string or byte array, and the stream is only written asynchronously
+    /// (Kestrel disallows synchronous I/O).
+    /// </summary>
+    /// <remarks>
+    /// Unlike System.Text.Json, a null <see cref="JsonWriterOptions.Encoder"/> selects <see cref="MinimalJsonEncoder.Instance"/>.
+    /// </remarks>
+    public static async Task SerializeToStreamAsync(
+        this ResourceJsonNode resource,
+        Stream outStream,
+        JsonWriterOptions options,
         int flushThresholdBytes = DefaultStreamFlushThresholdBytes,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(resource);
         ArgumentNullException.ThrowIfNull(outStream);
 
-        var options = pretty ? _indentedJsonSerializerOptions : _jsonSerializerOptions;
-        await using var writer = new Utf8JsonWriter(
-            outStream,
-            new JsonWriterOptions { Encoder = options.Encoder, Indented = options.WriteIndented });
-
-        if (resource.MutableNode is not JsonObject root)
-        {
-            resource.MutableNode.WriteTo(writer, options);
-            await writer.FlushAsync(cancellationToken);
-            return;
-        }
+        await using var writer = new Utf8JsonWriter(outStream, WithDefaultEncoder(options));
+        JsonObject root = resource.MutableNode;
 
         writer.WriteStartObject();
-        foreach (var (name, value) in root)
+        foreach ((string name, JsonNode? value) in root)
         {
+            if (!FhirJsonNodeWriter.HasContent(value))
+            {
+                continue;
+            }
+
             writer.WritePropertyName(name);
             if (value is JsonArray array)
             {
+                JsonArray? companion = FhirJsonNodeWriter.CompanionOf(root, name);
                 writer.WriteStartArray();
-                foreach (var item in array)
+                for (int i = 0; i < array.Count; i++)
                 {
-                    WriteNode(writer, item, options);
+                    FhirJsonNodeWriter.WriteArrayItem(writer, array, i, companion, _jsonSerializerOptions);
                     await FlushIfPendingAsync(writer, flushThresholdBytes, cancellationToken);
                 }
 
@@ -169,7 +236,7 @@ public static class JsonSourceNodeFactory
             }
             else
             {
-                WriteNode(writer, value, options);
+                FhirJsonNodeWriter.Write(writer, value, _jsonSerializerOptions);
             }
 
             await FlushIfPendingAsync(writer, flushThresholdBytes, cancellationToken);
@@ -181,25 +248,41 @@ public static class JsonSourceNodeFactory
 
     private const int DefaultStreamFlushThresholdBytes = 256 * 1024;
 
-    private static void WriteNode(Utf8JsonWriter writer, JsonNode? node, JsonSerializerOptions options)
+    private static JsonWriterOptions WriterOptions(bool pretty, JsonEscaping escaping) => new()
     {
-        if (node is null)
+        Encoder = escaping switch
         {
-            writer.WriteNullValue();
-            return;
-        }
+            JsonEscaping.Minimal => MinimalJsonEncoder.Instance,
+            JsonEscaping.HtmlSafe => JavaScriptEncoder.Default,
+            _ => throw new ArgumentOutOfRangeException(nameof(escaping), escaping, "Unsupported JSON escaping."),
+        },
+        Indented = pretty,
+    };
 
-        node.WriteTo(writer, options);
+    private static JsonWriterOptions WithDefaultEncoder(JsonWriterOptions options) =>
+        options.Encoder is null ? options with { Encoder = MinimalJsonEncoder.Instance } : options;
+
+    private static RecyclableMemoryStream WriteToBuffer(ResourceJsonNode resource, JsonWriterOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(resource);
+
+        RecyclableMemoryStream buffer = _memoryStreamManager.GetStream("resource-serialization");
+        try
+        {
+            using var writer = new Utf8JsonWriter((IBufferWriter<byte>)buffer, WithDefaultEncoder(options));
+            FhirJsonNodeWriter.Write(writer, resource.MutableNode, _jsonSerializerOptions);
+            writer.Flush();
+            return buffer;
+        }
+        catch
+        {
+            buffer.Dispose();
+            throw;
+        }
     }
 
     private static ValueTask FlushIfPendingAsync(Utf8JsonWriter writer, int flushThresholdBytes, CancellationToken cancellationToken)
         => writer.BytesPending >= flushThresholdBytes
             ? new ValueTask(writer.FlushAsync(cancellationToken))
             : ValueTask.CompletedTask;
-
-    public static ReadOnlyMemory<byte> SerializeToBytes(this ResourceJsonNode resource, bool pretty = false)
-    {
-        var options = pretty ? _indentedJsonSerializerOptions : _jsonSerializerOptions;
-        return JsonSerializer.SerializeToUtf8Bytes(resource.MutableNode, options);
-    }
 }
