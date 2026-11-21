@@ -113,6 +113,16 @@ public class JsonSourceNodeFactoryEmptyElementTests
     }
 
     [Fact]
+    public void GivenACompanionItemWithNestedContent_WhenAnotherPositionIsEmptyOnBothSides_ThenThePositionsStayAligned()
+    {
+        var patient = JsonSourceNodeFactory.Parse<ResourceJsonNode>(
+            """{"resourceType":"Patient","name":[{"given":["a",null],"_given":[{"extension":[{"url":"u"}]},{}]}]}""");
+
+        patient.SerializeToString().ShouldBe(
+            """{"resourceType":"Patient","name":[{"given":["a"],"_given":[{"extension":[{"url":"u"}]}]}]}""");
+    }
+
+    [Fact]
     public void GivenACompanionArrayThatIsEntirelyEmpty_WhenSerializing_ThenTheCompanionAndPlaceholdersAreDropped()
     {
         var patient = JsonSourceNodeFactory.Parse<ResourceJsonNode>(
@@ -177,6 +187,22 @@ public class JsonSourceNodeFactoryEmptyElementTests
         text.ShouldBe(expected);
         Encoding.UTF8.GetString(asyncStream.ToArray()).ShouldBe(expected);
         text.ShouldContain("\n      \"resource\": {");
+    }
+
+    [Theory]
+    [MemberData(nameof(Serializers))]
+    public async Task GivenAPropertyNameNeedingEscapingBesideAnEmptyElement_WhenSerializing_ThenTheNameIsWrittenOnce(string serializer)
+    {
+        var resource = new ResourceJsonNode(new JsonObject
+        {
+            ["resourceType"] = "Basic",
+            ["é\"+"] = new JsonArray("a", null),
+            ["_é\"+"] = new JsonArray(null, new JsonObject { ["id"] = "x" }),
+            ["meta"] = new JsonObject(),
+        });
+
+        (await SerializerOverloads.SerializeAsync(resource, serializer)).ShouldBe(
+            "{\"resourceType\":\"Basic\",\"é\\\"+\":[\"a\",null],\"_é\\\"+\":[null,{\"id\":\"x\"}]}");
     }
 
     [Fact]
