@@ -74,7 +74,14 @@ internal static class FhirJsonNodeWriter
             return;
         }
 
-        int maxDepth = Math.Max(1, MaxDepth(writer.Options) - writer.CurrentDepth);
+        // The copied bytes are not depth-checked by the writer, so the remaining budget is enforced here.
+        int maxDepth = MaxDepth(writer.Options) - writer.CurrentDepth;
+        if (maxDepth <= 0)
+        {
+            throw new InvalidOperationException(
+                $"CurrentDepth ({writer.CurrentDepth}) is equal to or larger than the maximum allowed depth of {MaxDepth(writer.Options)}.");
+        }
+
         using PooledByteBufferWriter json = WriteCompact(node, writer.Options with { Indented = false, MaxDepth = maxDepth }, maxDepth, options);
         if (writer.Options.Indented)
         {
@@ -268,6 +275,7 @@ internal static class FhirJsonNodeWriter
 
         private void WriteObject(Utf8JsonWriter writer, ReadOnlySpan<byte> json, int index)
         {
+            Dictionary<string, int>? arrays = null;
             writer.WriteStartObject();
             for (int child = index + 1; child < values[index].Next; child = values[child].Next)
             {
@@ -288,7 +296,8 @@ internal static class FhirJsonNodeWriter
 
                 if (property.Token == JsonTokenType.StartArray)
                 {
-                    WriteArray(writer, json, child, FindCompanion(json, index, child));
+                    arrays ??= ArrayProperties(json, index);
+                    WriteArray(writer, json, child, arrays.GetValueOrDefault(CompanionName(Name(json, property)), -1));
                 }
                 else
                 {
@@ -324,18 +333,19 @@ internal static class FhirJsonNodeWriter
             writer.WriteEndArray();
         }
 
-        private int FindCompanion(ReadOnlySpan<byte> json, int obj, int property)
+        // Built once per object, so resolving companions stays linear in the number of properties.
+        private Dictionary<string, int> ArrayProperties(ReadOnlySpan<byte> json, int obj)
         {
-            string companionName = CompanionName(Name(json, values[property]));
+            var arrays = new Dictionary<string, int>(StringComparer.Ordinal);
             for (int child = obj + 1; child < values[obj].Next; child = values[child].Next)
             {
-                if (child != property && values[child].Token == JsonTokenType.StartArray && Name(json, values[child]) == companionName)
+                if (values[child].Token == JsonTokenType.StartArray)
                 {
-                    return child;
+                    arrays[Name(json, values[child])] = child;
                 }
             }
 
-            return -1;
+            return arrays;
         }
 
         private static string Name(ReadOnlySpan<byte> json, Value value) =>

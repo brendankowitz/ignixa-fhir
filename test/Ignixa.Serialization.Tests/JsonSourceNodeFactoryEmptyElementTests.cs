@@ -206,6 +206,17 @@ public class JsonSourceNodeFactoryEmptyElementTests
     }
 
     [Fact]
+    public void GivenACallerWriterAtItsDepthLimit_WhenTheConverterWritesAResource_ThenItThrows()
+    {
+        var patient = JsonSourceNodeFactory.Parse<ResourceJsonNode>("""{"resourceType":"Patient","id":"a"}""");
+        using var stream = new MemoryStream();
+        using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { MaxDepth = 1 });
+        writer.WriteStartArray();
+
+        Should.Throw<InvalidOperationException>(() => JsonSerializer.Serialize(writer, patient, ConverterOptions));
+    }
+
+    [Fact]
     public void GivenEmptyElements_WhenSerializing_ThenTheResourceItselfIsNotModified()
     {
         var patient = JsonSourceNodeFactory.Parse<ResourceJsonNode>("""{"resourceType":"Patient","meta":{}}""");
