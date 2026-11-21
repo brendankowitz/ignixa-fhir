@@ -31,6 +31,14 @@ public sealed class MinimalJsonEncoder : JavaScriptEncoder
     private static readonly SearchValues<byte> _escapedOrLeadBytes =
         SearchValues.Create([.. Enumerable.Range(0, 0x20).Select(b => (byte)b), (byte)'"', (byte)'\\', 0xC2, 0xE2]);
 
+    // Printable ASCII that is never escaped. Most FHIR strings are entirely this, so one pass settles them.
+    private const string SafeAscii =
+        " !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz{|}~";
+
+    private static readonly SearchValues<char> _safeAsciiChars = SearchValues.Create(SafeAscii);
+
+    private static readonly SearchValues<byte> _safeAsciiBytes = SearchValues.Create(Encoding.ASCII.GetBytes(SafeAscii));
+
     private MinimalJsonEncoder()
     {
     }
@@ -46,11 +54,17 @@ public sealed class MinimalJsonEncoder : JavaScriptEncoder
     public override unsafe int FindFirstCharacterToEncode(char* text, int textLength)
     {
         ReadOnlySpan<char> span = new(text, textLength);
-        int escaped = span.IndexOfAny(_escapedChars);
+        int index = span.IndexOfAnyExcept(_safeAsciiChars);
+        if (index < 0)
+        {
+            return -1;
+        }
+
+        int escaped = span[index..].IndexOfAny(_escapedChars);
+        escaped = escaped < 0 ? -1 : index + escaped;
         int limit = escaped < 0 ? span.Length : escaped;
 
         // A lone surrogate before the first escaped character is ill-formed and must go through the encoder to be replaced.
-        int index = 0;
         while (true)
         {
             int surrogate = span[index..limit].IndexOfAnyInRange('\uD800', '\uDFFF');
@@ -71,13 +85,18 @@ public sealed class MinimalJsonEncoder : JavaScriptEncoder
 
     public override int FindFirstCharacterToEncodeUtf8(ReadOnlySpan<byte> utf8Text)
     {
-        // Ill-formed input is rare; starting at 0 hands all of it to the encoder, which replaces bad sequences.
-        if (!Utf8.IsValid(utf8Text))
+        int index = utf8Text.IndexOfAnyExcept(_safeAsciiBytes);
+        if (index < 0)
         {
-            return 0;
+            return -1;
         }
 
-        int index = 0;
+        // Ill-formed input is rare; handing the rest to the encoder replaces bad sequences.
+        if (!Utf8.IsValid(utf8Text[index..]))
+        {
+            return index;
+        }
+
         while (true)
         {
             int next = utf8Text[index..].IndexOfAny(_escapedOrLeadBytes);

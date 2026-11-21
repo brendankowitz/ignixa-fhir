@@ -3,14 +3,12 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Buffers;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
-using Microsoft.IO;
 
 #pragma warning disable CS0618 // Type or member is obsolete
 
@@ -25,13 +23,6 @@ public static class JsonSourceNodeFactory
         ReadCommentHandling = JsonCommentHandling.Disallow,
         Converters = { new JsonNodeConverterFactory() }
     };
-
-    // Bounded so buffers retained after a burst of large resources are released rather than kept for the process lifetime.
-    private static readonly RecyclableMemoryStreamManager _memoryStreamManager = new(new RecyclableMemoryStreamManager.Options
-    {
-        MaximumSmallPoolFreeBytes = 16 * 1024 * 1024,
-        MaximumLargePoolFreeBytes = 32 * 1024 * 1024,
-    });
 
     public static TResource Parse<TResource>(string json)
         where TResource : ResourceJsonNode
@@ -134,8 +125,8 @@ public static class JsonSourceNodeFactory
     /// <param name="options">Writer options; use <see cref="JavaScriptEncoder.Default"/> as the encoder for HTML-safe output.</param>
     public static string SerializeToString(this ResourceJsonNode resource, JsonWriterOptions options)
     {
-        using RecyclableMemoryStream buffer = WriteToBuffer(resource, options);
-        return Encoding.UTF8.GetString(buffer.GetReadOnlySequence());
+        using PooledByteBufferWriter buffer = WriteToBuffer(resource, options);
+        return Encoding.UTF8.GetString(buffer.WrittenSpan);
     }
 
     /// <inheritdoc cref="SerializeToString(ResourceJsonNode, JsonWriterOptions)"/>
@@ -149,8 +140,8 @@ public static class JsonSourceNodeFactory
     /// <inheritdoc cref="SerializeToString(ResourceJsonNode, JsonWriterOptions)"/>
     public static ReadOnlyMemory<byte> SerializeToBytes(this ResourceJsonNode resource, JsonWriterOptions options)
     {
-        using RecyclableMemoryStream buffer = WriteToBuffer(resource, options);
-        return buffer.GetReadOnlySequence().ToArray();
+        using PooledByteBufferWriter buffer = WriteToBuffer(resource, options);
+        return buffer.WrittenSpan.ToArray();
     }
 
     /// <inheritdoc cref="SerializeToString(ResourceJsonNode, JsonWriterOptions)"/>
@@ -167,8 +158,8 @@ public static class JsonSourceNodeFactory
         ArgumentNullException.ThrowIfNull(resource);
         ArgumentNullException.ThrowIfNull(outStream);
 
-        using var writer = new Utf8JsonWriter(outStream, WithDefaultEncoder(options));
-        FhirJsonNodeWriter.Write(writer, resource.MutableNode, _jsonSerializerOptions);
+        using PooledByteBufferWriter buffer = WriteToBuffer(resource, options);
+        outStream.Write(buffer.WrittenSpan);
     }
 
     /// <inheritdoc cref="SerializeToStreamAsync(ResourceJsonNode, Stream, JsonWriterOptions, int, CancellationToken)"/>
@@ -262,23 +253,10 @@ public static class JsonSourceNodeFactory
     private static JsonWriterOptions WithDefaultEncoder(JsonWriterOptions options) =>
         options.Encoder is null ? options with { Encoder = MinimalJsonEncoder.Instance } : options;
 
-    private static RecyclableMemoryStream WriteToBuffer(ResourceJsonNode resource, JsonWriterOptions options)
+    private static PooledByteBufferWriter WriteToBuffer(ResourceJsonNode resource, JsonWriterOptions options)
     {
         ArgumentNullException.ThrowIfNull(resource);
-
-        RecyclableMemoryStream buffer = _memoryStreamManager.GetStream("resource-serialization");
-        try
-        {
-            using var writer = new Utf8JsonWriter((IBufferWriter<byte>)buffer, WithDefaultEncoder(options));
-            FhirJsonNodeWriter.Write(writer, resource.MutableNode, _jsonSerializerOptions);
-            writer.Flush();
-            return buffer;
-        }
-        catch
-        {
-            buffer.Dispose();
-            throw;
-        }
+        return FhirJsonNodeWriter.WriteToBuffer(resource.MutableNode, WithDefaultEncoder(options), _jsonSerializerOptions);
     }
 
     private static ValueTask FlushIfPendingAsync(Utf8JsonWriter writer, int flushThresholdBytes, CancellationToken cancellationToken)

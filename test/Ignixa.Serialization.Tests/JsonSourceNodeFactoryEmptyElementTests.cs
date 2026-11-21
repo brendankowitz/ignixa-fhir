@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ignixa.Serialization.SourceNodes;
@@ -145,6 +146,37 @@ public class JsonSourceNodeFactoryEmptyElementTests
         var patient = JsonSourceNodeFactory.Parse<ResourceJsonNode>("""{"resourceType":"Patient","id":"a","meta":{"tag":[]}}""");
 
         JsonSerializer.Serialize(patient, ConverterOptions).ShouldBe("""{"resourceType":"Patient","id":"a"}""");
+    }
+
+    [Theory]
+    [MemberData(nameof(Serializers))]
+    public async Task GivenStringsThatLookLikeEmptyElements_WhenSerializing_ThenTheyAreKeptAndOnlyRealEmptiesAreOmitted(string serializer)
+    {
+        const string clean =
+            """{"resourceType":"Basic","id":"a","text":{"status":"generated","div":"<div>{} [] null :null [null</div>"},"code":{"text":"nullable"}}""";
+        var withEmpty = JsonSourceNodeFactory.Parse<ResourceJsonNode>(
+            """{"resourceType":"Basic","id":"a","meta":{},"text":{"status":"generated","div":"<div>{} [] null :null [null</div>","extension":[]},"code":{"text":"nullable","coding":[null]}}""");
+
+        (await SerializerOverloads.SerializeAsync(JsonSourceNodeFactory.Parse<ResourceJsonNode>(clean), serializer)).ShouldBe(clean);
+        (await SerializerOverloads.SerializeAsync(withEmpty, serializer)).ShouldBe(clean);
+    }
+
+    [Fact]
+    public async Task GivenNestedEmptiesAndPrettyOutput_WhenSerializing_ThenEveryOverloadIndentsTheSameAndOmitsThem()
+    {
+        var bundle = JsonSourceNodeFactory.Parse<ResourceJsonNode>(
+            """{"resourceType":"Bundle","type":"searchset","meta":{},"entry":[{"resource":{"resourceType":"Patient","id":"a","name":[{"given":[]},{"family":"x"}]}},{}]}""");
+        var expected = JsonSourceNodeFactory.Parse<ResourceJsonNode>(
+            """{"resourceType":"Bundle","type":"searchset","entry":[{"resource":{"resourceType":"Patient","id":"a","name":[{"family":"x"}]}}]}""")
+            .SerializeToString(pretty: true);
+        using var asyncStream = new MemoryStream();
+
+        string text = bundle.SerializeToString(pretty: true);
+        await bundle.SerializeToStreamAsync(asyncStream, pretty: true);
+
+        text.ShouldBe(expected);
+        Encoding.UTF8.GetString(asyncStream.ToArray()).ShouldBe(expected);
+        text.ShouldContain("\n      \"resource\": {");
     }
 
     [Fact]
