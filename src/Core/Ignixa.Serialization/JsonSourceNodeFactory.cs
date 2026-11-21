@@ -216,7 +216,7 @@ public static class JsonSourceNodeFactory
         writer.WriteStartObject();
         foreach ((string name, JsonNode? value) in root)
         {
-            if (!FhirJsonNodeWriter.HasContent(value))
+            if (!FhirJsonNodeWriter.HasContent(writer, value))
             {
                 continue;
             }

@@ -21,8 +21,8 @@ namespace Ignixa.Serialization;
 /// </remarks>
 internal static class FhirJsonNodeWriter
 {
-    // Utf8JsonWriter's default MaxDepth. Deeper probing stops so the writer, not a stack overflow, rejects the tree.
-    private const int MaxProbeDepth = 1000;
+    // Utf8JsonWriter uses this when JsonWriterOptions.MaxDepth is 0.
+    private const int DefaultMaxDepth = 1000;
 
     public static void Write(Utf8JsonWriter writer, JsonNode node, JsonSerializerOptions options)
     {
@@ -40,7 +40,15 @@ internal static class FhirJsonNodeWriter
         }
     }
 
-    public static bool HasContent([NotNullWhen(true)] JsonNode? node) => HasContent(node, depth: 0);
+    /// <summary>
+    /// Whether <paramref name="node"/>, written as the next value of <paramref name="writer"/>, has content.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The node nests deeper than the writer's maximum depth.</exception>
+    public static bool HasContent(Utf8JsonWriter writer, [NotNullWhen(true)] JsonNode? node)
+    {
+        int maxDepth = writer.Options.MaxDepth == 0 ? DefaultMaxDepth : writer.Options.MaxDepth;
+        return HasContent(node, depth: writer.CurrentDepth + 1, maxDepth);
+    }
 
     /// <summary>
     /// Gets the array paired with the property <paramref name="name"/>: <c>_x</c> for <c>x</c>, and <c>x</c> for <c>_x</c>.
@@ -53,21 +61,23 @@ internal static class FhirJsonNodeWriter
     public static void WriteArrayItem(Utf8JsonWriter writer, JsonArray array, int index, JsonArray? companion, JsonSerializerOptions options)
     {
         JsonNode? item = array[index];
-        if (HasContent(item))
+        if (HasContent(writer, item))
         {
             Write(writer, item, options);
         }
-        else if (companion is not null && index < companion.Count && HasContent(companion[index]))
+        else if (companion is not null && index < companion.Count && HasContent(writer, companion[index]))
         {
             writer.WriteNullValue();
         }
     }
 
-    private static bool HasContent(JsonNode? node, int depth)
+    // depth is the writer depth the node would open at, so the check matches the writer's own limit.
+    private static bool HasContent(JsonNode? node, int depth, int maxDepth)
     {
-        if (depth > MaxProbeDepth)
+        if (node is JsonObject or JsonArray && depth > maxDepth)
         {
-            return true;
+            throw new InvalidOperationException(
+                $"The JSON tree is deeper than the maximum allowed depth of {maxDepth}.");
         }
 
         switch (node)
@@ -77,7 +87,7 @@ internal static class FhirJsonNodeWriter
             case JsonObject obj:
                 foreach (KeyValuePair<string, JsonNode?> property in obj)
                 {
-                    if (HasContent(property.Value, depth + 1))
+                    if (HasContent(property.Value, depth + 1, maxDepth))
                     {
                         return true;
                     }
@@ -87,7 +97,7 @@ internal static class FhirJsonNodeWriter
             case JsonArray array:
                 foreach (JsonNode? item in array)
                 {
-                    if (HasContent(item, depth + 1))
+                    if (HasContent(item, depth + 1, maxDepth))
                     {
                         return true;
                     }
@@ -104,7 +114,7 @@ internal static class FhirJsonNodeWriter
         writer.WriteStartObject();
         foreach ((string name, JsonNode? value) in obj)
         {
-            if (!HasContent(value))
+            if (!HasContent(writer, value))
             {
                 continue;
             }

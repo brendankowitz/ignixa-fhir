@@ -173,4 +173,35 @@ public class JsonSourceNodeFactoryEmptyElementTests
 
         Should.Throw<InvalidOperationException>(() => new ResourceJsonNode(root).SerializeToString());
     }
+
+    [Theory]
+    [MemberData(nameof(Serializers))]
+    public async Task GivenAnEmptyChainDeeperThanTheWriterAllows_WhenSerializing_ThenItThrows(string serializer)
+    {
+        var resource = new ResourceJsonNode(EmptyExtensionChain(depth: 1_500));
+
+        await Should.ThrowAsync<InvalidOperationException>(() => SerializerOverloads.SerializeAsync(resource, serializer));
+    }
+
+    [Fact]
+    public void GivenAnEmptyChainWithinAConfiguredMaxDepth_WhenSerializing_ThenItIsOmitted()
+    {
+        var resource = new ResourceJsonNode(EmptyExtensionChain(depth: 1_500));
+
+        resource.SerializeToString(new JsonWriterOptions { MaxDepth = 2_000 }).ShouldBe("""{"resourceType":"Basic"}""");
+    }
+
+    private static JsonObject EmptyExtensionChain(int depth)
+    {
+        var root = new JsonObject { ["resourceType"] = "Basic" };
+        JsonObject current = root;
+        for (int i = 0; i < depth; i++)
+        {
+            var child = new JsonObject();
+            current["extension"] = child;
+            current = child;
+        }
+
+        return root;
+    }
 }
