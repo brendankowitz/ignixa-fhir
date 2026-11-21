@@ -12,7 +12,8 @@ namespace Ignixa.Serialization.Converters;
 
 /// <summary>
 /// Generic JSON converter for BaseJsonNode subclasses that uses internal JsonObject storage.
-/// Serialization writes the internal JsonObject directly (no extra conversion).
+/// Serialization writes the internal JsonObject, omitting null properties and empty objects or arrays;
+/// escaping follows the caller's <see cref="JsonSerializerOptions.Encoder"/>.
 /// Deserialization parses into JsonObject first, then wraps in the target type.
 /// </summary>
 /// <typeparam name="T">The BaseJsonNode subclass type.</typeparam>
@@ -50,7 +51,7 @@ public class BaseJsonNodeConverter<T> : JsonConverter<T>
     }
 
     /// <summary>
-    /// Writes BaseJsonNode by serializing its internal JsonObject directly.
+    /// Writes the node's JSON, omitting null properties and empty objects or arrays.
     /// </summary>
     public override void Write(
         Utf8JsonWriter writer,
@@ -60,8 +61,7 @@ public class BaseJsonNodeConverter<T> : JsonConverter<T>
         ArgumentNullException.ThrowIfNull(writer);
         ArgumentNullException.ThrowIfNull(value);
 
-        // Serialize the internal JsonObject directly (no conversion needed)
         var internalNode = value.MutableNode;
-        JsonSerializer.Serialize(writer, internalNode, options);
+        FhirJsonNodeWriter.Write(writer, internalNode, options);
     }
 }
