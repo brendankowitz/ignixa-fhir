@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization.Metadata;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 
@@ -21,7 +22,9 @@ public static class JsonSourceNodeFactory
         AllowTrailingCommas = false,
         PropertyNameCaseInsensitive = true,
         ReadCommentHandling = JsonCommentHandling.Disallow,
-        Converters = { new JsonNodeConverterFactory() }
+        Converters = { new JsonNodeConverterFactory() },
+        // JsonNode.WriteTo fails on a JsonValue wrapping a CLR object unless a resolver is set; only JsonSerializer calls fill it in.
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
     };
 
     public static TResource Parse<TResource>(string json)
