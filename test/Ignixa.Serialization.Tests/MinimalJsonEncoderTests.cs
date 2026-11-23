@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Buffers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -147,6 +148,204 @@ public class MinimalJsonEncoderTests
         bytes.ShouldBe(expected);
         stream.ShouldBe(expected);
         Encoding.UTF8.GetString(asyncStream.ToArray()).ShouldBe(expected);
+    }
+
+    [Theory]
+    [MemberData(nameof(EdgeStrings))]
+    public void GivenTextSplitAcrossBlocksAndSmallDestinations_WhenEncodingUtf16_ThenTheOutputMatchesNewtonsoftDefault(string value)
+    {
+        string expected = Newtonsoft.Json.JsonConvert.ToString(value)[1..^1];
+
+        foreach ((int blockSize, int destinationSize) in BlockAndDestinationSizes)
+        {
+            EncodeUtf16InBlocks(value, blockSize, destinationSize).ShouldBe(expected);
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(EdgeStrings))]
+    public void GivenTextSplitAcrossBlocksAndSmallDestinations_WhenEncodingUtf8_ThenTheOutputMatchesNewtonsoftDefault(string value)
+    {
+        string expected = Newtonsoft.Json.JsonConvert.ToString(value)[1..^1];
+
+        foreach ((int blockSize, int destinationSize) in BlockAndDestinationSizes)
+        {
+            EncodeUtf8InBlocks(Encoding.UTF8.GetBytes(value), blockSize, destinationSize).ShouldBe(expected);
+        }
+    }
+
+    [Fact]
+    public void GivenADestinationEndingInsideASurrogatePair_WhenEncodingUtf16_ThenThePairIsLeftForTheNextCall()
+    {
+        char[] destination = new char[3];
+
+        OperationStatus status = MinimalJsonEncoder.Instance.Encode("ab\ud83d\ude00c", destination, out int consumed, out int written);
+
+        status.ShouldBe(OperationStatus.DestinationTooSmall);
+        consumed.ShouldBe(2);
+        new string(destination, 0, written).ShouldBe("ab");
+    }
+
+    [Fact]
+    public void GivenADestinationEndingInsideAMultiByteSequence_WhenEncodingUtf8_ThenTheSequenceIsLeftForTheNextCall()
+    {
+        byte[] destination = new byte[4];
+
+        OperationStatus status = MinimalJsonEncoder.Instance.EncodeUtf8(Encoding.UTF8.GetBytes("ab\u65e5c"), destination, out int consumed, out int written);
+
+        status.ShouldBe(OperationStatus.DestinationTooSmall);
+        consumed.ShouldBe(2);
+        Encoding.UTF8.GetString(destination, 0, written).ShouldBe("ab");
+    }
+
+    [Fact]
+    public void GivenADestinationTooSmallForAnEscape_WhenEncoding_ThenTheEscapedCharacterIsNotConsumed()
+    {
+        char[] chars = new char[6];
+        byte[] bytes = new byte[6];
+
+        OperationStatus utf16 = MinimalJsonEncoder.Instance.Encode("ab\u0001", chars, out int charsConsumed, out int charsWritten);
+        OperationStatus utf8 = MinimalJsonEncoder.Instance.EncodeUtf8("ab\u0001"u8, bytes, out int bytesConsumed, out int bytesWritten);
+
+        utf16.ShouldBe(OperationStatus.DestinationTooSmall);
+        (charsConsumed, charsWritten).ShouldBe((2, 2));
+        utf8.ShouldBe(OperationStatus.DestinationTooSmall);
+        (bytesConsumed, bytesWritten).ShouldBe((2, 2));
+    }
+
+    [Theory]
+    [InlineData(false, OperationStatus.NeedMoreData, 1, "a")]
+    [InlineData(true, OperationStatus.Done, 2, "a\ufffd")]
+    public void GivenAHighSurrogateAtTheEndOfABlock_WhenEncodingUtf16_ThenOnlyAFinalBlockReplacesIt(
+        bool isFinalBlock, OperationStatus expectedStatus, int expectedConsumed, string expected)
+    {
+        char[] destination = new char[16];
+
+        OperationStatus status = MinimalJsonEncoder.Instance.Encode("a\ud83d", destination, out int consumed, out int written, isFinalBlock);
+
+        status.ShouldBe(expectedStatus);
+        consumed.ShouldBe(expectedConsumed);
+        new string(destination, 0, written).ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData(false, OperationStatus.NeedMoreData, 1, "a")]
+    [InlineData(true, OperationStatus.Done, 4, "a\ufffd")]
+    public void GivenATruncatedSequenceAtTheEndOfABlock_WhenEncodingUtf8_ThenOnlyAFinalBlockReplacesIt(
+        bool isFinalBlock, OperationStatus expectedStatus, int expectedConsumed, string expected)
+    {
+        byte[] source = Encoding.UTF8.GetBytes("a\ud83d\ude00")[..^1];
+        byte[] destination = new byte[16];
+
+        OperationStatus status = MinimalJsonEncoder.Instance.EncodeUtf8(source, destination, out int consumed, out int written, isFinalBlock);
+
+        status.ShouldBe(expectedStatus);
+        consumed.ShouldBe(expectedConsumed);
+        Encoding.UTF8.GetString(destination, 0, written).ShouldBe(expected);
+    }
+
+    [Fact]
+    public void GivenIllFormedBytesInsideLongRuns_WhenEncodingUtf8_ThenEachIsReplacedAndTheRestIsKept()
+    {
+        string run = new('x', 5_000);
+        byte[] source = [.. Encoding.UTF8.GetBytes(run), 0xFF, .. Encoding.UTF8.GetBytes(run + "\u00e9\""), 0xE3, 0x81, .. "z"u8];
+        byte[] destination = new byte[source.Length * 6];
+
+        OperationStatus status = MinimalJsonEncoder.Instance.EncodeUtf8(source, destination, out int consumed, out int written);
+
+        status.ShouldBe(OperationStatus.Done);
+        consumed.ShouldBe(source.Length);
+        Encoding.UTF8.GetString(destination, 0, written).ShouldBe(run + "\ufffd" + run + "\u00e9\\\"\ufffdz");
+    }
+
+    [Fact]
+    public void GivenLoneSurrogatesAmongEscapes_WhenEncodingUtf16_ThenEachIsReplacedAndTheRestIsKept()
+    {
+        char[] destination = new char[64];
+
+        OperationStatus status = MinimalJsonEncoder.Instance.Encode("a\"\udc00b\ud83d\ude00\ud800\nc", destination, out int consumed, out int written);
+
+        status.ShouldBe(OperationStatus.Done);
+        consumed.ShouldBe(9);
+        new string(destination, 0, written).ShouldBe("a\\\"\ufffdb\ud83d\ude00\ufffd\\nc");
+    }
+
+    private static readonly (int BlockSize, int DestinationSize)[] BlockAndDestinationSizes =
+        [(1, 6), (2, 7), (3, 6), (7, 11), (64, 6), (4096, 4096)];
+
+    // Feeds the encoder blockSize units at a time, final only on the last block, and drains a
+    // destination of destinationSize whenever it fills, as a streaming caller would.
+    private static string EncodeUtf16InBlocks(string value, int blockSize, int destinationSize)
+    {
+        var output = new StringBuilder();
+        char[] destination = new char[destinationSize];
+        string pending = string.Empty;
+        int offset = 0;
+        bool isFinalBlock;
+        do
+        {
+            int take = Math.Min(blockSize, value.Length - offset);
+            ReadOnlySpan<char> source = string.Concat(pending, value.AsSpan(offset, take));
+            offset += take;
+            isFinalBlock = offset == value.Length;
+            OperationStatus status;
+            do
+            {
+                status = MinimalJsonEncoder.Instance.Encode(source, destination, out int consumed, out int written, isFinalBlock);
+                if (status == OperationStatus.DestinationTooSmall)
+                {
+                    (consumed + written).ShouldBeGreaterThan(0);
+                }
+
+                output.Append(destination, 0, written);
+                source = source[consumed..];
+            }
+            while (status == OperationStatus.DestinationTooSmall);
+
+            status.ShouldBe(source.IsEmpty ? OperationStatus.Done : OperationStatus.NeedMoreData);
+            pending = source.ToString();
+        }
+        while (!isFinalBlock);
+
+        pending.ShouldBeEmpty();
+        return output.ToString();
+    }
+
+    private static string EncodeUtf8InBlocks(byte[] value, int blockSize, int destinationSize)
+    {
+        using var output = new MemoryStream();
+        byte[] destination = new byte[destinationSize];
+        byte[] pending = [];
+        int offset = 0;
+        bool isFinalBlock;
+        do
+        {
+            int take = Math.Min(blockSize, value.Length - offset);
+            byte[] block = [.. pending, .. value.AsSpan(offset, take)];
+            ReadOnlySpan<byte> source = block;
+            offset += take;
+            isFinalBlock = offset == value.Length;
+            OperationStatus status;
+            do
+            {
+                status = MinimalJsonEncoder.Instance.EncodeUtf8(source, destination, out int consumed, out int written, isFinalBlock);
+                if (status == OperationStatus.DestinationTooSmall)
+                {
+                    (consumed + written).ShouldBeGreaterThan(0);
+                }
+
+                output.Write(destination, 0, written);
+                source = source[consumed..];
+            }
+            while (status == OperationStatus.DestinationTooSmall);
+
+            status.ShouldBe(source.IsEmpty ? OperationStatus.Done : OperationStatus.NeedMoreData);
+            pending = source.ToArray();
+        }
+        while (!isFinalBlock);
+
+        pending.ShouldBeEmpty();
+        return Encoding.UTF8.GetString(output.ToArray());
     }
 
     private static string SerializeToStreamSync(ResourceJsonNode resource, JsonWriterOptions options)

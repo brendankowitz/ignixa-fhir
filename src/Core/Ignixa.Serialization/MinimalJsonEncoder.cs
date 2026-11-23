@@ -48,12 +48,135 @@ public sealed class MinimalJsonEncoder : JavaScriptEncoder
 
     public override int MaxOutputCharactersPerInputCharacter => 6;
 
-    public override bool WillEncode(int unicodeScalar) =>
+    public override bool WillEncode(int unicodeScalar) => IsEscaped(unicodeScalar);
+
+    public override unsafe int FindFirstCharacterToEncode(char* text, int textLength) =>
+        IndexOfFirstCharToEncode(new ReadOnlySpan<char>(text, textLength));
+
+    /// <summary>
+    /// Copies each run that needs no escaping in one block. The base implementation encodes everything
+    /// after the first escaped character one scalar at a time, which is slow for narrative text.
+    /// </summary>
+    public override OperationStatus Encode(ReadOnlySpan<char> source, Span<char> destination, out int charsConsumed, out int charsWritten, bool isFinalBlock = true)
+    {
+        charsConsumed = 0;
+        charsWritten = 0;
+        while (charsConsumed < source.Length)
+        {
+            ReadOnlySpan<char> rest = source[charsConsumed..];
+            Span<char> output = destination[charsWritten..];
+            int clean = IndexOfFirstCharToEncode(rest);
+            if (clean < 0)
+            {
+                clean = rest.Length;
+            }
+
+            if (clean > output.Length)
+            {
+                // The clean run is well-formed, so only a surrogate pair can straddle the cut.
+                int fits = output.Length;
+                if (fits > 0 && char.IsHighSurrogate(rest[fits - 1]))
+                {
+                    fits--;
+                }
+
+                rest[..fits].CopyTo(output);
+                charsConsumed += fits;
+                charsWritten += fits;
+                return OperationStatus.DestinationTooSmall;
+            }
+
+            rest[..clean].CopyTo(output);
+            charsConsumed += clean;
+            charsWritten += clean;
+            if (clean == rest.Length)
+            {
+                break;
+            }
+
+            // An escaped character or an ill-formed surrogate; a failed decode yields U+FFFD.
+            OperationStatus decoded = Rune.DecodeFromUtf16(rest[clean..], out Rune rune, out int runeLength);
+            if (decoded == OperationStatus.NeedMoreData && !isFinalBlock)
+            {
+                return OperationStatus.NeedMoreData;
+            }
+
+            if (!TryWriteScalar(rune, output[clean..], out int written))
+            {
+                return OperationStatus.DestinationTooSmall;
+            }
+
+            charsConsumed += runeLength;
+            charsWritten += written;
+        }
+
+        return OperationStatus.Done;
+    }
+
+    /// <inheritdoc cref="Encode(ReadOnlySpan{char}, Span{char}, out int, out int, bool)"/>
+    public override OperationStatus EncodeUtf8(ReadOnlySpan<byte> utf8Source, Span<byte> utf8Destination, out int bytesConsumed, out int bytesWritten, bool isFinalBlock = true)
+    {
+        bytesConsumed = 0;
+        bytesWritten = 0;
+        while (bytesConsumed < utf8Source.Length)
+        {
+            ReadOnlySpan<byte> rest = utf8Source[bytesConsumed..];
+            Span<byte> output = utf8Destination[bytesWritten..];
+            int run = rest.IndexOfAny(_escapedOrLeadBytes);
+            if (run < 0)
+            {
+                run = rest.Length;
+            }
+
+            if (run > 0 && Utf8.IsValid(rest[..run]))
+            {
+                int fits = Math.Min(run, output.Length);
+                while (fits < run && fits > 0 && (rest[fits] & 0xC0) == 0x80)
+                {
+                    fits--;
+                }
+
+                rest[..fits].CopyTo(output);
+                bytesConsumed += fits;
+                bytesWritten += fits;
+                if (fits < run)
+                {
+                    return OperationStatus.DestinationTooSmall;
+                }
+
+                continue;
+            }
+
+            // The byte that ended the run, or an ill-formed run, goes one scalar at a time. The whole run
+            // is finished here, so a long ill-formed run is not validated again for each scalar.
+            int end = bytesConsumed + Math.Max(run, 1);
+            while (bytesConsumed < end)
+            {
+                OperationStatus decoded = Rune.DecodeFromUtf8(utf8Source[bytesConsumed..], out Rune rune, out int runeLength);
+                if (decoded == OperationStatus.NeedMoreData && !isFinalBlock)
+                {
+                    return OperationStatus.NeedMoreData;
+                }
+
+                if (!TryWriteScalarUtf8(rune, utf8Destination[bytesWritten..], out int written))
+                {
+                    return OperationStatus.DestinationTooSmall;
+                }
+
+                bytesConsumed += runeLength;
+                bytesWritten += written;
+            }
+        }
+
+        return OperationStatus.Done;
+    }
+
+    private static bool IsEscaped(int unicodeScalar) =>
         unicodeScalar is < 0x20 or '"' or '\\' or 0x85 or 0x2028 or 0x2029;
 
-    public override unsafe int FindFirstCharacterToEncode(char* text, int textLength)
+    // The index of the first escaped character or ill-formed surrogate, or -1.
+    private static int IndexOfFirstCharToEncode(ReadOnlySpan<char> span)
     {
-        ReadOnlySpan<char> span = new(text, textLength);
         int index = span.IndexOfAnyExcept(_safeAsciiChars);
         if (index < 0)
         {
@@ -115,12 +238,15 @@ public sealed class MinimalJsonEncoder : JavaScriptEncoder
         }
     }
 
-    public override unsafe bool TryEncodeUnicodeScalar(int unicodeScalar, char* buffer, int bufferLength, out int numberOfCharactersWritten)
+    public override unsafe bool TryEncodeUnicodeScalar(int unicodeScalar, char* buffer, int bufferLength, out int numberOfCharactersWritten) =>
+        TryWriteScalar(new Rune(unicodeScalar), new Span<char>(buffer, bufferLength), out numberOfCharactersWritten);
+
+    private static bool TryWriteScalar(Rune rune, Span<char> destination, out int numberOfCharactersWritten)
     {
-        Span<char> destination = new(buffer, bufferLength);
-        if (!WillEncode(unicodeScalar))
+        int unicodeScalar = rune.Value;
+        if (!IsEscaped(unicodeScalar))
         {
-            return new Rune(unicodeScalar).TryEncodeToUtf16(destination, out numberOfCharactersWritten);
+            return rune.TryEncodeToUtf16(destination, out numberOfCharactersWritten);
         }
 
         string? shortForm = unicodeScalar switch
@@ -143,5 +269,30 @@ public sealed class MinimalJsonEncoder : JavaScriptEncoder
         }
 
         return destination.TryWrite(CultureInfo.InvariantCulture, $"\\u{unicodeScalar:x4}", out numberOfCharactersWritten);
+    }
+
+    private static bool TryWriteScalarUtf8(Rune rune, Span<byte> destination, out int numberOfBytesWritten)
+    {
+        if (!IsEscaped(rune.Value))
+        {
+            return rune.TryEncodeToUtf8(destination, out numberOfBytesWritten);
+        }
+
+        // Escapes are ASCII, so each char narrows to one byte.
+        Span<char> escape = stackalloc char[6];
+        TryWriteScalar(rune, escape, out int length);
+        if (length > destination.Length)
+        {
+            numberOfBytesWritten = 0;
+            return false;
+        }
+
+        for (int i = 0; i < length; i++)
+        {
+            destination[i] = (byte)escape[i];
+        }
+
+        numberOfBytesWritten = length;
+        return true;
     }
 }

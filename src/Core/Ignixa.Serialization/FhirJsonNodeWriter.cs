@@ -3,7 +3,6 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -22,9 +21,10 @@ namespace Ignixa.Serialization;
 /// the same position, keeping the two arrays aligned.
 /// </para>
 /// <para>
-/// A node is serialized once, unchanged, so a lazily parsed tree is never materialized. When those bytes
-/// contain a null or an empty container, one reader pass records each container's content, and pruning
-/// copies clean branches by byte range.
+/// A node is serialized once, unchanged, so a lazily parsed tree is never materialized. Emptiness is
+/// decided from those bytes alone, so a <see cref="JsonValue"/> that serializes to a null or an empty
+/// container is omitted like any other. When the bytes hold a null or an empty container, one reader
+/// pass records each container's content, and pruning copies clean branches by byte range.
 /// </para>
 /// </remarks>
 internal static class FhirJsonNodeWriter
@@ -37,8 +37,7 @@ internal static class FhirJsonNodeWriter
     /// </summary>
     public static PooledByteBufferWriter WriteToBuffer(JsonNode node, JsonWriterOptions writerOptions, JsonSerializerOptions options)
     {
-        int maxDepth = MaxDepth(writerOptions);
-        PooledByteBufferWriter json = WriteCompact(node, writerOptions with { Indented = false }, maxDepth, options);
+        PooledByteBufferWriter json = Serialize(node, writerOptions, depth: 0, options, out _);
         if (!writerOptions.Indented)
         {
             return json;
@@ -52,7 +51,7 @@ internal static class FhirJsonNodeWriter
                 indented = new PooledByteBufferWriter();
                 using (var writer = new Utf8JsonWriter(indented, writerOptions))
                 {
-                    WriteIndented(writer, json.WrittenMemory, maxDepth);
+                    WriteSerialized(writer, json);
                 }
 
                 PooledByteBufferWriter written = indented;
@@ -66,39 +65,63 @@ internal static class FhirJsonNodeWriter
         }
     }
 
+    /// <summary>
+    /// Writes <paramref name="node"/> as the next value of <paramref name="writer"/>. A node without
+    /// content is still written, as an empty container, because a value is required there.
+    /// </summary>
     public static void Write(Utf8JsonWriter writer, JsonNode node, JsonSerializerOptions options)
     {
-        if (node is not (JsonObject or JsonArray))
-        {
-            node.WriteTo(writer, options);
-            return;
-        }
-
-        // The copied bytes are not depth-checked by the writer, so the remaining budget is enforced here.
-        int maxDepth = MaxDepth(writer.Options) - writer.CurrentDepth;
-        if (maxDepth <= 0)
-        {
-            throw new InvalidOperationException(
-                $"CurrentDepth ({writer.CurrentDepth}) is equal to or larger than the maximum allowed depth of {MaxDepth(writer.Options)}.");
-        }
-
-        using PooledByteBufferWriter json = WriteCompact(node, writer.Options with { Indented = false, MaxDepth = maxDepth }, maxDepth, options);
-        if (writer.Options.Indented)
-        {
-            WriteIndented(writer, json.WrittenMemory, maxDepth);
-        }
-        else
-        {
-            writer.WriteRawValue(json.WrittenSpan, skipInputValidation: true);
-        }
+        using PooledByteBufferWriter json = Serialize(node, writer.Options, writer.CurrentDepth, options, out _);
+        WriteSerialized(writer, json);
     }
 
     /// <summary>
-    /// Whether <paramref name="node"/>, written as the next value of <paramref name="writer"/>, has content.
+    /// Serializes <paramref name="node"/> as it will be written inside <paramref name="depth"/> open
+    /// containers of <paramref name="writer"/>. Returns null when nothing with content remains;
+    /// otherwise the caller disposes the buffer.
     /// </summary>
     /// <exception cref="InvalidOperationException">The node nests deeper than the writer's maximum depth.</exception>
-    public static bool HasContent(Utf8JsonWriter writer, [NotNullWhen(true)] JsonNode? node) =>
-        HasContent(node, depth: writer.CurrentDepth + 1, MaxDepth(writer.Options));
+    public static PooledByteBufferWriter? SerializeContent(Utf8JsonWriter writer, JsonNode? node, int depth, JsonSerializerOptions options)
+    {
+        if (node is null)
+        {
+            return null;
+        }
+
+        PooledByteBufferWriter json = Serialize(node, writer.Options, depth, options, out bool hasContent);
+        if (hasContent)
+        {
+            return json;
+        }
+
+        json.Dispose();
+        return null;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="node"/> has content, decided as <see cref="SerializeContent"/> decides it.
+    /// </summary>
+    public static bool HasContent(Utf8JsonWriter writer, JsonNode? node, int depth, JsonSerializerOptions options)
+    {
+        using PooledByteBufferWriter? json = SerializeContent(writer, node, depth, options);
+        return json is not null;
+    }
+
+    /// <summary>Writes bytes from <see cref="SerializeContent"/> as the next value of <paramref name="writer"/>.</summary>
+    public static void WriteSerialized(Utf8JsonWriter writer, PooledByteBufferWriter json)
+    {
+        if (!writer.Options.Indented)
+        {
+            writer.WriteRawValue(json.WrittenSpan, skipInputValidation: true);
+            return;
+        }
+
+        // WriteRawValue does not indent, so indented output is rewritten from the compact bytes; the
+        // writer's encoder escapes strings exactly as before. The bytes were written within the writer's
+        // remaining depth, so the document's own limit only has to be at least that.
+        using JsonDocument document = JsonDocument.Parse(json.WrittenMemory, new JsonDocumentOptions { MaxDepth = MaxDepth(writer.Options) });
+        document.RootElement.WriteTo(writer);
+    }
 
     /// <summary>
     /// Gets the array paired with the property <paramref name="name"/>: <c>_x</c> for <c>x</c>, and <c>x</c> for <c>_x</c>.
@@ -106,51 +129,103 @@ internal static class FhirJsonNodeWriter
     public static JsonArray? CompanionOf(JsonObject parent, string name) =>
         parent.TryGetPropertyValue(CompanionName(name), out JsonNode? companion) ? companion as JsonArray : null;
 
-    public static void WriteArrayItem(Utf8JsonWriter writer, JsonArray array, int index, JsonArray? companion, JsonSerializerOptions options)
-    {
-        JsonNode? item = array[index];
-        if (HasContent(writer, item))
-        {
-            Write(writer, item, options);
-        }
-        else if (companion is not null && index < companion.Count && HasContent(writer, companion[index]))
-        {
-            writer.WriteNullValue();
-        }
-    }
-
     private static string CompanionName(string name) => name.StartsWith('_') ? name[1..] : "_" + name;
 
     private static int MaxDepth(JsonWriterOptions options) => options.MaxDepth == 0 ? DefaultMaxDepth : options.MaxDepth;
 
-    /// <summary>Writes <paramref name="node"/> compactly, pruning only when its bytes contain a null or an empty container.</summary>
-    private static PooledByteBufferWriter WriteCompact(JsonNode node, JsonWriterOptions compactOptions, int maxDepth, JsonSerializerOptions options)
+    // Copied bytes are not depth-checked by the destination writer, so the compact writer gets only the
+    // depth that remains below the containers already open around the node.
+    private static PooledByteBufferWriter Serialize(JsonNode node, JsonWriterOptions writerOptions, int depth, JsonSerializerOptions options, out bool hasContent)
     {
-        PooledByteBufferWriter json = WriteToNewBuffer(compactOptions, writer => node.WriteTo(writer, options));
-        ReadOnlySpan<byte> bytes = json.WrittenSpan;
-
-        // Utf8JsonWriter writes an empty container as {} or [], so bytes without "{}", "[]" or "null"
-        // need no pruning. Strings may contain them, so a hit is only a maybe.
-        if (node is not (JsonObject or JsonArray)
-            || (bytes.IndexOf("{}"u8) < 0 && bytes.IndexOf("[]"u8) < 0 && bytes.IndexOf("null"u8) < 0))
+        int maxDepth = MaxDepth(writerOptions);
+        int remaining = maxDepth - depth;
+        if (remaining > 0)
         {
-            return json;
+            return WriteCompact(node, writerOptions with { Indented = false, MaxDepth = remaining }, options, out hasContent);
         }
 
-        using (json)
+        // No container may open here, and a MaxDepth of 0 would mean the default, so one level is
+        // allowed and then rejected if the node used it.
+        if (node is not (JsonObject or JsonArray))
         {
+            PooledByteBufferWriter json = WriteCompact(node, writerOptions with { Indented = false, MaxDepth = 1 }, options, out hasContent);
+            if (json.WrittenSpan[0] is not ((byte)'{' or (byte)'['))
+            {
+                return json;
+            }
+
+            json.Dispose();
+        }
+
+        throw new InvalidOperationException(
+            $"CurrentDepth ({depth}) is equal to or larger than the maximum allowed depth of {maxDepth}.");
+    }
+
+    /// <summary>Writes <paramref name="node"/> compactly, pruning only when its bytes hold a null or an empty container.</summary>
+    private static PooledByteBufferWriter WriteCompact(JsonNode node, JsonWriterOptions compactOptions, JsonSerializerOptions options, out bool hasContent)
+    {
+        PooledByteBufferWriter json = WriteToNewBuffer(compactOptions, writer => node.WriteTo(writer, options));
+        bool isReturned = false;
+        try
+        {
+            ReadOnlySpan<byte> bytes = json.WrittenSpan;
+            if (!MayNeedPruning(bytes))
+            {
+                hasContent = !(bytes.SequenceEqual("{}"u8) || bytes.SequenceEqual("[]"u8) || bytes.SequenceEqual("null"u8));
+                isReturned = true;
+                return json;
+            }
+
+            List<Value> values = Analyze(bytes, compactOptions.MaxDepth);
+            hasContent = values[0].HasContent;
+            if (values[0].IsClean)
+            {
+                isReturned = true;
+                return json;
+            }
+
             ReadOnlyMemory<byte> source = json.WrittenMemory;
-            var pruner = new JsonPruner(Analyze(source.Span, maxDepth));
+            var pruner = new JsonPruner(values);
             return WriteToNewBuffer(compactOptions, writer => pruner.WriteValue(writer, source.Span, index: 0));
+        }
+        finally
+        {
+            if (!isReturned)
+            {
+                json.Dispose();
+            }
         }
     }
 
-    // Copied bytes are never indented, and WriteRawValue does not indent them, so indented output is
-    // rewritten from the compact bytes; the writer's encoder escapes strings exactly as before.
-    private static void WriteIndented(Utf8JsonWriter writer, ReadOnlyMemory<byte> compact, int maxDepth)
+    // Utf8JsonWriter writes an empty container as {} or [], and in compact output a value always follows
+    // ':', '[' or ',' and precedes ',', ']' or '}'. Text inside a string can still match, so a hit is
+    // only a maybe. The root itself is not matched: an empty root is written as it is.
+    private static bool MayNeedPruning(ReadOnlySpan<byte> json) =>
+        HasValueToken(json, "{}"u8) || HasValueToken(json, "[]"u8) || HasValueToken(json, "null"u8);
+
+    private static bool HasValueToken(ReadOnlySpan<byte> json, ReadOnlySpan<byte> token)
     {
-        using JsonDocument document = JsonDocument.Parse(compact, new JsonDocumentOptions { MaxDepth = maxDepth + 1 });
-        document.RootElement.WriteTo(writer);
+        int offset = 0;
+        while (true)
+        {
+            int found = json[offset..].IndexOf(token);
+            if (found < 0)
+            {
+                return false;
+            }
+
+            int start = offset + found;
+            int end = start + token.Length;
+            if (start > 0
+                && json[start - 1] is (byte)':' or (byte)'[' or (byte)','
+                && end < json.Length
+                && json[end] is (byte)',' or (byte)']' or (byte)'}')
+            {
+                return true;
+            }
+
+            offset = start + 1;
+        }
     }
 
     private static PooledByteBufferWriter WriteToNewBuffer(JsonWriterOptions writerOptions, Action<Utf8JsonWriter> write)
@@ -182,7 +257,9 @@ internal static class FhirJsonNodeWriter
     {
         var values = new List<Value>();
         var open = new Stack<int>();
-        var reader = new Utf8JsonReader(json, new JsonReaderOptions { MaxDepth = maxDepth + 1 });
+
+        // The bytes came from a writer limited to maxDepth, so the reader only needs to allow as much.
+        var reader = new Utf8JsonReader(json, new JsonReaderOptions { MaxDepth = maxDepth });
         JsonTokenType previous = JsonTokenType.None;
         int nameStart = -1;
         int nameLength = 0;
@@ -201,6 +278,7 @@ internal static class FhirJsonNodeWriter
                     open.Push(values.Count);
                     values.Add(new Value((int)reader.TokenStartIndex, End: 0, Next: 0, token, nameStart, nameLength, escapedName, HasContent: false, IsClean: true));
                     nameStart = -1;
+                    escapedName = null;
                     break;
                 case JsonTokenType.EndObject or JsonTokenType.EndArray:
                     int index = open.Pop();
@@ -217,6 +295,7 @@ internal static class FhirJsonNodeWriter
                     bool isValue = token != JsonTokenType.Null;
                     values.Add(new Value((int)reader.TokenStartIndex, (int)reader.BytesConsumed, values.Count + 1, token, nameStart, nameLength, escapedName, isValue, isValue));
                     nameStart = -1;
+                    escapedName = null;
                     AddToParent(values, open, values[^1]);
                     break;
             }
@@ -294,7 +373,8 @@ internal static class FhirJsonNodeWriter
                     writer.WritePropertyName(json.Slice(property.NameStart, property.NameLength));
                 }
 
-                if (property.Token == JsonTokenType.StartArray)
+                // A clean array has no empty item, so it needs no placeholder and is copied whole.
+                if (property.Token == JsonTokenType.StartArray && !property.IsClean)
                 {
                     arrays ??= ArrayProperties(json, index);
                     WriteArray(writer, json, child, arrays.GetValueOrDefault(CompanionName(Name(json, property)), -1));
@@ -350,43 +430,5 @@ internal static class FhirJsonNodeWriter
 
         private static string Name(ReadOnlySpan<byte> json, Value value) =>
             value.EscapedName ?? Encoding.UTF8.GetString(json.Slice(value.NameStart, value.NameLength));
-    }
-
-    // depth is the writer depth the node would open at, so the check matches the writer's own limit.
-    private static bool HasContent(JsonNode? node, int depth, int maxDepth)
-    {
-        if (node is JsonObject or JsonArray && depth > maxDepth)
-        {
-            throw new InvalidOperationException(
-                $"The JSON tree is deeper than the maximum allowed depth of {maxDepth}.");
-        }
-
-        switch (node)
-        {
-            case null:
-                return false;
-            case JsonObject obj:
-                foreach (KeyValuePair<string, JsonNode?> property in obj)
-                {
-                    if (HasContent(property.Value, depth + 1, maxDepth))
-                    {
-                        return true;
-                    }
-                }
-
-                return false;
-            case JsonArray array:
-                foreach (JsonNode? item in array)
-                {
-                    if (HasContent(item, depth + 1, maxDepth))
-                    {
-                        return true;
-                    }
-                }
-
-                return false;
-            default:
-                return true;
-        }
     }
 }

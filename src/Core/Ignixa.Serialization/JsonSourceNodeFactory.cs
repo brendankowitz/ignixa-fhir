@@ -186,7 +186,8 @@ public static class JsonSourceNodeFactory
     /// arrays (such as Bundle.entry), flushing whenever <paramref name="flushThresholdBytes"/> are pending. The
     /// output is identical to <see cref="SerializeToString(ResourceJsonNode, JsonWriterOptions)"/>, but a large
     /// resource is never held as one string or byte array, and the stream is only written asynchronously
-    /// (Kestrel disallows synchronous I/O).
+    /// (Kestrel disallows synchronous I/O). The exception is a resource with a top-level
+    /// <see cref="JsonValue"/> that wraps a CLR collection, which is serialized whole before it is written.
     /// </summary>
     /// <remarks>
     /// Unlike System.Text.Json, a null <see cref="JsonWriterOptions.Encoder"/> selects <see cref="MinimalJsonEncoder.Instance"/>.
@@ -201,33 +202,30 @@ public static class JsonSourceNodeFactory
         ArgumentNullException.ThrowIfNull(resource);
         ArgumentNullException.ThrowIfNull(outStream);
 
-        await using var writer = new Utf8JsonWriter(outStream, WithDefaultEncoder(options));
         JsonObject root = resource.MutableNode;
+        if (HasWrappedTopLevelArray(root))
+        {
+            using PooledByteBufferWriter buffer = WriteToBuffer(resource, options);
+            await outStream.WriteAsync(buffer.WrittenMemory, cancellationToken);
+            return;
+        }
 
+        await using var writer = new Utf8JsonWriter(outStream, WithDefaultEncoder(options));
         writer.WriteStartObject();
         foreach ((string name, JsonNode? value) in root)
         {
-            if (!FhirJsonNodeWriter.HasContent(writer, value))
-            {
-                continue;
-            }
-
-            writer.WritePropertyName(name);
             if (value is JsonArray array)
             {
-                JsonArray? companion = FhirJsonNodeWriter.CompanionOf(root, name);
-                writer.WriteStartArray();
-                for (int i = 0; i < array.Count; i++)
-                {
-                    FhirJsonNodeWriter.WriteArrayItem(writer, array, i, companion, _jsonSerializerOptions);
-                    await FlushIfPendingAsync(writer, flushThresholdBytes, cancellationToken);
-                }
-
-                writer.WriteEndArray();
+                await WriteTopLevelArrayAsync(writer, root, name, array, flushThresholdBytes, cancellationToken);
             }
             else
             {
-                FhirJsonNodeWriter.Write(writer, value, _jsonSerializerOptions);
+                using PooledByteBufferWriter? json = FhirJsonNodeWriter.SerializeContent(writer, value, TopLevelValueDepth, _jsonSerializerOptions);
+                if (json is not null)
+                {
+                    writer.WritePropertyName(name);
+                    FhirJsonNodeWriter.WriteSerialized(writer, json);
+                }
             }
 
             await FlushIfPendingAsync(writer, flushThresholdBytes, cancellationToken);
@@ -235,6 +233,81 @@ public static class JsonSourceNodeFactory
 
         writer.WriteEndObject();
         await writer.FlushAsync(cancellationToken);
+    }
+
+    private const int TopLevelValueDepth = 1;
+
+    // The property and any leading placeholders are held back until an item has content, because an
+    // array without content is omitted entirely, placeholders included.
+    private static async Task WriteTopLevelArrayAsync(
+        Utf8JsonWriter writer,
+        JsonObject root,
+        string name,
+        JsonArray array,
+        int flushThresholdBytes,
+        CancellationToken cancellationToken)
+    {
+        const int itemDepth = TopLevelValueDepth + 1;
+        JsonArray? companion = FhirJsonNodeWriter.CompanionOf(root, name);
+        bool isStarted = false;
+        int leadingPlaceholders = 0;
+        for (int i = 0; i < array.Count; i++)
+        {
+            using (PooledByteBufferWriter? item = FhirJsonNodeWriter.SerializeContent(writer, array[i], itemDepth, _jsonSerializerOptions))
+            {
+                if (item is not null)
+                {
+                    if (!isStarted)
+                    {
+                        writer.WritePropertyName(name);
+                        writer.WriteStartArray();
+                        for (int placeholder = 0; placeholder < leadingPlaceholders; placeholder++)
+                        {
+                            writer.WriteNullValue();
+                        }
+
+                        isStarted = true;
+                    }
+
+                    FhirJsonNodeWriter.WriteSerialized(writer, item);
+                }
+                else if (companion is not null
+                    && i < companion.Count
+                    && FhirJsonNodeWriter.HasContent(writer, companion[i], itemDepth, _jsonSerializerOptions))
+                {
+                    if (isStarted)
+                    {
+                        writer.WriteNullValue();
+                    }
+                    else
+                    {
+                        leadingPlaceholders++;
+                    }
+                }
+            }
+
+            await FlushIfPendingAsync(writer, flushThresholdBytes, cancellationToken);
+        }
+
+        if (isStarted)
+        {
+            writer.WriteEndArray();
+        }
+    }
+
+    // A JsonValue wrapping a CLR collection serializes as an array, which may pair with a companion.
+    // Only the whole-resource writer aligns such a pair, and it is rare enough not to stream.
+    private static bool HasWrappedTopLevelArray(JsonObject root)
+    {
+        foreach ((_, JsonNode? value) in root)
+        {
+            if (value is JsonValue && value.GetValueKind() == JsonValueKind.Array)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private const int DefaultStreamFlushThresholdBytes = 256 * 1024;

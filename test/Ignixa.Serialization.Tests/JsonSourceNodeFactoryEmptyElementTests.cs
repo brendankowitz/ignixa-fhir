@@ -171,6 +171,80 @@ public class JsonSourceNodeFactoryEmptyElementTests
         (await SerializerOverloads.SerializeAsync(withEmpty, serializer)).ShouldBe(clean);
     }
 
+    [Theory]
+    [MemberData(nameof(Serializers))]
+    public async Task GivenStringsShapedLikeEmptyValueTokens_WhenSerializing_ThenTheResourceIsWrittenUnchanged(string serializer)
+    {
+        const string json =
+            """{"resourceType":"Basic","id":"a:null,b","language":"[null]","code":{"text":",{},[[],:[]}"},"extension":[{"url":"http://hl7.org/fhir/StructureDefinition/iso21090-nullFlavor","valueCode":"UNK"}]}""";
+
+        (await SerializerOverloads.SerializeAsync(JsonSourceNodeFactory.Parse<ResourceJsonNode>(json), serializer)).ShouldBe(json);
+    }
+
+    [Theory]
+    [MemberData(nameof(Serializers))]
+    public async Task GivenJsonValuesWrappingEmptyClrCollections_WhenSerializing_ThenEveryOverloadOmitsThem(string serializer)
+    {
+        var resource = JsonSourceNodeFactory.Parse<ResourceJsonNode>("""{"resourceType":"Basic","id":"a"}""");
+        resource.MutableNode["tags"] = JsonValue.Create(new List<string>());
+        resource.MutableNode["code"] = new JsonObject { ["coding"] = JsonValue.Create(new List<string>()) };
+        resource.MutableNode["extension"] = new JsonArray(JsonValue.Create(new Dictionary<string, string>()), new JsonObject { ["url"] = "x" });
+
+        (await SerializerOverloads.SerializeAsync(resource, serializer)).ShouldBe(
+            """{"resourceType":"Basic","id":"a","extension":[{"url":"x"}]}""");
+    }
+
+    [Theory]
+    [MemberData(nameof(Serializers))]
+    public async Task GivenATopLevelClrArrayWithACompanion_WhenSerializing_ThenEveryOverloadAlignsThePair(string serializer)
+    {
+        var resource = JsonSourceNodeFactory.Parse<ResourceJsonNode>("""{"resourceType":"Questionnaire"}""");
+        resource.MutableNode["subjectType"] = JsonValue.Create(new[] { null, "Patient", null });
+        resource.MutableNode["_subjectType"] = new JsonArray(new JsonObject { ["id"] = "a" }, null, null);
+
+        (await SerializerOverloads.SerializeAsync(resource, serializer)).ShouldBe(
+            """{"resourceType":"Questionnaire","subjectType":[null,"Patient"],"_subjectType":[{"id":"a"},null]}""");
+    }
+
+    [Theory]
+    [MemberData(nameof(Serializers))]
+    public async Task GivenATopLevelArrayWhoseContentFollowsPlaceholders_WhenSerializing_ThenTheLeadingPlaceholdersAreKept(string serializer)
+    {
+        var resource = JsonSourceNodeFactory.Parse<ResourceJsonNode>(
+            """{"resourceType":"Questionnaire","subjectType":[null,null,{},"Patient",null],"_subjectType":[{"id":"a"},null,null,null,{"id":"b"}]}""");
+
+        (await SerializerOverloads.SerializeAsync(resource, serializer)).ShouldBe(
+            """{"resourceType":"Questionnaire","subjectType":[null,"Patient",null],"_subjectType":[{"id":"a"},null,{"id":"b"}]}""");
+    }
+
+    [Theory]
+    [MemberData(nameof(Serializers))]
+    public async Task GivenATopLevelArrayWithoutContentBesideACompanion_WhenSerializing_ThenItsPlaceholdersAreOmittedToo(string serializer)
+    {
+        var resource = JsonSourceNodeFactory.Parse<ResourceJsonNode>(
+            """{"resourceType":"Questionnaire","subjectType":[null,{}],"_subjectType":[{"id":"a"},null]}""");
+
+        (await SerializerOverloads.SerializeAsync(resource, serializer)).ShouldBe(
+            """{"resourceType":"Questionnaire","_subjectType":[{"id":"a"}]}""");
+    }
+
+    [Fact]
+    public async Task GivenAMaxDepthThatOnlyFitsTheRoot_WhenSerializing_ThenPrimitivesAreWrittenAndANestedContainerThrows()
+    {
+        var options = new JsonWriterOptions { MaxDepth = 1 };
+        var flat = JsonSourceNodeFactory.Parse<ResourceJsonNode>("""{"resourceType":"Basic","id":"a"}""");
+        var nested = JsonSourceNodeFactory.Parse<ResourceJsonNode>("""{"resourceType":"Basic","code":{"text":"x"}}""");
+        using var flatStream = new MemoryStream();
+        using var nestedStream = new MemoryStream();
+
+        await flat.SerializeToStreamAsync(flatStream, options);
+
+        Encoding.UTF8.GetString(flatStream.ToArray()).ShouldBe("""{"resourceType":"Basic","id":"a"}""");
+        flat.SerializeToString(options).ShouldBe("""{"resourceType":"Basic","id":"a"}""");
+        Should.Throw<InvalidOperationException>(() => nested.SerializeToString(options));
+        await Should.ThrowAsync<InvalidOperationException>(() => nested.SerializeToStreamAsync(nestedStream, options));
+    }
+
     [Fact]
     public async Task GivenNestedEmptiesAndPrettyOutput_WhenSerializing_ThenEveryOverloadIndentsTheSameAndOmitsThem()
     {

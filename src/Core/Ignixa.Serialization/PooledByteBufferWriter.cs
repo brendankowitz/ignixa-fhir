@@ -9,7 +9,8 @@ namespace Ignixa.Serialization;
 
 /// <summary>
 /// A contiguous <see cref="IBufferWriter{T}"/> over arrays rented from <see cref="ArrayPool{T}.Shared"/>,
-/// which trims retained arrays under memory pressure. Dispose returns the array.
+/// which trims retained arrays under memory pressure. Dispose returns the array. Written bytes are
+/// cleared before an array goes back to the pool, so resource content does not linger in it.
 /// </summary>
 internal sealed class PooledByteBufferWriter : IBufferWriter<byte>, IDisposable
 {
@@ -39,24 +40,34 @@ internal sealed class PooledByteBufferWriter : IBufferWriter<byte>, IDisposable
     public void Dispose()
     {
         byte[] buffer = _buffer;
+        int written = _written;
         _buffer = [];
         _written = 0;
         if (buffer.Length > 0)
         {
+            buffer.AsSpan(0, written).Clear();
             ArrayPool<byte>.Shared.Return(buffer);
         }
     }
 
     private void EnsureCapacity(int sizeHint)
     {
-        int needed = _written + Math.Max(sizeHint, 1);
+        long needed = (long)_written + Math.Max(sizeHint, 1);
         if (needed <= _buffer.Length)
         {
             return;
         }
 
+        if (needed > Array.MaxLength)
+        {
+            throw new InvalidOperationException(
+                $"The serialized JSON needs {needed} bytes, which exceeds the largest buffer of {Array.MaxLength} bytes.");
+        }
+
         byte[] larger = ArrayPool<byte>.Shared.Rent((int)Math.Min(Math.Max(needed, _buffer.Length * 2L), Array.MaxLength));
-        _buffer.AsSpan(0, _written).CopyTo(larger);
+        Span<byte> written = _buffer.AsSpan(0, _written);
+        written.CopyTo(larger);
+        written.Clear();
         ArrayPool<byte>.Shared.Return(_buffer);
         _buffer = larger;
     }
