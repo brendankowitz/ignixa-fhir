@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Collections;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -309,13 +310,26 @@ public static class JsonSourceNodeFactory
     {
         foreach ((_, JsonNode? value) in root)
         {
-            if (value is JsonValue && value.GetValueKind() == JsonValueKind.Array)
+            if (value is JsonValue wrapped && MayWriteAsArray(wrapped))
             {
                 return true;
             }
         }
 
         return false;
+    }
+
+    // GetValueKind would serialize a CLR value to find its kind, consuming a single-use enumerable before
+    // it is written, so the wrapped value is inspected instead. Every non-string enumerable is treated as
+    // an array; a dictionary is then only written unstreamed, with the same output.
+    private static bool MayWriteAsArray(JsonValue value)
+    {
+        if (value.TryGetValue(out JsonElement element))
+        {
+            return element.ValueKind == JsonValueKind.Array;
+        }
+
+        return value.TryGetValue(out object? clrValue) && clrValue is IEnumerable and not string;
     }
 
     private const int DefaultStreamFlushThresholdBytes = 256 * 1024;

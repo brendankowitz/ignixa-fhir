@@ -208,6 +208,35 @@ public class JsonSourceNodeFactoryEmptyElementTests
 
     [Theory]
     [MemberData(nameof(Serializers))]
+    public async Task GivenATopLevelSingleUseEnumerable_WhenSerializing_ThenEveryOverloadWritesItOnce(string serializer)
+    {
+        var resource = JsonSourceNodeFactory.Parse<ResourceJsonNode>("""{"resourceType":"Questionnaire"}""");
+        resource.MutableNode["subjectType"] = JsonValue.Create(new SingleUseEnumerable<string>("Patient", "Group"));
+
+        (await SerializerOverloads.SerializeAsync(resource, serializer)).ShouldBe(
+            """{"resourceType":"Questionnaire","subjectType":["Patient","Group"]}""");
+    }
+
+    private sealed class SingleUseEnumerable<T>(params T[] items) : IEnumerable<T>
+    {
+        private bool _isEnumerated;
+
+        public IEnumerator<T> GetEnumerator()
+        {
+            if (_isEnumerated)
+            {
+                throw new InvalidOperationException("The sequence can only be enumerated once.");
+            }
+
+            _isEnumerated = true;
+            return ((IEnumerable<T>)items).GetEnumerator();
+        }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    [Theory]
+    [MemberData(nameof(Serializers))]
     public async Task GivenATopLevelArrayWhoseContentFollowsPlaceholders_WhenSerializing_ThenTheLeadingPlaceholdersAreKept(string serializer)
     {
         var resource = JsonSourceNodeFactory.Parse<ResourceJsonNode>(
