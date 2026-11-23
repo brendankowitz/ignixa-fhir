@@ -101,7 +101,7 @@ public class MetaJsonNodeTests
         _patientJsonNode.Meta.LastUpdatedOffset = _currentDate;
         _patientJsonNode.Meta.VersionId = "-1";
 
-        var newJson = _patientJsonNode.SerializeToString().Replace("\\u002B", "+", StringComparison.Ordinal);
+        var newJson = _patientJsonNode.SerializeToString();
 
         var deserializer = new FhirJsonDeserializer();
         Resource deserializedPatient = deserializer.DeserializeResource(newJson);

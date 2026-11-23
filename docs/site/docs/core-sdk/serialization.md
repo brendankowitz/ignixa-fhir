@@ -78,6 +78,49 @@ ReadOnlyMemory<byte> bytes = resource.SerializeToBytes();
 var prettyBytes = resource.SerializeToBytes(pretty: true);
 ```
 
+### Empty Elements
+
+FHIR JSON objects and arrays are never empty and properties are never `null`, so every serialization
+method omits them. A parent whose members are all empty is omitted too. The resource itself is not changed.
+
+```csharp
+var patient = JsonSourceNodeFactory.Parse<ResourceJsonNode>("""{"resourceType":"Patient","id":"a"}""");
+patient.Meta.VersionId = null; // reading Meta creates an empty "meta" object
+
+patient.SerializeToString(); // {"resourceType":"Patient","id":"a"}
+```
+
+For a repeating primitive and its `_` companion (`given` / `_given`), an empty item becomes a `null`
+placeholder when the other array has content at the same position, so the arrays stay aligned.
+
+### String Escaping
+
+By default (`JsonEscaping.Minimal`), only `"`, `\`, U+0000 to U+001F, U+0085, U+2028 and U+2029 are
+escaped, matching Newtonsoft.Json's default. All other characters, including `+`, `<`, `&` and
+non-ASCII text, are written literally, so `"lastUpdated":"...+00:00"` stays searchable as text.
+
+Use `JsonEscaping.HtmlSafe` when the JSON will be embedded in HTML:
+
+```csharp
+var htmlSafe = resource.SerializeToString(JsonEscaping.HtmlSafe);
+```
+
+For full control, pass `JsonWriterOptions`. Unlike System.Text.Json, a `null` encoder means
+`MinimalJsonEncoder.Instance`, so this writes indented, minimally escaped JSON:
+
+```csharp
+var json = resource.SerializeToString(new JsonWriterOptions { Indented = true });
+```
+
+`JsonSerializer.Serialize` with the Ignixa converters also omits empty elements, but escapes with the
+`JsonSerializerOptions.Encoder` you pass (HTML-safe when it is `null`).
+
+### Element Order
+
+Properties are written in the resource's current order: parse order, with added properties appended.
+To write them in StructureDefinition order, reorder the resource in place first with
+`resource.OrderElements(schema)`.
+
 ## Mutating Resources
 
 Prefer FHIRPath (see [FHIRPath](/docs/core-sdk/fhirpath)) to *read* values, and one of the options below to *write* them. Avoid reaching for the raw backing `JsonObject` unless nothing else fits — see [Raw Mutable JSON Access](#raw-mutable-json-access-advanced) at the end of this section.

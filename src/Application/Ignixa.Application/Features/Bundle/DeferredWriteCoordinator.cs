@@ -10,6 +10,7 @@ using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.Bundle;
@@ -294,7 +295,7 @@ public class DeferredWriteCoordinator
             var json = JsonNode.Parse(response.ResourceJson);
             if (BundleReferencePreProcessor.RewriteReferenceAliases(json, aliases))
             {
-                response = response with { ResourceJson = json!.ToJsonString() };
+                response = response with { ResourceJson = new ResourceJsonNode(json!.AsObject()).SerializeToString() };
             }
         }
         return response;
