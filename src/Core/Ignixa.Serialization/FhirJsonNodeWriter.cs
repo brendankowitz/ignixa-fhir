@@ -98,15 +98,6 @@ internal static class FhirJsonNodeWriter
         return null;
     }
 
-    /// <summary>
-    /// Whether <paramref name="node"/> has content, decided as <see cref="SerializeContent"/> decides it.
-    /// </summary>
-    public static bool HasContent(Utf8JsonWriter writer, JsonNode? node, int depth, JsonSerializerOptions options)
-    {
-        using PooledByteBufferWriter? json = SerializeContent(writer, node, depth, options);
-        return json is not null;
-    }
-
     /// <summary>Writes bytes from <see cref="SerializeContent"/> as the next value of <paramref name="writer"/>.</summary>
     public static void WriteSerialized(Utf8JsonWriter writer, PooledByteBufferWriter json)
     {

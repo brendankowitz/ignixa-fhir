@@ -217,6 +217,19 @@ public class JsonSourceNodeFactoryEmptyElementTests
             """{"resourceType":"Questionnaire","subjectType":["Patient","Group"]}""");
     }
 
+    [Theory]
+    [MemberData(nameof(Serializers))]
+    public async Task GivenASingleUseEnumerableInsideACompanionItem_WhenSerializing_ThenEveryOverloadWritesItOnce(string serializer)
+    {
+        var resource = JsonSourceNodeFactory.Parse<ResourceJsonNode>("""{"resourceType":"Questionnaire"}""");
+        resource.MutableNode["subjectType"] = new JsonArray(null, "Group");
+        resource.MutableNode["_subjectType"] = new JsonArray(
+            new JsonObject { ["extension"] = JsonValue.Create(new SingleUseEnumerable<Dictionary<string, string>>(new Dictionary<string, string> { ["url"] = "x" })) });
+
+        (await SerializerOverloads.SerializeAsync(resource, serializer)).ShouldBe(
+            """{"resourceType":"Questionnaire","subjectType":[null,"Group"],"_subjectType":[{"extension":[{"url":"x"}]}]}""");
+    }
+
     private sealed class SingleUseEnumerable<T>(params T[] items) : IEnumerable<T>
     {
         private bool _isEnumerated;

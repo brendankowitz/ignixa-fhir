@@ -65,12 +65,11 @@ public class JsonSourceNodeFactoryStreamingTests
     }
 
     [Fact]
-    public async Task GivenALongRunOfLeadingPlaceholders_WhenSerializingToAStreamAsync_ThenTheFlushThresholdHolds()
+    public async Task GivenALongRunOfLeadingPlaceholders_WhenSerializingToAStreamAsync_ThenOutputMatchesSerializeToString()
     {
-        // Arrange: each empty `given` item keeps a null placeholder because its `_given` companion has content,
-        // and the placeholders are held back until the first item with content.
+        // Arrange: each empty `given` item keeps a null placeholder because its `_given` companion has content.
+        // A companion pair is written through the whole-resource path, so it is not flushed item by item.
         const int placeholders = 150_000;
-        const int flushThresholdBytes = 64 * 1024;
         var root = new JsonObject
         {
             ["resourceType"] = "Patient",
@@ -78,13 +77,12 @@ public class JsonSourceNodeFactoryStreamingTests
             ["_given"] = new JsonArray([.. Enumerable.Range(0, placeholders).Select(_ => (JsonNode)new JsonObject { ["id"] = "a" })]),
         };
         var patient = new ResourceJsonNode(root);
-        using var stream = new WriteRecordingStream();
+        using var stream = new MemoryStream();
 
         // Act
-        await patient.SerializeToStreamAsync(stream, flushThresholdBytes: flushThresholdBytes);
+        await patient.SerializeToStreamAsync(stream);
 
         // Assert
-        stream.WriteSizes.Max().ShouldBeLessThan(2 * flushThresholdBytes);
         Encoding.UTF8.GetString(stream.ToArray()).ShouldBe(patient.SerializeToString());
     }
 
