@@ -3,7 +3,6 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Collections;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -191,8 +190,8 @@ public static class JsonSourceNodeFactory
     /// output is identical to <see cref="SerializeToString(ResourceJsonNode, JsonWriterOptions)"/>, but a large
     /// resource is never held as one string or byte array, and the stream is only written asynchronously
     /// (Kestrel disallows synchronous I/O). The exception is a resource with a top-level companion pair
-    /// (<c>x</c> and <c>_x</c>) or a top-level <see cref="JsonValue"/> that wraps a CLR collection, which is
-    /// serialized whole before it is written, so that every value is serialized exactly once.
+    /// (<c>x</c> and <c>_x</c>), which is serialized whole before it is written, so that the pair stays
+    /// aligned and every value is serialized exactly once.
     /// </summary>
     /// <remarks>
     /// Unlike System.Text.Json, a null <see cref="JsonWriterOptions.Encoder"/> selects <see cref="MinimalJsonEncoder.Instance"/>.
@@ -283,41 +282,21 @@ public static class JsonSourceNodeFactory
         }
     }
 
-    // Aligning a companion pair (x and _x) needs each item's content decided once for both arrays, which
-    // only the whole-resource writer does. A JsonValue wrapping a CLR collection serializes as an array
-    // that may be one half of a pair. Top-level pairs are small repeating primitives, so this is rare
-    // and never applies to Bundle.entry.
+    // Aligning a companion pair (x and _x) needs each item's content decided once for both values, which
+    // only the whole-resource writer does. The pair is detected by name alone: whether a CLR-backed value
+    // serializes as an array cannot be known without serializing it. Top-level pairs are primitives with
+    // extensions, which are small and rare, and Bundle.entry never has one.
     private static bool RequiresWholeResource(JsonObject root)
     {
-        foreach ((string name, JsonNode? value) in root)
+        foreach ((string name, _) in root)
         {
-            bool mayBePaired = value switch
-            {
-                JsonArray => FhirJsonNodeWriter.CompanionOf(root, name) is not null,
-                JsonValue wrapped => MayWriteAsArray(wrapped),
-                _ => false,
-            };
-
-            if (mayBePaired)
+            if (!name.StartsWith('_') && root.ContainsKey(FhirJsonNodeWriter.CompanionName(name)))
             {
                 return true;
             }
         }
 
         return false;
-    }
-
-    // GetValueKind would serialize a CLR value to find its kind, consuming a single-use enumerable before
-    // it is written, so the wrapped value is inspected instead. Every non-string enumerable is treated as
-    // an array; a dictionary is then only written unstreamed, with the same output.
-    private static bool MayWriteAsArray(JsonValue value)
-    {
-        if (value.TryGetValue(out JsonElement element))
-        {
-            return element.ValueKind == JsonValueKind.Array;
-        }
-
-        return value.TryGetValue(out object? clrValue) && clrValue is IEnumerable and not string;
     }
 
     private const int DefaultStreamFlushThresholdBytes = 256 * 1024;

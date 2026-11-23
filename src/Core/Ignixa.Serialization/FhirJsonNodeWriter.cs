@@ -114,13 +114,8 @@ internal static class FhirJsonNodeWriter
         document.RootElement.WriteTo(writer);
     }
 
-    /// <summary>
-    /// Gets the array paired with the property <paramref name="name"/>: <c>_x</c> for <c>x</c>, and <c>x</c> for <c>_x</c>.
-    /// </summary>
-    public static JsonArray? CompanionOf(JsonObject parent, string name) =>
-        parent.TryGetPropertyValue(CompanionName(name), out JsonNode? companion) ? companion as JsonArray : null;
-
-    private static string CompanionName(string name) => name.StartsWith('_') ? name[1..] : "_" + name;
+    /// <summary>Gets the name paired with <paramref name="name"/>: <c>_x</c> for <c>x</c>, and <c>x</c> for <c>_x</c>.</summary>
+    public static string CompanionName(string name) => name.StartsWith('_') ? name[1..] : "_" + name;
 
     private static int MaxDepth(JsonWriterOptions options) => options.MaxDepth == 0 ? DefaultMaxDepth : options.MaxDepth;
 

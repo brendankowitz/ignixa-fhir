@@ -208,6 +208,31 @@ public class JsonSourceNodeFactoryEmptyElementTests
 
     [Theory]
     [MemberData(nameof(Serializers))]
+    public async Task GivenATopLevelMemoryBackedArrayWithACompanion_WhenSerializing_ThenEveryOverloadAlignsThePair(string serializer)
+    {
+        var resource = JsonSourceNodeFactory.Parse<ResourceJsonNode>("""{"resourceType":"Questionnaire"}""");
+        resource.MutableNode["subjectType"] = JsonValue.Create(new ReadOnlyMemory<string>([null, "Patient", null]));
+        resource.MutableNode["_subjectType"] = new JsonArray(new JsonObject { ["id"] = "a" }, null, null);
+
+        (await SerializerOverloads.SerializeAsync(resource, serializer)).ShouldBe(
+            """{"resourceType":"Questionnaire","subjectType":[null,"Patient"],"_subjectType":[{"id":"a"},null]}""");
+    }
+
+    [Theory]
+    [MemberData(nameof(Serializers))]
+    public async Task GivenATopLevelArrayWithAClrArrayCompanion_WhenSerializing_ThenEveryOverloadAlignsThePair(string serializer)
+    {
+        var resource = JsonSourceNodeFactory.Parse<ResourceJsonNode>("""{"resourceType":"Questionnaire"}""");
+        resource.MutableNode["subjectType"] = new JsonArray(null, "Patient", null);
+        resource.MutableNode["_subjectType"] = JsonValue.Create(new ReadOnlyMemory<Dictionary<string, string>>(
+            [new Dictionary<string, string> { ["id"] = "a" }, null, null]));
+
+        (await SerializerOverloads.SerializeAsync(resource, serializer)).ShouldBe(
+            """{"resourceType":"Questionnaire","subjectType":[null,"Patient"],"_subjectType":[{"id":"a"},null]}""");
+    }
+
+    [Theory]
+    [MemberData(nameof(Serializers))]
     public async Task GivenATopLevelSingleUseEnumerable_WhenSerializing_ThenEveryOverloadWritesItOnce(string serializer)
     {
         var resource = JsonSourceNodeFactory.Parse<ResourceJsonNode>("""{"resourceType":"Questionnaire"}""");
