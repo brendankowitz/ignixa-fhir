@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text;
+using System.Text.Json.Nodes;
 using Ignixa.Serialization.SourceNodes;
 using Shouldly;
 using Xunit;
@@ -61,6 +62,30 @@ public class JsonSourceNodeFactoryStreamingTests
         stream.WriteSizes.Count.ShouldBeGreaterThan(1);
         stream.WriteSizes.Max().ShouldBeLessThan(512 * 1024);
         Encoding.UTF8.GetString(stream.ToArray()).ShouldBe(bundle.SerializeToString());
+    }
+
+    [Fact]
+    public async Task GivenALongRunOfLeadingPlaceholders_WhenSerializingToAStreamAsync_ThenTheFlushThresholdHolds()
+    {
+        // Arrange: each empty `given` item keeps a null placeholder because its `_given` companion has content,
+        // and the placeholders are held back until the first item with content.
+        const int placeholders = 150_000;
+        const int flushThresholdBytes = 64 * 1024;
+        var root = new JsonObject
+        {
+            ["resourceType"] = "Patient",
+            ["given"] = new JsonArray([.. Enumerable.Repeat<JsonNode>(null, placeholders), JsonValue.Create("x")]),
+            ["_given"] = new JsonArray([.. Enumerable.Range(0, placeholders).Select(_ => (JsonNode)new JsonObject { ["id"] = "a" })]),
+        };
+        var patient = new ResourceJsonNode(root);
+        using var stream = new WriteRecordingStream();
+
+        // Act
+        await patient.SerializeToStreamAsync(stream, flushThresholdBytes: flushThresholdBytes);
+
+        // Assert
+        stream.WriteSizes.Max().ShouldBeLessThan(2 * flushThresholdBytes);
+        Encoding.UTF8.GetString(stream.ToArray()).ShouldBe(patient.SerializeToString());
     }
 
     private sealed class WriteRecordingStream : MemoryStream

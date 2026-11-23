@@ -250,6 +250,10 @@ public static class JsonSourceNodeFactory
         int flushThresholdBytes,
         CancellationToken cancellationToken)
     {
+        // The array is only opened once an item has content, so its own depth is checked up front, as the
+        // whole-resource writer checks it even when every item is empty.
+        FhirJsonNodeWriter.ThrowIfContainerExceedsDepth(writer.Options, TopLevelValueDepth);
+
         const int itemDepth = TopLevelValueDepth + 1;
         JsonArray? companion = FhirJsonNodeWriter.CompanionOf(root, name);
         bool isStarted = false;
@@ -267,6 +271,7 @@ public static class JsonSourceNodeFactory
                         for (int placeholder = 0; placeholder < leadingPlaceholders; placeholder++)
                         {
                             writer.WriteNullValue();
+                            await FlushIfPendingAsync(writer, flushThresholdBytes, cancellationToken);
                         }
 
                         isStarted = true;

@@ -157,9 +157,25 @@ internal static class FhirJsonNodeWriter
             json.Dispose();
         }
 
-        throw new InvalidOperationException(
-            $"CurrentDepth ({depth}) is equal to or larger than the maximum allowed depth of {maxDepth}.");
+        throw DepthExceeded(depth, maxDepth);
     }
+
+    /// <summary>
+    /// Throws when a container opened inside <paramref name="depth"/> open containers would exceed the maximum
+    /// depth of <paramref name="options"/>, as the writer would if the container were written.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The container does not fit within the maximum depth.</exception>
+    public static void ThrowIfContainerExceedsDepth(JsonWriterOptions options, int depth)
+    {
+        int maxDepth = MaxDepth(options);
+        if (depth >= maxDepth)
+        {
+            throw DepthExceeded(depth, maxDepth);
+        }
+    }
+
+    private static InvalidOperationException DepthExceeded(int depth, int maxDepth) =>
+        new($"CurrentDepth ({depth}) is equal to or larger than the maximum allowed depth of {maxDepth}.");
 
     /// <summary>Writes <paramref name="node"/> compactly, pruning only when its bytes hold a null or an empty container.</summary>
     private static PooledByteBufferWriter WriteCompact(JsonNode node, JsonWriterOptions compactOptions, JsonSerializerOptions options, out bool hasContent)

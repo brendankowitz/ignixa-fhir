@@ -245,6 +245,20 @@ public class JsonSourceNodeFactoryEmptyElementTests
         await Should.ThrowAsync<InvalidOperationException>(() => nested.SerializeToStreamAsync(nestedStream, options));
     }
 
+    [Theory]
+    [InlineData("""{"resourceType":"Basic","identifier":[]}""")]
+    [InlineData("""{"resourceType":"Basic","identifier":[null]}""")]
+    [InlineData("""{"resourceType":"Basic","identifier":[{}]}""")]
+    public async Task GivenAMaxDepthThatOnlyFitsTheRoot_WhenSerializingAnArrayWithoutContent_ThenEveryPathThrows(string json)
+    {
+        var options = new JsonWriterOptions { MaxDepth = 1 };
+        var resource = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json);
+        using var stream = new MemoryStream();
+
+        Should.Throw<InvalidOperationException>(() => resource.SerializeToString(options));
+        await Should.ThrowAsync<InvalidOperationException>(() => resource.SerializeToStreamAsync(stream, options));
+    }
+
     [Fact]
     public async Task GivenNestedEmptiesAndPrettyOutput_WhenSerializing_ThenEveryOverloadIndentsTheSameAndOmitsThem()
     {
