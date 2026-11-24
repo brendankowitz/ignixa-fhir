@@ -183,11 +183,12 @@ internal static class KnownDivergences
         // test fails, which is the signal to delete this block and use the net10 pins for both TFMs.
 
         // Fhir.Metrics builds the UCUM unit factors (cm = 0.01 m) with (decimal)double, so Firely's
-        // unit conversion is noisy. Ignixa returns the clean value, 1.01 m, which also loses the
-        // trailing-zero scale net10 produced (1.0100): numerically equal, so accepted. Where net10
-        // had both engines agree on 1 'm' + 1 'cm', net11 now has them diverge.
+        // unit conversion is noisy. Ignixa returns the clean value at the precision of the operands,
+        // 1.01 m and 0.0400 m2, where net10 kept the scale of its factor arithmetic (1.0100 and
+        // 0.040000): numerically equal, so accepted. Where net10 had both engines agree on
+        // 1 'm' + 1 'cm', net11 now has them diverge.
         signatures["1 'm' + 1 'cm' :: firely=1 result(s): [QUANTITY|quantity|1.0100000000000000004163336342 'm'] ignixa=1 result(s): [QUANTITY|quantity|1.01 'm']"] = 5;
-        signatures["2.0 'cm' * 2.0 'm' :: firely=1 result(s): [QUANTITY|quantity|0.0400000000000000024980018052 'm2'] ignixa=1 result(s): [QUANTITY|quantity|0.04 'm2']"] = 5;
+        signatures["2.0 'cm' * 2.0 'm' :: firely=1 result(s): [QUANTITY|quantity|0.0400000000000000024980018052 'm2'] ignixa=1 result(s): [QUANTITY|quantity|0.0400 'm2']"] = 5;
 
         // Not a UCUM case: Firely SDK's decimal boundary calculation carries the same cast noise.
         // Ignixa's 1.45000000 is unchanged from net10.

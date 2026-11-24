@@ -253,7 +253,7 @@ public class DecimalConversionTests
     // equality) are asserted so both a value and a scale change fail the pin.
     [Theory]
     [InlineData("100", "m/s", "km/h", "359.99999999999856000", "360")]
-    [InlineData("2.5", "m/s", "km/h", "8.9999999999999640", "9")]
+    [InlineData("2.5", "m/s", "km/h", "8.9999999999999640", "9.0")]
     [InlineData("1", "km/h", "m/s", "0.2777777777777788888888888889", "0.2777777777777777777777777778")]
     [InlineData("9", "km/h", "m/s", "2.5000000000000100000000000000", "2.5")]
     [InlineData("1", "[mi_i]/h", "m/s", "0.4470400000000017881600000000", "0.44704")]
@@ -332,14 +332,33 @@ public class DecimalConversionTests
 #endif
     }
 
-    // Scale-only differences: the value is identical, .NET 11 simply drops trailing zeros that the net10 factor
-    // arithmetic left behind.
+    // The converted value keeps the precision of the operand: one unit in its last place, converted, sets the last
+    // decimal place of the result. The equivalence operator compares at the lesser scale, so this scale decides it.
     [Theory]
-    [InlineData("1000", "mL/min", "L/min", "1.000", "1")]
-    [InlineData("1000", "ug/kg/min", "mg/kg/min", "1.000", "1")]
-    [InlineData("10", "gon", "deg", "9.0", "9")]
+    [InlineData("1000", "mL/min", "L/min", "1.000")]
+    [InlineData("1000", "ug/kg/min", "mg/kg/min", "1.000")]
+    [InlineData("10", "gon", "deg", "9.0")]
+    [InlineData("100", "cm", "m", "1.00")]
+    [InlineData("1.0", "m", "cm", "100")]
+    [InlineData("3", "h", "min", "180.00")]
+    public void GivenAnOperandsPrecision_WhenConverted_ThenTheResultKeepsItOnEveryRuntime(string value, string from, string to, string expected)
+    {
+        var result = QuantityUnitConverter.Instance.Convert(decimal.Parse(value, CultureInfo.InvariantCulture), from, to);
+
+        result.ShouldNotBeNull();
+        result.Value.ToString(CultureInfo.InvariantCulture).ShouldBe(expected);
+    }
+
+    // Scale-only differences: the value is identical, but the net10 scale came from the noise in the factor arithmetic,
+    // while net11 keeps the precision of the operand.
+    [Theory]
     [InlineData("1", "gon", "deg", "0.90", "0.9")]
-    public void GivenTrailingZeroScale_WhenConverted_ThenValueIsEqualAndOnlyScaleDiffersBetweenRuntimes(string value, string from, string to, string net10, string net11)
+    [InlineData("1.50", "m", "cm", "150.0", "150")]
+    [InlineData("1.2", "L/min", "mL/min", "1200.0", "1200")]
+    [InlineData("1", "cm", "m", "0.0100", "0.01")]
+    [InlineData("500", "mL/h", "L/h", "0.50", "0.500")]
+    [InlineData("90", "min", "h", "1.5", "1.50")]
+    public void GivenAScaleFromNet10FactorNoise_WhenConverted_ThenNet11KeepsTheOperandsPrecision(string value, string from, string to, string net10, string net11)
     {
         var result = QuantityUnitConverter.Instance.Convert(decimal.Parse(value, CultureInfo.InvariantCulture), from, to);
 

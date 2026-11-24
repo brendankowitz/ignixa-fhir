@@ -223,7 +223,7 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             // is inexact on .NET 11 (see DecimalConversion).
             if (TryGetExactFactor(fromMetric, toMetric, divide: true, out var numerator, out var denominator))
             {
-                return PreferExact(ratio, sourceValue * numerator / denominator);
+                return PreferExact(ratio, sourceValue * numerator / denominator, PrecisionScale(value.Scale, numerator, denominator));
             }
 
             return DecimalConversion.ToDecimal(ratio);
@@ -299,7 +299,10 @@ public class QuantityUnitConverter : IQuantityUnitConverter
 
             // Extract value and unit
             var value = TryGetExactFactor(leftMetric, rightMetric, divide: false, out var numerator, out var denominator)
-                ? PreferExact(result.Value, leftQty.Value * rightQty.Value * numerator / denominator)
+                ? PreferExact(
+                    result.Value,
+                    leftQty.Value * rightQty.Value * numerator / denominator,
+                    PrecisionScale(left.Value.Scale + right.Value.Scale, numerator, denominator))
                 : DecimalConversion.ToDecimal(result.Value);
 
             var unit = result.Symbols;
@@ -357,7 +360,10 @@ public class QuantityUnitConverter : IQuantityUnitConverter
 
             // Extract value and unit
             var value = TryGetExactFactor(leftMetric, rightMetric, divide: true, out var numerator, out var denominator)
-                ? PreferExact(result.Value, leftQty.Value * numerator / (rightQty.Value * denominator))
+                ? PreferExact(
+                    result.Value,
+                    leftQty.Value * numerator / (rightQty.Value * denominator),
+                    PrecisionScale(Math.Max(0, left.Value.Scale - right.Value.Scale), numerator, denominator))
                 : DecimalConversion.ToDecimal(result.Value);
 
             var unit = result.Symbols;
@@ -443,14 +449,15 @@ public class QuantityUnitConverter : IQuantityUnitConverter
         return true;
     }
 
-    // Keeps the Fhir.Metrics result, trailing zeros included, when it already has the exact value. Otherwise the exact
-    // value is used with its trailing zeros dropped: their number depends on the arithmetic path, not on the operands,
-    // and does not match what .NET 10 produced from the noisy factors either (2.0 'cm' * 2.0 'm' = 0.040000 'm2').
-    private static decimal PreferExact(Exponential fhirMetricsResult, Exponential exact)
+    // Returns the exact value with at least precisionScale decimal places, so that a conversion keeps the precision of
+    // its operands: 1000 'mL/min' is 1.000 'L/min', not 1 'L/min'. The equivalence operator compares at the lesser
+    // scale, so dropping those zeros would make 1.2 'L/min' ~ 1000 'mL/min' true. When the Fhir.Metrics result already
+    // has the exact value, its trailing zeros are kept as well (3 'h' is 180.00 'min'), as before .NET 11.
+    private static decimal PreferExact(Exponential fhirMetricsResult, Exponential exact, int precisionScale)
     {
         var exactResult = DecimalConversion.ToDecimal(exact, dropTrailingZeros: true);
 
-        // Above this magnitude only scale zero is representable, so there is no legacy scale to preserve.
+        // Above this magnitude only scale zero is representable, so there is no scale to preserve.
         // Do not narrow the noisy legacy result here: it can exceed decimal range even when the exact value fits.
         if (Math.Abs(exactResult) > decimal.MaxValue / 10m)
         {
@@ -458,8 +465,23 @@ public class QuantityUnitConverter : IQuantityUnitConverter
         }
 
         var legacyResult = DecimalConversion.ToDecimal(fhirMetricsResult);
-        return exactResult == legacyResult ? legacyResult : exactResult;
+        var scale = legacyResult == exactResult ? Math.Max(precisionScale, legacyResult.Scale) : precisionScale;
+
+        // Adding zero never rounds; near the 96-bit limit .NET lowers the scale instead of changing the value.
+        return scale > exactResult.Scale ? exactResult + new decimal(0, 0, 0, false, (byte)scale) : exactResult;
     }
+
+    // The scale at which the result keeps the precision of operands of scale operandScale: one unit in their last place,
+    // times the factor numerator / denominator, has its leading digit at this decimal place. So 10 'gon' is 9.0 'deg'
+    // (factor 0.9), 1000 'mL/min' is 1.000 'L/min' (0.001) and 1.0 'm' is 100 'cm' (100), never 100.0 'cm'.
+    private static int PrecisionScale(int operandScale, Exponential numerator, Exponential denominator)
+    {
+        // Exponential keeps its significand in [1, 10), so the factor's leading digit is at 10^factorExponent.
+        var factorExponent = numerator.Exponent - denominator.Exponent - (numerator.Significand < denominator.Significand ? 1 : 0);
+        return Math.Clamp(operandScale - factorExponent, 0, MaxDecimalScale);
+    }
+
+    private const int MaxDecimalScale = 28;
 
     // UCUM definitions are a few levels deep ([mi_i] -> [ft_i] -> [in_i] -> cm); the bound only stops a cyclic table.
     private const int MaxDefinitionDepth = 32;

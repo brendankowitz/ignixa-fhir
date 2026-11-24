@@ -270,8 +270,8 @@ double's binary representation error (`2.0 'cm' * 2.0 'm'` gives `0.040000000000
 calculation does the same (`1.5.lowBoundary()` gives `1.4499999999999999989591659145`). The root cause
 is upstream and is not an Ignixa defect. Ignixa avoids the noise (see below, and `DecimalConversion` for
 the boundary functions) and returns
-`0.04 'm2'` and `1.01 'm'` - the right values, but without the trailing zeros net10 kept (`0.040000`,
-`1.0100`), which is accepted. `KnownDivergences` therefore pins different signatures per TFM
+`0.0400 'm2'` and `1.01 'm'`, the right values at the precision of the operands, where net10 kept the
+scale of its factor arithmetic (`0.040000`, `1.0100`). This is accepted. `KnownDivergences` therefore pins different signatures per TFM
 (`#if NET11_0_OR_GREATER`), and the construct sweep's agreements-on-values floor is 171 on net11
 against 176 on net10, because `1 'm' + 1 'cm'` no longer agrees on five subjects. Delete the net11
 pins once the upstream packages stop adding the noise; the pinned divergences will vanish and the test
@@ -310,9 +310,16 @@ They are covered by `QuantityOperandTypeTests`.
 *Differences versus net10.* `DecimalConversionTests` pins each kind separately as exact strings per target
 framework, so a change in value or scale, or the disappearance of a difference, fails the test:
 
-- **Scale only**: the net11 value is the same number without net10's trailing zeros. Examples are the cases
-  above, `1000 'mL/min'` to `L/min` (`1.000` on net10, `1` on net11), `1000 'ug/kg/min'` to `mg/kg/min`
-  (`1.000` and `1`), and `10 'gon'` to `deg` (`9.0` and `9`). Accepted.
+- **Scale only**: the value is the same number, and the net11 scale keeps the precision of the operand. One
+  unit in the operand's last place, converted, sets the result's last decimal place. The equivalence operator
+  compares at the lesser scale, so this decides `~`: `1000 'mL/min'` is `1.000 'L/min'` on both runtimes, so
+  `1.2 'L/min' ~ 1000 'mL/min'` is false, and `1.0 'm'` is `100 'cm'`, so `100.4 'cm' ~ 1.0 'm'` is true.
+  Where the Fhir.Metrics result is already exact, its scale is kept (`3 'h'` is `180.00 'min'`). net10's other
+  scales came from noisy factor arithmetic, so some differ: `1 'gon'` to `deg` is `0.90` on net10 and `0.9` on
+  net11, `1.50 'm'` to `cm` is `150.0` and `150`, and `500 'mL/h'` to `L/h` is `0.50` and `0.500`. As a result
+  `0.91 'deg' ~ 1 'gon'` and `150.4 'cm' ~ 1.50 'm'` are true on net11 only, and
+  `(1 'L/h' + 500 'mL/h').lowBoundary()` is `1.495 'L/h'` on net10 and `1.4995 'L/h'` on net11. Accepted;
+  `QuantityOperandTypeTests` pins these per runtime.
 - **Value differences, net11 correct**: these net10 results carried the rounding error of the old 15-digit
   cast. Examples:
 

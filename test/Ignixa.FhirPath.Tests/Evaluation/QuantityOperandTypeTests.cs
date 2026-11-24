@@ -182,8 +182,8 @@ public class QuantityOperandTypeTests
     [InlineData("1 'L/min' = 1000 'mL/min'", true)]
     [InlineData("1000 'mL/min' = 1 'L/min'", true)]
     [InlineData("1 'L/h' < 1001 'mL/h'", true)]
-    // The sum is compared rather than rendered: net10 keeps the trailing-zero scale ("1.50 'L/h'"), which is pinned
-    // separately; the value must be exactly 1.5 on every runtime.
+    // The sum is compared rather than rendered: its scale differs per runtime (1.50 'L/h' on net10, 1.500 'L/h' on
+    // net11, pinned through lowBoundary below); the value must be exactly 1.5 on every runtime.
     [InlineData("(1 'L/h' + 500 'mL/h') = 1.5 'L/h'", true)]
     [InlineData("(1 'L/h' + 500 'mL/h') = 1500 'mL/h'", true)]
     public void GivenQuantitiesWithCompatibleUnits_WhenCompared_ThenTheyAreConverted(string expression, bool expected)
@@ -272,6 +272,50 @@ public class QuantityOperandTypeTests
     }
 
     /// <summary>
+    /// Equivalence compares at the lesser precision of the two operands, after the right operand is converted to the
+    /// left's unit. The conversion must keep the converted operand's precision: 1000 'mL/min' is 1.000 'L/min', so
+    /// 1.2 'L/min' is not equivalent to it.
+    /// </summary>
+    [Theory]
+    [InlineData("1.2 'L/min' ~ 1000 'mL/min'", false)]
+    [InlineData("1000 'mL/min' ~ 1.2 'L/min'", false)]
+    [InlineData("1.0 'L/min' ~ 1000 'mL/min'", true)]
+    [InlineData("9.1 'deg' ~ 10 'gon'", false)]
+    [InlineData("9 'deg' ~ 10 'gon'", true)]
+    [InlineData("100.4 'cm' ~ 1.0 'm'", true)]
+    [InlineData("100.6 'cm' ~ 1.0 'm'", false)]
+    [InlineData("(0 'cm' + 1.0 'm').lowBoundary() = 99.5 'cm'", true)]
+    public void GivenQuantitiesInDifferentUnits_WhenComparedForEquivalence_ThenTheConvertedOperandKeepsItsPrecision(string expression, bool expected)
+    {
+        // Act
+        var result = Evaluate(expression);
+
+        // Assert
+        result.Count.ShouldBe(1);
+        result[0].Value.ShouldBe(expected);
+    }
+
+    /// <summary>
+    /// Where .NET 10's converted scale came from noise in the Fhir.Metrics factor arithmetic, .NET 11 keeps the
+    /// operand's precision instead: 1 'gon' is 0.90 'deg' on .NET 10 and 0.9 'deg' on .NET 11, and 500 'mL/h' is
+    /// 0.50 'L/h' and 0.500 'L/h'. Pinned per runtime so a change on either side fails.
+    /// </summary>
+    [Theory]
+    [InlineData("0.91 'deg' ~ 1 'gon'", false, true)]
+    [InlineData("150.4 'cm' ~ 1.50 'm'", false, true)]
+    [InlineData("(1 'L/h' + 500 'mL/h').lowBoundary() = 1.495 'L/h'", true, false)]
+    [InlineData("(1 'L/h' + 500 'mL/h').lowBoundary() = 1.4995 'L/h'", false, true)]
+    public void GivenAConvertedScaleFromNet10FactorNoise_WhenEvaluated_ThenNet11UsesTheOperandsPrecision(string expression, bool net10, bool net11)
+    {
+        // Act
+        var result = Evaluate(expression);
+
+        // Assert
+        result.Count.ShouldBe(1);
+        result[0].Value.ShouldBe(ForTargetFramework(net10, net11));
+    }
+
+    /// <summary>
     /// Empty propagation still wins over the type rule, on both operators.
     /// </summary>
     [Theory]
@@ -292,6 +336,15 @@ public class QuantityOperandTypeTests
     {
         var parsed = _parser.Parse(expression);
         return _evaluator.Evaluate(new ScalarRoot(), parsed).ToList();
+    }
+
+    private static bool ForTargetFramework(bool net10, bool net11)
+    {
+#if NET11_0_OR_GREATER
+        return net11;
+#else
+        return net10;
+#endif
     }
 
     private sealed class ScalarRoot : IElement
