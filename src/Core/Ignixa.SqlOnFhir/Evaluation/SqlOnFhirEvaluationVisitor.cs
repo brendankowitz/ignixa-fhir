@@ -224,18 +224,6 @@ internal class SqlOnFhirEvaluationVisitor
 
         var selectRows = EvaluateSelect(select, resource, context);
 
-        if (selectRows.Count == 0)
-        {
-            if (select.ForEachOrNull != null)
-            {
-                foreach (var row in currentRows)
-                    foreach (var colName in GetAllColumnNames(select))
-                        row[colName] = null;
-                return currentRows;
-            }
-            return [];
-        }
-
         var newRows = new List<Dictionary<string, object?>>();
         foreach (var selectRow in selectRows)
             foreach (var currentRow in currentRows)
@@ -327,7 +315,7 @@ internal class SqlOnFhirEvaluationVisitor
             return FormatCollection(results, node);
 
         if (results.Count > 1)
-            throw new InvalidOperationException(
+            throw new ViewDefinitionColumnException(
                 $"Column '{node.Name}' has collection=false but FHIRPath expression returned {results.Count} values. " +
                 "Either set collection=true or ensure the path returns at most one value.");
 
@@ -431,18 +419,6 @@ internal class SqlOnFhirEvaluationVisitor
                 Traverse(item, 1);
 
         return result;
-    }
-
-    private static IEnumerable<string> GetAllColumnNames(SelectExpression select)
-    {
-        foreach (var col in select.Columns)
-            yield return col.Name;
-        foreach (var nested in select.NestedSelect)
-            foreach (var name in GetAllColumnNames(nested))
-                yield return name;
-        foreach (var union in select.UnionAll)
-            foreach (var name in GetAllColumnNames(union))
-                yield return name;
     }
 
     /// <summary>
@@ -569,12 +545,12 @@ internal class SqlOnFhirEvaluationVisitor
             return ConvertToSqlType(item.Value, column.Type);
 
         if (!string.IsNullOrEmpty(column.Type) && !string.Equals(column.Type, "string", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException(
+            throw new ViewDefinitionColumnException(
                 $"Column '{column.Name}' has type '{column.Type}' but its collection holds a complex '{item.InstanceType}' value. " +
                 "Declare type 'string' or omit the type to write each item as a JSON object.");
 
         return item.Meta<JsonNode>() as JsonObject
-            ?? throw new InvalidOperationException(
+            ?? throw new ViewDefinitionColumnException(
                 $"Column '{column.Name}' holds a complex '{item.InstanceType}' value at {item.Location} that has no source JSON object to write.");
     }
 

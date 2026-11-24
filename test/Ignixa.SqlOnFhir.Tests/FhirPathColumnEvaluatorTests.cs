@@ -1235,6 +1235,20 @@ public class SqlOnFhirEvaluatorTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GivenAForEachOrNullWhoseNestedForEachIsEmpty_WhenEvaluated_ThenTheRowIsDroppedWhateverTheSelectOrder(bool forEachOrNullFirst)
+    {
+        var patient = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"p1"}""").ToElement(_schemaProvider);
+        const string IdSelect = """{ "column": [{ "name": "id", "path": "id" }] }""";
+        const string ContactSelect = """{ "forEachOrNull": "contact", "select": [{ "forEach": "telecom", "column": [{ "name": "tel", "path": "value" }] }] }""";
+        var selects = forEachOrNullFirst ? $"{ContactSelect}, {IdSelect}" : $"{IdSelect}, {ContactSelect}";
+        var view = ParseView($$"""{ "resource": "Patient", "select": [{{selects}}] }""");
+
+        Assert.Empty(_evaluator.Evaluate(view, patient));
+    }
+
+    [Theory]
     [InlineData("integer")]
     [InlineData("date")]
     public void GivenAComplexCollectionColumnWithANonStringType_WhenEvaluated_ThenItIsRejectedNotWrittenAsNull(string type)
@@ -1246,8 +1260,9 @@ public class SqlOnFhirEvaluatorTests
 
         var ex = Assert.Throws<InvalidOperationException>(() => _evaluator.Evaluate(view, patient).ToList());
 
-        Assert.Contains("'ids'", ex.InnerException?.Message, StringComparison.Ordinal);
-        Assert.Contains("Identifier", ex.InnerException?.Message, StringComparison.Ordinal);
+        var cause = Assert.IsType<ViewDefinitionColumnException>(ex.InnerException);
+        Assert.Contains("'ids'", cause.Message, StringComparison.Ordinal);
+        Assert.Contains("Identifier", cause.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1260,8 +1275,9 @@ public class SqlOnFhirEvaluatorTests
 
         var error = Assert.Throws<InvalidOperationException>(() => _evaluator.Evaluate(view, patient).ToList());
 
-        Assert.Contains("'classes'", error.InnerException?.Message, StringComparison.Ordinal);
-        Assert.Contains("no source JSON object", error.InnerException?.Message, StringComparison.Ordinal);
+        var cause = Assert.IsType<ViewDefinitionColumnException>(error.InnerException);
+        Assert.Contains("'classes'", cause.Message, StringComparison.Ordinal);
+        Assert.Contains("no source JSON object", cause.Message, StringComparison.Ordinal);
     }
 
     [Fact]

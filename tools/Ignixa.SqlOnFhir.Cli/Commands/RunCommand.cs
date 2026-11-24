@@ -297,13 +297,14 @@ internal static class RunCommand
 
     private static void Print(bool quiet, string message) { if (!quiet) Console.WriteLine(message); }
 
-    // SqlOnFhirEvaluator wraps the cause, such as a rejected column projection, in a generic failure message.
+    // SqlOnFhirEvaluator wraps failures in a generic message. Of its causes, only a ViewDefinitionColumnException is shown:
+    // its message never quotes resource values, while others, such as a failed type conversion, can.
     private static string DescribeError(Exception ex)
     {
-        var messages = new List<string>();
-        for (var current = ex; current is not null; current = current.InnerException)
-            messages.Add(current.Message);
-        return string.Join(": ", messages);
+        for (var cause = ex.InnerException; cause is not null; cause = cause.InnerException)
+            if (cause is ViewDefinitionColumnException)
+                return $"{ex.Message}: {cause.Message}";
+        return ex.Message;
     }
 
     private static (ParquetSchema Schema, Dictionary<string, string> TypeMap) BuildParquetSchema(

@@ -214,6 +214,42 @@ public sealed class RunCommandIntegrationTests : IDisposable
         view.GetProperty("errorMessage").GetString()!.ShouldContain("Column 'classes' holds a complex");
     }
 
+    [Fact]
+    public async Task GivenAValueThatFailsTypeConversion_WhenRunBatch_ThenNeitherConsoleNorStatsQuoteTheValue()
+    {
+        const string Surname = "Zyxwvutsrq";
+        var viewsDir = Path.Combine(_outDir, "views");
+        var inputDir = Path.Combine(_outDir, "input");
+        var statsPath = Path.Combine(_outDir, "stats.json");
+        Directory.CreateDirectory(viewsDir);
+        Directory.CreateDirectory(inputDir);
+        await File.WriteAllTextAsync(Path.Combine(viewsDir, "family.json"),
+            """{"resourceType":"ViewDefinition","resource":"Patient","select":[{"column":[{"name":"family","path":"name.family","type":"integer"}]}]}""");
+        await File.WriteAllTextAsync(Path.Combine(inputDir, "Patient.ndjson"),
+            $$"""{"resourceType":"Patient","id":"p1","name":[{"family":"{{Surname}}"}]}""");
+        var cmd = RunCommand.Create(new R4CoreSchemaProvider(), "r4");
+        var originalOut = Console.Out;
+        using var output = new StringWriter();
+
+        try
+        {
+            Console.SetOut(output);
+            await cmd.Parse(["--views", viewsDir, "--input", inputDir, "--out", Path.Combine(_outDir, "out"),
+                             "--format", "parquet", "--stats-out", statsPath]).InvokeAsync();
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            Environment.ExitCode = 0;
+        }
+
+        var stats = await File.ReadAllTextAsync(statsPath);
+        System.Text.Json.JsonDocument.Parse(stats).RootElement.GetProperty("views")[0].GetProperty("status").GetString().ShouldBe("failed");
+        output.ToString().ShouldContain("ERROR: Failed to evaluate ViewDefinition");
+        output.ToString().ShouldNotContain(Surname);
+        stats.ShouldNotContain(Surname);
+    }
+
     private async Task<Dictionary<string, List<object?>>> RunParquetAsync(string viewJson, params string[] resources)
     {
         var vdPath = Path.Combine(_outDir, "view.json");
