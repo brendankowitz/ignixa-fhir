@@ -70,6 +70,9 @@ dotnet run -c Release --no-build `
 
 Omit `quick` for the harness's full BenchmarkDotNet default job.
 
+The harness now runs in-process on .NET 11, because BenchmarkDotNet 0.15.8 cannot build or launch a
+.NET 11 child process. The results above came from the earlier out-of-process .NET 10 run.
+
 The host is virtualized and the short job has only three samples. BenchmarkDotNet's 99.9%
 confidence intervals are consequently wider than the means for several cases. The table reports
 mean and standard deviation, not false precision; family results with overlapping distributions

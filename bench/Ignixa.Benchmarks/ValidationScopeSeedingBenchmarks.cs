@@ -24,7 +24,7 @@ namespace Ignixa.Benchmarks;
 /// Observation and the Bundle are the cases where <c>resolve()</c> genuinely needs it.
 /// </remarks>
 [MemoryDiagnoser]
-[SimpleJob(BenchmarkDotNet.Jobs.RuntimeMoniker.Net10_0)]
+[SimpleJob]
 [MarkdownExporter]
 public class ValidationScopeSeedingBenchmarks
 {

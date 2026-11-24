@@ -12,6 +12,9 @@ This benchmark project measures performance across three key areas:
 
 ## Running the Benchmarks
 
+Benchmarks run in-process on .NET 11. BenchmarkDotNet 0.15.8 cannot build or launch a .NET 11 child
+process, so `Program.cs` applies the in-process toolchain to every job.
+
 ### Run All Benchmarks
 
 ```bash

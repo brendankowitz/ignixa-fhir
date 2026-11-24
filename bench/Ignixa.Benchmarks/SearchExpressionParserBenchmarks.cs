@@ -2,7 +2,6 @@ using System.Diagnostics;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Exporters;
 using BenchmarkDotNet.Exporters.Csv;
-using BenchmarkDotNet.Jobs;
 using Ignixa.Abstractions;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
@@ -13,7 +12,7 @@ using Ignixa.Specification.Generated;
 namespace Ignixa.Benchmarks;
 
 [MemoryDiagnoser]
-[SimpleJob(RuntimeMoniker.Net10_0)]
+[SimpleJob]
 [CsvExporter(CsvSeparator.Comma)]
 [MarkdownExporterAttribute.GitHub]
 public class SearchExpressionParserBenchmarks

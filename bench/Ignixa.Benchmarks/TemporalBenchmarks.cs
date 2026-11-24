@@ -16,7 +16,7 @@ namespace Ignixa.Benchmarks;
 /// and a whole-tree walk that touches every primitive value once.
 /// </summary>
 [MemoryDiagnoser]
-[SimpleJob(BenchmarkDotNet.Jobs.RuntimeMoniker.Net10_0)]
+[SimpleJob]
 [RankColumn]
 [MarkdownExporter]
 public class TemporalBenchmarks

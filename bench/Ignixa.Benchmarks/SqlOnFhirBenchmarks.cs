@@ -19,7 +19,7 @@ using FhirPathExpr = Ignixa.FhirPath.Expressions.Expression;
 namespace Ignixa.Benchmarks;
 
 [MemoryDiagnoser]
-[SimpleJob(BenchmarkDotNet.Jobs.RuntimeMoniker.Net10_0)]
+[SimpleJob]
 [RankColumn]
 [MarkdownExporter]
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1002:Do not expose generic lists", Justification = "BenchmarkDotNet requires concrete return types to prevent dead-code elimination")]
