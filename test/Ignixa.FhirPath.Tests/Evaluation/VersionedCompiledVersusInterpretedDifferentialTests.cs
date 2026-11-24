@@ -271,7 +271,7 @@ public class VersionedCompiledVersusInterpretedDifferentialTests
         }
 
         var compiledResult = DifferentialFixture.Describe(
-            () => compiled(subject, DifferentialFixture.CreateContext(subject, version)));
+            () => compiled(subject, DifferentialFixture.CreateContext(subject, version).StartBudget()));
         DifferentialFixture.AssertEvaluated(compiledResult, expression);
 
         if (expected is not null)

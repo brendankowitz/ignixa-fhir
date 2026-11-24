@@ -7,10 +7,12 @@
 
 using Ignixa.FhirPath.Parser;
 using Ignixa.FhirPath.Parsing.ParseTree;
+using System.Globalization;
+using System.Numerics;
+using System.Runtime.CompilerServices;
 using Superpower;
 using Superpower.Model;
 using Superpower.Parsers;
-using System.Globalization;
 
 namespace Ignixa.FhirPath.Parsing;
 
@@ -32,7 +34,8 @@ internal static class FhirPathParseTreeGrammar
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantParseNode> IntegerLiteral =
         Token.EqualTo(FhirPathTokenKind.IntegerLiteral)
-            .Select(t => new ConstantParseNode(int.Parse(t.ToStringValue(), CultureInfo.InvariantCulture), Loc(t)));
+            .Select(t => new ConstantParseNode(
+                ParseNumber<int>(t.ToStringValue(), "integer", t, NumberStyles.Integer), Loc(t)));
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantParseNode> LongLiteral =
         Token.EqualTo(FhirPathTokenKind.LongLiteral)
@@ -41,12 +44,13 @@ internal static class FhirPathParseTreeGrammar
                 var value = t.ToStringValue();
                 // Remove the 'L' or 'l' suffix before parsing
                 var numericPart = value.Substring(0, value.Length - 1);
-                return new ConstantParseNode(long.Parse(numericPart, CultureInfo.InvariantCulture), Loc(t));
+                return new ConstantParseNode(ParseNumber<long>(numericPart, "long", t, NumberStyles.Integer), Loc(t));
             });
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantParseNode> DecimalLiteral =
         Token.EqualTo(FhirPathTokenKind.DecimalLiteral)
-            .Select(t => new ConstantParseNode(decimal.Parse(t.ToStringValue(), CultureInfo.InvariantCulture), Loc(t)));
+            .Select(t => new ConstantParseNode(
+                ParseNumber<decimal>(t.ToStringValue(), "decimal", t, NumberStyles.Number), Loc(t)));
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantParseNode> BooleanLiteral =
         Token.EqualTo(FhirPathTokenKind.BooleanLiteral)
@@ -69,7 +73,7 @@ internal static class FhirPathParseTreeGrammar
             .Or(Token.EqualTo(FhirPathTokenKind.IntegerLiteral))
         from unitToken in Token.EqualTo(FhirPathTokenKind.StringLiteral)
         select new QuantityParseNode(
-            decimal.Parse(valueToken.ToStringValue(), CultureInfo.InvariantCulture),
+            ParseNumber<decimal>(valueToken.ToStringValue(), "quantity", valueToken, NumberStyles.Number),
             UnescapeString(unitToken.ToStringValue()),
             Loc(valueToken, unitToken));
 
@@ -79,7 +83,7 @@ internal static class FhirPathParseTreeGrammar
         from keywordToken in Token.EqualTo(FhirPathTokenKind.Identifier)
             .Where(t => Types.CalendarDuration.IsCalendarKeyword(t.ToStringValue()))
         select new QuantityParseNode(
-            decimal.Parse(valueToken.ToStringValue(), CultureInfo.InvariantCulture),
+            ParseNumber<decimal>(valueToken.ToStringValue(), "calendar duration", valueToken, NumberStyles.Number),
             keywordToken.ToStringValue(),  // Preserve keyword form (week, year, etc.) for toString()
             Loc(valueToken, keywordToken));
 
@@ -112,7 +116,7 @@ internal static class FhirPathParseTreeGrammar
 
     private static readonly TokenListParser<FhirPathTokenKind, ParseNode> ParenthesizedExpression =
         from lparen in Token.EqualTo(FhirPathTokenKind.LeftParen)
-        from expr in Parse.Ref(() => Expression!)
+        from expr in Parse.Ref(() => NestedExpression!)
         from rparen in Token.EqualTo(FhirPathTokenKind.RightParen)
         select (ParseNode)new ParenthesizedParseNode(expr, Loc(lparen, rparen));
 
@@ -140,7 +144,7 @@ internal static class FhirPathParseTreeGrammar
                 from elementName in Token.EqualTo(FhirPathTokenKind.Identifier)
                     .Or(Token.EqualTo(FhirPathTokenKind.DelimitedIdentifier))
                 from colon in Token.EqualTo(FhirPathTokenKind.Colon)
-                from valueExpr in Parse.Ref(() => Expression!)
+                from valueExpr in Parse.Ref(() => NestedExpression!)
                 select new ElementAssignmentParseNode(
                     UnescapeIdentifier(elementName.ToStringValue()),
                     valueExpr,
@@ -190,7 +194,7 @@ internal static class FhirPathParseTreeGrammar
             from lparen in Token.EqualTo(FhirPathTokenKind.LeftParen)
             from args in (IsTypeSpecifierFunction(nameToken.ToStringValue())
                 ? TypeSpecifierArgument.ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Comma))
-                : Parse.Ref(() => Expression!).ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Comma)))
+                : Parse.Ref(() => NestedExpression!).ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Comma)))
             from rparen in Token.EqualTo(FhirPathTokenKind.RightParen)
             select (args, rparen)
         ).Optional()
@@ -226,7 +230,7 @@ internal static class FhirPathParseTreeGrammar
             from lparen in Token.EqualTo(FhirPathTokenKind.LeftParen)
             from args in (IsTypeSpecifierFunction(nameToken.ToStringValue())
                 ? TypeSpecifierArgument.ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Comma))
-                : Parse.Ref(() => Expression!).ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Comma)))
+                : Parse.Ref(() => NestedExpression!).ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Comma)))
             from rparen in Token.EqualTo(FhirPathTokenKind.RightParen)
             select (args, rparen)
         ).Optional()
@@ -244,7 +248,7 @@ internal static class FhirPathParseTreeGrammar
 
     private static readonly TokenListParser<FhirPathTokenKind, Func<ParseNode, ParseNode>> IndexerInvocation =
         from lbracket in Token.EqualTo(FhirPathTokenKind.LeftBracket)
-        from index in Parse.Ref(() => Expression!)
+        from index in Parse.Ref(() => NestedExpression!)
         from rbracket in Token.EqualTo(FhirPathTokenKind.RightBracket)
         select new Func<ParseNode, ParseNode>(focus =>
             new IndexerParseNode(focus, index, Loc(lbracket, rbracket)));
@@ -344,6 +348,34 @@ internal static class FhirPathParseTreeGrammar
 
     public static readonly TokenListParser<FhirPathTokenKind, ParseNode> Expression = ImpliesExpression;
 
+    // Every bracket level - parentheses, function arguments, indexers, instance-selector values - re-enters
+    // the grammar through this parser, and each re-entry descends through every precedence level above, so
+    // this is where the parser's stack use grows. Checking here bounds the unchecked recursion between two
+    // checks to a single bracket level. FhirPathParser turns the exception into a FormatException.
+    private static readonly TokenListParser<FhirPathTokenKind, ParseNode> NestedExpression = input =>
+    {
+        RuntimeHelpers.EnsureSufficientExecutionStack();
+        return Expression(input);
+    };
+
+    /// <summary>
+    /// Converts a numeric literal, failing the parse when it does not fit the target type. FHIRPath
+    /// Integer is 32-bit, so an out-of-range literal is a malformed expression rather than an evaluation
+    /// result. Superpower does not intercept callback exceptions, so this surfaces from
+    /// <c>FhirPathParser.Parse</c> as the documented <see cref="FormatException"/>.
+    /// </summary>
+    private static T ParseNumber<T>(string text, string kind, Token<FhirPathTokenKind> token, NumberStyles styles)
+        where T : INumber<T>
+    {
+        if (T.TryParse(text, styles, CultureInfo.InvariantCulture, out var value))
+        {
+            return value;
+        }
+
+        throw new FormatException(
+            $"The {kind} literal '{text}' at position {token.Position.Absolute} is outside the range of {typeof(T).Name}.");
+    }
+
     private static string UnescapeString(string str)
     {
         // Remove quotes if present
@@ -404,10 +436,10 @@ internal static class FhirPathParseTreeGrammar
                         if (i + 5 < str.Length)
                         {
                             var hex = str.Substring(i + 2, 4);
-                            if (int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out int codePoint))
+                            if (int.TryParse(hex, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out int codeUnit))
                             {
-                                sb.Append(char.ConvertFromUtf32(codePoint));
                                 i += 6; // Skip \, u, and 4 hex digits
+                                i += AppendUnicodeEscape(sb, (char)codeUnit, str, i);
                             }
                             else
                             {
@@ -435,6 +467,49 @@ internal static class FhirPathParseTreeGrammar
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Appends the character a <c>\uXXXX</c> escape denotes. A high surrogate must be completed by an
+    /// immediately following low-surrogate escape (the JSON spelling of a non-BMP code point); a surrogate
+    /// outside such a pair is not a character and is rejected.
+    /// </summary>
+    /// <returns>The number of characters after the first escape that were consumed.</returns>
+    private static int AppendUnicodeEscape(System.Text.StringBuilder sb, char codeUnit, string str, int next)
+    {
+        if (!char.IsSurrogate(codeUnit))
+        {
+            sb.Append(codeUnit);
+            return 0;
+        }
+
+        if (char.IsHighSurrogate(codeUnit) && TryReadLowSurrogateEscape(str, next, out var low))
+        {
+            sb.Append(codeUnit).Append(low);
+            return 6;
+        }
+
+        throw new FormatException(
+            $"The escape '\\u{(int)codeUnit:X4}' is a surrogate that is not part of a valid pair; "
+            + "write a non-BMP character as a high surrogate escape followed by a low surrogate escape.");
+    }
+
+    private static bool TryReadLowSurrogateEscape(string str, int index, out char low)
+    {
+        low = default;
+        if (index + 5 >= str.Length || str[index] != '\\' || str[index + 1] != 'u')
+        {
+            return false;
+        }
+
+        if (!int.TryParse(str.AsSpan(index + 2, 4), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out var value)
+            || !char.IsLowSurrogate((char)value))
+        {
+            return false;
+        }
+
+        low = (char)value;
+        return true;
     }
 
     private static string UnescapeIdentifier(string id)

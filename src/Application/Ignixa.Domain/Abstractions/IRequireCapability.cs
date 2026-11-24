@@ -16,7 +16,9 @@ namespace Ignixa.Domain.Abstractions;
 ///     : IRequest&lt;SearchEntryResult?&gt;, IRequiresCapability
 /// {
 ///     public string GetCapabilityRequirementExpression() =>
-///         $"rest.resource.where(type = '{ResourceType}').interaction.where(code = 'read').exists()";
+///         "rest.resource.where(type = %resourceType).interaction.where(code = 'read').exists()";
+///
+///     public string? CapabilityResourceType => ResourceType;
 /// }
 /// </code>
 /// </example>
@@ -29,10 +31,19 @@ public interface IRequireCapability
     /// <returns>FHIRPath expression string.</returns>
     /// <example>
     /// <list type="bullet">
-    /// <item>Read: <c>rest.resource.where(type = 'Patient').interaction.where(code = 'read').exists()</c></item>
-    /// <item>Search: <c>rest.resource.where(type = 'Observation').interaction.where(code = 'search-type').exists()</c></item>
-    /// <item>Update: <c>rest.resource.where(type = 'Condition').interaction.where(code = 'update').exists()</c></item>
+    /// <item>Read: <c>rest.resource.where(type = %resourceType).interaction.where(code = 'read').exists()</c></item>
+    /// <item>Search: <c>rest.resource.where(type = %resourceType).interaction.where(code = 'search-type').exists()</c></item>
+    /// <item>Update: <c>rest.resource.where(type = %resourceType).interaction.where(code = 'update').exists()</c></item>
     /// </list>
     /// </example>
     string GetCapabilityRequirementExpression();
+
+    /// <summary>
+    /// Gets the resource type bound to <c>%resourceType</c> when the expression is evaluated, or
+    /// <c>null</c> when the expression does not reference it.
+    /// Request values must reach the expression through this variable and never through string
+    /// interpolation: a value such as <c>Patient' or true or type = '</c> would otherwise be parsed as
+    /// expression syntax, and every distinct value would add an entry to the process-wide expression cache.
+    /// </summary>
+    string? CapabilityResourceType => null;
 }

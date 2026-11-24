@@ -3,8 +3,9 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Application.Tests.TestDoubles;
 using Shouldly;
-using Ignixa.Application.Operations.Features.Transform;
+using Ignixa.Application.Features.Experimental.Transform;
 using Ignixa.FhirPath.Parser;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -194,4 +195,36 @@ public class FhirPathExpressionCacheTests
     }
 
     #endregion
+
+    [Fact]
+    public void GivenMoreDistinctExpressionsThanCapacity_WhenCompiled_ThenCacheStaysBounded()
+    {
+        // Arrange
+        var cache = new FhirPathExpressionCache(new FhirPathParser(), NullLogger<FhirPathExpressionCache>.Instance, capacity: 8);
+
+        // Act
+        for (var i = 0; i < 100; i++)
+        {
+            cache.GetOrCompile($"Patient.name.where(use = 'u{i}')");
+        }
+
+        // Assert
+        cache.GetStatistics().CachedExpressionCount.ShouldBeLessThanOrEqualTo(8);
+    }
+
+    [Fact]
+    public void GivenExpressionWithLineBreaksAndLongText_WhenCompiled_ThenLogCarriesSingleLineTruncatedText()
+    {
+        // Arrange
+        var logger = new CapturingLogger<FhirPathExpressionCache>();
+        var cache = new FhirPathExpressionCache(new FhirPathParser(), logger);
+        var expression = "Patient.name\r\n.where(use = '" + new string('x', 5000) + "')";
+
+        // Act
+        cache.GetOrCompile(expression);
+
+        // Assert
+        logger.Messages.ShouldNotBeEmpty();
+        logger.Messages.ShouldAllBe(m => m.Length < 600 && !m.Contains('\r') && !m.Contains('\n'));
+    }
 }

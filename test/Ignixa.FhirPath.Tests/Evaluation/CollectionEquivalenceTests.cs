@@ -596,7 +596,7 @@ public class CollectionEquivalenceTests
         for (var leftIndex = 0; leftIndex < n; leftIndex++)
         {
             var visited = new bool[n];
-            var paired = (bool)TryPairMethod.Invoke(null, [leftIndex, candidates, pairedWith, visited])!;
+            var paired = (bool)TryPairMethod.Invoke(null, [leftIndex, candidates, pairedWith, visited, new EvaluationBudget(FhirPathEvaluationLimits.Default, CancellationToken.None)])!;
             if (!paired)
             {
                 return false;

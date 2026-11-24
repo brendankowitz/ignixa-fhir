@@ -7,6 +7,7 @@
  */
 
 using System.Collections.Immutable;
+using System.Globalization;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Attributes;
 using Ignixa.FhirPath.Expressions;
@@ -352,7 +353,7 @@ public static class DateTimeFunctions
         var parts = datePart.Split('-');
 
         // Year (required)
-        if (parts.Length >= 1 && int.TryParse(parts[0], out var year))
+        if (parts.Length >= 1 && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var year))
         {
             parsed.Year = year;
         }
@@ -362,13 +363,13 @@ public static class DateTimeFunctions
         }
 
         // Month (optional)
-        if (parts.Length >= 2 && int.TryParse(parts[1], out var month))
+        if (parts.Length >= 2 && int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var month))
         {
             parsed.Month = month;
         }
 
         // Day (optional)
-        if (parts.Length >= 3 && int.TryParse(parts[2], out var day))
+        if (parts.Length >= 3 && int.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out var day))
         {
             parsed.Day = day;
         }
@@ -427,13 +428,13 @@ public static class DateTimeFunctions
         var parts = timePart.Split(':');
 
         // Hour (required for time)
-        if (parts.Length >= 1 && int.TryParse(parts[0], out var hour))
+        if (parts.Length >= 1 && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var hour))
         {
             parsed.Hour = hour;
         }
 
         // Minute (required for time)
-        if (parts.Length >= 2 && int.TryParse(parts[1], out var minute))
+        if (parts.Length >= 2 && int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var minute))
         {
             parsed.Minute = minute;
         }
@@ -450,7 +451,7 @@ public static class DateTimeFunctions
                 var secondStr = secondPart.Substring(0, dotIndex);
                 var millisecondStr = secondPart.Substring(dotIndex + 1);
 
-                if (int.TryParse(secondStr, out var second))
+                if (int.TryParse(secondStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out var second))
                 {
                     parsed.Second = second;
                 }
@@ -464,7 +465,7 @@ public static class DateTimeFunctions
             else
             {
                 // No milliseconds
-                if (int.TryParse(secondPart, out var second))
+                if (int.TryParse(secondPart, NumberStyles.Integer, CultureInfo.InvariantCulture, out var second))
                 {
                     parsed.Second = second;
                 }
@@ -492,7 +493,7 @@ public static class DateTimeFunctions
             fractionStr = fractionStr.Substring(0, 3);
         }
 
-        return int.TryParse(fractionStr, out millisecond);
+        return int.TryParse(fractionStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out millisecond);
     }
 
     #endregion
@@ -867,8 +868,9 @@ public static class DateTimeFunctions
                 parsed.Millisecond ?? 0,
                 DateTimeKind.Unspecified);
         }
-        catch
+        catch (ArgumentOutOfRangeException)
         {
+            // The components do not name a real instant (2023-02-30, year 0000): there is nothing to measure from.
             return null;
         }
     }

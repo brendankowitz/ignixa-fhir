@@ -43,6 +43,48 @@ public class DeIdOptionsLoaderTests
         result.Value.Rules[0].Method.ShouldBe("REDACT");
     }
 
+    [Theory]
+    [InlineData("Patient.name.where(family = 99999999999999999999999999)")]
+    [InlineData("Patient.name.where(")]
+    public void GivenRuleWithUnparseablePath_WhenLoadFromJson_ThenConfigurationIsRejected(string path)
+    {
+        // Regression: an unparseable path was accepted and later skipped at evaluation time.
+        var json = $$"""
+        {
+            "fhirVersion": "R4",
+            "fhirPathRules": [
+                { "path": "Patient.address", "method": "redact" },
+                { "path": "{{path}}", "method": "redact" }
+            ]
+        }
+        """;
+
+        var result = DeIdOptionsLoader.LoadFromJson(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.Code.ShouldBe("CONFIG_INVALID_RULE_PATH");
+        result.Error.Message.ShouldContain(path);
+    }
+
+    [Fact]
+    public void GivenGeneralizeRuleWithUnparseableCase_WhenLoadFromJson_ThenConfigurationIsRejected()
+    {
+        // Regression: Generalize case expressions were only parsed (and failed) at request time.
+        var json = """
+        {
+            "fhirVersion": "R4",
+            "fhirPathRules": [
+                { "path": "Patient.birthDate", "method": "generalize", "cases": { "$this >= (": "'x'" }, "otherValues": "redact" }
+            ]
+        }
+        """;
+
+        var result = DeIdOptionsLoader.LoadFromJson(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.Code.ShouldBe("CONFIG_INVALID_RULE_PATH");
+    }
+
     [Fact]
     public void GivenInvalidJson_WhenLoadFromJson_ThenReturnsJsonError()
     {
@@ -177,34 +219,30 @@ public class DeIdOptionsLoaderTests
         result.Value.Rules[0].Settings!.ContainsKey("unused").ShouldBeFalse();
     }
 
-    [Fact]
-    public void GivenConfigWithRulesButNoPathOrMethod_WhenLoadFromJson_ThenRulesAreSkipped()
+    [Theory]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("""{ "method": "redact" }""")]
+    [InlineData("""{ "path": "Patient.name" }""")]
+    [InlineData("""{ "path": " ", "method": "redact" }""")]
+    [InlineData("""{ "path": "Patient.name", "method": "" }""")]
+    public void GivenRuleWithoutPathOrMethod_WhenLoadFromJson_ThenConfigurationIsRejected(string rule)
     {
-        // Arrange
-        var json = """
+        // Regression: such rules were skipped, so a rule whose method was misspelled left its data in clear.
+        var json = $$"""
         {
             "fhirVersion": "R4",
             "fhirPathRules": [
-                null,
-                {},
-                { "method": "redact" },
-                { "path": "Patient.name" },
-                { "path": "", "method": "redact" },
-                { "path": "Patient.name", "method": "" },
-                { "path": " ", "method": "redact" },
-                { "path": "Patient.name", "method": " " },
-                { "path": "Patient.address", "method": "keep" }
+                { "path": "Patient.address", "method": "redact" },
+                {{rule}}
             ]
         }
         """;
 
-        // Act
         var result = DeIdOptionsLoader.LoadFromJson(json);
 
-        // Assert
-        result.IsSuccess.ShouldBeTrue();
-        result.Value.Rules.Length.ShouldBe(1);
-        result.Value.Rules[0].Path.ShouldBe("Patient.address");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.Code.ShouldBe("CONFIG_INVALID_RULE_PATH");
     }
 
     [Fact]

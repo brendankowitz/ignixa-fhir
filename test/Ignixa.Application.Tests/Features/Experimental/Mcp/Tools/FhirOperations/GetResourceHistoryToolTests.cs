@@ -5,10 +5,14 @@
 
 using System.Text;
 using Ignixa.Application.Features.Experimental.Mcp.Tools.FhirOperations;
+using Ignixa.Abstractions;
 using Ignixa.Application.Features.History;
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.Serialization;
+using Ignixa.Specification.Extensions;
 using Medino;
 using NSubstitute;
 using Shouldly;
@@ -38,7 +42,11 @@ public class GetResourceHistoryToolTests
     {
         var contextAccessor = Substitute.For<IFhirRequestContextAccessor>();
         var tenantStore = Substitute.For<ITenantConfigurationStore>();
-        return new GetResourceHistoryTool(contextAccessor, tenantStore, mediator);
+        tenantStore.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>())
+            .Returns(new TenantConfiguration { TenantId = 1, DisplayName = "History test", FhirVersion = "4.0" });
+        var versionContext = Substitute.For<IFhirVersionContext>();
+        versionContext.GetSchemaProvider(FhirVersion.R4, 1).Returns(FhirVersion.R4.GetSchemaProvider());
+        return new GetResourceHistoryTool(contextAccessor, tenantStore, mediator, versionContext);
     }
 
     private static SearchEntryResult MakeEntry(string versionId) => new(

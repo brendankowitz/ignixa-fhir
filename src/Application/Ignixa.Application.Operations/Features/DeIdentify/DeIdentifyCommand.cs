@@ -15,12 +15,13 @@ namespace Ignixa.Application.Operations.Features.DeIdentify;
 /// <param name="TenantId">The tenant ID for multi-tenant isolation.</param>
 /// <param name="InputResource">The FHIR resource to de-identify.</param>
 /// <param name="Policy">The de-identification policy code (e.g., HHS_SAFE_HARBOR_DETERMINISTIC_METHOD).</param>
-/// <param name="ConfigurationLibrary">The Library resource containing DeIdOptions configuration.</param>
+/// <param name="ConfigurationLibrary">A request-supplied Library resource containing DeIdOptions configuration, or null
+/// to use the built-in policy named by <paramref name="Policy"/>.</param>
 public record DeIdentifyCommand(
     int TenantId,
     ResourceJsonNode InputResource,
     string Policy,
-    ResourceJsonNode ConfigurationLibrary) : IRequest<DeIdentifyResult>;
+    ResourceJsonNode? ConfigurationLibrary) : IRequest<DeIdentifyResult>;
 
 /// <summary>
 /// Result of a FHIR $de-identify operation.
@@ -28,7 +29,9 @@ public record DeIdentifyCommand(
 /// <param name="IsSuccess">Whether the de-identification succeeded.</param>
 /// <param name="OutputResource">The de-identified FHIR resource, or null if failed.</param>
 /// <param name="ErrorMessage">Error message if de-identification failed.</param>
+/// <param name="Warnings">Non-fatal warnings raised while de-identifying; the caller must surface them.</param>
 public record DeIdentifyResult(
     bool IsSuccess,
     ResourceJsonNode? OutputResource,
-    string? ErrorMessage);
+    string? ErrorMessage,
+    IReadOnlyList<string>? Warnings = null);

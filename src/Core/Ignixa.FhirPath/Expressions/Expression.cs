@@ -15,6 +15,13 @@ namespace Ignixa.FhirPath.Expressions;
 /// </summary>
 public abstract class Expression
 {
+    /// <summary>
+    /// The evaluator's cached verdict on whether this node's value is fixed for a whole evaluation (see
+    /// <c>LoopInvariance</c>): 0 not yet computed, 1 no, 2 yes. A byte so a racing first evaluation on another
+    /// thread can only rewrite the same answer.
+    /// </summary>
+    internal byte _loopInvarianceVerdict;
+
     protected Expression()
     {
     }

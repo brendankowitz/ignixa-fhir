@@ -7,6 +7,8 @@ using System.Net;
 using System.Text.Json;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Conformance;
+using Ignixa.FhirPath;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Abstractions;
@@ -36,7 +38,9 @@ public class FhirExceptionMiddleware
         }
         catch (FhirException fhirEx)
         {
-            _logger.LogWarning(fhirEx, "FHIR exception occurred: {ExceptionType}", fhirEx.GetType().Name);
+            // Logged without messages: they, and those of the exceptions inside, can quote request text and resource
+            // values. The client still receives the OperationOutcome.
+            _logger.LogWarning("FHIR exception occurred: {Exception}", LogSafeText.DescribeWithoutMessages(fhirEx));
             await HandleExceptionAsync(context, fhirEx);
         }
         catch (BadHttpRequestException badRequestEx)
@@ -44,9 +48,24 @@ public class FhirExceptionMiddleware
             _logger.LogWarning(badRequestEx, "Request rejected by the server: {StatusCode}", badRequestEx.StatusCode);
             await HandleExceptionAsync(context, badRequestEx);
         }
+        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+        {
+            // The client went away: not a server fault, and there is no one to send an OperationOutcome to.
+            _logger.LogInformation("Request cancelled by the client");
+            if (!context.Response.HasStarted)
+            {
+                context.Response.StatusCode = StatusCodes.Status499ClientClosedRequest;
+            }
+        }
+        catch (FhirPathResourceLimitExceededException limitEx)
+        {
+            // An expression asked for more work than an evaluation allows: the request is too costly, not a fault.
+            _logger.LogWarning("FHIRPath evaluation limit exceeded: {Exception}", LogSafeText.DescribeWithoutMessages(limitEx));
+            await HandleExceptionAsync(context, limitEx);
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unhandled exception occurred");
+            _logger.LogError("Unhandled exception occurred: {Exception}", LogSafeText.DescribeWithoutMessages(ex));
             await HandleExceptionAsync(context, ex);
         }
     }
@@ -88,6 +107,12 @@ public class FhirExceptionMiddleware
             code = badRequest.StatusCode == StatusCodes.Status413PayloadTooLarge
                 ? OperationOutcomeIssue.IssueTypeCommon.TooCostly
                 : OperationOutcomeIssue.IssueTypeCommon.Invalid;
+        }
+        else if (exception is FhirPathResourceLimitExceededException)
+        {
+            // Checked before InvalidOperationException, which it derives from.
+            statusCode = HttpStatusCode.BadRequest;
+            code = OperationOutcomeIssue.IssueTypeCommon.TooCostly;
         }
         else if (exception is ArgumentException or ArgumentNullException)
         {

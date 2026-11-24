@@ -100,8 +100,12 @@ public class FhirPathQueryCapabilityStatementTool : TenantAwareMcpTool
             // Convert CapabilityStatement to IElement for evaluation
             var typedElement = capabilityStatement.ToElement(structureProvider);
 
-            // Evaluate FHIRPath expression against the CapabilityStatement
-            var evalResults = _evaluator.Evaluate((IElement)typedElement, expression);
+            // Evaluate FHIRPath expression against the CapabilityStatement. The expression is the caller's, so it
+            // runs under the default evaluation limits and stops when the request is cancelled.
+            var evalResults = _evaluator.Evaluate(
+                (IElement)typedElement,
+                expression,
+                new EvaluationContext { CancellationToken = cancellationToken });
 
             // Convert results to serializable objects
             foreach (var resultElement in evalResults)
@@ -109,9 +113,22 @@ public class FhirPathQueryCapabilityStatementTool : TenantAwareMcpTool
                 results.Add(ConvertElementToSerializable((IElement)resultElement));
             }
         }
-        catch (Exception ex)
+        catch (OperationCanceledException)
         {
-            errors.Add($"FHIRPath evaluation error: {ex.Message}");
+            // The request was cancelled; that is not an evaluation error to report back to it.
+            throw;
+        }
+        catch (FhirPathResourceLimitExceededException ex)
+        {
+            // Reported as its own outcome, and without the results gathered before the limit stopped evaluation: a
+            // prefix of the answer presented as the answer would be wrong.
+            results.Clear();
+            errors.Add($"FHIRPath evaluation exceeded an evaluation limit: {LogSafeText.Sanitize(ex.Message)}");
+        }
+        catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
+        {
+            results.Clear();
+            errors.Add($"FHIRPath evaluation error: {LogSafeText.Sanitize(ex.Message)}");
         }
 
         return new FhirPathQueryResultDto
@@ -124,27 +141,18 @@ public class FhirPathQueryCapabilityStatementTool : TenantAwareMcpTool
     }
 
     /// <summary>
-    /// Resolve the FHIR version from tenant configuration, with fallback to R4 default.
+    /// Resolve the FHIR version from tenant configuration; R4 when the tenant configures none.
     /// </summary>
+    /// <remarks>
+    /// A failure to read the configuration propagates: answering under R4 would evaluate the expression against a
+    /// schema the tenant may not use, and report that as a success.
+    /// </remarks>
     private async Task<FhirVersion> ResolveFhirVersionAsync(int tenantId, CancellationToken cancellationToken)
     {
-        // Default to R4
-        var fhirVersion = FhirVersion.R4;
-
-        try
-        {
-            var tenantConfig = await _tenantConfigStore.GetTenantConfigurationAsync(tenantId, cancellationToken);
-            if (tenantConfig != null && !string.IsNullOrEmpty(tenantConfig.FhirVersion))
-            {
-                fhirVersion = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
-            }
-        }
-        catch
-        {
-            // If tenant resolution fails, use default R4
-        }
-
-        return fhirVersion;
+        var tenantConfig = await _tenantConfigStore.GetTenantConfigurationAsync(tenantId, cancellationToken);
+        return tenantConfig != null && !string.IsNullOrEmpty(tenantConfig.FhirVersion)
+            ? FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion)
+            : FhirVersion.R4;
     }
 
     /// <summary>

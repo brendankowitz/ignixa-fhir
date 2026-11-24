@@ -74,6 +74,8 @@ namespace Ignixa.FhirPath.Evaluation;
 /// </remarks>
 public record EvaluationContext
 {
+    private readonly EvaluationBudget? _budget;
+
     protected EvaluationContext(
         ImmutableList<IElement> focus,
         ImmutableStack<IElement> thisStack,
@@ -108,6 +110,11 @@ public record EvaluationContext
     /// </remarks>
     private static readonly ImmutableDictionary<string, ImmutableList<IElement>> EmptyOrdinalEnvironment =
         ImmutableDictionary<string, ImmutableList<IElement>>.Empty.WithComparers(StringComparer.Ordinal);
+
+    /// <summary>Steps charged for entering a per-item scope; see <see cref="PushThis"/>.</summary>
+    private const int ScopeSteps = 4;
+
+    private readonly FhirPathEvaluationLimits _limits = FhirPathEvaluationLimits.Default;
 
     /// <summary>
     /// Creates a new empty evaluation context.
@@ -197,7 +204,26 @@ public record EvaluationContext
     /// Optional callback for trace() function output.
     /// When set, trace() calls will invoke this handler with trace information.
     /// </summary>
+    /// <remarks>
+    /// The entry carries the trace name, which the expression author chooses, and a projection of resource data,
+    /// which may be PHI. A host that wires a handler must strip control characters from the name before logging it,
+    /// and must not write the projection to logs, telemetry or responses unredacted.
+    /// </remarks>
     public Action<TraceEntry>? TraceHandler { get; init; }
+
+    /// <summary>
+    /// Marks the expression being evaluated as text an API caller supplies with the request being served (a
+    /// de-identification rule, a GraphQL filter, a FHIRPath Patch path). Such expressions are compiled into a small
+    /// cache tier separate from the server's own expressions, so a caller cannot evict search parameters by
+    /// submitting many distinct expressions.
+    /// </summary>
+    /// <remarks>
+    /// The default is the server tier. Text a tenant authored earlier and the server persisted (custom
+    /// SearchParameter expressions, discriminators in uploaded profiles) deliberately uses the server tier: it is
+    /// bounded by what the tenant may register, is evaluated on every write, and is the working set the tier exists
+    /// to hold. Only text arriving with the request being served is tiered.
+    /// </remarks>
+    public bool ExpressionIsRequestSupplied { get; init; }
 
     /// <summary>
     /// Optional callback invoked after each expression node is evaluated during debug tracing.
@@ -227,6 +253,59 @@ public record EvaluationContext
     /// of <c>resolve()</c>, not part of the public evaluation API.
     /// </summary>
     internal ReferenceIndexCache ReferenceIndexCache { get; init; } = new();
+
+    /// <summary>
+    /// The resource limits evaluation runs under. Defaults to <see cref="FhirPathEvaluationLimits.Default"/>.
+    /// </summary>
+    /// <remarks>
+    /// Exceeding a limit raises <see cref="FhirPathResourceLimitExceededException"/>. The limits apply to each
+    /// <see cref="FhirPathEvaluator.Evaluate"/> call separately; see <see cref="FhirPathEvaluationLimits"/>.
+    /// </remarks>
+    public FhirPathEvaluationLimits Limits
+    {
+        get => _limits;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            _limits = value;
+        }
+    }
+
+    /// <summary>
+    /// Stops evaluation when cancelled, raising <see cref="OperationCanceledException"/>.
+    /// </summary>
+    /// <remarks>
+    /// Observed when evaluation starts and then every 1,024 steps, on the interpreted and the compiled path alike,
+    /// so a cancelled request stops within microseconds of work rather than at the end of the expression. Hosts
+    /// pass the request's token here.
+    /// </remarks>
+    public CancellationToken CancellationToken { get; init; }
+
+    /// <summary>
+    /// The meter for the evaluation in progress. Started by <see cref="StartBudget"/> at every evaluation entry
+    /// point - <see cref="FhirPathEvaluator.Evaluate"/> and the compiled-delegate path - so a context reused across
+    /// evaluations never carries one evaluation's count into the next; like <see cref="ReferenceIndexCache"/>, a
+    /// <c>with</c> copy shares it.
+    /// </summary>
+    /// <remarks>
+    /// There is deliberately no default meter. One created with the context would be shared by every evaluation
+    /// that reused the context, under limits and a token other than the context's, and charged from several threads
+    /// at once; a path that evaluates without starting a budget fails here instead.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">No evaluation has started on this context.</exception>
+    internal EvaluationBudget Budget
+    {
+        get => _budget ?? throw new InvalidOperationException(
+            "No FHIRPath evaluation has started on this context; evaluation entry points call StartBudget().");
+        init => _budget = value;
+    }
+
+    /// <summary>
+    /// Returns a copy of this context with a fresh <see cref="Budget"/> built from <see cref="Limits"/> and
+    /// <see cref="CancellationToken"/>.
+    /// </summary>
+    /// <exception cref="OperationCanceledException"><see cref="CancellationToken"/> is already cancelled.</exception>
+    internal EvaluationContext StartBudget() => this with { Budget = new EvaluationBudget(Limits, CancellationToken) };
 
     /// <summary>
     /// Creates a context that evaluates in a nested <c>defineVariable</c> scope: it can read the variables
@@ -270,6 +349,9 @@ public record EvaluationContext
     /// </remarks>
     public EvaluationContext PushThis(IElement element)
     {
+        // A scope is a full context copy plus a variable frame: several node evaluations' worth of work, charged
+        // as such so per-item iteration (where, select, all, aggregate) cannot spend the step budget cheaply.
+        Budget.Charge(ScopeSteps);
         return this with { ThisStack = ThisStack.Push(element), Variables = Variables.Fork() };
     }
 
@@ -327,6 +409,17 @@ public record EvaluationContext
         {
             Environment = Environment.SetItem(name, [element])
         };
+    }
+
+    /// <summary>
+    /// Creates a new context with the specified environment variable set to a System.String value.
+    /// Use this to feed untrusted text into an expression as <c>%name</c> rather than interpolating it
+    /// into the expression text, so the text stays constant and the value can never be parsed as syntax.
+    /// </summary>
+    public EvaluationContext WithEnvironmentVariable(string name, string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        return WithEnvironmentVariable(name, new StringElement(value));
     }
 
     /// <summary>

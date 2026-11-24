@@ -18,7 +18,7 @@ public class InstanceSelectorValidationTests
 
     // The evaluator has no built-in object model, so every construction test needs a creator wired.
     private List<IElement> EvaluateCreating(IElement focus, Ignixa.FhirPath.Expressions.Expression ast) =>
-        ast.AcceptVisitor(_evaluator, InstanceCreationTestContext.For(focus)).ToList();
+        ast.AcceptVisitor(_evaluator, InstanceCreationTestContext.For(focus).StartBudget()).ToList();
 
     private static IElement CreateIntegerElement() => new PrimitiveElement(1, "integer");
 

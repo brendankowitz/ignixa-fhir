@@ -49,6 +49,25 @@ public class GraphQlExecutionServiceTests
     }
 
     [Fact]
+    public async Task GivenAFieldWhoseFhirPathExceededAnEvaluationLimit_WhenExecuteAsync_ThenTheWholeRequestIsTooCostly()
+    {
+        // Arrange: one field's fhirpath filter exceeded a limit; the other fields' data must not be returned as an
+        // answer.
+        var partial = OperationResultBuilder.New()
+            .SetData(new Dictionary<string, object?> { ["Patient"] = "data" })
+            .AddError(ErrorBuilder.New().SetMessage("exceeded an evaluation limit").SetCode("FHIRPATH_TOO_COSTLY").Build())
+            .Build();
+        var executor = Substitute.For<IRequestExecutor>();
+        executor.ExecuteAsync(Arg.Any<IOperationRequest>(), Arg.Any<CancellationToken>()).Returns(partial);
+        var resolver = BuildResolver(executor, GraphQlNamingHelper.GetSchemaName(FhirVersion.R4));
+        var service = new GraphQlExecutionService(resolver, BuildLogger());
+
+        // Act & Assert
+        await Should.ThrowAsync<Ignixa.Domain.Exceptions.RequestTooCostlyException>(
+            () => service.ExecuteAsync(new GraphQlRequestBody("{ __typename }", null, null), FhirVersion.R4, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task GivenValidQuery_WhenExecuteAsync_ThenDelegatesToExecutor()
     {
         // Arrange

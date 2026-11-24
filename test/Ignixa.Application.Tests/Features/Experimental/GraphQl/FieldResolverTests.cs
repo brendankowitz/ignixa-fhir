@@ -60,6 +60,20 @@ public class FieldResolverTests
     }
 
     [Fact]
+    public void GivenACancelledRequest_WhenFiltering_ThenTheEvaluationObservesTheToken()
+    {
+        // The fhirpath argument comes from the request, so its evaluation stops with the request (#531), and the
+        // cancellation surfaces as itself rather than as an invalid expression.
+        var items = new[]
+        {
+            JsonSerializer.Deserialize<JsonElement>("""{"family":"Smith","given":["John"]}"""),
+        };
+
+        Should.Throw<OperationCanceledException>(() =>
+            FieldResolver.ApplyFhirPathFilter(items, "family.exists()", SchemaProvider, "HumanName", new CancellationToken(canceled: true)).ToList());
+    }
+
+    [Fact]
     public void GivenIndexExpression_WhenFiltering_ThenReturnsSingleElement()
     {
         var items = new[]

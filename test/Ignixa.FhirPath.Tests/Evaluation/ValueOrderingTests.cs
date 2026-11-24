@@ -7,6 +7,7 @@
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Evaluation.Functions;
+using Ignixa.FhirPath.Types;
 using Shouldly;
 
 namespace Ignixa.FhirPath.Tests.Evaluation;
@@ -38,7 +39,7 @@ public class ValueOrderingTests
         var month = Temporal("2012-01", "date");
 
         // Act
-        var result = ValueOrdering.CompareValues(year, month, "min()");
+        var result = ValueOrdering.CompareValues(year, month, "min()", QuantityUnitConverter.Instance);
 
         // Assert
         result.ShouldBeNull();
@@ -52,7 +53,7 @@ public class ValueOrderingTests
         var withZulu = Temporal("2012-01-01T10:00:00Z", "dateTime");
 
         // Act
-        var result = ValueOrdering.CompareValues(withOffset, withZulu, "min()");
+        var result = ValueOrdering.CompareValues(withOffset, withZulu, "min()", QuantityUnitConverter.Instance);
 
         // Assert
         result.ShouldBe(0);
@@ -66,7 +67,7 @@ public class ValueOrderingTests
         var fixedInstant = Temporal("2012-01-01T10:00:00Z", "dateTime");
 
         // Act
-        var result = ValueOrdering.CompareValues(floating, fixedInstant, "min()");
+        var result = ValueOrdering.CompareValues(floating, fixedInstant, "min()", QuantityUnitConverter.Instance);
 
         // Assert
         result.ShouldBeNull();
@@ -80,7 +81,7 @@ public class ValueOrderingTests
         var length = Quantity(1m, "m");
 
         // Act
-        var result = ValueOrdering.CompareValues(mass, length, "min()");
+        var result = ValueOrdering.CompareValues(mass, length, "min()", QuantityUnitConverter.Instance);
 
         // Assert
         result.ShouldBeNull();
@@ -94,7 +95,7 @@ public class ValueOrderingTests
         var centimetres = Quantity(100m, "cm");
 
         // Act
-        var result = ValueOrdering.CompareValues(metres, centimetres, "min()");
+        var result = ValueOrdering.CompareValues(metres, centimetres, "min()", QuantityUnitConverter.Instance);
 
         // Assert
         result.ShouldBe(0);
@@ -108,7 +109,7 @@ public class ValueOrderingTests
         var equivalent = Element(1.0m, "decimal");
 
         // Act
-        var result = ValueOrdering.CompareValues(integer, equivalent, "min()");
+        var result = ValueOrdering.CompareValues(integer, equivalent, "min()", QuantityUnitConverter.Instance);
 
         // Assert
         result.ShouldBe(0);
@@ -127,8 +128,8 @@ public class ValueOrderingTests
         var month = Temporal("2012-01", "date");
 
         // Act
-        var forward = ValueOrdering.CompareForSort(year, month, "sort()");
-        var backward = ValueOrdering.CompareForSort(month, year, "sort()");
+        var forward = ValueOrdering.CompareForSort(year, month, "sort()", QuantityUnitConverter.Instance);
+        var backward = ValueOrdering.CompareForSort(month, year, "sort()", QuantityUnitConverter.Instance);
 
         // Assert
         forward.ShouldBeLessThan(0);
@@ -148,7 +149,7 @@ public class ValueOrderingTests
         var withZulu = Temporal("2012-01-01T10:00:00Z", "dateTime");
 
         // Act
-        var result = ValueOrdering.CompareForSort(withOffset, withZulu, "sort()");
+        var result = ValueOrdering.CompareForSort(withOffset, withZulu, "sort()", QuantityUnitConverter.Instance);
 
         // Assert
         result.ShouldBe(0);
@@ -169,9 +170,9 @@ public class ValueOrderingTests
         var june = Temporal("2012-06", "date");
 
         // Act
-        var yearToJanuary = ValueOrdering.CompareForSort(year, january, "sort()");
-        var januaryToJune = ValueOrdering.CompareForSort(january, june, "sort()");
-        var yearToJune = ValueOrdering.CompareForSort(year, june, "sort()");
+        var yearToJanuary = ValueOrdering.CompareForSort(year, january, "sort()", QuantityUnitConverter.Instance);
+        var januaryToJune = ValueOrdering.CompareForSort(january, june, "sort()", QuantityUnitConverter.Instance);
+        var yearToJune = ValueOrdering.CompareForSort(year, june, "sort()", QuantityUnitConverter.Instance);
 
         // Assert
         yearToJanuary.ShouldBeLessThan(0);
@@ -193,9 +194,9 @@ public class ValueOrderingTests
         var milligrams = Quantity(1000m, "mg");
 
         // Act
-        var gramToMilligrams = ValueOrdering.CompareForSort(gram, milligrams, "sort()");
-        var gramToMetre = ValueOrdering.CompareForSort(gram, metre, "sort()");
-        var milligramsToMetre = ValueOrdering.CompareForSort(milligrams, metre, "sort()");
+        var gramToMilligrams = ValueOrdering.CompareForSort(gram, milligrams, "sort()", QuantityUnitConverter.Instance);
+        var gramToMetre = ValueOrdering.CompareForSort(gram, metre, "sort()", QuantityUnitConverter.Instance);
+        var milligramsToMetre = ValueOrdering.CompareForSort(milligrams, metre, "sort()", QuantityUnitConverter.Instance);
 
         // Assert
         gramToMilligrams.ShouldBe(0);
@@ -210,7 +211,7 @@ public class ValueOrderingTests
         var right = Element(false, "boolean");
 
         // Act
-        Action compare = () => ValueOrdering.CompareValues(left, right, "min()");
+        Action compare = () => ValueOrdering.CompareValues(left, right, "min()", QuantityUnitConverter.Instance);
 
         // Assert
         var error = Should.Throw<FhirPathEvaluationException>(compare);
@@ -231,7 +232,7 @@ public class ValueOrderingTests
         var right = Element("2e30", "decimal");
 
         // Act
-        Action compare = () => ValueOrdering.CompareValues(left, right, "sort()");
+        Action compare = () => ValueOrdering.CompareValues(left, right, "sort()", QuantityUnitConverter.Instance);
 
         // Assert
         var error = Should.Throw<FhirPathEvaluationException>(compare);
@@ -250,7 +251,7 @@ public class ValueOrderingTests
         var number = Element(2, "integer");
 
         // Act
-        var result = ValueOrdering.CompareValues(text, number, "min()");
+        var result = ValueOrdering.CompareValues(text, number, "min()", QuantityUnitConverter.Instance);
 
         // Assert
         result!.Value.ShouldBeLessThan(0);
@@ -264,7 +265,7 @@ public class ValueOrderingTests
         var number = Element(2, "integer");
 
         // Act
-        Action compare = () => ValueOrdering.CompareValues(text, number, "min()");
+        Action compare = () => ValueOrdering.CompareValues(text, number, "min()", QuantityUnitConverter.Instance);
 
         // Assert
         Should.Throw<FhirPathEvaluationException>(compare);

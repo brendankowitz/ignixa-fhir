@@ -68,7 +68,7 @@ public class SearchIndexerConverterFailureLoggingTests
         indices.Select(i => i.SearchParameter.Code).ShouldNotContain("gender");
         recordingLogger.Entries.ShouldNotBeEmpty();
         recordingLogger.Entries.ShouldAllBe(e => e.Level == LogLevel.Error);
-        recordingLogger.Entries.ShouldAllBe(e => e.Exception is NullReferenceException);
+        recordingLogger.Entries.ShouldAllBe(e => e.ExceptionType == nameof(NullReferenceException));
     }
 
     [Fact]
@@ -88,7 +88,7 @@ public class SearchIndexerConverterFailureLoggingTests
         indices.Select(i => i.SearchParameter.Code).ShouldNotContain("gender");
         recordingLogger.Entries.ShouldNotBeEmpty();
         recordingLogger.Entries.ShouldAllBe(e => e.Level == LogLevel.Error);
-        recordingLogger.Entries.ShouldAllBe(e => e.Exception is InvalidCastException);
+        recordingLogger.Entries.ShouldAllBe(e => e.ExceptionType == nameof(InvalidCastException));
     }
 
     [Fact]
@@ -110,7 +110,7 @@ public class SearchIndexerConverterFailureLoggingTests
         indices.Select(i => i.SearchParameter.Code).ShouldNotContain("gender");
         recordingLogger.Entries.ShouldNotBeEmpty();
         recordingLogger.Entries.ShouldAllBe(e => e.Level == LogLevel.Warning);
-        recordingLogger.Entries.ShouldAllBe(e => e.Exception is NotSupportedException);
+        recordingLogger.Entries.ShouldAllBe(e => e.ExceptionType == nameof(NotSupportedException));
     }
 
     [Fact]
@@ -134,7 +134,7 @@ public class SearchIndexerConverterFailureLoggingTests
         indices.Select(i => i.SearchParameter.Code).ShouldNotContain("gender");
         recordingLogger.Entries.ShouldNotBeEmpty();
         recordingLogger.Entries.ShouldAllBe(e => e.Level == LogLevel.Error);
-        recordingLogger.Entries.ShouldAllBe(e => e.Exception is ArgumentOutOfRangeException);
+        recordingLogger.Entries.ShouldAllBe(e => e.ExceptionType == nameof(ArgumentOutOfRangeException));
     }
 
     [Fact]
@@ -156,7 +156,7 @@ public class SearchIndexerConverterFailureLoggingTests
         indices.Select(i => i.SearchParameter.Code).ShouldNotContain("gender");
         recordingLogger.Entries.ShouldNotBeEmpty();
         recordingLogger.Entries.ShouldAllBe(e => e.Level == LogLevel.Warning);
-        recordingLogger.Entries.ShouldAllBe(e => e.Exception is FormatException);
+        recordingLogger.Entries.ShouldAllBe(e => e.ExceptionType == nameof(FormatException));
     }
 
     /// <summary>
@@ -193,7 +193,35 @@ public class SearchIndexerConverterFailureLoggingTests
         indices.Select(i => i.SearchParameter.Code).ShouldNotContain("gender");
         recordingLogger.Entries.ShouldNotBeEmpty();
         recordingLogger.Entries.ShouldAllBe(e => e.Level == LogLevel.Warning);
-        recordingLogger.Entries.ShouldAllBe(e => e.Exception is FhirPathEvaluationException);
+        recordingLogger.Entries.ShouldAllBe(e => e.ExceptionType == nameof(FhirPathEvaluationException));
+    }
+
+    [Fact]
+    public void GivenCustomParameterWithLongMultiLineExpression_WhenConverterFails_ThenLogCarriesSingleLineTruncatedExpression()
+    {
+        // Arrange - a tenant controls the text of a custom search parameter's expression.
+        const string customUrl = "http://example.org/fhir/SearchParameter/long-expression";
+        var expression = "Patient.name.family\r\n" + new string(' ', 5000) + "| Patient.name.given";
+        var customParameter = ResourceJsonNode.Parse($$"""
+            {"resourceType":"SearchParameter","id":"long","url":"{{customUrl}}","name":"long","status":"active",
+             "code":"long-code","base":["Patient"],"type":"string","expression":{{System.Text.Json.JsonSerializer.Serialize(expression)}}}
+            """).ToElement(_schemaProvider);
+        _searchParameterDefinitionManager.AddNewSearchParameters([customParameter]);
+        _searchParameterDefinitionManager.TryGetSearchParameter(new Uri(customUrl), out var info).ShouldBeTrue();
+        info.IsSupported = true;
+        info.IsSearchable = true;
+
+        var recordingLogger = new RecordingLogger();
+        var indexer = CreateIndexer(new FormatException("simulated unparseable literal"), recordingLogger);
+        var element = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"p1","name":[{"family":"Doe","given":["D"]}]}""")
+            .ToElement(_schemaProvider);
+
+        // Act
+        indexer.Extract(element);
+
+        // Assert
+        recordingLogger.Entries.ShouldContain(e => e.Message.Contains("more characters"));
+        recordingLogger.Entries.ShouldAllBe(e => e.Message.Length < 700 && !e.Message.Contains('\r') && !e.Message.Contains('\n'));
     }
 
     /// <summary>
@@ -214,7 +242,9 @@ public class SearchIndexerConverterFailureLoggingTests
         {"resourceType":"Patient","id":"p1","gender":"male"}
         """);
 
-    private sealed record LogEntry(LogLevel Level, string Message, Exception? Exception);
+    // The indexer logs a contained failure by its exception's type, not with the exception, whose message can
+    // quote the value being converted.
+    private sealed record LogEntry(LogLevel Level, string Message, string? ExceptionType);
 
     private sealed class RecordingLogger : ILogger<ElementSearchIndexer>
     {
@@ -233,7 +263,10 @@ public class SearchIndexerConverterFailureLoggingTests
             Func<TState, Exception?, string> formatter)
         {
             ArgumentNullException.ThrowIfNull(formatter);
-            Entries.Add(new LogEntry(logLevel, formatter(state, exception), exception));
+            Entries.Add(new LogEntry(
+                logLevel,
+                formatter(state, exception),
+                (state as IReadOnlyList<KeyValuePair<string, object?>>)?.FirstOrDefault(field => field.Key == "ExceptionType").Value as string));
         }
     }
 

@@ -7,6 +7,7 @@ using Ignixa.DeId.Configuration;
 using Ignixa.DeId.Models;
 using Ignixa.DeId.Pipeline;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Specification.Generated;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ignixa.DeId.Tests.Pipeline;
@@ -55,5 +56,37 @@ public class RuleMatchingHandlerTests
 
         nextHandlerWasInvoked.ShouldBeFalse();
         context.Warnings.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenARulePathStillRunningWhenTheRequestIsCancelled_WhenMatchingRules_ThenTheCancellationStopsTheEvaluation()
+    {
+        // Arrange - rule paths come from the request's configuration, so a path can be made to run for a long time:
+        // nine nested projections over ten items. The per-rule check only runs between rules; stopping this one
+        // needs the token inside the evaluation (#531).
+        var handler = new RuleMatchingHandler(NullLogger<RuleMatchingHandler>.Instance);
+        var resource = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"p1","name":[{"family":"Doe"}]}""");
+        const string tenItems = "(1|2|3|4|5|6|7|8|9|10)";
+        // Each level counts its projection, so no collection grows: only the step budget (seconds away) or the token
+        // can end the evaluation, and the token fires long before the budget could.
+        var crossProduct = "1";
+        for (var level = 0; level < 8; level++)
+        {
+            crossProduct = $"{tenItems}.select({crossProduct}).count()";
+        }
+        var options = new DeIdOptions
+        {
+            FhirVersion = "R4",
+            Rules = [
+                new FhirPathRule { Path = crossProduct, Method = "REDACT", ResourceType = "Patient" }
+            ]
+        };
+        var context = new DeIdContext(resource, new R4CoreSchemaProvider(), new RequestOptions(), options);
+        PipelineDelegate next = (ctx, ct) => ValueTask.FromResult(Result<DeIdResult>.Success(ctx.BuildResult()));
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(20));
+
+        // Act & Assert - cancellation surfaces as itself, not as a rule that failed to evaluate.
+        await Should.ThrowAsync<OperationCanceledException>(
+            async () => await handler.InvokeAsync(context, next, cancellation.Token));
     }
 }

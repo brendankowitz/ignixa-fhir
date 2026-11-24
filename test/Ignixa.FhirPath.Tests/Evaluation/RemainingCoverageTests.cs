@@ -150,24 +150,20 @@ public class RemainingCoverageTests
     }
 
     [Fact]
-    public void GivenASmallIterationCap_WhenRepeatNeverConverges_ThenThrowsFhirPathEvaluationExceptionAtThatCap()
+    public void GivenASmallIterationCap_WhenRepeatNeverConverges_ThenThrowsResourceLimitExceededAtThatCap()
     {
         // Arrange - the #433 constructing-projection hazard (every round concatenates a literal onto
-        // $this, so the output is never deep-equal to anything already processed), driven through
-        // RepeatGuardLimits' test seam (#435) with only MaxIterations lowered. MaxComparisons stays at its
+        // $this, so the output is never deep-equal to anything already processed), with only the
+        // iteration cap lowered on the evaluation's own limits (#445). The comparison limit stays at its
         // production 15,000,000, which a 50-iteration cap cannot reach, so the iteration cap is what trips
-        // here. Isolates that code path in milliseconds rather than the ~33 seconds it used to cost.
+        // here. Isolates that code path in milliseconds.
         const int smallCap = 50;
         var expr = _parser.Parse("'a'.repeat($this & 'x')");
         var root = CreateIntegerElement(0);
+        var context = new EvaluationContext { Limits = FhirPathEvaluationLimits.Default with { MaxRepeatIterations = smallCap } };
 
-        // Act - the scope covers only the evaluation, so nothing the arrange block might later be changed
-        // to do can fall inside it.
-        FhirPathEvaluationException exception;
-        using (new RepeatGuardLimits.Scope(maxIterations: smallCap))
-        {
-            exception = Should.Throw<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
-        }
+        // Act
+        var exception = Should.Throw<FhirPathResourceLimitExceededException>(() => _evaluator.Evaluate(root, expr, context).ToList());
 
         // Assert - parentheses are load-bearing: ShouldContain is ordinal substring containment, so a bare
         // "50" would also match a stray "150" or "500"; "(50)" is the whole formatted argument.
@@ -177,21 +173,19 @@ public class RemainingCoverageTests
     }
 
     [Fact]
-    public void GivenASmallComparisonBudget_WhenRepeatNeverConverges_ThenThrowsFhirPathEvaluationExceptionAtThatBudget()
+    public void GivenASmallComparisonBudget_WhenRepeatNeverConverges_ThenThrowsResourceLimitExceededAtThatBudget()
     {
-        // Arrange - the same hazard again, with only MaxComparisons lowered via the #435 seam.
-        // MaxIterations stays at its production 10,000, which a 50-comparison budget cannot reach, so the
-        // comparison budget is what trips here.
+        // Arrange - the same hazard over dates, with only the comparison limit lowered. Temporals compare as
+        // instants, so they have no hash key (#533) and every new one is compared with everything processed so
+        // far; strings would hash apart and never be compared at all. The iteration cap stays at its production
+        // 10,000, which a 50-comparison budget cannot reach.
         const long smallBudget = 50;
-        var expr = _parser.Parse("'a'.repeat($this & 'x')");
+        var expr = _parser.Parse("@2020-01-01.repeat($this + 1 day)");
         var root = CreateIntegerElement(0);
+        var context = new EvaluationContext { Limits = FhirPathEvaluationLimits.Default with { MaxRepeatComparisons = smallBudget } };
 
-        // Act - scoped to the evaluation only, for the same reason as the test above.
-        FhirPathEvaluationException exception;
-        using (new RepeatGuardLimits.Scope(maxComparisons: smallBudget))
-        {
-            exception = Should.Throw<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
-        }
+        // Act
+        var exception = Should.Throw<FhirPathResourceLimitExceededException>(() => _evaluator.Evaluate(root, expr, context).ToList());
 
         // Assert
         exception.Message.ShouldContain("repeat()");
@@ -230,32 +224,30 @@ public class RemainingCoverageTests
 
         // Parentheses are load-bearing for the same ordinal-substring reason as the tests above: a bare
         // "10000" would also match a stray "110000".
-        var exception = Should.Throw<FhirPathEvaluationException>(evaluateOver);
+        var exception = Should.Throw<FhirPathResourceLimitExceededException>(evaluateOver);
         exception.Message.ShouldContain("repeat()");
         exception.Message.ShouldContain("maximum iteration limit");
         exception.Message.ShouldContain("(10000)");
     }
 
     [Fact]
-    public void GivenAConstructingProjection_WhenRepeatNeverConverges_ThenThrowsFhirPathEvaluationExceptionWithinTheComparisonBudget()
+    public void GivenAConstructingProjection_WhenRepeatNeverConverges_ThenTheStepBudgetStopsIt()
     {
-        // Arrange - the #433 constructing-projection hazard, kept end-to-end at production thresholds: the
-        // seam-driven tests above prove each guard's code path in milliseconds, so this one exists to pin
-        // that the real defaults (10,000 iterations, 15,000,000 comparisons) terminate it, and in what
-        // shape. Before #435 it cost ~33 seconds and tripped the iteration cap; the comparison budget now
-        // trips first, at roughly a third of the iteration count, so the iteration cap is never reached
-        // here any more.
+        // Arrange - the #433 constructing-projection hazard, kept end-to-end at production thresholds, to pin
+        // that the real defaults terminate it and in what shape. Before #435 it cost ~33 seconds and tripped
+        // the iteration cap; #435's comparison budget then tripped first, at a third of the iterations. Since
+        // #533 the strings hash apart and are never compared, which left the iteration cap to stop it. Hashing
+        // is now charged by length, and building and hashing ever-longer strings exhausts the step budget before
+        // the iteration cap is reached - still in under a second.
         var expr = _parser.Parse("'a'.repeat($this & 'x')");
         var root = CreateIntegerElement(0);
 
         // Act
         var evaluate = () => _evaluator.Evaluate(root, expr).ToList();
 
-        // Assert - the parentheses are load-bearing for the same ordinal-substring reason as above.
-        var exception = Should.Throw<FhirPathEvaluationException>(evaluate);
-        exception.Message.ShouldContain("repeat()");
-        exception.Message.ShouldContain("maximum comparison-count budget");
-        exception.Message.ShouldContain("(15000000)");
+        // Assert
+        var exception = Should.Throw<FhirPathResourceLimitExceededException>(evaluate);
+        exception.Message.ShouldContain("step budget");
     }
 
     [Fact]

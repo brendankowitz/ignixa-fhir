@@ -91,8 +91,9 @@ internal static class CollectionFunctions
         MaxArguments = 0,
         Category = "Collection",
         Description = "Returns the number of elements in the collection")]
-    public static IEnumerable<IElement> Count(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> Count(IEnumerable<IElement> focus, EvaluationContext context)
     {
+        focus = context.Budget.PerItem(focus);
         var count = focus.Count();
         return [(IElement)FunctionHelpers.CreateInteger(count)];
     }
@@ -110,9 +111,9 @@ internal static class CollectionFunctions
         MaxArguments = 0,
         Category = "Collection",
         Description = "Returns a collection containing only the distinct elements")]
-    public static IEnumerable<IElement> Distinct(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> Distinct(IEnumerable<IElement> focus, EvaluationContext context)
     {
-        return FunctionHelpers.Distinct(focus);
+        return FunctionHelpers.Distinct(focus, context.Budget, "distinct()");
     }
 
     /// <summary>
@@ -127,10 +128,10 @@ internal static class CollectionFunctions
         MaxArguments = 0,
         Category = "Collection",
         Description = "Returns true if all elements in the collection are distinct")]
-    public static IEnumerable<IElement> IsDistinct(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> IsDistinct(IEnumerable<IElement> focus, EvaluationContext context)
     {
         var list = focus.ToList();
-        var isDistinct = FunctionHelpers.Distinct(list).Count == list.Count;
+        var isDistinct = FunctionHelpers.Distinct(list, context.Budget, "isDistinct()").Count == list.Count;
         return [(IElement)FunctionHelpers.CreateBoolean(isDistinct)];
     }
 
@@ -162,8 +163,9 @@ internal static class CollectionFunctions
         MaxArguments = 0,
         Category = "Collection",
         Description = "Returns the last element in the collection")]
-    public static IEnumerable<IElement> Last(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> Last(IEnumerable<IElement> focus, EvaluationContext context)
     {
+        focus = context.Budget.PerItem(focus);
         var last = focus.LastOrDefault();
         return last != null ? [last] : [];
     }
@@ -179,8 +181,9 @@ internal static class CollectionFunctions
         MaxArguments = 0,
         Category = "Collection",
         Description = "Returns the single element in the collection")]
-    public static IEnumerable<IElement> Single(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> Single(IEnumerable<IElement> focus, EvaluationContext context)
     {
+        focus = context.Budget.PerItem(focus);
         var list = focus.ToList();
         if (list.Count == 0)
             return [];
@@ -202,9 +205,9 @@ internal static class CollectionFunctions
         MaxArguments = 0,
         Category = "Collection",
         Description = "Returns all elements except the first")]
-    public static IEnumerable<IElement> Tail(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> Tail(IEnumerable<IElement> focus, EvaluationContext context)
     {
-        return focus.Skip(1);
+        return context.Budget.PerItem(focus).Skip(1);
     }
 
     /// <summary>
@@ -228,11 +231,11 @@ internal static class CollectionFunctions
             throw new FhirPathEvaluationException("skip() requires a num argument");
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var numResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
+        var numResult = FunctionHelpers.SingleArgument("skip", evaluateExpression(context.Focus, arguments[0], context));
         if (numResult?.Value is not int num)
             return [];
 
-        return num <= 0 ? focus : focus.Skip(num);
+        return context.Budget.PerItem(num <= 0 ? focus : focus.Skip(num));
     }
 
     /// <summary>
@@ -256,11 +259,11 @@ internal static class CollectionFunctions
             throw new FhirPathEvaluationException("take() requires a num argument");
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var numResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
+        var numResult = FunctionHelpers.SingleArgument("take", evaluateExpression(context.Focus, arguments[0], context));
         if (numResult?.Value is not int num)
             return [];
 
-        return num <= 0 ? [] : focus.Take(num);
+        return num <= 0 ? [] : context.Budget.PerItem(focus.Take(num));
     }
 
     /// <summary>
@@ -322,6 +325,7 @@ internal static class CollectionFunctions
 
         var projection = arguments[0];
         var focusList = focus.ToList();
+        long yielded = 0;
 
         for (int i = 0; i < focusList.Count; i++)
         {
@@ -331,6 +335,10 @@ internal static class CollectionFunctions
                 .PushIndex(i);
             foreach (var result in evaluateExpression([element], projection, innerContext))
             {
+                // A projection can yield a whole collection per item without evaluating a node per result, so
+                // the flattening itself is charged and its size bounded.
+                context.Budget.Step();
+                context.Budget.EnsureCollectionSize(++yielded, "select()");
                 yield return result;
             }
         }
@@ -448,75 +456,39 @@ internal static class CollectionFunctions
     /// <b>Iteration guard (#433):</b> the dedup check below only stops a projection that <em>navigates</em>
     /// an existing finite tree - it never terminates for one that <em>constructs</em> a fresh value each
     /// round, e.g. <c>repeat($this &amp; 'x')</c>, whose output is never deep-equal to anything already
-    /// processed. <see cref="RepeatAll"/> caps at 100,000 iterations; this cap is 10,000. <b>This is a data-headroom
-    /// choice, not a cost-shape choice.</b> The cap guarantees <em>termination</em> - a constructing projection
-    /// can no longer loop forever - but it does <em>not</em> bound wall-clock cost. Per-iteration cost grows
-    /// with the projection's fan-out (number of <c>|</c> branches): <c>Repeat</c> runs <em>three</em> O(n) scans
-    /// per item - <c>processed.Any(...)</c> twice and <c>result.Any(...)</c> once - each via
-    /// <see cref="FunctionHelpers.AreElementsEqual"/>, which recurses over subtrees. Measured wall time to reach
-    /// the 10,000 cap: <c>repeat($this &amp; 'x')</c> (branching factor 1) reaches 33.4 seconds;
-    /// <c>repeat(($this &amp; 'x') | ($this &amp; 'y'))</c> (branching factor 2) reaches 63.4 seconds.
-    /// One additional <c>|</c> branch roughly doubles the time to reach the same cap.
+    /// processed. The cap, <see cref="FhirPathEvaluationLimits.MaxRepeatIterations"/> (10,000), guarantees
+    /// termination; it is a data-headroom figure, not a cost one. The control test
+    /// (<c>RemainingCoverageTests</c>, nested-Questionnaire case) genuinely dequeues about 1,093 times, so a
+    /// 1,000 cap would reject legitimate data and 10,000 gives about 9x headroom. <see cref="RepeatAll"/>'s cap
+    /// (<see cref="FhirPathEvaluationLimits.MaxRepeatAllIterations"/>) is 100,000; do not harmonise the two, because
+    /// this function deduplicates and that one does not.
     /// </para>
     /// <para>
-    /// <b>Why 10,000 and not lower:</b> this is a data-headroom budget, not a cost budget. The control test
-    /// (<c>RemainingCoverageTests</c>, nested-Questionnaire case) uses a 1,092-item tree and genuinely dequeues
-    /// roughly 1,093 times; a 1,000 iteration cap would reject that legitimate data. 10,000 gives approximately
-    /// 9× headroom over that observed real shape. The residual gap - bounding actual per-projection cost, which
-    /// depends on fan-out - is closed by the comparison-count budget below.
+    /// <b>Dedup cost (#533):</b> membership in the processed and result sets goes through
+    /// <see cref="ElementEqualityIndex"/>, which hashes every element with a key consistent with FHIRPath
+    /// equality and compares only within a hash bucket. It used to be three linear scans per item, which made
+    /// the run quadratic: <c>repeat($this &amp; 'x')</c> took 33 seconds to reach the iteration cap. Strings,
+    /// numbers, Booleans and complex elements built from them now cost one hash each, and quantities one lookup
+    /// per unit; only temporals still compare pairwise.
     /// </para>
     /// <para>
-    /// <b>Comparison-count budget (#435):</b> <see cref="RepeatGuardLimits.MaxComparisons"/> caps total
-    /// <see cref="FunctionHelpers.AreElementsEqual"/> calls across the run; whichever of it and
-    /// <see cref="RepeatGuardLimits.MaxIterations"/> trips first throws the same exception type at the same
-    /// log tier. Unlike the iteration cap this is a <em>cost</em> budget, so it catches the fan-out hazard:
-    /// a wider projection reaches the same comparison total in fewer iterations and is stopped at roughly
-    /// the same cost. Measured - the control (1,092-item nested Questionnaire, 1,093 iterations) costs
-    /// 1,391,754 comparisons, and <c>repeat($this &amp; 'x')</c> run to the full 10,000-iteration cap costs
-    /// 149,995,000. 15,000,000 gives ~10.8× headroom over the control, stops that hazard at 3,163
-    /// iterations (3.3s rather than 32.4s), and is flat in branching factor: 1/2/3 branches take
-    /// 4.75s/5.35s/4.50s and all trip the comparison budget, where the iteration-only cap took 38.97s and
-    /// 76.32s for one and two branches.
+    /// <b>Comparison-count limit (#435):</b> <see cref="FhirPathEvaluationLimits.MaxRepeatComparisons"/>
+    /// (15,000,000) caps the <see cref="FunctionHelpers.AreElementsEqual"/> calls the run makes, counted as they
+    /// happen. With hashing it only binds on unkeyed data - temporals - where it still stops a
+    /// wide constructing projection at roughly constant cost. Every comparison is also a step of the
+    /// evaluation's budget, which bounds the run overall.
     /// </para>
     /// <para>
-    /// <b>Bounding a quadratic cost necessarily bounds data; that is the trade this guard is, not a side
-    /// effect of it.</b> Comparisons fit ~1.167·N² over the control's breadth-3 <c>Questionnaire.item</c>
-    /// shape (C/N² within 0.4% from N=120 to N=3,279), so 10.8× headroom in comparisons is only √10.8 ≈
-    /// 3.3× in nodes - <em>not</em> the same order of headroom as the iteration cap's 9×. The accepted-data
-    /// envelope narrows deliberately: from about 10,000 nodes, where one dequeue per node made the
-    /// iteration cap binding, to between 3,279 (OK) and 5,460 (throws) for the control's breadth-3 and
-    /// breadth-4 shapes. That bracket is not a cutover - the guard bounds cost, so shape decides; at depth
-    /// 1, where every item is a sibling, the boundary is 3,872 OK / 3,873 throws. Regenerate any of it with
-    /// <c>RemainingCoverageTests.CreateDeeplyNestedQuestionnaireItems(breadth, depth)</c> under
-    /// <c>repeat(item)</c>. Exposure is narrow - <c>descendants()</c> does not route through this method,
-    /// and <c>repeat(</c> appears in no generated SearchParameter and in three shipped invariants - so what
-    /// is at risk is a tenant-authored <c>repeat()</c> over several thousand nodes, which given the
-    /// all-or-nothing behaviour documented below loses the whole search parameter.
-    /// <b>Do not raise the budget to widen this</b>; bounding cost was the point of #435.
+    /// <b>Configuration (#445):</b> both thresholds are internal properties of the evaluation's
+    /// <see cref="FhirPathEvaluationLimits"/>, so a test lowers them per evaluation. They replaced an
+    /// <see cref="AsyncLocal{T}"/> seam whose overrides were ambient process state.
     /// </para>
     /// <para>
-    /// <b>Test seam (#435):</b> both thresholds live on <see cref="RepeatGuardLimits"/> rather than local
-    /// <c>const</c>s so <c>Ignixa.FhirPath.Tests</c> can substitute a small cap via
-    /// <see cref="RepeatGuardLimits.Scope"/> and prove either guard trips - same exception type, message
-    /// shape and log tier - in milliseconds. See that type's remarks for why the seam is
-    /// <see cref="AsyncLocal{T}"/>-backed and why this method hoists both into locals.
-    /// </para>
-    /// <para>
-    /// <b>Harmonisation with <see cref="RepeatAll"/>'s 100,000:</b> do not raise this cap toward that figure. The
-    /// two functions do not cost the same per iteration: <c>repeatAll</c> is dequeue-evaluate-append, O(1) of
-    /// bookkeeping per item. <c>Repeat</c> does three O(n) deep-equality scans per item with an expensive recursing
-    /// comparator. Raising 10,000 toward 100,000 would multiply an already-33-second worst case by roughly a hundred,
-    /// turning a guard into a hang. This difference is structural and deliberate, not an oversight to be "harmonised"
-    /// away later.
-    /// </para>
-    /// <para>
-    /// <b>Exception type and log tier:</b> the guard throws <see cref="FhirPathEvaluationException"/>,
-    /// matching <see cref="RepeatAll"/>'s guard, so <c>ElementSearchIndexer.IsExpectedEvaluationFailure</c>
-    /// classifies both the same way - expected containment (Warning) rather than an indexer defect (Error).
-    /// That tier was affirmed and pinned for <c>repeatAll</c>'s guard in #428 on the rationale
-    /// that a guard a tenant can trip on demand, against tenant-supplied data, is data, not an indexer bug.
-    /// Two iteration-limit guards reporting at different severities would be worse than either choice, so
-    /// both land in the same one.
+    /// <b>Exception type and log tier:</b> both guards throw <see cref="FhirPathResourceLimitExceededException"/>,
+    /// as <see cref="RepeatAll"/>'s guard and every evaluation budget do: tripping one says the expression asked
+    /// for more than the evaluation allows, not that it is ill-formed. It still derives from
+    /// <see cref="FhirPathEvaluationException"/>, so <c>ElementSearchIndexer.IsExpectedEvaluationFailure</c>
+    /// classifies it as expected containment (Warning), the tier #428 pinned; validation fails the resource.
     /// </para>
     /// <para>
     /// <b>The guard fails all-or-nothing, deliberately.</b> This method is eager - results accumulate
@@ -563,67 +535,57 @@ internal static class CollectionFunctions
             throw new FhirPathEvaluationException("repeat() requires a projection argument");
 
         var projection = arguments[0];
-        var result = new List<IElement>();
-        var processed = new List<IElement>();
-        var queue = new Queue<IElement>(focus);
-
-        // Read each threshold once per call rather than once per comparison: RepeatGuardLimits backs them
-        // with AsyncLocal, which is not a static field read. Sound because this method is eager, so a
-        // threshold cannot change mid-run, and the snapshot is the number the exception message names.
-        int maxIterations = RepeatGuardLimits.MaxIterations;
-        long maxComparisons = RepeatGuardLimits.MaxComparisons;
+        var budget = context.Budget;
+        var maxIterations = budget.Limits.MaxRepeatIterations;
+        var maxComparisons = budget.Limits.MaxRepeatComparisons;
 
         int iterations = 0;
         long comparisons = 0;
 
+        var result = new List<IElement>();
+        var resultIndex = new ElementEqualityIndex(budget, CountComparison);
+        var processed = new ElementEqualityIndex(budget, CountComparison);
+        var queue = new Queue<IElement>(focus);
+
         while (queue.Count > 0)
         {
             if (++iterations > maxIterations)
-                throw new FhirPathEvaluationException($"repeat() exceeded maximum iteration limit ({maxIterations}) - possible infinite loop detected");
+                throw new FhirPathResourceLimitExceededException($"repeat() exceeded maximum iteration limit ({maxIterations}) - possible infinite loop detected");
 
             var current = queue.Dequeue();
 
-            // Check if we've already processed this element using deep equality comparison
-            if (!ContainsElement(processed, current))
+            // Already processed under FHIRPath equality: nothing new to project.
+            if (!processed.AddIfAbsent(current))
+                continue;
+
+            var innerContext = context.PushThis(current);
+            var projected = evaluateExpression([current], projection, innerContext);
+
+            foreach (var item in projected)
             {
-                processed.Add(current);
-
-                var innerContext = context.PushThis(current);
-                var projected = evaluateExpression([current], projection, innerContext);
-
-                foreach (var item in projected)
+                // Add projection results to the output result set (avoiding duplicates)
+                if (resultIndex.AddIfAbsent(item))
                 {
-                    // Add projection results to the output result set (avoiding duplicates)
-                    if (!ContainsElement(result, item))
-                    {
-                        result.Add(item);
-                    }
+                    result.Add(item);
+                    budget.EnsureCollectionSize(result.Count, "repeat()");
+                }
 
-                    // If this is a new item, add it to queue for further processing
-                    if (!ContainsElement(processed, item))
-                    {
-                        queue.Enqueue(item);
-                    }
+                // If this is a new item, add it to queue for further processing
+                if (!processed.Contains(item))
+                {
+                    queue.Enqueue(item);
                 }
             }
         }
 
         return result;
 
-        // Counts each deep-equality comparison as it happens rather than once per O(n) scan, so a single
-        // wide scan cannot overrun the budget.
-        bool ContainsElement(List<IElement> list, IElement candidate)
+        // Counts each deep-equality comparison as it happens rather than once per lookup, so a single lookup
+        // over many colliding members cannot overrun the limit.
+        void CountComparison()
         {
-            foreach (var existing in list)
-            {
-                if (++comparisons > maxComparisons)
-                    throw new FhirPathEvaluationException($"repeat() exceeded maximum comparison-count budget ({maxComparisons}) - possible expensive projection detected");
-
-                if (FunctionHelpers.AreElementsEqual(existing, candidate))
-                    return true;
-            }
-
-            return false;
+            if (++comparisons > maxComparisons)
+                throw new FhirPathResourceLimitExceededException($"repeat() exceeded maximum comparison-count budget ({maxComparisons}) - possible expensive projection detected");
         }
     }
 
@@ -667,16 +629,17 @@ internal static class CollectionFunctions
             throw new FhirPathEvaluationException("repeatAll() requires a projection argument");
 
         var projection = arguments[0];
+        var budget = context.Budget;
         var result = new List<IElement>();
         var queue = new Queue<IElement>(focus);
 
-        const int maxIterations = 100_000;
+        var maxIterations = budget.Limits.MaxRepeatAllIterations;
         var iterations = 0;
 
         while (queue.Count > 0)
         {
             if (++iterations > maxIterations)
-                throw new FhirPathEvaluationException($"repeatAll() exceeded maximum iteration limit ({maxIterations}) - possible infinite loop detected");
+                throw new FhirPathResourceLimitExceededException($"repeatAll() exceeded maximum iteration limit ({maxIterations}) - possible infinite loop detected");
 
             var current = queue.Dequeue();
 
@@ -685,7 +648,11 @@ internal static class CollectionFunctions
 
             foreach (var item in projected)
             {
+                // The iteration cap counts dequeues, but one dequeue can append any number of items to both the
+                // result and the queue, so the result is what has to be bounded to bound memory.
+                budget.Step();
                 result.Add(item);
+                budget.EnsureCollectionSize(result.Count, "repeatAll()");
                 queue.Enqueue(item);
             }
         }
@@ -768,7 +735,7 @@ internal static class CollectionFunctions
 
         TypeMatcher.EnsureTypeIdentifierResolves(typeName, context.Schema, "ofType()");
 
-        return TypeMatcher.FilterByType(focus, typeName, context.Schema);
+        return TypeMatcher.FilterByType(context.Budget.PerItem(focus), typeName, context.Schema);
     }
 
     /// <summary>
@@ -825,12 +792,13 @@ internal static class CollectionFunctions
             throw new FhirPathEvaluationException("intersect() requires an other argument");
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var other = evaluateExpression(context.Focus, arguments[0], context).ToList();
+        var otherIndex = IndexOf(evaluateExpression(context.Focus, arguments[0], context), context.Budget);
+        var resultIndex = new ElementEqualityIndex(context.Budget);
         var result = new List<IElement>();
 
         foreach (var item in focus)
         {
-            if (other.Any(o => FunctionHelpers.AreElementsEqual(o, item)) && !result.Any(r => FunctionHelpers.AreElementsEqual(r, item)))
+            if (otherIndex.Contains(item) && resultIndex.AddIfAbsent(item))
             {
                 result.Add(item);
             }
@@ -860,12 +828,12 @@ internal static class CollectionFunctions
             throw new FhirPathEvaluationException("exclude() requires an other argument");
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var other = evaluateExpression(context.Focus, arguments[0], context).ToList();
+        var otherIndex = IndexOf(evaluateExpression(context.Focus, arguments[0], context), context.Budget);
         var result = new List<IElement>();
 
         foreach (var item in focus)
         {
-            if (!other.Any(o => FunctionHelpers.AreElementsEqual(o, item)))
+            if (!otherIndex.Contains(item))
             {
                 result.Add(item);
             }
@@ -899,7 +867,7 @@ internal static class CollectionFunctions
         var thisElement = context.GetThis();
         var argFocus = thisElement != null ? [thisElement] : focus;
         var other = evaluateExpression(argFocus, arguments[0], context).ToList();
-        return FunctionHelpers.EvaluateUnion(focus.ToList(), other);
+        return FunctionHelpers.EvaluateUnion(focus.ToList(), other, context.Budget);
     }
 
     /// <summary>
@@ -927,7 +895,10 @@ internal static class CollectionFunctions
         var thisElement = context.GetThis();
         var argFocus = thisElement != null ? [thisElement] : context.Focus.AsEnumerable();
         var other = evaluateExpression(argFocus, arguments[0], context);
-        return focus.Concat(other);
+
+        // Lazy, so nothing is materialised here; the counting wrapper bounds whatever consumes the result, which
+        // is what stops aggregate($total.combine($total)) doubling a list per item.
+        return context.Budget.Counted(focus.Concat(other), "combine()");
     }
 
     /// <summary>
@@ -961,6 +932,8 @@ internal static class CollectionFunctions
         var index = 0;
         foreach (var element in focus)
         {
+            // Binding $total copies the accumulator into the scope, so each iteration costs its size.
+            context.Budget.Charge(total.Count);
             var innerContext = context
                 .PushThis(element)
                 .PushIndex(index++)
@@ -971,6 +944,8 @@ internal static class CollectionFunctions
                 arguments[0],
                 innerContext
             ).ToList();
+
+            context.Budget.EnsureCollectionSize(total.Count, "aggregate()");
         }
 
         return total;
@@ -1004,7 +979,7 @@ internal static class CollectionFunctions
             return [(IElement)FunctionHelpers.CreateBoolean(true)];
 
         // Check if every element in focus exists in other (using structural comparison for complex types)
-        var isSubset = focusList.All(f => other.Any(o => AreElementsEqual(o, f)));
+        var isSubset = focusList.All(f => other.Any(o => Compare(o, f, context.Budget)));
         return [(IElement)FunctionHelpers.CreateBoolean(isSubset)];
     }
 
@@ -1037,7 +1012,7 @@ internal static class CollectionFunctions
 
         // For complex types (where Value is null), use reference equality
         // For primitive types, use value equality
-        var isSuperset = other.All(o => focusList.Any(f => AreElementsEqual(f, o)));
+        var isSuperset = other.All(o => focusList.Any(f => Compare(f, o, context.Budget)));
         return [(IElement)FunctionHelpers.CreateBoolean(isSuperset)];
     }
 
@@ -1053,9 +1028,9 @@ internal static class CollectionFunctions
         MaxArguments = 0,
         Category = "Collection",
         Description = "Returns the type information of each element")]
-    public static IEnumerable<IElement> Type(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> Type(IEnumerable<IElement> focus, EvaluationContext context)
     {
-        foreach (var element in focus)
+        foreach (var element in context.Budget.PerItem(focus))
         {
             var typeName = element.InstanceType ?? "unknown";
             string ns = "FHIR";
@@ -1144,9 +1119,18 @@ internal static class CollectionFunctions
     {
         var list = focus.ToList();
 
+        // Each item takes part in about log2(n) comparisons, each linear in the length of a String key.
+        var comparisonsPerItem = Math.Max(1, (int)Math.Ceiling(Math.Log2(Math.Max(list.Count, 2))));
+        var budget = context.Budget;
+
         if (arguments.Count == 0)
         {
-            return RunSort(list.OrderBy(e => (IElement?)e, ValueOrdering.SortComparer.NullsLow));
+            foreach (var element in list)
+            {
+                ChargeSortKey(element, comparisonsPerItem, budget);
+            }
+
+            return RunSort(list.OrderBy(e => (IElement?)e, ValueOrdering.SortComparer.NullsLow(budget.Units)));
         }
 
         // Extract sort key info (expression and direction) for all arguments
@@ -1163,14 +1147,16 @@ internal static class CollectionFunctions
         {
             var innerContext = context.PushThis(element);
             var result = evaluateExpression([element], expr, innerContext);
-            return result.FirstOrDefault();
+            var key = result.FirstOrDefault();
+            ChargeSortKey(key, comparisonsPerItem, budget);
+            return key;
         };
 
         // Apply first sort key
         var firstKey = sortKeys[0];
         var firstComparer = firstKey.IsDescending
-            ? ValueOrdering.SortComparer.NullsHigh
-            : ValueOrdering.SortComparer.NullsLow;
+            ? ValueOrdering.SortComparer.NullsHigh(budget.Units)
+            : ValueOrdering.SortComparer.NullsLow(budget.Units);
         IOrderedEnumerable<IElement> orderedList = firstKey.IsDescending
             ? list.OrderByDescending(createKeySelector(firstKey.Expression), firstComparer)
             : list.OrderBy(createKeySelector(firstKey.Expression), firstComparer);
@@ -1181,14 +1167,26 @@ internal static class CollectionFunctions
             var key = sortKeys[i];
             var keySelector = createKeySelector(key.Expression);
             var keyComparer = key.IsDescending
-                ? ValueOrdering.SortComparer.NullsHigh
-                : ValueOrdering.SortComparer.NullsLow;
+                ? ValueOrdering.SortComparer.NullsHigh(budget.Units)
+                : ValueOrdering.SortComparer.NullsLow(budget.Units);
             orderedList = key.IsDescending
                 ? orderedList.ThenByDescending(keySelector, keyComparer)
                 : orderedList.ThenBy(keySelector, keyComparer);
         }
 
         return RunSort(orderedList);
+    }
+
+    private static void ChargeSortKey(IElement? key, int comparisonsPerItem, EvaluationBudget budget)
+    {
+        // Every key takes part in about log2(n) comparisons whatever its type; a String key also costs its length
+        // in each.
+        budget.Charge(comparisonsPerItem);
+
+        if (WireValue.AsWireString(key?.Value) is { } text)
+        {
+            budget.ChargeText((long)text.Length * comparisonsPerItem);
+        }
     }
 
     /// <summary>
@@ -1210,10 +1208,46 @@ internal static class CollectionFunctions
         {
             return ordered.ToList();
         }
+        catch (InvalidOperationException ex) when (ex.InnerException is OperationCanceledException cancelled)
+        {
+            // Cancellation inside a sort key surfaces as itself, not as a failed comparison.
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(cancelled);
+            throw;
+        }
+        catch (InvalidOperationException ex) when (ex.InnerException is FhirPathResourceLimitExceededException inner)
+        {
+            throw new FhirPathResourceLimitExceededException(inner.Message, ex);
+        }
         catch (InvalidOperationException ex) when (ex.InnerException is FhirPathEvaluationException inner)
         {
             throw new FhirPathEvaluationException(inner.Message, ex);
         }
+    }
+
+    /// <summary>
+    /// Indexes the argument of a set operation once, so each focus item is looked up rather than scanned for.
+    /// </summary>
+    private static ElementEqualityIndex IndexOf(IEnumerable<IElement> elements, EvaluationBudget budget)
+    {
+        var index = new ElementEqualityIndex(budget);
+        foreach (var element in elements)
+        {
+            index.Add(element);
+        }
+
+        return index;
+    }
+
+    /// <summary>
+    /// The structural comparison <c>subsetOf()</c> and <c>supersetOf()</c> use, charged to the budget. These two
+    /// stay pairwise: their equality also requires matching instance types and differs from
+    /// <see cref="FunctionHelpers.AreElementsEqual"/>, which is what <see cref="ElementEqualityKey"/> models, so
+    /// the budget is what bounds them.
+    /// </summary>
+    private static bool Compare(IElement left, IElement right, EvaluationBudget budget)
+    {
+        budget.Step();
+        return AreElementsEqual(left, right, budget);
     }
 
     /// <summary>
@@ -1259,7 +1293,7 @@ internal static class CollectionFunctions
     /// For primitive types, uses value equality.
     /// For complex types, performs deep structural comparison of children.
     /// </summary>
-    private static bool AreElementsEqual(IElement left, IElement right)
+    private static bool AreElementsEqual(IElement left, IElement right, EvaluationBudget budget)
     {
         // If they're the same reference, they're equal
         if (ReferenceEquals(left, right))
@@ -1272,17 +1306,17 @@ internal static class CollectionFunctions
         // For complex types (both Values are null), use structural comparison
         if (left.Value == null && right.Value == null)
         {
-            return AreElementsStructurallyEqual(left, right);
+            return AreElementsStructurallyEqual(left, right, budget);
         }
 
         // For primitive types, use value comparison
-        return FunctionHelpers.AreElementsEqual(left, right);
+        return FunctionHelpers.AreElementsEqual(left, right, budget);
     }
 
     /// <summary>
     /// Performs deep structural comparison of two complex elements by recursively comparing all children.
     /// </summary>
-    private static bool AreElementsStructurallyEqual(IElement left, IElement right)
+    private static bool AreElementsStructurallyEqual(IElement left, IElement right, EvaluationBudget budget)
     {
         // Get all named children
         var leftChildren = left.Children().Where(c => !string.IsNullOrEmpty(c.Name)).ToList();
@@ -1308,9 +1342,10 @@ internal static class CollectionFunctions
                 return false;
 
             // Order matters for repeating elements - compare positionally
+            budget.Charge(leftList.Count);
             for (var i = 0; i < leftList.Count; i++)
             {
-                if (!AreElementsEqual(leftList[i], rightList[i]))
+                if (!AreElementsEqual(leftList[i], rightList[i], budget))
                     return false;
             }
         }

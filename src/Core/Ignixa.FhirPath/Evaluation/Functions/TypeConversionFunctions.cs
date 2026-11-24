@@ -7,6 +7,7 @@
  */
 
 using System.Collections.Frozen;
+using System.Globalization;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Attributes;
 using Ignixa.FhirPath.Expressions;
@@ -335,28 +336,24 @@ internal static partial class TypeConversionFunctions
         if (parts.Length < 1 || parts.Length > 3)
             return false;
 
-        if (!int.TryParse(parts[0], out var year) || parts[0].Length != 4)
+        if (!int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var year) || parts[0].Length != 4)
             return false;
 
+        var month = 1;
         if (parts.Length >= 2)
         {
-            if (!int.TryParse(parts[1], out var month) || month < 1 || month > 12 || parts[1].Length != 2)
+            if (!int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out month) || month < 1 || month > 12 || parts[1].Length != 2)
                 return false;
         }
 
         if (parts.Length == 3)
         {
-            if (!int.TryParse(parts[2], out var day) || day < 1 || day > 31 || parts[2].Length != 2)
+            if (!int.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out var day) || day < 1 || day > 31 || parts[2].Length != 2)
                 return false;
 
-            try
-            {
-                _ = new DateTime(year, int.Parse(parts[1]), day);
-            }
-            catch
-            {
-                return false;
-            }
+            // A full date must name a real calendar day (no 2023-02-30). DateTime cannot represent year 0000 or a
+            // signed year, so those are rejected first rather than left to throw from DaysInMonth.
+            return year >= 1 && day <= DateTime.DaysInMonth(year, month);
         }
 
         return true;
@@ -415,12 +412,12 @@ internal static partial class TypeConversionFunctions
             if (timeComponents.Length < 1 || timeComponents.Length > 3)
                 return false;
 
-            if (!int.TryParse(timeComponents[0], out var hour) || hour < 0 || hour > 23 || timeComponents[0].Length != 2)
+            if (!int.TryParse(timeComponents[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var hour) || hour < 0 || hour > 23 || timeComponents[0].Length != 2)
                 return false;
 
             if (timeComponents.Length >= 2)
             {
-                if (!int.TryParse(timeComponents[1], out var minute) || minute < 0 || minute > 59 || timeComponents[1].Length != 2)
+                if (!int.TryParse(timeComponents[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var minute) || minute < 0 || minute > 59 || timeComponents[1].Length != 2)
                     return false;
             }
 
@@ -436,7 +433,7 @@ internal static partial class TypeConversionFunctions
                 }
                 else
                 {
-                    if (!int.TryParse(secondPart, out var second) || second < 0 || second > 59 || secondPart.Length != 2)
+                    if (!int.TryParse(secondPart, NumberStyles.Integer, CultureInfo.InvariantCulture, out var second) || second < 0 || second > 59 || secondPart.Length != 2)
                         return false;
                 }
             }
@@ -543,7 +540,7 @@ internal static partial class TypeConversionFunctions
             var unitResult = evaluateExpression(list, arguments[0], context).ToList();
             if (unitResult.Count == 1 && unitResult[0].Value is string targetUnit)
             {
-                var converted = ConvertQuantityToUnit(quantity, targetUnit);
+                var converted = ConvertQuantityToUnit(quantity, targetUnit, context.Budget.Units);
                 if (converted == null)
                     return []; // Conversion not possible
                 return [FunctionHelpers.CreateQuantity(converted)];
@@ -558,7 +555,7 @@ internal static partial class TypeConversionFunctions
     /// Converts a quantity to the specified target unit.
     /// Supports calendar duration conversions (year/month/day/hour/minute/second).
     /// </summary>
-    private static FhirQuantity? ConvertQuantityToUnit(FhirQuantity source, string targetUnit)
+    private static FhirQuantity? ConvertQuantityToUnit(FhirQuantity source, string targetUnit, IQuantityUnitConverter units)
     {
         // Normalize target unit (handle calendar keywords like 'year' → 'a')
         var normalizedTarget = CalendarDuration.GetUcumUnit(targetUnit) ?? targetUnit;
@@ -577,8 +574,7 @@ internal static partial class TypeConversionFunctions
         }
 
         // Try UCUM conversion via the unit converter
-        var converter = QuantityUnitConverter.Instance;
-        var convertedValue = converter.Convert(source.Value, normalizedSource, normalizedTarget);
+        var convertedValue = units.Convert(source.Value, normalizedSource, normalizedTarget);
         if (convertedValue.HasValue)
             return new FhirQuantity(convertedValue.Value, targetUnit);
 

@@ -32,5 +32,10 @@ public record SearchCompartmentQuery(
     /// Checks if CapabilityStatement advertises 'search-type' interaction for the resource type.
     /// </summary>
     public string GetCapabilityRequirementExpression() =>
-        $"rest.resource.where(type = '{ResourceType}').interaction.where(code = 'search-type').exists()";
+        "rest.resource.where(type = %resourceType).interaction.where(code = 'search-type').exists()";
+
+    /// <summary>
+    /// Supplies the resource type as <c>%resourceType</c> so caller-controlled text is never part of the expression.
+    /// </summary>
+    public string? CapabilityResourceType => ResourceType;
 }

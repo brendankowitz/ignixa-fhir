@@ -28,8 +28,9 @@ internal static class BooleanFunctions
         MaxArguments = 0,
         Category = "Boolean",
         Description = "Returns true if all elements are boolean true")]
-    public static IEnumerable<IElement> AllTrue(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> AllTrue(IEnumerable<IElement> focus, EvaluationContext context)
     {
+        focus = context.Budget.PerItem(focus);
         var list = focus.ToList();
         if (list.Count == 0)
             return [FunctionHelpers.CreateBoolean(true)]; // Empty collection returns true
@@ -52,8 +53,9 @@ internal static class BooleanFunctions
         MaxArguments = 0,
         Category = "Boolean",
         Description = "Returns true if any element is boolean true")]
-    public static IEnumerable<IElement> AnyTrue(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> AnyTrue(IEnumerable<IElement> focus, EvaluationContext context)
     {
+        focus = context.Budget.PerItem(focus);
         var list = focus.ToList();
         if (list.Count == 0)
             return [FunctionHelpers.CreateBoolean(false)];
@@ -76,8 +78,9 @@ internal static class BooleanFunctions
         MaxArguments = 0,
         Category = "Boolean",
         Description = "Returns true if all elements are boolean false")]
-    public static IEnumerable<IElement> AllFalse(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> AllFalse(IEnumerable<IElement> focus, EvaluationContext context)
     {
+        focus = context.Budget.PerItem(focus);
         var list = focus.ToList();
         if (list.Count == 0)
             return [FunctionHelpers.CreateBoolean(true)]; // Empty collection returns true
@@ -100,8 +103,9 @@ internal static class BooleanFunctions
         MaxArguments = 0,
         Category = "Boolean",
         Description = "Returns true if any element is boolean false")]
-    public static IEnumerable<IElement> AnyFalse(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> AnyFalse(IEnumerable<IElement> focus, EvaluationContext context)
     {
+        focus = context.Budget.PerItem(focus);
         var list = focus.ToList();
         if (list.Count == 0)
             return [FunctionHelpers.CreateBoolean(false)];
@@ -124,8 +128,9 @@ internal static class BooleanFunctions
         MaxArguments = 0,
         Category = "Boolean",
         Description = "Negates a single boolean value")]
-    public static IEnumerable<IElement> Not(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> Not(IEnumerable<IElement> focus, EvaluationContext context)
     {
+        focus = context.Budget.PerItem(focus);
         var list = focus.ToList();
 
         // Empty collection returns empty (per FHIRPath spec)
@@ -160,9 +165,9 @@ internal static class BooleanFunctions
         var nonBooleanElement = list.FirstOrDefault(element => element.Value is not bool);
         if (nonBooleanElement is not null)
         {
-            var valueDescription = nonBooleanElement.Value is null ? "null" : $"'{nonBooleanElement.Value}'";
+            var typeDescription = nonBooleanElement.InstanceType ?? "an untyped value";
             throw new FhirPathEvaluationException(
-                $"Unable to convert {valueDescription} to a boolean for {functionName}()");
+                $"Unable to convert a value of type '{typeDescription}' to a boolean for {functionName}()");
         }
     }
 }

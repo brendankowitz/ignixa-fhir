@@ -35,4 +35,11 @@ public sealed record FhirPathRule
     /// </summary>
     [JsonPropertyName("settings")]
     public ImmutableDictionary<string, object>? Settings { get; init; }
+
+    /// <summary>
+    /// True for a rule the server defines (a bootstrap policy), whose path is evaluated in the server expression tier;
+    /// false for a rule from request-supplied configuration. Neither read from nor written to configuration.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsServerDefined { get; internal init; }
 }

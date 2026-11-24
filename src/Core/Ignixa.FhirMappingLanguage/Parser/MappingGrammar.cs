@@ -6,6 +6,7 @@
  */
 
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Lexer;
@@ -529,12 +530,18 @@ internal static class MappingGrammar
         from rparen in Token.EqualTo(MappingTokenKind.RightParen)
         select new GroupInvocationExpression(groupName.Name, args, groupName.Location);
 
-    // Nested rules: { rule1; rule2; }
+    // Nested rules: { rule1; rule2; }. The only recursive production: each level re-enters Rules, so the stack is
+    // checked before descending and exhaustion surfaces as a catchable InsufficientExecutionStackException.
+    private static readonly TokenListParser<MappingTokenKind, RuleExpression[]> StackCheckedRules =
+        input =>
+        {
+            RuntimeHelpers.EnsureSufficientExecutionStack();
+            return Rules!(input); // Declared below; assigned before any parse runs.
+        };
+
     private static readonly TokenListParser<MappingTokenKind, RuleSetExpression> NestedRules =
         from lbrace in Token.EqualTo(MappingTokenKind.LeftBrace)
-#pragma warning disable CS8603 // Possible null reference return - Many() never returns null
-        from rules in Parse.Ref(() => Rules).Many()
-#pragma warning restore CS8603
+        from rules in StackCheckedRules.Many()
         from rbrace in Token.EqualTo(MappingTokenKind.RightBrace)
         select new RuleSetExpression(rules.SelectMany(r => r), CreatePosition(lbrace));
 

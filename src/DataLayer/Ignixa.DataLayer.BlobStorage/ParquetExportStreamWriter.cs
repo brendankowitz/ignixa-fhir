@@ -11,6 +11,7 @@ using Parquet.Schema;
 using Ignixa.Abstractions;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.FhirPath;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.SqlOnFhir.Evaluation;
@@ -135,7 +136,8 @@ public partial class ParquetExportStreamWriter : IExportStreamWriter
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error writing resource to Parquet buffer");
+            // Logged by type and stack only: the message can quote values from the resource being written.
+            _logger.LogError("Error writing resource to Parquet buffer: {Exception}", LogSafeText.DescribeWithoutMessages(ex));
             throw;
         }
     }
@@ -146,7 +148,7 @@ public partial class ParquetExportStreamWriter : IExportStreamWriter
         CancellationToken cancellationToken)
     {
         // Evaluate ViewDefinition against resource (returns IEnumerable<Dictionary<string, object?>>)
-        var rows = _evaluator!.Evaluate(_viewDefinitionNode!, resourceElement);
+        var rows = _evaluator!.Evaluate(_viewDefinitionNode!, resourceElement, variables: null, cancellationToken);
         var rowList = rows?.ToList() ?? new List<Dictionary<string, object?>>(); // Materialize to count
 
         if (rowList.Count == 0)

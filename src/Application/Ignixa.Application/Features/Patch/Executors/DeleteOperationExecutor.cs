@@ -1,8 +1,10 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Features.Patch.Validation;
 using Ignixa.FhirMappingLanguage.Mutator;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
 
@@ -32,13 +34,19 @@ public class DeleteOperationExecutor(
         // Check for immutable properties
         if (ImmutablePathChecker.IsImmutablePath(operation.Path))
         {
-            throw new FhirPatchException($"Cannot delete immutable property '{operation.Path}'");
+            throw new FhirPatchException($"Cannot delete immutable property '{operation.Path.SanitizeExpressionForLog()}'");
         }
 
         try
         {
-            mutator.DeleteProperty(resource, operation.Path);
-            logger.LogDebug("Deleted element at {Path}", operation.Path);
+            mutator.DeleteProperty(resource, operation.Path, cancellationToken);
+            logger.LogDebug("Deleted element at {Path}", operation.Path.SanitizeExpressionForLog());
+        }
+        catch (FhirPathResourceLimitExceededException)
+        {
+            // Derives from InvalidOperationException, but is not an invalid patch: FhirPatchEngine reports it as
+            // too costly.
+            throw;
         }
         catch (InvalidOperationException ex)
         {

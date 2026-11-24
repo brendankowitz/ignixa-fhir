@@ -44,7 +44,7 @@ internal static class FhirSpecificFunctions
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
         var urlArgument = arguments[0];
-        var urlResult = evaluateExpression(context.Focus, urlArgument, context).FirstOrDefault();
+        var urlResult = FunctionHelpers.SingleArgument("extension", evaluateExpression(context.Focus, urlArgument, context));
 
         if (urlResult == null)
             yield break;
@@ -53,14 +53,23 @@ internal static class FhirSpecificFunctions
         if (string.IsNullOrEmpty(urlValue))
             yield break;
 
-        // Navigate to "extension" children and filter by url
+        // Navigate to "extension" children and filter by url. Every extension visited is charged, matching or not:
+        // a scan that finds nothing still costs work proportional to the extensions it walked.
+        var budget = context.Budget;
         foreach (var element in focus)
         {
             foreach (var extension in element.Children("extension"))
             {
-                // Check if this extension has a url child with matching value
+                budget.Step();
+
                 var urlChildren = extension.Children("url");
-                if (urlChildren.Count > 0 && urlChildren[0].Value?.ToString() == urlValue)
+                if (urlChildren.Count == 0 || urlChildren[0].Value?.ToString() is not { } candidateUrl)
+                {
+                    continue;
+                }
+
+                budget.ChargeText(Math.Min(candidateUrl.Length, urlValue.Length));
+                if (candidateUrl == urlValue)
                 {
                     yield return extension;
                 }
@@ -205,26 +214,16 @@ internal static class FhirSpecificFunctions
         {
             return elementResolver(referenceValue);
         }
-        catch (Exception ex) when (!IsCancellationOrOutOfMemory(ex))
+        catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
         {
             // WHY: the host resolver is a trust boundary (caller-supplied code), so an ordinary
-            // failure there is "reference not found" per spec - but cancellation/OOM are not that,
-            // and must propagate rather than being reported as an empty resolve() result.
+            // failure there is "reference not found" per spec - but cancellation, memory exhaustion and
+            // stack exhaustion are not that, and must propagate rather than being reported as an empty
+            // resolve() result. IsCritical also looks inside the AggregateException a sync-over-async
+            // resolver (.Result / .Wait()) wraps them in.
             return null;
         }
     }
-
-    /// <summary>
-    /// True for a direct <see cref="OperationCanceledException"/>/<see cref="OutOfMemoryException"/>,
-    /// or one wrapped in an <see cref="AggregateException"/> - which is exactly the shape a
-    /// sync-over-async host resolver (<c>.Result</c>/<c>.Wait()</c> over a cancelled or OOM-failing
-    /// task) produces, and which a plain <c>is not OperationCanceledException</c> filter would miss
-    /// because <see cref="AggregateException"/> does not derive from it.
-    /// </summary>
-    private static bool IsCancellationOrOutOfMemory(Exception ex) =>
-        ex is OperationCanceledException or OutOfMemoryException
-        || (ex is AggregateException aggregate
-            && aggregate.Flatten().InnerExceptions.Any(inner => inner is OperationCanceledException or OutOfMemoryException));
 
     /// <summary>
     /// getResourceKey() - SQL on FHIR v2 function that returns resourceType/id for the ROOT resource.
@@ -426,8 +425,7 @@ internal static class FhirSpecificFunctions
         }
 
         // Check compatibility using the UCUM converter
-        var converter = QuantityUnitConverter.Instance;
-        var areCompatible = converter.IsCompatible(inputUnit, argUnit);
+        var areCompatible = context.Budget.Units.IsCompatible(inputUnit, argUnit);
         
         yield return FunctionHelpers.CreateBoolean(areCompatible);
     }

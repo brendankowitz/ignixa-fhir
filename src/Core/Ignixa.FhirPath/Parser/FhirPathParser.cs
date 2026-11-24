@@ -12,6 +12,7 @@ using Ignixa.FhirPath.Expressions;
 using Ignixa.FhirPath.Parsing;
 using Ignixa.FhirPath.Parsing.ParseTree;
 using Superpower;
+using Superpower.Model;
 
 namespace Ignixa.FhirPath.Parser;
 
@@ -87,11 +88,20 @@ public class FhirPathParser
     /// </summary>
     /// <param name="expression">The FhirPath expression to parse</param>
     /// <returns>The root ParseNode of the parse tree</returns>
-    /// <exception cref="FormatException">Thrown when the expression cannot be parsed</exception>
+    /// <exception cref="FormatException">
+    /// Thrown when the expression cannot be parsed, or exceeds <see cref="CompilationOptions.MaxExpressionLength"/>,
+    /// <see cref="CompilationOptions.MaxNestingDepth"/> or <see cref="CompilationOptions.MaxExpressionDepth"/>.
+    /// </exception>
     internal ParseNode ParseToTree(string expression)
     {
         if (string.IsNullOrWhiteSpace(expression))
             throw new ArgumentException("Expression cannot be null or whitespace", nameof(expression));
+
+        if (expression.Length > _options.MaxExpressionLength)
+        {
+            throw new FormatException(
+                $"Expression is {expression.Length} characters long; the maximum is {_options.MaxExpressionLength}.");
+        }
 
         var tokenizeResult = _tokenizer.TryTokenize(expression);
         if (!tokenizeResult.HasValue)
@@ -105,14 +115,62 @@ public class FhirPathParser
                 t.Kind != FhirPathTokenKind.Whitespace &&
                 t.Kind != FhirPathTokenKind.LineComment &&
                 t.Kind != FhirPathTokenKind.BlockComment).ToArray();
-            tokens = new Superpower.Model.TokenList<FhirPathTokenKind>(filteredTokens);
+            tokens = new TokenList<FhirPathTokenKind>(filteredTokens);
         }
 
-        var parseResult = FhirPathParseTreeGrammar.Expression.AtEnd().TryParse(tokens);
+        // Each bracket level costs the grammar tens of kilobytes of stack, so nesting is bounded on the
+        // token list before the grammar sees it. The grammar also checks the stack at every bracket level,
+        // which covers threads too small for this bound.
+        RejectExcessiveNesting(tokens);
+
+        TokenListParserResult<FhirPathTokenKind, ParseNode> parseResult;
+        try
+        {
+            parseResult = FhirPathParseTreeGrammar.Expression.AtEnd().TryParse(tokens);
+        }
+        catch (InsufficientExecutionStackException ex)
+        {
+            throw new FormatException(
+                "Expression is nested too deeply to parse on the current thread's stack.", ex);
+        }
+
         if (!parseResult.HasValue)
             throw new FormatException($"Parsing failed: {parseResult}");
 
-        return parseResult.Value;
+        // Chains such as a.b.c or 1 + 2 + 3 parse iteratively but yield a left-deep tree that every later
+        // stage recurses over, so the tree's depth is bounded before anything walks it.
+        var tree = parseResult.Value;
+        if (tree.Depth > _options.MaxExpressionDepth)
+        {
+            throw new FormatException(
+                $"Expression syntax tree is {tree.Depth} levels deep; the maximum is {_options.MaxExpressionDepth}.");
+        }
+
+        return tree;
+    }
+
+    private void RejectExcessiveNesting(TokenList<FhirPathTokenKind> tokens)
+    {
+        var depth = 0;
+        foreach (var token in tokens)
+        {
+            switch (token.Kind)
+            {
+                case FhirPathTokenKind.LeftParen or FhirPathTokenKind.LeftBracket or FhirPathTokenKind.LeftBrace:
+                    if (++depth > _options.MaxNestingDepth)
+                    {
+                        throw new FormatException(
+                            $"Expression nests brackets too deeply at position {token.Position.Absolute}; "
+                            + $"the maximum nesting depth is {_options.MaxNestingDepth}.");
+                    }
+
+                    break;
+                case FhirPathTokenKind.RightParen or FhirPathTokenKind.RightBracket or FhirPathTokenKind.RightBrace:
+                    // Unbalanced closers are the grammar's to report; only the high-water mark matters here.
+                    depth = Math.Max(0, depth - 1);
+                    break;
+            }
+        }
     }
 
     /// <summary>
@@ -150,6 +208,11 @@ public class FhirPathParser
     /// <param name="result">The parsed expression, or null if parsing failed</param>
     /// <param name="errorMessage">Error message if parsing failed, or null if successful</param>
     /// <returns>True if parsing succeeded, false otherwise</returns>
+    /// <remarks>
+    /// Any parse failure is reported as <see langword="false"/>, including the grammar running out of stack,
+    /// which it reports as a <see cref="FormatException"/>. Cancellation, memory exhaustion and an
+    /// <see cref="InsufficientExecutionStackException"/> from a later stage are not parse failures and propagate.
+    /// </remarks>
     public bool TryParse(string expression, out Expression? result, out string? errorMessage)
     {
         try
@@ -158,7 +221,7 @@ public class FhirPathParser
             errorMessage = null;
             return true;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
         {
             result = null;
             errorMessage = ex.Message;
@@ -173,6 +236,11 @@ public class FhirPathParser
     /// <param name="result">The parse tree, or null if parsing failed</param>
     /// <param name="errorMessage">Error message if parsing failed, or null if successful</param>
     /// <returns>True if parsing succeeded, false otherwise</returns>
+    /// <remarks>
+    /// Any parse failure is reported as <see langword="false"/>, including the grammar running out of stack,
+    /// which it reports as a <see cref="FormatException"/>. Cancellation, memory exhaustion and an
+    /// <see cref="InsufficientExecutionStackException"/> from a later stage are not parse failures and propagate.
+    /// </remarks>
     internal bool TryParseToTree(string expression, out ParseNode? result, out string? errorMessage)
     {
         try
@@ -181,7 +249,7 @@ public class FhirPathParser
             errorMessage = null;
             return true;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
         {
             result = null;
             errorMessage = ex.Message;

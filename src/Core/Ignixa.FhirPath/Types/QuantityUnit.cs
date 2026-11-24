@@ -9,6 +9,7 @@ using System;
 using System.Globalization;
 using Fhir.Metrics;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Evaluation;
 
 namespace Ignixa.FhirPath.Types;
 
@@ -20,7 +21,25 @@ namespace Ignixa.FhirPath.Types;
 /// </summary>
 public class QuantityUnitConverter : IQuantityUnitConverter
 {
+    /// <summary>
+    /// The longest unit string, in characters, this converter hands to UCUM. A longer unit is treated as one
+    /// UCUM cannot read: compatible and convertible only with the identical string.
+    /// </summary>
+    /// <remarks>
+    /// Reading a unit costs time in proportion to the number of symbols it contains - up to about two
+    /// milliseconds a symbol for a derived unit such as <c>H</c> - and the string can come from resource data,
+    /// so its length is bounded before UCUM sees it. Real UCUM codes, annotations included, are far shorter.
+    /// </remarks>
+    public const int MaxUnitLength = 128;
+
+    /// <summary>
+    /// Distinct unit strings whose readings are kept. Readings are a pure function of the string, so dropping one
+    /// costs a re-read, never a different answer.
+    /// </summary>
+    private const int ReadingCacheCapacity = 4096;
+
     private readonly SystemOfUnits _ucum;
+    private readonly BoundedExpressionCache<UnitReading?> _readings = new(ReadingCacheCapacity);
 
     /// <summary>
     /// Initializes a new instance of the QuantityUnitConverter.
@@ -106,34 +125,11 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             return true; // Same form, same unit
         }
 
-        // For fixed-duration units and all other UCUM units, use standard UCUM compatibility
-        try
-        {
-            // Get metrics for both units
-            var metric1 = _ucum.Metric(ucum1);
-            var metric2 = _ucum.Metric(ucum2);
-
-            if (metric1 == null || metric2 == null)
-                return false;
-
-            // Create test quantities and convert to canonical form
-            var q1 = new Fhir.Metrics.Quantity(1, metric1);
-            var q2 = new Fhir.Metrics.Quantity(1, metric2);
-
-            var canonical1 = _ucum.Canonical(q1);
-            var canonical2 = _ucum.Canonical(q2);
-
-            if (canonical1 == null || canonical2 == null)
-                return false;
-
-            // Check if both have the same canonical form metric (same dimensionality)
-            return AreSameDimension(canonical1, canonical2);
-        }
-        catch
-        {
-            // If parsing or conversion fails, units are not compatible
-            return false;
-        }
+        // For fixed-duration units and all other UCUM units, use standard UCUM compatibility: the same
+        // canonical dimension.
+        return Read(ucum1) is { } reading1
+            && Read(ucum2) is { } reading2
+            && string.Equals(reading1.Dimension, reading2.Dimension, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -183,45 +179,32 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             return null;
 
         // Fixed-length durations can be converted via UCUM
+        if (Read(ucumFrom) is not { } from
+            || Read(ucumTo) is not { } to
+            || !string.Equals(from.Dimension, to.Dimension, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
         try
         {
-            // Get metrics
+            // The source is canonicalised at its own value, not scaled from a cached one-unit reading: the two
+            // differ in the decimal scale of the result, which equivalence (~) reads as precision.
             var fromMetric = _ucum.Metric(ucumFrom);
-            var toMetric = _ucum.Metric(ucumTo);
+            var canonical = fromMetric is null
+                ? null
+                : _ucum.Canonical(new Fhir.Metrics.Quantity(new Exponential((decimal)value), fromMetric));
 
-            if (fromMetric == null || toMetric == null)
-                return null;
-
-            // Create source quantity using Exponential implicit conversion from decimal
-            var sourceValue = new Exponential((decimal)value);
-            var sourceQty = new Fhir.Metrics.Quantity(sourceValue, fromMetric);
-
-            // Convert to canonical form
-            var canonical = _ucum.Canonical(sourceQty);
             if (canonical == null)
                 return null;
 
-            // Create target quantity in canonical form and convert back
-            var targetValue = new Exponential(1m);
-            var targetCanonical = new Fhir.Metrics.Quantity(targetValue, toMetric);
-            var targetInCanonical = _ucum.Canonical(targetCanonical);
-
-            if (targetInCanonical == null)
-                return null;
-
-            // Check dimensions match
-            if (!AreSameDimension(canonical, targetInCanonical))
-                return null;
-
-            // Calculate conversion factor
-            // canonical value is in base units
-            // We need: (source_canonical / target_canonical_for_unit_1) = result_in_target_units
-            var ratio = canonical.Value / targetInCanonical.Value;
+            // (source in canonical units) / (one target unit in canonical units) = source in target units
+            var ratio = canonical.Value / to.CanonicalOne.Value;
 
             // Exponential has explicit conversion to decimal
             return (decimal)ratio;
         }
-        catch
+        catch (Exception ex) when (IsUnitAlgebraFailure(ex))
         {
             // Conversion failed (incompatible units or invalid unit codes)
             return null;
@@ -235,19 +218,28 @@ public class QuantityUnitConverter : IQuantityUnitConverter
     {
         ArgumentNullException.ThrowIfNull(unit);
 
+        return Read(unit)?.Dimension;
+    }
+
+    /// <summary>
+    /// Reads a unit once: its canonical dimension and the canonical form of one of it, or <see langword="null"/>
+    /// when UCUM cannot read it or it is longer than <see cref="MaxUnitLength"/>.
+    /// </summary>
+    private UnitReading? Read(string unit) =>
+        unit.Length > MaxUnitLength ? null : _readings.GetOrAdd(unit, ReadUncached);
+
+    private UnitReading? ReadUncached(string unit)
+    {
         try
         {
             var metric = _ucum.Metric(unit);
             if (metric == null)
                 return null;
 
-            // Get canonical form to determine dimension
-            var quantity = new Fhir.Metrics.Quantity(1, metric);
-            var canonical = _ucum.Canonical(quantity);
-
-            return canonical?.Symbols;
+            var canonical = _ucum.Canonical(new Fhir.Metrics.Quantity(new Exponential(1m), metric));
+            return canonical?.Symbols is { } symbols ? new UnitReading(symbols, canonical) : null;
         }
-        catch
+        catch (Exception ex) when (IsUnitAlgebraFailure(ex))
         {
             return null;
         }
@@ -263,6 +255,9 @@ public class QuantityUnitConverter : IQuantityUnitConverter
     {
         ArgumentNullException.ThrowIfNull(left);
         ArgumentNullException.ThrowIfNull(right);
+
+        if (left.Unit.Length > MaxUnitLength || right.Unit.Length > MaxUnitLength)
+            return null;
 
         try
         {
@@ -300,7 +295,7 @@ public class QuantityUnitConverter : IQuantityUnitConverter
 
             return new FhirQuantity(value, unit);
         }
-        catch
+        catch (Exception ex) when (IsUnitAlgebraFailure(ex))
         {
             return null;
         }
@@ -319,6 +314,9 @@ public class QuantityUnitConverter : IQuantityUnitConverter
 
         // Division by zero check
         if (right.Value == 0)
+            return null;
+
+        if (left.Unit.Length > MaxUnitLength || right.Unit.Length > MaxUnitLength)
             return null;
 
         try
@@ -357,20 +355,36 @@ public class QuantityUnitConverter : IQuantityUnitConverter
 
             return new FhirQuantity(value, unit);
         }
-        catch
+        catch (Exception ex) when (IsUnitAlgebraFailure(ex))
         {
             return null;
         }
     }
 
     /// <summary>
-    /// Checks if two quantities have the same dimensionality.
+    /// The exceptions Fhir.Metrics 1.3.1 raises for a unit it cannot parse or a value it cannot represent,
+    /// each of which this converter answers with "not compatible" / <see langword="null"/>.
     /// </summary>
-    private bool AreSameDimension(Fhir.Metrics.Quantity q1, Fhir.Metrics.Quantity q2)
-    {
-        // Two quantities have the same dimension if their canonical symbols match
-        return string.Equals(q1.Symbols, q2.Symbols, StringComparison.Ordinal);
-    }
+    /// <remarks>
+    /// Established from the decompiled package and by experiment, not assumed:
+    /// <list type="bullet">
+    /// <item><see cref="ArgumentException"/>: unknown unit or prefix (<c>xyz</c>, <c>[foo]</c>), whitespace
+    /// (<c>m s</c>), malformed annotation (<c>m{a}b</c>).</item>
+    /// <item><see cref="InvalidCastException"/>: a unit with no path to base units (<c>Cel</c>, <c>[degF]</c>,
+    /// <c>[pH]</c>), from <c>Conversions.Canonical</c>.</item>
+    /// <item><see cref="FormatException"/>: an exponent written in non-ASCII digits (<c>m&#x0662;</c>), which the
+    /// tokenizer's <c>\d</c> accepts and <c>Convert.ToInt16</c> then rejects.</item>
+    /// <item><see cref="OverflowException"/>: an exponent beyond <see cref="short"/> (<c>m40000</c>), or a magnitude
+    /// beyond <see cref="decimal"/> (<c>km30000</c>, or multiplying two large canonical values).</item>
+    /// </list>
+    /// <see cref="ArgumentNullException"/> and <see cref="ArgumentOutOfRangeException"/> are excluded: the package
+    /// throws neither for a bad unit (no explicit throw in the decompiled source, and none in 20,000 fuzzed
+    /// unit strings), so either one here is a defect. Anything else - cancellation, memory or stack
+    /// exhaustion, a defect - propagates too.
+    /// </remarks>
+    private static bool IsUnitAlgebraFailure(Exception ex) =>
+        ex is (ArgumentException and not (ArgumentNullException or ArgumentOutOfRangeException))
+            or InvalidCastException or FormatException or OverflowException;
 
     /// <summary>
     /// Singleton instance for reuse across FhirPath evaluations.

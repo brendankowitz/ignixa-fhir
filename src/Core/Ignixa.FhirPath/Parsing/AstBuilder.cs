@@ -5,6 +5,7 @@
  * Default visitor implementation for FhirPath compilation.
  */
 
+using System.Runtime.CompilerServices;
 using Ignixa.FhirPath.Expressions;
 using Ignixa.FhirPath.Parsing.ParseTree;
 
@@ -16,9 +17,22 @@ namespace Ignixa.FhirPath.Parsing;
 /// </summary>
 internal class AstBuilder : IParseTreeVisitor<AstBuildContext, Expression>
 {
+    /// <summary>
+    /// Builds a child node. Every recursive step goes through here so the stack check covers it.
+    /// </summary>
+    /// <remarks>
+    /// The parser bounds tree depth before building, so the check only fires on a thread whose stack is
+    /// smaller than that bound assumes; it turns what would be a fatal overflow into a catchable exception.
+    /// </remarks>
+    protected Expression Build(ParseNode node, AstBuildContext context)
+    {
+        RuntimeHelpers.EnsureSufficientExecutionStack();
+        return node.Accept(this, context);
+    }
+
     public virtual Expression VisitBinary(BinaryParseNode node, AstBuildContext context)
     {
-        var left = node.Left.Accept(this, context);
+        var left = Build(node.Left, context);
         Expression right;
 
         // For 'is' and 'as' binary operators, the right operand is a type specifier.
@@ -30,7 +44,7 @@ internal class AstBuilder : IParseTreeVisitor<AstBuildContext, Expression>
         }
         else
         {
-            right = node.Right.Accept(this, context);
+            right = Build(node.Right, context);
         }
 
         var location = CreateLocation(node.Location);
@@ -40,7 +54,7 @@ internal class AstBuilder : IParseTreeVisitor<AstBuildContext, Expression>
 
     public virtual Expression VisitUnary(UnaryParseNode node, AstBuildContext context)
     {
-        var operand = node.Operand.Accept(this, context);
+        var operand = Build(node.Operand, context);
         var location = CreateLocation(node.Location);
 
         return new UnaryExpression(node.Operator, operand, location);
@@ -48,8 +62,8 @@ internal class AstBuilder : IParseTreeVisitor<AstBuildContext, Expression>
 
     public virtual Expression VisitFunctionCall(FunctionCallParseNode node, AstBuildContext context)
     {
-        var focus = node.Focus?.Accept(this, context);
-        var arguments = node.Arguments.Select(arg => arg.Accept(this, context)).ToList();
+        var focus = node.Focus is null ? null : Build(node.Focus, context);
+        var arguments = node.Arguments.Select(arg => Build(arg, context)).ToList();
         var location = CreateLocation(node.Location);
 
         return new FunctionCallExpression(focus, node.FunctionName, arguments, location);
@@ -57,7 +71,7 @@ internal class AstBuilder : IParseTreeVisitor<AstBuildContext, Expression>
 
     public virtual Expression VisitChild(ChildParseNode node, AstBuildContext context)
     {
-        var focus = node.Focus.Accept(this, context);
+        var focus = Build(node.Focus, context);
         var location = CreateLocation(node.Location);
 
         return new ChildExpression(focus, node.ChildName, location);
@@ -79,7 +93,7 @@ internal class AstBuilder : IParseTreeVisitor<AstBuildContext, Expression>
 
     public virtual Expression VisitPropertyAccess(PropertyAccessParseNode node, AstBuildContext context)
     {
-        var focus = node.Focus?.Accept(this, context);
+        var focus = node.Focus is null ? null : Build(node.Focus, context);
         var location = CreateLocation(node.Location);
 
         return new PropertyAccessExpression(focus, node.PropertyName, location);
@@ -93,8 +107,8 @@ internal class AstBuilder : IParseTreeVisitor<AstBuildContext, Expression>
 
     public virtual Expression VisitIndexer(IndexerParseNode node, AstBuildContext context)
     {
-        var collection = node.Collection.Accept(this, context);
-        var index = node.Index.Accept(this, context);
+        var collection = Build(node.Collection, context);
+        var index = Build(node.Index, context);
         var location = CreateLocation(node.Location);
 
         return new IndexerExpression(collection, index, location);
@@ -102,7 +116,7 @@ internal class AstBuilder : IParseTreeVisitor<AstBuildContext, Expression>
 
     public virtual Expression VisitParenthesized(ParenthesizedParseNode node, AstBuildContext context)
     {
-        var inner = node.InnerExpression.Accept(this, context);
+        var inner = Build(node.InnerExpression, context);
         var location = CreateLocation(node.Location);
 
         return new ParenthesizedExpression(inner, location);
@@ -131,7 +145,7 @@ internal class AstBuilder : IParseTreeVisitor<AstBuildContext, Expression>
         var elementAssignments = node.Elements
             .Select(e => new ElementAssignment(
                 e.ElementName,
-                e.ValueExpression.Accept(this, context)))
+                Build(e.ValueExpression, context)))
             .ToList();
 
         return new InstanceSelectorExpression(

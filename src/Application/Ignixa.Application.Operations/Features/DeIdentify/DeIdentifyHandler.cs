@@ -6,9 +6,12 @@
 using Ignixa.Application.Infrastructure;
 using Ignixa.DeId;
 using Ignixa.DeId.Configuration;
+using Ignixa.DeId.Darts;
 using Ignixa.DeId.Darts.Configuration;
 using Ignixa.DeId.Models;
 using Ignixa.DeId.Pipeline;
+using Ignixa.Domain.Exceptions;
+using Ignixa.FhirPath;
 using Medino;
 using Microsoft.Extensions.Logging;
 
@@ -44,20 +47,30 @@ public class DeIdentifyHandler : IRequestHandler<DeIdentifyCommand, DeIdentifyRe
         _logger.LogInformation(
             "Executing $de-identify for tenant {TenantId} with policy {Policy}",
             request.TenantId,
-            request.Policy);
+            LogSafeText.Sanitize(request.Policy));
 
         DeIdOptions options;
-        try
+        if (request.ConfigurationLibrary is null)
         {
-            options = _configLoader.LoadFromLibrary(request.ConfigurationLibrary);
+            options = CreateBootstrapOptions(request.Policy);
         }
-        catch (Exception ex)
+        else
         {
-            _logger.LogError(ex, "Failed to load de-identification configuration from Library resource.");
-            return new DeIdentifyResult(
-                false,
-                null,
-                $"Configuration error: {ex.Message}");
+            try
+            {
+                options = _configLoader.LoadFromLibrary(request.ConfigurationLibrary);
+            }
+            catch (Exception ex)
+            {
+                // Logged by type: the message can quote rule paths from the request's configuration.
+                _logger.LogError(
+                    "Failed to load de-identification configuration from Library resource ({ExceptionType}).",
+                    ex.GetType().Name);
+                return new DeIdentifyResult(
+                    false,
+                    null,
+                    $"Configuration error: {ex.Message}");
+            }
         }
 
         var context = _contextAccessor.RequestContext
@@ -82,12 +95,42 @@ public class DeIdentifyHandler : IRequestHandler<DeIdentifyCommand, DeIdentifyRe
 
         var result = await _pipeline.ExecuteAsync(deIdContext, cancellationToken);
 
+        if (!result.IsSuccess && result.Error.IsResourceLimit)
+        {
+            // A rule's FHIRPath asked for more than an evaluation allows: too costly, as for $patch and $transform.
+            _logger.LogWarning("De-identification exceeded a FHIRPath evaluation limit ({ErrorCode})", result.Error.Code);
+            throw new RequestTooCostlyException(
+                $"De-identification exceeded a FHIRPath evaluation limit: {LogSafeText.Sanitize(result.Error.Message)}",
+                result.Error.Exception!);
+        }
+
         if (!result.IsSuccess)
         {
-            _logger.LogWarning("De-identification failed: {Error}", result.Error.Message);
+            // The message can quote resource values; the caller still receives it in the result.
+            _logger.LogWarning(
+                "De-identification failed ({ErrorCode}, {CauseType})",
+                result.Error.Code,
+                result.Error.Exception?.GetType().Name);
             return new DeIdentifyResult(false, null, result.Error.Message);
         }
 
-        return new DeIdentifyResult(true, result.Value.Resource, null);
+        if (result.Value.Warnings.Length > 0)
+        {
+            _logger.LogWarning(
+                "De-identification completed with {WarningCount} warning(s); see the processor log entries for detail",
+                result.Value.Warnings.Length);
+        }
+
+        return new DeIdentifyResult(true, result.Value.Resource, null, result.Value.Warnings);
+    }
+
+    // Built directly rather than round-tripped through a Library, which would drop the rules' server-defined
+    // provenance and evaluate them in the bounded request-supplied expression tier.
+    private static DeIdOptions CreateBootstrapOptions(string policy)
+    {
+        return BootstrapPolicies.TryCreate(policy, out var options)
+            ? options
+            : throw new BadRequestException(
+                $"Unknown de-identification policy: '{policy}'. Supported policies: {DartsConstants.PolicySafeHarbor}, {DartsConstants.PolicyExpertDetermination}.");
     }
 }

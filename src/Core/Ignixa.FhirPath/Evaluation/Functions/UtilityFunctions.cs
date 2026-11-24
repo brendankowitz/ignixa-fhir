@@ -6,6 +6,7 @@
  */
 
 using System.Collections.Immutable;
+using System.Globalization;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Attributes;
 using Ignixa.FhirPath.Expressions;
@@ -117,7 +118,7 @@ internal static class UtilityFunctions
         Description = "Returns current UTC date and time")]
     public static IEnumerable<IElement> Now(IEnumerable<IElement> focus)
     {
-        var now = DateTime.UtcNow.ToString("o");
+        var now = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
         return [FunctionHelpers.CreateDateTime(now)];
     }
 
@@ -139,7 +140,8 @@ internal static class UtilityFunctions
     {
         // Use UTC date to match now() which returns UTC datetime
         // This ensures consistent comparison behavior (now() > today() returns uncertain, not true/false based on timezone)
-        var today = DateTime.UtcNow.Date.ToString("yyyy-MM-dd");
+        // Invariant culture: a host culture with a non-Gregorian calendar (th-TH, ar-SA) would otherwise print its own year.
+        var today = DateTime.UtcNow.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         return [FunctionHelpers.CreateDate(today)];
     }
 
@@ -159,7 +161,8 @@ internal static class UtilityFunctions
         Description = "Returns current time of day without date component")]
     public static IEnumerable<IElement> TimeOfDay(IEnumerable<IElement> focus)
     {
-        var time = DateTime.Now.TimeOfDay.ToString(@"hh\:mm\:ss");
+        // UTC, like now() and today(), so timeOfDay() agrees with the time component of now() on any host.
+        var time = DateTime.UtcNow.TimeOfDay.ToString(@"hh\:mm\:ss", CultureInfo.InvariantCulture);
         return [FunctionHelpers.CreateTime(time)];
     }
 

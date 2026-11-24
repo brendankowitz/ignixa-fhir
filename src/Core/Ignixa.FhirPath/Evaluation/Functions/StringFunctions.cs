@@ -6,6 +6,7 @@
  * length(), replace(), matches(), replaceMatches(), toChars(), join().
  */
 
+using System.Globalization;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -41,11 +42,11 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new FhirPathEvaluationException("indexOf() requires a substring argument");
 
-        if (!FunctionHelpers.TryGetSingleString(focus, "indexOf", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "indexOf", context.Budget, out var str))
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var substringResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
+        var substringResult = FunctionHelpers.SingleArgument("indexOf", evaluateExpression(context.Focus, arguments[0], context));
         if (substringResult?.Value is not string substring)
             return [];
 
@@ -74,15 +75,12 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new FhirPathEvaluationException("lastIndexOf() requires a substring argument");
 
-        if (!FunctionHelpers.TryGetSingleString(focus, "lastIndexOf", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "lastIndexOf", context.Budget, out var str))
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var substringResult = evaluateExpression(context.Focus, arguments[0], context).ToList();
-        if (substringResult.Count == 0)
-            return [];
-
-        if (substringResult[0].Value is not string substring)
+        var substringResult = FunctionHelpers.SingleArgument("lastIndexOf", evaluateExpression(context.Focus, arguments[0], context));
+        if (substringResult?.Value is not string substring)
             return [];
 
         if (substring.Length == 0)
@@ -112,11 +110,11 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new FhirPathEvaluationException("substring() requires a start argument");
 
-        if (!FunctionHelpers.TryGetSingleString(focus, "substring", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "substring", context.Budget, out var str))
             return [];
 
         // Non-scoped function: evaluate arguments in outer context (don't change $this)
-        var startResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
+        var startResult = FunctionHelpers.SingleArgument("substring", evaluateExpression(context.Focus, arguments[0], context));
         if (startResult?.Value is not int start)
             return [];
 
@@ -126,7 +124,7 @@ internal static class StringFunctions
         int? length = null;
         if (arguments.Count > 1)
         {
-            var lengthResult = evaluateExpression(context.Focus, arguments[1], context).SingleOrDefault();
+            var lengthResult = FunctionHelpers.SingleArgument("substring", evaluateExpression(context.Focus, arguments[1], context));
             if (lengthResult?.Value is int len)
                 length = len;
         }
@@ -160,11 +158,11 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new FhirPathEvaluationException("startsWith() requires a prefix argument");
 
-        if (!FunctionHelpers.TryGetSingleString(focus, "startsWith", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "startsWith", context.Budget, out var str))
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var prefixResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
+        var prefixResult = FunctionHelpers.SingleArgument("startsWith", evaluateExpression(context.Focus, arguments[0], context));
         if (prefixResult?.Value is not string prefix)
             return [];
 
@@ -190,11 +188,11 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new FhirPathEvaluationException("endsWith() requires a suffix argument");
 
-        if (!FunctionHelpers.TryGetSingleString(focus, "endsWith", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "endsWith", context.Budget, out var str))
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var suffixResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
+        var suffixResult = FunctionHelpers.SingleArgument("endsWith", evaluateExpression(context.Focus, arguments[0], context));
         if (suffixResult?.Value is not string suffix)
             return [];
 
@@ -211,9 +209,9 @@ internal static class StringFunctions
         MaxArguments = 0,
         Category = "String",
         Description = "Converts a string to uppercase")]
-    public static IEnumerable<IElement> Upper(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> Upper(IEnumerable<IElement> focus, EvaluationContext context)
     {
-        if (!FunctionHelpers.TryGetSingleString(focus, "upper", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "upper", context.Budget, out var str))
             return [];
 
         return [FunctionHelpers.CreateString(str.ToUpperInvariant())];
@@ -229,9 +227,9 @@ internal static class StringFunctions
         MaxArguments = 0,
         Category = "String",
         Description = "Converts a string to lowercase")]
-    public static IEnumerable<IElement> Lower(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> Lower(IEnumerable<IElement> focus, EvaluationContext context)
     {
-        if (!FunctionHelpers.TryGetSingleString(focus, "lower", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "lower", context.Budget, out var str))
             return [];
 
         // FhirPath lower() function explicitly requires lowercase, ToLowerInvariant is intentional
@@ -250,9 +248,9 @@ internal static class StringFunctions
         MaxArguments = 0,
         Category = "String",
         Description = "Returns the number of characters in a string")]
-    public static IEnumerable<IElement> Length(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> Length(IEnumerable<IElement> focus, EvaluationContext context)
     {
-        if (!FunctionHelpers.TryGetSingleString(focus, "length", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "length", context.Budget, out var str))
             return [];
 
         return [FunctionHelpers.CreateInteger(str.Length)];
@@ -277,15 +275,19 @@ internal static class StringFunctions
         if (arguments.Count < 2)
             throw new FhirPathEvaluationException("replace() requires pattern and substitution arguments");
 
-        if (!FunctionHelpers.TryGetSingleString(focus, "replace", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "replace", context.Budget, out var str))
             return [];
 
         // Non-scoped function: evaluate arguments in outer context (don't change $this)
-        var patternResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
-        var substitutionResult = evaluateExpression(context.Focus, arguments[1], context).SingleOrDefault();
+        var patternResult = FunctionHelpers.SingleArgument("replace", evaluateExpression(context.Focus, arguments[0], context));
+        var substitutionResult = FunctionHelpers.SingleArgument("replace", evaluateExpression(context.Focus, arguments[1], context));
 
         if (patternResult?.Value is not string pattern || substitutionResult?.Value is not string substitution)
             return [];
+
+        // Checked before building: an empty pattern multiplies the input by the substitution's length, so three
+        // nested calls square and cube it.
+        context.Budget.EnsureStringLength(ReplacedLength(str, pattern, substitution), "replace()");
 
         // Empty pattern: insert substitution between every character (per FHIRPath spec)
         // Example: 'abc'.replace('', 'x') → 'xaxbxcx'
@@ -308,6 +310,32 @@ internal static class StringFunctions
     }
 
     /// <summary>
+    /// The exact length <c>replace()</c> will produce, computed without building it.
+    /// </summary>
+    /// <remarks>
+    /// Counts non-overlapping ordinal occurrences left to right, which is how
+    /// <see cref="string.Replace(string, string, StringComparison)"/> finds them. An empty pattern matches before
+    /// every character and at the end. Linear in the input, so it costs no more than the replacement.
+    /// </remarks>
+    private static long ReplacedLength(string input, string pattern, string substitution)
+    {
+        if (pattern.Length == 0)
+        {
+            return input.Length + ((long)input.Length + 1) * substitution.Length;
+        }
+
+        long occurrences = 0;
+        var index = input.IndexOf(pattern, StringComparison.Ordinal);
+        while (index >= 0)
+        {
+            occurrences++;
+            index = input.IndexOf(pattern, index + pattern.Length, StringComparison.Ordinal);
+        }
+
+        return input.Length + occurrences * ((long)substitution.Length - pattern.Length);
+    }
+
+    /// <summary>
     /// matches() - Tests if a string matches a regular expression pattern.
     /// Per FHIRPath spec, uses single-line mode where '.' matches any character including newlines.
     /// </summary>
@@ -327,34 +355,17 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new FhirPathEvaluationException("matches() requires a regex argument");
 
-        if (!FunctionHelpers.TryGetSingleString(focus, "matches", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "matches", context.Budget, out var str))
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var regexResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
+        var regexResult = FunctionHelpers.SingleArgument("matches", evaluateExpression(context.Focus, arguments[0], context));
         if (regexResult?.Value is not string pattern)
             return [];
 
         // FHIRPath uses single-line mode where '.' matches any character including newlines
-        var regex = CreateRegex(pattern, RegexOptions.Singleline, "matches");
-        return FunctionHelpers.ReturnBoolean(regex.IsMatch(str));
-    }
-
-    /// <summary>
-    /// Compiles a regex, signalling an invalid pattern as a <see cref="FhirPathEvaluationException"/>
-    /// rather than an empty result so callers can tell a bad pattern from a non-match.
-    /// </summary>
-    private static Regex CreateRegex(string pattern, RegexOptions options, string functionName)
-    {
-        try
-        {
-            return new Regex(pattern, options);
-        }
-        catch (ArgumentException ex)
-        {
-            throw new FhirPathEvaluationException(
-                $"Invalid regular expression pattern '{pattern}' in {functionName}(): {ex.Message}", ex);
-        }
+        var regex = FhirPathRegex.Get(pattern, RegexOptions.Singleline, "matches", context.Budget);
+        return FunctionHelpers.ReturnBoolean(FhirPathRegex.IsMatch(regex, pattern, str, "matches", context.Budget));
     }
 
     /// <summary>
@@ -377,42 +388,26 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new FhirPathEvaluationException("matchesFull() requires a regex argument");
 
-        if (!FunctionHelpers.TryGetSingleString(focus, "matchesFull", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "matchesFull", context.Budget, out var str))
             return [];
 
         // Non-scoped function: evaluate arguments in outer context (don't change $this)
-        var regexResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
+        var regexResult = FunctionHelpers.SingleArgument("matchesFull", evaluateExpression(context.Focus, arguments[0], context));
         if (regexResult?.Value is not string pattern)
             return [];
 
         var options = RegexOptions.None;
         if (arguments.Count > 1)
         {
-            var flagsResult = evaluateExpression(context.Focus, arguments[1], context).SingleOrDefault();
+            var flagsResult = FunctionHelpers.SingleArgument("matchesFull", evaluateExpression(context.Focus, arguments[1], context));
             if (flagsResult?.Value is string flags)
             {
                 options = ParseRegexFlags(flags);
             }
         }
 
-        // Validate the user's raw pattern first: wrapping can turn an invalid pattern (e.g. "a)|(b") into a valid one,
-        // and the error should quote the text the caller wrote.
-        CreateRegex(pattern, options, "matchesFull");
-
-        // The raw pattern is valid, so the only way wrapping it can fail is a trailing '#' comment (x flag or inline
-        // "(?x)") running to end of line and swallowing the closing. Retry once with a newline, which ends the comment
-        // and is ignorable whitespace in comment mode. A failure on the retry propagates.
-        Regex regex;
-        try
-        {
-            regex = CreateRegex("^(?:" + pattern + ")$", options, "matchesFull");
-        }
-        catch (FhirPathEvaluationException)
-        {
-            regex = CreateRegex("^(?:" + pattern + "\n)$", options, "matchesFull");
-        }
-
-        return FunctionHelpers.ReturnBoolean(regex.IsMatch(str));
+        var regex = FhirPathRegex.GetAnchored(pattern, options, "matchesFull", context.Budget);
+        return FunctionHelpers.ReturnBoolean(FhirPathRegex.IsMatch(regex, pattern, str, "matchesFull", context.Budget));
     }
 
     private static RegexOptions ParseRegexFlags(string flags)
@@ -451,12 +446,12 @@ internal static class StringFunctions
         if (arguments.Count < 2)
             throw new FhirPathEvaluationException("replaceMatches() requires pattern and substitution arguments");
 
-        if (!FunctionHelpers.TryGetSingleString(focus, "replaceMatches", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "replaceMatches", context.Budget, out var str))
             return [];
 
         // Non-scoped function: evaluate arguments in outer context (don't change $this)
-        var patternResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
-        var substitutionResult = evaluateExpression(context.Focus, arguments[1], context).SingleOrDefault();
+        var patternResult = FunctionHelpers.SingleArgument("replaceMatches", evaluateExpression(context.Focus, arguments[0], context));
+        var substitutionResult = FunctionHelpers.SingleArgument("replaceMatches", evaluateExpression(context.Focus, arguments[1], context));
 
         if (patternResult?.Value is not string pattern || substitutionResult?.Value is not string substitution)
             return [];
@@ -465,8 +460,17 @@ internal static class StringFunctions
         if (string.IsNullOrEmpty(pattern))
             return [FunctionHelpers.CreateString(str)];
 
-        var regex = CreateRegex(pattern, RegexOptions.None, "replaceMatches");
-        var result = regex.Replace(str, substitution);
+        var budget = context.Budget;
+        // The linear engine's capture phase ignores the match timeout, so its input is bounded up front.
+        if (FhirPathRegex.NeedsCaptures(substitution) && str.Length > budget.Limits.MaxRegexCaptureInputLength)
+        {
+            throw new FhirPathResourceLimitExceededException(string.Create(
+                CultureInfo.InvariantCulture,
+                $"replaceMatches() with a reference in its substitution accepts at most {budget.Limits.MaxRegexCaptureInputLength} characters of input, but was given {str.Length}."));
+        }
+
+        var regex = FhirPathRegex.Get(pattern, RegexOptions.None, "replaceMatches", budget);
+        var result = FhirPathRegex.Replace(regex, pattern, str, substitution, "replaceMatches", budget);
         return [FunctionHelpers.CreateString(result)];
     }
 
@@ -482,11 +486,13 @@ internal static class StringFunctions
         MaxArguments = 0,
         Category = "String",
         Description = "Splits a string into individual characters")]
-    public static IEnumerable<IElement> ToChars(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> ToChars(IEnumerable<IElement> focus, EvaluationContext context)
     {
-        if (!FunctionHelpers.TryGetSingleString(focus, "toChars", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "toChars", context.Budget, out var str))
             return [];
 
+        context.Budget.EnsureCollectionSize(str.Length, "toChars()");
+        context.Budget.Charge(str.Length);
         return str.Select(c => FunctionHelpers.CreateString(c.ToString()));
     }
 
@@ -514,8 +520,8 @@ internal static class StringFunctions
         var separator = string.Empty;
         if (arguments.Count > 0)
         {
-            var sepResult = evaluateExpression(focusElements, arguments[0], context).ToList();
-            if (sepResult.Count > 0 && sepResult[0].Value is string sepStr)
+            var sepResult = FunctionHelpers.SingleArgument("join", evaluateExpression(focusElements, arguments[0], context));
+            if (sepResult?.Value is string sepStr)
             {
                 separator = sepStr;
             }
@@ -535,6 +541,12 @@ internal static class StringFunctions
             return [];
         }
 
+        // Each item costs a step on top of the characters it contributes: a million one-character items cost far
+        // more than a million-character string.
+        context.Budget.Charge(focusElements.Count);
+        var joinedLength = strings.Sum(text => (long)text.Length) + (long)separator.Length * Math.Max(0, strings.Count - 1);
+        context.Budget.EnsureStringLength(joinedLength, "join()");
+
         var result = string.Join(separator, strings);
         return [FunctionHelpers.CreateString(result)];
     }
@@ -549,9 +561,9 @@ internal static class StringFunctions
         MaxArguments = 0,
         Category = "String",
         Description = "Removes leading and trailing whitespace")]
-    public static IEnumerable<IElement> Trim(IEnumerable<IElement> focus)
+    public static IEnumerable<IElement> Trim(IEnumerable<IElement> focus, EvaluationContext context)
     {
-        if (!FunctionHelpers.TryGetSingleString(focus, "trim", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "trim", context.Budget, out var str))
             return [];
 
         return [FunctionHelpers.CreateString(str.Trim())];
@@ -577,15 +589,17 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new FhirPathEvaluationException("split() requires a delimiter argument");
 
-        if (!FunctionHelpers.TryGetSingleString(focus, "split", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "split", context.Budget, out var str))
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var delimiterResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
+        var delimiterResult = FunctionHelpers.SingleArgument("split", evaluateExpression(context.Focus, arguments[0], context));
         if (delimiterResult?.Value is not string delimiter)
             return [];
 
         var parts = str.Split(delimiter, StringSplitOptions.None);
+        context.Budget.EnsureCollectionSize(parts.Length, "split()");
+        context.Budget.Charge(parts.Length);
         return parts.Select(p => FunctionHelpers.CreateString(p));
     }
 
@@ -608,11 +622,11 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new FhirPathEvaluationException("contains() requires a substring argument");
 
-        if (!FunctionHelpers.TryGetSingleString(focus, "contains", out var str))
+        if (!FunctionHelpers.TryGetSingleString(focus, "contains", context.Budget, out var str))
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var substringResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
+        var substringResult = FunctionHelpers.SingleArgument("contains", evaluateExpression(context.Focus, arguments[0], context));
         if (substringResult?.Value is not string substring)
             return [];
 
@@ -636,16 +650,21 @@ internal static class StringFunctions
         EvaluationContext context,
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
-        var element = focus.SingleOrDefault();
+        var element = FunctionHelpers.SingleInput("encode", focus);
         if (element?.Value is not string str)
             return [];
 
+        context.Budget.ChargeText(str.Length);
+
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var encodingTypeResult = evaluateExpression(context.Focus, arguments[0], context);
-        var encodingType = encodingTypeResult.FirstOrDefault()?.Value?.ToString();
+        var encodingTypeResult = FunctionHelpers.SingleArgument("encode", evaluateExpression(context.Focus, arguments[0], context));
+        var encodingType = encodingTypeResult?.Value?.ToString();
 
         if (encodingType is null)
             return [];
+
+        // Base64 and hex both lengthen the input, so the length is checked before encoding.
+        context.Budget.EnsureStringLength(EncodedLength(str, encodingType), "encode()");
 
 #pragma warning disable CA1308 // Normalize strings to uppercase
         return encodingType.ToLowerInvariant() switch
@@ -656,6 +675,14 @@ internal static class StringFunctions
             _ => []
         };
 #pragma warning restore CA1308 // Normalize strings to uppercase
+    }
+
+    private static long EncodedLength(string input, string encodingType)
+    {
+        long utf8Bytes = Encoding.UTF8.GetByteCount(input);
+        return encodingType.Equals("hex", StringComparison.OrdinalIgnoreCase)
+            ? 2 * utf8Bytes
+            : (utf8Bytes + 2) / 3 * 4;
     }
 
     /// <summary>
@@ -675,13 +702,15 @@ internal static class StringFunctions
         EvaluationContext context,
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
-        var element = focus.SingleOrDefault();
+        var element = FunctionHelpers.SingleInput("decode", focus);
         if (element?.Value is not string str)
             return [];
 
+        context.Budget.ChargeText(str.Length);
+
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var encodingTypeResult = evaluateExpression(context.Focus, arguments[0], context);
-        var encodingType = encodingTypeResult.FirstOrDefault()?.Value?.ToString();
+        var encodingTypeResult = FunctionHelpers.SingleArgument("decode", evaluateExpression(context.Focus, arguments[0], context));
+        var encodingType = encodingTypeResult?.Value?.ToString();
 
         if (encodingType is null)
             return [];
@@ -698,8 +727,9 @@ internal static class StringFunctions
             };
 #pragma warning restore CA1308 // Normalize strings to uppercase
         }
-        catch
+        catch (FormatException)
         {
+            // Not valid base64 / hex: there is no decoded value. Convert.From*String throws only this for bad input.
             return [];
         }
     }
@@ -721,26 +751,68 @@ internal static class StringFunctions
         EvaluationContext context,
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
-        var element = focus.SingleOrDefault();
+        var element = FunctionHelpers.SingleInput("escape", focus);
         if (element?.Value is not string str)
             return [];
 
+        context.Budget.ChargeText(str.Length);
+
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var escapeTypeResult = evaluateExpression(context.Focus, arguments[0], context);
-        var escapeType = escapeTypeResult.FirstOrDefault()?.Value?.ToString();
+        var escapeTypeResult = FunctionHelpers.SingleArgument("escape", evaluateExpression(context.Focus, arguments[0], context));
+        var escapeType = escapeTypeResult?.Value?.ToString();
 
         if (escapeType is null)
             return [];
 
 #pragma warning disable CA1308 // Normalize strings to uppercase
-        return escapeType.ToLowerInvariant() switch
+        var kind = escapeType.ToLowerInvariant();
+#pragma warning restore CA1308 // Normalize strings to uppercase
+
+        // Escaping lengthens its input - json doubles a run of backslashes - so the result is bounded before it is
+        // built, or aggregate($total.escape('json'), '\\') doubles a string per item.
+        context.Budget.EnsureStringLength(EscapedLengthBound(str, kind), "escape()");
+
+        return kind switch
         {
             "html" => [FunctionHelpers.CreateString(WebUtility.HtmlEncode(str))],
             "json" => [FunctionHelpers.CreateString(EscapeJsonString(str))],
             "url" => [FunctionHelpers.CreateString(Uri.EscapeDataString(str))],
             _ => []
         };
-#pragma warning restore CA1308 // Normalize strings to uppercase
+    }
+
+    /// <summary>
+    /// An upper bound on the length <c>escape()</c> produces: exact for json, and the longest replacement each
+    /// character can get for html (a numeric character reference) and url (three percent-encoded UTF-8 bytes per
+    /// byte).
+    /// </summary>
+    private static long EscapedLengthBound(string text, string kind)
+    {
+        long length = 0;
+        foreach (var c in text)
+        {
+            length += kind switch
+            {
+                "json" => c switch
+                {
+                    '"' or '\\' or '\b' or '\f' or '\n' or '\r' or '\t' => 2,
+                    < (char)0x20 => 6,
+                    _ => 1,
+                },
+                "html" => c switch
+                {
+                    '&' or '\'' => 5,
+                    '<' or '>' => 4,
+                    '"' => 6,
+                    < (char)0xA0 => 1,
+                    _ => 10,
+                },
+                "url" => c < 0x80 ? 3 : 9,
+                _ => 1,
+            };
+        }
+
+        return length;
     }
 
     /// <summary>
@@ -764,7 +836,7 @@ internal static class StringFunctions
                 default:
                     if (c < 0x20)
                     {
-                        sb.Append($"\\u{(int)c:X4}");
+                        sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"\\u{(int)c:X4}");
                     }
                     else
                     {
@@ -793,33 +865,30 @@ internal static class StringFunctions
         EvaluationContext context,
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
-        var element = focus.SingleOrDefault();
+        var element = FunctionHelpers.SingleInput("unescape", focus);
         if (element?.Value is not string str)
             return [];
 
+        context.Budget.ChargeText(str.Length);
+
         // Non-scoped function: evaluate argument in outer context (don't change $this)
-        var escapeTypeResult = evaluateExpression(context.Focus, arguments[0], context);
-        var escapeType = escapeTypeResult.FirstOrDefault()?.Value?.ToString();
+        var escapeTypeResult = FunctionHelpers.SingleArgument("unescape", evaluateExpression(context.Focus, arguments[0], context));
+        var escapeType = escapeTypeResult?.Value?.ToString();
 
         if (escapeType is null)
             return [];
 
-        try
-        {
+        // No try/catch: HtmlDecode, UnescapeDataString and UnescapeJsonString all leave a malformed escape
+        // in place rather than throwing, so the only exceptions left to catch here are ones that must surface.
 #pragma warning disable CA1308 // Normalize strings to uppercase
-            return escapeType.ToLowerInvariant() switch
-            {
-                "html" => [FunctionHelpers.CreateString(WebUtility.HtmlDecode(str))],
-                "json" => [FunctionHelpers.CreateString(UnescapeJsonString(str))],
-                "url" => [FunctionHelpers.CreateString(Uri.UnescapeDataString(str))],
-                _ => []
-            };
-#pragma warning restore CA1308 // Normalize strings to uppercase
-        }
-        catch
+        return escapeType.ToLowerInvariant() switch
         {
-            return [];
-        }
+            "html" => [FunctionHelpers.CreateString(WebUtility.HtmlDecode(str))],
+            "json" => [FunctionHelpers.CreateString(UnescapeJsonString(str))],
+            "url" => [FunctionHelpers.CreateString(Uri.UnescapeDataString(str))],
+            _ => []
+        };
+#pragma warning restore CA1308 // Normalize strings to uppercase
     }
 
     /// <summary>
@@ -847,7 +916,7 @@ internal static class StringFunctions
                         if (i + 5 < s.Length)
                         {
                             var hex = s.Substring(i + 2, 4);
-                            if (int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out var codepoint))
+                            if (int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out var codepoint))
                             {
                                 sb.Append((char)codepoint);
                                 i += 5;

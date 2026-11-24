@@ -108,7 +108,8 @@ public class ReferenceIndexCacheTests
         // evaluation is that ReferenceIndexCache survives record `with`-copies (PushThis, WithFocus,
         // etc.): the property is set once via its default initializer and never reassigned by those
         // copy helpers, so every derived context still points at the original cache instance.
-        var context = new EvaluationContext();
+        // PushThis charges the evaluation's budget, so the context is one an evaluation has started.
+        var context = new EvaluationContext().StartBudget();
         var element = new DummyElement();
 
         // Act

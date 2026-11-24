@@ -225,6 +225,17 @@ var context = new MappingContext(sourceElement, targetElement);
 var result = await evaluator.EvaluateAsync(structureMap, context, cancellationToken);
 ```
 
+## Parser Limits
+
+Mapping text often comes from a request (`$transform` with `srcMap`), so `MappingParser.Parse` bounds it before the recursive grammar runs and throws `ParseException` when it is exceeded:
+
+| Limit | Value | What it counts |
+|---|---|---|
+| `MappingParser.MaxMappingTextLength` | 1,048,576 | Characters of mapping text. |
+| `MappingParser.MaxNestingDepth` | 32 | Brace nesting, counting the group's own braces: `group ... { ... then { ... } }`. |
+
+Each nested rule set costs the grammar several kilobytes of stack; measured on a 1 MB thread, about 100 levels overflowed the stack and ended the process. At the limit a map parses on a 512 KB stack. The grammar also checks the remaining stack at every nested rule set, so a thread too small for the limit gets a `ParseException` (with an `InsufficientExecutionStackException` inside) rather than a crash. FHIRPath embedded in a map is bounded separately, by the FHIRPath parser's own limits, when it is compiled.
+
 ## Parsing Note
 
 This package executes pre-compiled StructureMap resources. For parsing FHIR Mapping Language source code into AST, consult the FHIR specification parser documentation.

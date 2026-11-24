@@ -248,8 +248,8 @@ public class FhirPathFunctionGenerator : IIncrementalGenerator
 
             if (func.MinArguments.HasValue || func.MaxArguments.HasValue)
             {
-                var min = func.MinArguments.HasValue ? func.MinArguments.Value.ToString() : "null";
-                var max = func.MaxArguments.HasValue ? func.MaxArguments.Value.ToString() : "null";
+                var min = func.MinArguments.HasValue ? func.MinArguments.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "null";
+                var max = func.MaxArguments.HasValue ? func.MaxArguments.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "null";
                 sb.AppendLine($"            .AddValidation(ValidateArgumentCount({min}, {max}))");
             }
 
@@ -433,7 +433,7 @@ public class FhirPathFunctionGenerator : IIncrementalGenerator
         // Full signature: (focus, arguments, context, evaluator)
         if (sig.HasFocus && sig.HasArguments && sig.HasContext && sig.HasEvaluator)
         {
-            return $"{className}.{methodName}(focus, arguments, context, EvaluateExpression)";
+            return $"{className}.{methodName}(focus, arguments, context, EvaluateFunctionArgument)";
         }
 
         // (focus, arguments, context) - no evaluator

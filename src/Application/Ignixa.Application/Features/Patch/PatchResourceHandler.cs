@@ -9,6 +9,7 @@ using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.FhirPath;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Medino;
@@ -88,10 +89,12 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
         }
         catch (FhirPatchException ex)
         {
-            _logger.LogError(ex,
-                "PATCH failed: Invalid Parameters resource for {ResourceType}/{ResourceId}",
-                request.ResourceType,
-                request.ResourceId);
+            // Logged without the message, which quotes the request's paths and values.
+            _logger.LogError(
+                "PATCH failed: Invalid Parameters resource for {ResourceType}/{ResourceId}: {Exception}",
+                request.ResourceType.SanitizeForLog(),
+                request.ResourceId.SanitizeForLog(),
+                LogSafeText.DescribeWithoutMessages(ex));
             throw;
         }
 
@@ -102,10 +105,12 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
         }
         catch (FhirPatchException ex)
         {
-            _logger.LogError(ex,
-                "PATCH failed: Validation error for {ResourceType}/{ResourceId}",
-                request.ResourceType,
-                request.ResourceId);
+            // Logged without the message, which quotes the request's paths and values.
+            _logger.LogError(
+                "PATCH failed: Validation error for {ResourceType}/{ResourceId}: {Exception}",
+                request.ResourceType.SanitizeForLog(),
+                request.ResourceId.SanitizeForLog(),
+                LogSafeText.DescribeWithoutMessages(ex));
             throw;
         }
 
@@ -136,10 +141,12 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
         }
         catch (FhirPatchException ex)
         {
-            _logger.LogError(ex,
-                "PATCH failed: Immutable property violation for {ResourceType}/{ResourceId}",
-                request.ResourceType,
-                request.ResourceId);
+            // Logged without the message, which quotes the request's paths and values.
+            _logger.LogError(
+                "PATCH failed: Immutable property violation for {ResourceType}/{ResourceId}: {Exception}",
+                request.ResourceType.SanitizeForLog(),
+                request.ResourceId.SanitizeForLog(),
+                LogSafeText.DescribeWithoutMessages(ex));
             throw;
         }
 

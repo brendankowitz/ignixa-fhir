@@ -3,12 +3,14 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 using Ignixa.Abstractions;
+using Ignixa.DeId.Configuration;
 using Ignixa.DeId.Extensions;
 using Ignixa.DeId.Models;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Schema;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Ignixa.DeId.Tests.Utilities;
 
@@ -39,6 +41,30 @@ public static class DeIdTestHelpers
 
         var provider = services.BuildServiceProvider();
         return provider.GetRequiredService<IDeIdEngine>();
+    }
+
+    /// <summary>
+    /// Creates an engine over an in-memory options instance, for configurations that are built by hand
+    /// (including ones the file loader would reject) rather than loaded from a file.
+    /// </summary>
+    public static IDeIdEngine CreateEngine(
+        DeIdOptions options,
+        IFhirSchemaProvider? schema = null,
+        Action<IServiceCollection>? configureServices = null)
+    {
+        schema ??= new R4CoreSchemaProvider();
+
+        var services = new ServiceCollection();
+        services.AddSingleton(schema);
+        services.AddSingleton<IValidationSchemaResolver>(sp =>
+            new CachedValidationSchemaResolver(
+                new StructureDefinitionSchemaResolver(sp.GetRequiredService<IFhirSchemaProvider>())));
+        services.AddLogging();
+        services.AddSingleton<IOptions<DeIdOptions>>(Options.Create(options));
+        configureServices?.Invoke(services);
+        services.AddFhirDeId();
+
+        return services.BuildServiceProvider().GetRequiredService<IDeIdEngine>();
     }
 
     public static IDeIdEngine CreateR4Engine(string configPath, Action<DeIdBuilder>? configure = null)

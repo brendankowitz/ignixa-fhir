@@ -9,6 +9,7 @@ using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Lexer;
 using Ignixa.FhirMappingLanguage.TypeSystem;
+using Ignixa.FhirPath;
 using Superpower;
 using Superpower.Model;
 
@@ -20,6 +21,20 @@ namespace Ignixa.FhirMappingLanguage.Parser;
 /// </summary>
 public class MappingParser
 {
+    /// <summary>
+    /// The longest mapping text, in characters, that <see cref="Parse"/> accepts.
+    /// </summary>
+    public const int MaxMappingTextLength = 1_048_576;
+
+    /// <summary>
+    /// The deepest brace nesting (<c>group { ... then { ... } }</c>) that <see cref="Parse"/> accepts.
+    /// </summary>
+    /// <remarks>
+    /// Each nested rule set costs the grammar several kilobytes of stack; the bound keeps every admitted map
+    /// well inside a 1 MB thread stack.
+    /// </remarks>
+    public const int MaxNestingDepth = 32;
+
     private readonly bool _preserveTrivia;
     private readonly ITypeValidator? _typeValidator;
 
@@ -39,12 +54,22 @@ public class MappingParser
     /// </summary>
     /// <param name="mappingText">The mapping language text to parse</param>
     /// <returns>The parsed MapExpression</returns>
-    /// <exception cref="ParseException">Thrown when the mapping text cannot be parsed</exception>
+    /// <exception cref="ParseException">
+    /// Thrown when the mapping text cannot be parsed, is longer than <see cref="MaxMappingTextLength"/>, or nests
+    /// braces deeper than <see cref="MaxNestingDepth"/> or the current thread's stack allows.
+    /// </exception>
     public MapExpression Parse(string mappingText)
     {
         if (string.IsNullOrWhiteSpace(mappingText))
         {
             throw new ArgumentException("Mapping text cannot be null or empty", nameof(mappingText));
+        }
+
+        if (mappingText.Length > MaxMappingTextLength)
+        {
+            throw new ParseException(
+                $"Mapping text is {mappingText.Length} characters long; the maximum is {MaxMappingTextLength}.",
+                Position.Zero);
         }
 
         try
@@ -56,7 +81,10 @@ public class MappingParser
 
             var tokens = tokenizer.Tokenize(mappingText);
 
-            // Parse
+            // Nesting is bounded on the token list before the recursive grammar sees it; the grammar also checks
+            // the stack at every nested rule set, which covers threads too small for this bound.
+            RejectExcessiveNesting(tokens);
+
             var result = MappingGrammar.Map.AtEnd().TryParse(tokens);
 
             if (!result.HasValue)
@@ -79,9 +107,37 @@ public class MappingParser
         {
             throw;
         }
-        catch (Exception ex)
+        catch (InsufficientExecutionStackException ex)
+        {
+            throw new ParseException(
+                "Mapping text is nested too deeply to parse on the current thread's stack.", Position.Zero, ex);
+        }
+        catch (Exception ex) when (!ExceptionFilters.IsCritical(ex))
         {
             throw new ParseException($"Failed to parse mapping expression: {ex.Message}", Position.Zero, ex);
+        }
+    }
+
+    private static void RejectExcessiveNesting(TokenList<MappingTokenKind> tokens)
+    {
+        // Only braces recurse in the mapping grammar; parenthesised FHIRPath is collected iteratively and bounded
+        // by the FHIRPath parser when compiled.
+        var depth = 0;
+        foreach (var token in tokens)
+        {
+            if (token.Kind == MappingTokenKind.LeftBrace && ++depth > MaxNestingDepth)
+            {
+                throw new ParseException(
+                    $"Mapping text nests braces too deeply at line {token.Position.Line}, column {token.Position.Column}; "
+                    + $"the maximum nesting depth is {MaxNestingDepth}.",
+                    token.Position);
+            }
+
+            if (token.Kind == MappingTokenKind.RightBrace)
+            {
+                // Unbalanced closers are the grammar's to report; only the high-water mark matters here.
+                depth = Math.Max(0, depth - 1);
+            }
         }
     }
 

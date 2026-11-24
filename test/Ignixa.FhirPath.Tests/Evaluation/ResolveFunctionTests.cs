@@ -355,6 +355,26 @@ public class ResolveFunctionTests
     }
 
     [Fact]
+    public void GivenElementResolverThatRunsOutOfStack_WhenResolving_ThenPropagates()
+    {
+        // Arrange - stack exhaustion inside the host resolver says this thread cannot finish the
+        // evaluation, not that the reference is missing (#538).
+        var observation = ToElement(ObservationWithContainedPatientJson);
+        var expr = _parser.Parse("'Patient/unresolvable'.resolve()");
+        var context = new FhirEvaluationContext
+        {
+            Resource = observation,
+            ElementResolver = _ => throw new InsufficientExecutionStackException(),
+        };
+
+        // Act
+        var act = () => _evaluator.Evaluate(observation, expr, context).ToList();
+
+        // Assert
+        Should.Throw<InsufficientExecutionStackException>(act);
+    }
+
+    [Fact]
     public void GivenElementResolverThatThrowsAggregateExceptionWrappingTaskCanceledException_WhenResolving_ThenPropagates()
     {
         // Arrange - same sync-over-async shape as above, but the wrapped exception is the
@@ -392,6 +412,28 @@ public class ResolveFunctionTests
 
         // Assert
         Should.Throw<AggregateException>(act);
+    }
+
+    [Fact]
+    public void GivenElementResolverThatExceedsAnEvaluationLimit_WhenResolving_ThenTheLimitPropagates()
+    {
+        // Arrange - a host resolver that runs FHIRPath of its own and trips a limit has not failed to find the
+        // reference. Turning that into an empty resolve() would let an expression exhaust a limit and carry on
+        // with a wrong answer. A guard of new behaviour, not a regression: the limit type is absent at the branch
+        // base, where the failure was swallowed as "not found".
+        var observation = ToElement(ObservationWithContainedPatientJson);
+        var expr = _parser.Parse("'Patient/unresolvable'.resolve()");
+        var context = new FhirEvaluationContext
+        {
+            Resource = observation,
+            ElementResolver = _ => throw new FhirPathResourceLimitExceededException("limit reached inside the resolver"),
+        };
+
+        // Act
+        var act = () => _evaluator.Evaluate(observation, expr, context).ToList();
+
+        // Assert
+        Should.Throw<FhirPathResourceLimitExceededException>(act);
     }
 
     [Fact]

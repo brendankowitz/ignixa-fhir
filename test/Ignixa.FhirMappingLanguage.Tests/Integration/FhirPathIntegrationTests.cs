@@ -405,6 +405,49 @@ public class FhirPathIntegrationTests
     }
 
     [Fact]
+    public void GivenAnExpressionThatExceedsAnEvaluationLimit_WhenEvaluating_ThenTheLimitTypeSurvivesWrapping()
+    {
+        // Arrange - the lookahead forces the backtracking engine and (a+)+ inside it is exponential on a run of
+        // 'a' with no 'b', so the match times out (one second): a resource limit, not an ill-formed expression.
+        var integration = new FhirPathIntegration();
+        var patient = new TestTypedElement("Patient");
+        var expression = $"'{new string('a', 40)}'.matches('(?=(a+)+b)')";
+
+        // Act
+        var exception = Should.Throw<FhirPathResourceLimitExceededException>(() => integration.Evaluate(expression, patient));
+
+        // Assert - guard (new behaviour, not a regression): the wrapper rewrapped this as a plain FhirPathEvaluationException, so a host could no
+        // longer report it as too costly.
+        exception.Message.ShouldBe($"Failed to evaluate FHIRPath expression: {expression}");
+        exception.InnerException.ShouldBeOfType<FhirPathResourceLimitExceededException>();
+    }
+
+    [Fact]
+    public void GivenALoweredStepBudget_WhenEvaluating_ThenTheIntegrationEnforcesItsLimits()
+    {
+        // Arrange - MappingEvaluator builds the integration with its FhirPathTimeout as the time limit; any limit
+        // passed in is enforced.
+        var integration = new FhirPathIntegration(limits: FhirPathEvaluationLimits.Default with { MaxSteps = 100 });
+        var patient = new TestTypedElement("Patient");
+
+        // Act & Assert
+        Should.Throw<FhirPathResourceLimitExceededException>(
+            () => integration.Evaluate("(1|2|3|4|5|6|7|8|9|10).select((1|2|3|4|5|6|7|8|9|10)).count()", patient));
+    }
+
+    [Fact]
+    public void GivenAMappingContextWhoseTokenIsCancelled_WhenEvaluating_ThenTheCancellationSurfacesUnwrapped()
+    {
+        // Arrange - MappingEvaluator publishes the transformation's token on the context while it runs.
+        var integration = new FhirPathIntegration();
+        var patient = new TestTypedElement("Patient");
+        var mappingContext = new MappingContext { CancellationToken = new CancellationToken(canceled: true) };
+
+        // Act & Assert - neither swallowed nor rewrapped as a failed evaluation.
+        Should.Throw<OperationCanceledException>(() => integration.Evaluate("Patient", patient, mappingContext));
+    }
+
+    [Fact]
     public void GivenAnUnparseableExpression_WhenEvaluating_ThenItStillSurfacesAsPlainInvalidOperationException()
     {
         // Arrange
@@ -418,5 +461,22 @@ public class FhirPathIntegrationTests
         exception.ShouldNotBeOfType<FhirPathEvaluationException>();
         exception.Message.ShouldBe("Failed to evaluate FHIRPath expression: (((");
         exception.InnerException.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public void GivenMoreDistinctExpressionsThanCapacity_WhenEvaluating_ThenCacheStaysBounded()
+    {
+        // Arrange
+        var integration = new FhirPathIntegration(cacheCapacity: 8);
+        var patient = new TestTypedElement("Patient");
+
+        // Act
+        for (var i = 0; i < 100; i++)
+        {
+            integration.Evaluate($"family | 'distinct{i}'", patient).ToList();
+        }
+
+        // Assert
+        integration.CachedExpressionCount.ShouldBeLessThanOrEqualTo(8);
     }
 }

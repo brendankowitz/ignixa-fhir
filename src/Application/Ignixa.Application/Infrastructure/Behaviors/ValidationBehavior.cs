@@ -139,11 +139,12 @@ public class ValidationBehavior : IPipelineBehavior<CreateOrUpdateResourceComman
             throw new ValidationException(validationResult);
         }
 
+        // Logged by code: an issue message can quote the resource's values, such as a code it could not verify.
         foreach (var issue in validationResult.Issues.Where(issue => issue.Severity == IssueSeverity.Warning))
         {
             _logger.LogWarning(
-                "Validation warning for {ResourceType}/{Id} at {Path}: {Message}",
-                request.ResourceType, request.Id, issue.Path, issue.Message);
+                "Validation warning for {ResourceType}/{Id} at {Path}: {IssueCode}",
+                request.ResourceType, request.Id, issue.Path, issue.Code);
         }
 
         _logger.LogDebug(

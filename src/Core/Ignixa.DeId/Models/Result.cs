@@ -2,6 +2,7 @@
 // Copyright (c) Ignixa Contributors.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
+using Ignixa.FhirPath.Evaluation;
 
 namespace Ignixa.DeId.Models;
 
@@ -78,7 +79,29 @@ public sealed record DeIdError(
     string Message,
     ErrorSeverity Severity = ErrorSeverity.Error,
     Exception? Exception = null,
-    string? Path = null);
+    string? Path = null)
+{
+    /// <summary>
+    /// Gets a value indicating whether the failure, or any exception it wraps, is a FHIRPath evaluation limit. Such a
+    /// failure is a request that costs too much, not a value a processor could not handle, so no error-handling mode
+    /// may continue past it.
+    /// </summary>
+    public bool IsResourceLimit
+    {
+        get
+        {
+            for (var current = Exception; current is not null; current = current.InnerException)
+            {
+                if (current is FhirPathResourceLimitExceededException)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+}
 
 /// <summary>
 /// Severity level of an de-identification error.
