@@ -145,7 +145,7 @@ public partial class JsonNodeMutator
         if (oldIndex == newIndex)
             return;
         var name = owner.Single(p => ReferenceEquals(p.Value, array)).Key;
-        var pairedName = name.StartsWith('_') ? name[1..] : "_" + name;
+        var pairedName = name.StartsWith("_", StringComparison.Ordinal) ? name[1..] : "_" + name;
         array.RemoveAt(oldIndex);
         array.Insert(newIndex, node);
         if (owner[pairedName] is JsonArray paired)
@@ -205,7 +205,7 @@ public partial class JsonNodeMutator
             throw new InvalidOperationException($"Primitive target '{parent.Location}' has no containing JSON property.");
         }
 
-        if (name.StartsWith('_'))
+        if (name.StartsWith("_", StringComparison.Ordinal))
             name = name[1..];
 
         if (index is { } itemIndex)
@@ -268,7 +268,7 @@ public partial class JsonNodeMutator
     private static string ChildName(IType child)
     {
         string name = child.Info.Name;
-        name = name[(name.LastIndexOf('.') + 1)..];
+        name = name[(name.LastIndexOf(".", StringComparison.Ordinal) + 1)..];
         return name.EndsWith("[x]", StringComparison.Ordinal) ? name[..^3] : name;
     }
 

@@ -12,6 +12,9 @@ This benchmark project measures performance across three key areas:
 
 ## Running the Benchmarks
 
+Benchmarks run in-process on .NET 11. BenchmarkDotNet 0.15.8 cannot build or launch a .NET 11 child
+process, so `Program.cs` applies the in-process toolchain to every job.
+
 ### Run All Benchmarks
 
 ```bash
@@ -134,7 +137,7 @@ BenchmarkDotNet outputs include:
 
 ### Ignixa Strengths
 
-- **Fast JSON parsing** - Uses System.Text.Json (optimized for .NET 9)
+- **Fast JSON parsing** - Uses System.Text.Json (benchmarks run on .NET 11)
 - **Low memory allocation** - JsonNode-based architecture avoids POCO overhead
 - **Direct property access** - MutableNode["property"] is very fast
 - **FHIRPath integration** - Tight integration with IAnnotated pattern

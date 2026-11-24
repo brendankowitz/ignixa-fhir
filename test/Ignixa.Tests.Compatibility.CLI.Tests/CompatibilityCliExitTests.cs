@@ -65,7 +65,7 @@ public class CompatibilityCliExitTests
         var result = await RunCliAsync(includeAssembly: true, filter: "NoSuchContract");
 
         result.ExitCode.ShouldNotBe(0, result.Output);
-        result.Total.ShouldBe(0);
+        result.Total.ShouldBe(0, result.Output);
     }
 
     [Fact]
@@ -74,7 +74,7 @@ public class CompatibilityCliExitTests
         var result = await RunCliAsync(includeAssembly: true, filter: "FailingRequiredSqlServerJson");
 
         result.ExitCode.ShouldNotBe(0, result.Output);
-        result.Failed.ShouldBe(1);
+        result.Failed.ShouldBe(1, result.Output);
     }
 
     [Fact]
@@ -83,8 +83,8 @@ public class CompatibilityCliExitTests
         var result = await RunCliAsync(includeAssembly: true, filter: "SkippedSqlServerJson");
 
         result.ExitCode.ShouldNotBe(0, result.Output);
-        result.Skipped.ShouldBe(1);
-        result.Passed.ShouldBe(0);
+        result.Skipped.ShouldBe(1, result.Output);
+        result.Passed.ShouldBe(0, result.Output);
     }
 
     [Fact]
@@ -93,9 +93,9 @@ public class CompatibilityCliExitTests
         var result = await RunCliAsync(includeAssembly: true, filter: "PassingSqlServerJson,SkippedSqlServerJson");
 
         result.ExitCode.ShouldBe(0, result.Output);
-        result.Passed.ShouldBe(1);
-        result.Skipped.ShouldBe(1);
-        result.Total.ShouldBe(2);
+        result.Passed.ShouldBe(1, result.Output);
+        result.Skipped.ShouldBe(1, result.Output);
+        result.Total.ShouldBe(2, result.Output);
     }
 
     [Fact]
@@ -104,9 +104,9 @@ public class CompatibilityCliExitTests
         var result = await RunCliAsync(includeAssembly: true, filter: "PassingSqlServerJson,ImportSqlServerJson");
 
         result.ExitCode.ShouldBe(0, result.Output);
-        result.Passed.ShouldBe(1);
-        result.Failed.ShouldBe(0);
-        result.Total.ShouldBe(1);
+        result.Passed.ShouldBe(1, result.Output);
+        result.Failed.ShouldBe(0, result.Output);
+        result.Total.ShouldBe(1, result.Output);
     }
 
     [Fact]
@@ -117,9 +117,9 @@ public class CompatibilityCliExitTests
             skipCategories: "FailingRequired");
 
         result.ExitCode.ShouldBe(0, result.Output);
-        result.Passed.ShouldBe(1);
-        result.Failed.ShouldBe(0);
-        result.Total.ShouldBe(1);
+        result.Passed.ShouldBe(1, result.Output);
+        result.Failed.ShouldBe(0, result.Output);
+        result.Total.ShouldBe(1, result.Output);
     }
 
     private static async Task<CliResult> RunCliAsync(bool includeAssembly, string filter, string skipCategories = null)
@@ -176,7 +176,9 @@ public class CompatibilityCliExitTests
                 throw;
             }
 
-            var output = await stdout + await stderr;
+            var output = $"Exit code: {process.ExitCode}{Environment.NewLine}" +
+                         $"stdout:{Environment.NewLine}{await stdout}{Environment.NewLine}" +
+                         $"stderr:{Environment.NewLine}{await stderr}";
             if (!File.Exists(outputPath))
             {
                 return new CliResult(process.ExitCode, output, null, null, null, null);

@@ -25,7 +25,8 @@ and generates files on demand rather than on every build.
 ## Prerequisites
 
 - The submodule: `git submodule update --init codegen/fhir-codegen`.
-- A .NET SDK. The generator targets `net8.0`; with only a newer runtime installed, run with `DOTNET_ROLL_FORWARD=Major`.
+- A .NET SDK. `Ignixa.Specification.Generators` targets `net10.0`; if only a newer runtime is installed, run with
+  `DOTNET_ROLL_FORWARD=Major`.
 - Bash. There is no PowerShell equivalent of `generate.sh`; on Windows run it from Git Bash or WSL.
 - Network access to `https://packages.fhir.org/` on first use; packages are cached in `~/.fhir/packages/`.
 

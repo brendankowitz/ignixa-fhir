@@ -311,7 +311,7 @@ public sealed class CreateBulkDeleteJobHandler(
         var unencodable = searchParameters
             .Select(parameter => parameter.Name)
             .Where(name => name.Length == 0 || name.Contains('&', StringComparison.Ordinal) ||
-                name.Contains('=', StringComparison.Ordinal) || name.StartsWith('?'))
+                name.Contains('=', StringComparison.Ordinal) || name.StartsWith("?", StringComparison.Ordinal))
             .ToList();
         if (unencodable.Count > 0)
         {

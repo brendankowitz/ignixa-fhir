@@ -322,7 +322,7 @@ internal class BasicTypeValidator : ITypeValidator
             return null;
         }
 
-        var lastSlashIndex = url.LastIndexOf('/');
+        var lastSlashIndex = url.LastIndexOf("/", StringComparison.Ordinal);
         if (lastSlashIndex >= 0 && lastSlashIndex < url.Length - 1)
         {
             return url.Substring(lastSlashIndex + 1);

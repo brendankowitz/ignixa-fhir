@@ -69,14 +69,14 @@ internal static class ResourceCommand
 
             if (!TryParseDensity(parseResult.GetValue(densityOption), out var density))
             {
-                await Console.Error.WriteLineAsync($"✗ Invalid --density value '{parseResult.GetValue(densityOption)}'. Use minimal, realistic, or maximum.");
+                await WriteErrorLineAsync($"✗ Invalid --density value '{parseResult.GetValue(densityOption)}'. Use minimal, realistic, or maximum.");
                 Environment.ExitCode = 2;
                 return;
             }
 
             if (!TryParseTheme(parseResult.GetValue(themeOption), out var theme))
             {
-                await Console.Error.WriteLineAsync($"✗ Invalid --theme value '{parseResult.GetValue(themeOption)}'. Use a clinical domain name (e.g. cardiology, orthopedic-surgery) or 'none'.");
+                await WriteErrorLineAsync($"✗ Invalid --theme value '{parseResult.GetValue(themeOption)}'. Use a clinical domain name (e.g. cardiology, orthopedic-surgery) or 'none'.");
                 Environment.ExitCode = 2;
                 return;
             }
@@ -217,10 +217,10 @@ internal static class ResourceCommand
             {
                 if (!ObservationStateCatalog.TryCreate(stateName, out var observationState))
                 {
-                    await Console.Error.WriteLineAsync($"✗ Unknown observation state: {stateName}");
-                    await Console.Error.WriteLineAsync("Available states:");
+                    await WriteErrorLineAsync($"✗ Unknown observation state: {stateName}");
+                    await WriteErrorLineAsync("Available states:");
                     foreach (var name in ObservationStateCatalog.GetNames())
-                        await Console.Error.WriteLineAsync($"  - {name}");
+                        await WriteErrorLineAsync($"  - {name}");
                     Environment.ExitCode = 2;
                     return;
                 }
@@ -255,20 +255,20 @@ internal static class ResourceCommand
             }
             else
             {
-                await Console.Error.WriteLineAsync($"✗ Resource type '{resourceType}' is not supported or requires a state name.");
-                await Console.Error.WriteLineAsync("Supported: Patient, Observation <stateName>");
+                await WriteErrorLineAsync($"✗ Resource type '{resourceType}' is not supported or requires a state name.");
+                await WriteErrorLineAsync("Supported: Patient, Observation <stateName>");
                 Environment.ExitCode = 2;
                 return;
             }
         }
         catch (OperationCanceledException)
         {
-            await Console.Error.WriteLineAsync("✗ Operation cancelled.");
+            await WriteErrorLineAsync("✗ Operation cancelled.");
             Environment.ExitCode = 1;
         }
         catch (Exception ex)
         {
-            await Console.Error.WriteLineAsync(verbose
+            await WriteErrorLineAsync(verbose
                 ? $"✗ Error ({ex.GetType().Name}): {ex.Message}{Environment.NewLine}{ex.StackTrace}"
                 : $"✗ Error: {ex.Message}");
             Environment.ExitCode = 1;
@@ -341,6 +341,11 @@ internal static class ResourceCommand
         await WriteManifestSafeAsync(resourcePath, manifest, cancellationToken);
     }
 
+    // Awaited stderr write. The (string, CancellationToken) overload only exists on net11.0, so the ReadOnlyMemory<char>
+    // overload is used to compile on net10.0 too. CancellationToken.None because this reports errors, including after cancellation.
+    private static Task WriteErrorLineAsync(string message) =>
+        Console.Error.WriteLineAsync(message.AsMemory(), CancellationToken.None);
+
     private static async Task WriteManifestSafeAsync(string resourcePath, MutationManifest manifest, CancellationToken cancellationToken = default)
     {
         var manifestPath = Path.ChangeExtension(resourcePath, null) + ".manifest.json";
@@ -350,7 +355,7 @@ internal static class ResourceCommand
         }
         catch (Exception ex)
         {
-            await Console.Error.WriteLineAsync($"✗ Resource written but manifest failed ({manifestPath}): {ex.Message}");
+            await WriteErrorLineAsync($"✗ Resource written but manifest failed ({manifestPath}): {ex.Message}");
             Environment.ExitCode = 1;
         }
     }

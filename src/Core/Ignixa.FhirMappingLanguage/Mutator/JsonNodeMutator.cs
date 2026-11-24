@@ -480,7 +480,7 @@ public partial class JsonNodeMutator : IMappingTargetMutator
         if (matches.Count == 0)
         {
             // Path doesn't exist - try to get parent path and create array
-            var lastDot = fhirPathExpression.LastIndexOf('.');
+            var lastDot = fhirPathExpression.LastIndexOf(".", StringComparison.Ordinal);
             if (lastDot < 0)
             {
                 throw new InvalidOperationException(

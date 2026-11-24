@@ -115,7 +115,7 @@ internal static class FhirJsonNodeWriter
     }
 
     /// <summary>Gets the name paired with <paramref name="name"/>: <c>_x</c> for <c>x</c>, and <c>x</c> for <c>_x</c>.</summary>
-    public static string CompanionName(string name) => name.StartsWith('_') ? name[1..] : "_" + name;
+    public static string CompanionName(string name) => name.StartsWith("_", StringComparison.Ordinal) ? name[1..] : "_" + name;
 
     private static int MaxDepth(JsonWriterOptions options) => options.MaxDepth == 0 ? DefaultMaxDepth : options.MaxDepth;
 

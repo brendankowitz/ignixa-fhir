@@ -122,7 +122,7 @@ internal sealed class ReferenceRewriterService
         }
 
         // Skip fragment references (e.g., "#contained-resource")
-        if (referenceString.StartsWith('#'))
+        if (referenceString.StartsWith("#", StringComparison.Ordinal))
         {
             return;
         }
@@ -172,7 +172,7 @@ internal sealed class ReferenceRewriterService
         if (reference.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
             reference.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
         {
-            var lastSlash = reference.LastIndexOf('/');
+            var lastSlash = reference.LastIndexOf("/", StringComparison.Ordinal);
             if (lastSlash > 0 && lastSlash < reference.Length - 1)
             {
                 return reference.Substring(lastSlash + 1);

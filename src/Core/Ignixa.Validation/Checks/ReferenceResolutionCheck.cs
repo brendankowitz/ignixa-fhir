@@ -112,7 +112,7 @@ public sealed class ReferenceResolutionCheck : IValidationCheck
             return false;
         }
 
-        if (reference.StartsWith('#'))
+        if (reference.StartsWith("#", StringComparison.Ordinal))
         {
             return reference.Length > 1;
         }

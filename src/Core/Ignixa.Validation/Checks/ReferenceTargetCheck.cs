@@ -147,7 +147,7 @@ internal sealed partial class ReferenceTargetCheck : IValidationCheck
     /// <summary>The resource type <paramref name="written"/> names, or null when it cannot be told.</summary>
     private string? TypeOfReference(string written, string location, ValidationSettings settings, Lookup lookup)
     {
-        if (written.StartsWith('#'))
+        if (written.StartsWith("#", StringComparison.Ordinal))
         {
             // A bare "#" names the container (R4 references.html): from a contained resource, the resource containing it;
             // from a resource that is not contained, that resource itself.

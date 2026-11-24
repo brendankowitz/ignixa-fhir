@@ -248,7 +248,7 @@ public static partial class SmartScopeParser
         var constraints = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         // Remove leading '?' if present
-        if (queryString.StartsWith('?'))
+        if (queryString.StartsWith("?", StringComparison.Ordinal))
         {
             queryString = queryString[1..];
         }

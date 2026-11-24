@@ -300,12 +300,12 @@ public class MappingEvaluator
                     if (!obj.TryGetPropertyValue(name, out var child))
                         continue;
 
-                    if (name.StartsWith('_') && obj[name[1..]] is JsonArray)
+                    if (name.StartsWith("_", StringComparison.Ordinal) && obj[name[1..]] is JsonArray)
                         continue;
 
                     if (child is JsonArray)
                     {
-                        string valueName = name.StartsWith('_') ? name[1..] : name;
+                        string valueName = name.StartsWith("_", StringComparison.Ordinal) ? name[1..] : name;
                         if (obj["_" + valueName] is JsonArray shadows)
                         {
                             PrunePrimitiveArray(obj, valueName, obj[valueName] as JsonArray, shadows);

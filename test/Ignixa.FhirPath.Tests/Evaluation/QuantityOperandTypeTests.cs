@@ -178,6 +178,14 @@ public class QuantityOperandTypeTests
     [InlineData("1 'mg' < 1 'g'", true)]
     [InlineData("1 'mg' = 1000 'ug'", true)]
     [InlineData("1 'mg' > 1 'g'", false)]
+    [InlineData("1 'L/h' = 1000 'mL/h'", true)]
+    [InlineData("1 'L/min' = 1000 'mL/min'", true)]
+    [InlineData("1000 'mL/min' = 1 'L/min'", true)]
+    [InlineData("1 'L/h' < 1001 'mL/h'", true)]
+    // The sum is compared rather than rendered: its scale differs per runtime (1.50 'L/h' on net10, 1.500 'L/h' on
+    // net11, pinned through lowBoundary below); the value must be exactly 1.5 on every runtime.
+    [InlineData("(1 'L/h' + 500 'mL/h') = 1.5 'L/h'", true)]
+    [InlineData("(1 'L/h' + 500 'mL/h') = 1500 'mL/h'", true)]
     public void GivenQuantitiesWithCompatibleUnits_WhenCompared_ThenTheyAreConverted(string expression, bool expected)
     {
         // Act
@@ -186,6 +194,125 @@ public class QuantityOperandTypeTests
         // Assert
         result.Count.ShouldBe(1);
         result[0].Value.ShouldBe(expected);
+    }
+
+    /// <summary>
+    /// Equivalent clinical, compound and angle quantities: each pair is compared in both orders, with <c>=</c>
+    /// and <c>~</c>, and summed in both orders. Fhir.Metrics' unit factors carry binary noise on .NET 11, which
+    /// made several of these false there (in one direction only for some) while they were true on .NET 10.
+    /// </summary>
+    public static TheoryData<string> EquivalentQuantityExpressions()
+    {
+        (string Left, string Right, string LeftDoubled, string RightDoubled)[] pairs =
+        [
+            ("1 'mg/kg/min'", "1000 'ug/kg/min'", "2 'mg/kg/min'", "2000 'ug/kg/min'"),
+            ("1 '[mi_i]/h'", "5280 '[ft_i]/h'", "2 '[mi_i]/h'", "10560 '[ft_i]/h'"),
+            ("1 '[mi_i]/h'", "1.609344 'km/h'", "2 '[mi_i]/h'", "3.218688 'km/h'"),
+            ("10 'gon'", "9 'deg'", "20 'gon'", "18 'deg'"),
+            ("1 'gon'", "0.9 'deg'", "2 'gon'", "1.8 'deg'"),
+            ("1 'L/min'", "1000 'mL/min'", "2 'L/min'", "2000 'mL/min'"),
+            ("1 'L/h'", "1000 'mL/h'", "2 'L/h'", "2000 'mL/h'"),
+            ("1 'mmol/L'", "1000 'umol/L'", "2 'mmol/L'", "2000 'umol/L'"),
+            ("1 'cm2'", "100 'mm2'", "2 'cm2'", "200 'mm2'"),
+        ];
+
+        var data = new TheoryData<string>();
+        foreach (var (left, right, leftDoubled, rightDoubled) in pairs)
+        {
+            data.Add($"{left} = {right}");
+            data.Add($"{right} = {left}");
+            data.Add($"{left} ~ {right}");
+            data.Add($"{right} ~ {left}");
+            data.Add($"({left} + {right}) = {leftDoubled}");
+            data.Add($"({right} + {left}) = {rightDoubled}");
+        }
+
+        return data;
+    }
+
+    [Theory]
+    [MemberData(nameof(EquivalentQuantityExpressions))]
+    public void GivenEquivalentQuantities_WhenComparedOrAddedInEitherOrder_ThenTheyAreEqualOnEveryRuntime(string expression)
+    {
+        // Act
+        var result = Evaluate(expression);
+
+        // Assert
+        result.Count.ShouldBe(1);
+        result[0].Value.ShouldBe(true);
+    }
+
+    /// <summary>
+    /// Equal quantities that .NET 10 reports unequal: Fhir.Metrics' factors were rounded to about 15 digits there
+    /// (2.5 'm/s' converts to 8.9999999999999640 'km/h'). They are exact on .NET 11. Pinned per runtime so a change
+    /// on either side fails.
+    /// </summary>
+    [Theory]
+    [InlineData("2.5 'm/s' = 9 'km/h'")]
+    [InlineData("9 'km/h' = 2.5 'm/s'")]
+    [InlineData("1 'mg/kg/min' = 60 'mg/kg/h'")]
+    [InlineData("60 'mg/kg/h' = 1 'mg/kg/min'")]
+    [InlineData("1 '[in_i]/s' = 300 '[ft_i]/h'")]
+    [InlineData("300 '[ft_i]/h' = 1 '[in_i]/s'")]
+    [InlineData("1 '[mi_i]/h' = 0.44704 'm/s'")]
+    [InlineData("0.44704 'm/s' = 1 '[mi_i]/h'")]
+    [InlineData("(1 'mL/min' * 1 'min') = 1 'mL'")]
+    public void GivenQuantitiesUnequalOnlyThroughPreNet11FactorRounding_WhenCompared_ThenTheyAreEqualFromNet11(string expression)
+    {
+        // Act
+        var result = Evaluate(expression);
+
+        // Assert
+        result.Count.ShouldBe(1);
+#if NET11_0_OR_GREATER
+        result[0].Value.ShouldBe(true);
+#else
+        result[0].Value.ShouldBe(false);
+#endif
+    }
+
+    /// <summary>
+    /// Equivalence compares at the lesser precision of the two operands, after the right operand is converted to the
+    /// left's unit. The conversion must keep the converted operand's precision: 1000 'mL/min' is 1.000 'L/min', so
+    /// 1.2 'L/min' is not equivalent to it.
+    /// </summary>
+    [Theory]
+    [InlineData("1.2 'L/min' ~ 1000 'mL/min'", false)]
+    [InlineData("1000 'mL/min' ~ 1.2 'L/min'", false)]
+    [InlineData("1.0 'L/min' ~ 1000 'mL/min'", true)]
+    [InlineData("9.1 'deg' ~ 10 'gon'", false)]
+    [InlineData("9 'deg' ~ 10 'gon'", true)]
+    [InlineData("100.4 'cm' ~ 1.0 'm'", true)]
+    [InlineData("100.6 'cm' ~ 1.0 'm'", false)]
+    [InlineData("(0 'cm' + 1.0 'm').lowBoundary() = 99.5 'cm'", true)]
+    public void GivenQuantitiesInDifferentUnits_WhenComparedForEquivalence_ThenTheConvertedOperandKeepsItsPrecision(string expression, bool expected)
+    {
+        // Act
+        var result = Evaluate(expression);
+
+        // Assert
+        result.Count.ShouldBe(1);
+        result[0].Value.ShouldBe(expected);
+    }
+
+    /// <summary>
+    /// Where .NET 10's converted scale came from noise in the Fhir.Metrics factor arithmetic, .NET 11 keeps the
+    /// operand's precision instead: 1 'gon' is 0.90 'deg' on .NET 10 and 0.9 'deg' on .NET 11, and 500 'mL/h' is
+    /// 0.50 'L/h' and 0.500 'L/h'. Pinned per runtime so a change on either side fails.
+    /// </summary>
+    [Theory]
+    [InlineData("0.91 'deg' ~ 1 'gon'", false, true)]
+    [InlineData("150.4 'cm' ~ 1.50 'm'", false, true)]
+    [InlineData("(1 'L/h' + 500 'mL/h').lowBoundary() = 1.495 'L/h'", true, false)]
+    [InlineData("(1 'L/h' + 500 'mL/h').lowBoundary() = 1.4995 'L/h'", false, true)]
+    public void GivenAConvertedScaleFromNet10FactorNoise_WhenEvaluated_ThenNet11UsesTheOperandsPrecision(string expression, bool net10, bool net11)
+    {
+        // Act
+        var result = Evaluate(expression);
+
+        // Assert
+        result.Count.ShouldBe(1);
+        result[0].Value.ShouldBe(ForTargetFramework(net10, net11));
     }
 
     /// <summary>
@@ -209,6 +336,15 @@ public class QuantityOperandTypeTests
     {
         var parsed = _parser.Parse(expression);
         return _evaluator.Evaluate(new ScalarRoot(), parsed).ToList();
+    }
+
+    private static bool ForTargetFramework(bool net10, bool net11)
+    {
+#if NET11_0_OR_GREATER
+        return net11;
+#else
+        return net10;
+#endif
     }
 
     private sealed class ScalarRoot : IElement

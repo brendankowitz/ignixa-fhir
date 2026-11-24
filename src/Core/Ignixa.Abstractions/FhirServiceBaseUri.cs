@@ -29,7 +29,7 @@ public static class FhirServiceBaseUri
         }
 
         var text = uri.GetLeftPart(UriPartial.Path);
-        return text.EndsWith('/') ? new Uri(text, UriKind.Absolute) : new Uri(text + "/", UriKind.Absolute);
+        return text.EndsWith("/", StringComparison.Ordinal) ? new Uri(text, UriKind.Absolute) : new Uri(text + "/", UriKind.Absolute);
     }
 
     /// <summary>
@@ -49,5 +49,5 @@ public static class FhirServiceBaseUri
     }
 
     private static string TrailingSlashPath(Uri uri)
-        => uri.AbsolutePath.EndsWith('/') ? uri.AbsolutePath : uri.AbsolutePath + "/";
+        => uri.AbsolutePath.EndsWith("/", StringComparison.Ordinal) ? uri.AbsolutePath : uri.AbsolutePath + "/";
 }

@@ -150,7 +150,7 @@ public class ExpressionParser : IExpressionParser
                     : Resources.IncludeMissingType);
         }
 
-        if (includeValue.EndsWith(':'))
+        if (includeValue.EndsWith(":", StringComparison.Ordinal))
         {
             string[] parts = includeValue.Split(':');
             throw new InvalidSearchOperationException(string.Format(

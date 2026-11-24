@@ -290,7 +290,7 @@ public static class JsonSourceNodeFactory
     {
         foreach ((string name, _) in root)
         {
-            if (!name.StartsWith('_') && root.ContainsKey(FhirJsonNodeWriter.CompanionName(name)))
+            if (!name.StartsWith("_", StringComparison.Ordinal) && root.ContainsKey(FhirJsonNodeWriter.CompanionName(name)))
             {
                 return true;
             }

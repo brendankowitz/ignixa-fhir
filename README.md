@@ -5,7 +5,7 @@
     <b>High-Performance, Multi-Tenant, Cloud-Native FHIR Server for dotnet</b>
   </p>
 
-[![dotnet](https://img.shields.io/badge/dotnet-9.0-512BD4)](https://dotnet.microsoft.com/)
+[![dotnet](https://img.shields.io/badge/dotnet-11.0-512BD4)](https://dotnet.microsoft.com/)
 [![FHIR](https://img.shields.io/badge/FHIR-R4%20%7C%20R4B%20%7C%20R5%20%7C%20R6%20%7C%20STU3-orange)](https://hl7.org/fhir/)
 [![NuGet](https://img.shields.io/badge/NuGet-Ignixa_Core-004880?logo=nuget)](https://www.nuget.org/packages?q=Ignixa)
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io-blue?logo=docker)](https://github.com/users/brendankowitz/packages/container/package/ignixa-fhir)
@@ -114,7 +114,7 @@ The server will be available at `http://localhost:8080/metadata`.
 
 ### Prerequisites
 
-* [dotnet 9.0 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+* [.NET 11 SDK](https://dotnet.microsoft.com/download/dotnet/11.0)
 * Docker (optional, for SQL Server tests)
 
 ### Build & Run

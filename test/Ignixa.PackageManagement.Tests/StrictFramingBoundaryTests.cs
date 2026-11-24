@@ -212,7 +212,7 @@ public class StrictFramingBoundaryTests
             (path, content));
         if (format == "prefix")
         {
-            int separator = path.LastIndexOf('/');
+            int separator = path.LastIndexOf("/", StringComparison.Ordinal);
             StrictPackageFixture.SetHeader(plain, 1024, 0, 100, path[(separator + 1)..]);
             StrictPackageFixture.SetHeader(plain, 1024, 345, 155, path[..separator]);
         }

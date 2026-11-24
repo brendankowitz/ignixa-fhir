@@ -21,7 +21,7 @@ internal static class TransactionRequestValidator
         }
 
         var path = entry.RequestUrl.Split('?', 2)[0];
-        if (path.StartsWith('/'))
+        if (path.StartsWith("/", StringComparison.Ordinal))
         {
             path = path[1..];
         }

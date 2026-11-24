@@ -396,5 +396,5 @@ public class BundleChannelExecutorTests
     }
 
     private static int GetResponseIndex(BundleEntryResponse response) =>
-        JsonDocument.Parse(response.ResourceJson!).RootElement.GetProperty("index").GetInt32();
+        JsonElement.Parse(response.ResourceJson!).GetProperty("index").GetInt32();
 }

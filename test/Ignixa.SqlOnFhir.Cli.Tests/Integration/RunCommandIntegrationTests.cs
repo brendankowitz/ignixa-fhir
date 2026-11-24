@@ -209,7 +209,7 @@ public sealed class RunCommandIntegrationTests : IDisposable
                          "--format", "parquet", "--quiet", "--stats-out", statsPath]).InvokeAsync();
         Environment.ExitCode = 0;
 
-        var view = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(statsPath)).RootElement.GetProperty("views")[0];
+        var view = System.Text.Json.JsonElement.Parse(await File.ReadAllTextAsync(statsPath)).GetProperty("views")[0];
         view.GetProperty("status").GetString().ShouldBe("failed");
         view.GetProperty("errorMessage").GetString()!.ShouldContain("Column 'classes' holds a complex");
     }
@@ -244,7 +244,7 @@ public sealed class RunCommandIntegrationTests : IDisposable
         }
 
         var stats = await File.ReadAllTextAsync(statsPath);
-        System.Text.Json.JsonDocument.Parse(stats).RootElement.GetProperty("views")[0].GetProperty("status").GetString().ShouldBe("failed");
+        System.Text.Json.JsonElement.Parse(stats).GetProperty("views")[0].GetProperty("status").GetString().ShouldBe("failed");
         output.ToString().ShouldContain("ERROR: Failed to evaluate ViewDefinition");
         output.ToString().ShouldNotContain(Surname);
         stats.ShouldNotContain(Surname);

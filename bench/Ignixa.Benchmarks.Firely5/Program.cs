@@ -1,7 +1,7 @@
 using BenchmarkDotNet.Configs;
-using BenchmarkDotNet.Environments;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Running;
+using BenchmarkDotNet.Toolchains.InProcess.Emit;
 
 namespace Ignixa.Benchmarks.Firely5;
 
@@ -18,9 +18,11 @@ public static class Program
         var quick = args.Length > 0 && args[0] == "quick";
         var benchmarkArgs = quick ? args[1..] : args;
         Job job = (quick ? Job.ShortRun : Job.Default)
-            .WithRuntime(CoreRuntime.Core10_0)
             .WithId(quick ? "ShortRun" : "Full");
-        IConfig config = ManualConfig.Create(DefaultConfig.Instance).AddJob(job);
+        // BenchmarkDotNet 0.15.8 cannot build or launch a .NET 11 child process, so every job runs in-process.
+        IConfig config = ManualConfig.Create(DefaultConfig.Instance)
+            .AddJob(job)
+            .AddJob(Job.Default.WithToolchain(InProcessEmitToolchain.Instance).AsMutator());
 
         BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(benchmarkArgs, config);
     }

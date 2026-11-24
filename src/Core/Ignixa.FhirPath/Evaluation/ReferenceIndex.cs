@@ -112,7 +112,7 @@ public sealed class ReferenceIndex
             return null;
         }
 
-        return reference.StartsWith('#')
+        return reference.StartsWith("#", StringComparison.Ordinal)
             ? _rootContainedById.GetValueOrDefault(reference[1..])
             : _byBundleKey.GetValueOrDefault(reference);
     }
@@ -137,7 +137,7 @@ public sealed class ReferenceIndex
             return null;
         }
 
-        return reference.StartsWith('#')
+        return reference.StartsWith("#", StringComparison.Ordinal)
             ? SelectContainedPool(focusLocation).GetValueOrDefault(reference[1..])
             : _byBundleKey.GetValueOrDefault(reference);
     }

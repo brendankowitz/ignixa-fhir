@@ -11,7 +11,7 @@ using SdkISourceNode = Hl7.Fhir.ElementModel.ISourceNode;
 namespace Ignixa.Benchmarks;
 
 [MemoryDiagnoser]
-[SimpleJob(BenchmarkDotNet.Jobs.RuntimeMoniker.Net10_0)]
+[SimpleJob]
 [RankColumn]
 [MarkdownExporter]
 public class SerializationBenchmarks

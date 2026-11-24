@@ -403,8 +403,8 @@ public static class DateTimeFunctions
         else
         {
             // Check for ±HH:MM offset
-            var plusIndex = timePart.LastIndexOf('+');
-            var minusIndex = timePart.LastIndexOf('-');
+            var plusIndex = timePart.LastIndexOf("+", StringComparison.Ordinal);
+            var minusIndex = timePart.LastIndexOf("-", StringComparison.Ordinal);
             var offsetIndex = Math.Max(plusIndex, minusIndex);
 
             if (offsetIndex > 0)
@@ -712,13 +712,13 @@ public static class DateTimeFunctions
         // Choose unit based on precision and magnitude
         return effectivePrecision switch
         {
-            1 => [CreateQuantityElement(Math.Abs((decimal)span.TotalDays / 365.25m), "year")], // Year precision
-            2 => [CreateQuantityElement(Math.Abs((decimal)span.TotalDays / 30.4375m), "month")], // Month precision
-            3 => [CreateQuantityElement(Math.Abs((decimal)span.TotalDays), "day")], // Day precision
-            4 => [CreateQuantityElement(Math.Abs((decimal)span.TotalHours), "hour")], // Hour precision
-            5 => [CreateQuantityElement(Math.Abs((decimal)span.TotalMinutes), "minute")], // Minute precision
-            6 => [CreateQuantityElement(Math.Abs((decimal)span.TotalSeconds), "second")], // Second precision
-            7 => [CreateQuantityElement(Math.Abs((decimal)span.TotalMilliseconds), "millisecond")], // Millisecond precision
+            1 => [CreateQuantityElement(Math.Abs(DecimalConversion.FromDouble(span.TotalDays) / 365.25m), "year")], // Year precision
+            2 => [CreateQuantityElement(Math.Abs(DecimalConversion.FromDouble(span.TotalDays) / 30.4375m), "month")], // Month precision
+            3 => [CreateQuantityElement(Math.Abs(DecimalConversion.FromDouble(span.TotalDays)), "day")], // Day precision
+            4 => [CreateQuantityElement(Math.Abs(DecimalConversion.FromDouble(span.TotalHours)), "hour")], // Hour precision
+            5 => [CreateQuantityElement(Math.Abs(DecimalConversion.FromDouble(span.TotalMinutes)), "minute")], // Minute precision
+            6 => [CreateQuantityElement(Math.Abs(DecimalConversion.FromDouble(span.TotalSeconds)), "second")], // Second precision
+            7 => [CreateQuantityElement(Math.Abs(DecimalConversion.FromDouble(span.TotalMilliseconds)), "millisecond")], // Millisecond precision
             _ => []
         };
     }

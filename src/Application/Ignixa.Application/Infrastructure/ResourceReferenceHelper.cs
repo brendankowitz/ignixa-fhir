@@ -241,11 +241,11 @@ public static class ResourceReferenceHelper
             referenceValue.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
         {
             // Try to extract resource type and ID from URL (e.g., ".../Patient/123")
-            var lastSlashIndex = referenceValue.LastIndexOf('/');
+            var lastSlashIndex = referenceValue.LastIndexOf("/", StringComparison.Ordinal);
             if (lastSlashIndex > 0 && lastSlashIndex < referenceValue.Length - 1)
             {
                 var resourceId = referenceValue.Substring(lastSlashIndex + 1);
-                var secondLastSlashIndex = referenceValue.LastIndexOf('/', lastSlashIndex - 1);
+                var secondLastSlashIndex = referenceValue.LastIndexOf("/", lastSlashIndex - 1, StringComparison.Ordinal);
                 if (secondLastSlashIndex > 0)
                 {
                     var resourceType = referenceValue.Substring(secondLastSlashIndex + 1, lastSlashIndex - secondLastSlashIndex - 1);

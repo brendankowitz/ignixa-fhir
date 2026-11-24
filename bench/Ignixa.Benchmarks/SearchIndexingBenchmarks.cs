@@ -20,7 +20,7 @@ namespace Ignixa.Benchmarks;
 /// Timing converters that changed when temporal primitives became typed values.
 /// </summary>
 [MemoryDiagnoser]
-[SimpleJob(BenchmarkDotNet.Jobs.RuntimeMoniker.Net10_0)]
+[SimpleJob]
 [RankColumn]
 [MarkdownExporter]
 public class SearchIndexingBenchmarks

@@ -13,7 +13,7 @@ public readonly record struct TerminologyCanonicalReference(string Url, string? 
         {
             return new(canonical, null);
         }
-        if (separator == 0 || separator == canonical.Length - 1 || canonical.IndexOf('|', separator + 1) >= 0)
+        if (separator == 0 || separator == canonical.Length - 1 || canonical.IndexOf("|", separator + 1, StringComparison.Ordinal) >= 0)
         {
             throw new FormatException($"Invalid version-qualified terminology canonical '{canonical}'.");
         }

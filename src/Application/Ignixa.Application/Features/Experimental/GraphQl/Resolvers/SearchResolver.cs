@@ -252,7 +252,7 @@ public sealed class SearchResolver(
             // FHIR system-level params start with '_' (e.g., _tag, _id, _lastUpdated).
             // Only replace internal underscores with hyphens for user-defined params
             // (e.g., general_practitioner → general-practitioner).
-            var fhirParamName = argName.StartsWith('_') ? argName : argName.Replace('_', '-');
+            var fhirParamName = argName.StartsWith("_", StringComparison.Ordinal) ? argName : argName.Replace('_', '-');
             var valueOptional = context.ArgumentOptional<IReadOnlyList<string>?>(argName);
             if (valueOptional.HasValue && valueOptional.Value is { Count: > 0 })
                 parameters.Add(new QueryParameter(fhirParamName, string.Join(",", valueOptional.Value)));

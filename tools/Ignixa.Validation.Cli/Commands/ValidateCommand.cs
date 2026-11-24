@@ -300,7 +300,7 @@ internal static class ValidateCommand
         Console.WriteLine($"  Total:       {result.Issues.Count,4}");
         Console.WriteLine();
 
-        if (result.Issues.Any())
+        if (result.Issues.Count > 0)
         {
             Console.WriteLine("───────────────────────────────────────────────────────────────");
             Console.WriteLine("Validation Issues:");

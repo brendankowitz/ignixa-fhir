@@ -37,10 +37,11 @@ See [Azure Deployment](/docs/server/deployment/azure) for CLI options.
 
 ### From Source
 
-Install .NET SDK 10.0.401 or a later compatible SDK selected by `global.json`.
+Install .NET SDK 11.0.100 or a later compatible SDK selected by `global.json`.
 This minimum includes the Source Link security fix for
 [GHSA-23fw-v26w-5fgq](https://github.com/advisories/GHSA-23fw-v26w-5fgq);
-the build uses the SDK's built-in Source Link support.
+the build uses the SDK's built-in Source Link support. To run the multi-targeted
+`net10.0` test legs, also install the .NET 10 runtime.
 
 ```bash
 git clone https://github.com/brendankowitz/ignixa-fhir.git
@@ -63,6 +64,9 @@ dotnet add package Ignixa.Validation      # Resource validation
 dotnet add package Ignixa.FhirFakes       # Test data generation
 ```
 
+The Core SDK packages target `net10.0` and `net11.0`, so consuming projects need .NET 10 or later.
+.NET 8 and .NET 9 reached end of support on 2026-11-10 and are no longer targeted.
+
 See [Core SDK Overview](/docs/core-sdk/overview) for all packages.
 
 ## CLI Tools
@@ -74,6 +78,8 @@ dotnet tool install --global Ignixa.FhirFakes.Cli     # Generate test data
 dotnet tool install --global Ignixa.Validation.Cli   # Validate resources
 dotnet tool install --global Ignixa.SqlOnFhir.Cli    # Transform to Parquet/CSV/NDJSON
 ```
+
+The tools target `net10.0` and `net11.0`, so they run on either the .NET 10 or .NET 11 runtime.
 
 ## Next Steps
 
