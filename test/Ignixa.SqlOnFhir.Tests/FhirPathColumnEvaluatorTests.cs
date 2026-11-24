@@ -1214,6 +1214,26 @@ public class SqlOnFhirEvaluatorTests
         Assert.Equal("const", row["b"]);
     }
 
+    [Fact]
+    public void GivenAForEachOrNullNullRowWithNestedSelects_WhenEvaluated_ThenTheyDoNotSeeTheParent()
+    {
+        var patient = ResourceJsonNode.Parse("""
+            {"resourceType":"Patient","id":"p1","identifier":[{"value":"A-1"},{"value":"B-2"}],"name":[{"family":"Doe"},{"family":"Roe"}]}
+            """).ToElement(_schemaProvider);
+        var view = ParseView("""
+            { "resource": "Patient", "select": [{ "forEachOrNull": "contact", "select": [
+              { "column": [{ "name": "ids", "path": "identifier", "collection": true },
+                           { "name": "rootId", "path": "%rootResource.id" }] },
+              { "forEachOrNull": "name", "column": [{ "name": "family", "path": "family" }] }] }] }
+            """);
+
+        var row = Assert.Single(_evaluator.Evaluate(view, patient).ToList());
+
+        Assert.Equal("[]", row["ids"]);
+        Assert.Equal("p1", row["rootId"]);
+        Assert.Null(row["family"]);
+    }
+
     [Theory]
     [InlineData("integer")]
     [InlineData("date")]

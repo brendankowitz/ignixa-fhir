@@ -164,6 +164,56 @@ public sealed class RunCommandIntegrationTests : IDisposable
         columns["active"].ShouldBe(["[true]", "[]"]);
     }
 
+    [Fact]
+    public async Task GivenAComplexCollectionWithANonStringType_WhenRunSingle_ThenTheErrorNamesTheRejectedColumn()
+    {
+        var vdPath = Path.Combine(_outDir, "view.json");
+        var inPath = Path.Combine(_outDir, "Patient.ndjson");
+        await File.WriteAllTextAsync(vdPath,
+            """{"resourceType":"ViewDefinition","resource":"Patient","select":[{"column":[{"name":"ids","path":"identifier","type":"integer","collection":true}]}]}""");
+        await File.WriteAllTextAsync(inPath, """{"resourceType":"Patient","id":"p1","identifier":[{"value":"A-1"}]}""");
+        var cmd = RunCommand.Create(new R4CoreSchemaProvider(), "r4");
+        var originalOut = Console.Out;
+        using var output = new StringWriter();
+        Environment.ExitCode = 0;
+
+        try
+        {
+            Console.SetOut(output);
+            await cmd.Parse(["--views", vdPath, "--input", inPath, "--out", Path.Combine(_outDir, "out.parquet")]).InvokeAsync();
+
+            Environment.ExitCode.ShouldBe(1);
+            output.ToString().ShouldContain("Column 'ids' has type 'integer'");
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            Environment.ExitCode = 0;
+        }
+    }
+
+    [Fact]
+    public async Task GivenAComplexCollectionWithoutSourceJson_WhenRunBatch_ThenTheStatsRecordTheRejectionReason()
+    {
+        var viewsDir = Path.Combine(_outDir, "views");
+        var inputDir = Path.Combine(_outDir, "input");
+        var statsPath = Path.Combine(_outDir, "stats.json");
+        Directory.CreateDirectory(viewsDir);
+        Directory.CreateDirectory(inputDir);
+        await File.WriteAllTextAsync(Path.Combine(viewsDir, "classes.json"),
+            """{"resourceType":"ViewDefinition","resource":"Patient","select":[{"column":[{"name":"classes","path":"id.type()","collection":true}]}]}""");
+        await File.WriteAllTextAsync(Path.Combine(inputDir, "Patient.ndjson"), """{"resourceType":"Patient","id":"p1"}""");
+        var cmd = RunCommand.Create(new R4CoreSchemaProvider(), "r4");
+
+        await cmd.Parse(["--views", viewsDir, "--input", inputDir, "--out", Path.Combine(_outDir, "out"),
+                         "--format", "parquet", "--quiet", "--stats-out", statsPath]).InvokeAsync();
+        Environment.ExitCode = 0;
+
+        var view = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(statsPath)).RootElement.GetProperty("views")[0];
+        view.GetProperty("status").GetString().ShouldBe("failed");
+        view.GetProperty("errorMessage").GetString()!.ShouldContain("Column 'classes' holds a complex");
+    }
+
     private async Task<Dictionary<string, List<object?>>> RunParquetAsync(string viewJson, params string[] resources)
     {
         var vdPath = Path.Combine(_outDir, "view.json");

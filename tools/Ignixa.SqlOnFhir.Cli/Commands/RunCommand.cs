@@ -96,7 +96,7 @@ internal static class RunCommand
         }
         catch (Exception ex)
         {
-            Print(quiet, $"✗ Error: {ex.Message}");
+            Print(quiet, $"✗ Error: {DescribeError(ex)}");
             await Console.Error.WriteLineAsync(ex.StackTrace);
             Environment.ExitCode = 1;
         }
@@ -174,8 +174,9 @@ internal static class RunCommand
             }
             catch (Exception ex)
             {
-                Print(quiet, $"  [{i + 1}/{viewFiles.Count}] {vdName}  → ERROR: {ex.Message}");
-                results.Add(new BatchViewResult(vdName, BatchViewStatus.Failed, ErrorMessage: ex.Message));
+                var error = DescribeError(ex);
+                Print(quiet, $"  [{i + 1}/{viewFiles.Count}] {vdName}  → ERROR: {error}");
+                results.Add(new BatchViewResult(vdName, BatchViewStatus.Failed, ErrorMessage: error));
             }
         }
 
@@ -295,6 +296,15 @@ internal static class RunCommand
     }
 
     private static void Print(bool quiet, string message) { if (!quiet) Console.WriteLine(message); }
+
+    // SqlOnFhirEvaluator wraps the cause, such as a rejected column projection, in a generic failure message.
+    private static string DescribeError(Exception ex)
+    {
+        var messages = new List<string>();
+        for (var current = ex; current is not null; current = current.InnerException)
+            messages.Add(current.Message);
+        return string.Join(": ", messages);
+    }
 
     private static (ParquetSchema Schema, Dictionary<string, string> TypeMap) BuildParquetSchema(
         IReadOnlyList<ColumnSchema> columnSchemas)

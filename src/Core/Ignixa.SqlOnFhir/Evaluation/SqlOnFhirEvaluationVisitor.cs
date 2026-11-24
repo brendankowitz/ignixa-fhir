@@ -248,18 +248,18 @@ internal class SqlOnFhirEvaluationVisitor
     }
 
     private List<Dictionary<string, object?>> EvaluateSelect(
-        SelectExpression node, IElement resource, EvaluationContext context)
+        SelectExpression node, IElement? focus, EvaluationContext context)
     {
         if (node.ForEach == null && node.ForEachOrNull == null && node.Repeat.IsEmpty)
         {
-            var row = EvaluateColumns(node.Columns, resource, context);
-            var rows = ProcessNestedSelects([row], node.NestedSelect, resource, context);
-            return ProcessUnionAll(rows, node.UnionAll, resource, context);
+            var row = EvaluateColumns(node.Columns, focus, context);
+            var rows = ProcessNestedSelects([row], node.NestedSelect, focus, context);
+            return ProcessUnionAll(rows, node.UnionAll, focus, context);
         }
 
         if (!node.Repeat.IsEmpty)
         {
-            var allItems = RecursivelyCollectItems(resource, node.Repeat, context);
+            var allItems = RecursivelyCollectItems(focus, node.Repeat, context);
             var repeatRows = new List<Dictionary<string, object?>>();
             for (int i = 0; i < allItems.Count; i++)
             {
@@ -273,7 +273,7 @@ internal class SqlOnFhirEvaluationVisitor
         }
 
         var forEachExpr = node.ForEach ?? node.ForEachOrNull!;
-        var items = _fhirPath.Evaluate(resource, forEachExpr, context).ToList();
+        var items = EvaluatePath(focus, forEachExpr, context).ToList();
         var forEachRows = new List<Dictionary<string, object?>>();
 
         for (int i = 0; i < items.Count; i++)
@@ -285,47 +285,44 @@ internal class SqlOnFhirEvaluationVisitor
             forEachRows.AddRange(rowsForItem);
         }
 
-        // forEachOrNull: if the collection was empty, emit one null row with rowIndex=0.
-        if (node.ForEachOrNull != null && forEachRows.Count == 0)
+        // forEachOrNull: if the collection was empty, evaluate the whole select once for the absent item
+        // (a null focus) with rowIndex=0, so neither its columns nor its nested selects see the parent.
+        if (node.ForEachOrNull != null && items.Count == 0)
         {
             var nullContext = context.WithEnvironmentVariable("rowIndex", new PrimitiveValueElement(0));
-            var nullRow = EvaluateNullRowColumns(node.Columns, nullContext);
-            foreach (var colName in GetAllColumnNames(node).Skip(node.Columns.Length))
-                nullRow.TryAdd(colName, null);
-            var nullRowProcessed = ProcessNestedSelects([nullRow], node.NestedSelect, resource, nullContext);
-            forEachRows.AddRange(nullRowProcessed);
+            var nullRow = EvaluateColumns(node.Columns, null, nullContext);
+            var nullRows = ProcessNestedSelects([nullRow], node.NestedSelect, null, nullContext);
+            forEachRows.AddRange(ProcessUnionAll(nullRows, node.UnionAll, null, nullContext));
         }
 
         return forEachRows;
     }
 
+    /// <summary>
+    /// Evaluates <paramref name="path"/> against <paramref name="focus"/>. A <see langword="null"/> focus is the
+    /// absent <c>forEachOrNull</c> item: navigation yields nothing, while %rootResource, %rowIndex and constants
+    /// still resolve.
+    /// </summary>
+    private IEnumerable<IElement> EvaluatePath(
+        IElement? focus, FhirPath.Expressions.Expression path, EvaluationContext context) =>
+        focus is null
+            // Fork the variable scope as FhirPathEvaluator.Evaluate does for every call.
+            ? path.AcceptVisitor(_fhirPath, context.WithFocus([]).ForkVariableScope())
+            : _fhirPath.Evaluate(focus, path, context);
+
     private Dictionary<string, object?> EvaluateColumns(
-        ImmutableArray<ColumnExpression> columns, IElement resource, EvaluationContext context)
+        ImmutableArray<ColumnExpression> columns, IElement? focus, EvaluationContext context)
     {
         var row = new Dictionary<string, object?>();
         foreach (var col in columns)
-            row[col.Name] = EvaluateColumn(col, resource, context);
+            row[col.Name] = EvaluateColumn(col, focus, context);
         return row;
     }
 
-    private Dictionary<string, object?> EvaluateNullRowColumns(
-        ImmutableArray<ColumnExpression> columns, EvaluationContext context)
+    private object? EvaluateColumn(ColumnExpression node, IElement? focus, EvaluationContext context)
     {
-        // The forEachOrNull item is absent, so columns see an empty focus: navigation yields nothing,
-        // while context-only expressions such as %rowIndex and %rootResource still resolve.
-        // Each column gets its own variable scope, as FhirPathEvaluator.Evaluate gives every call.
-        var emptyFocus = context.WithFocus([]);
-        var row = new Dictionary<string, object?>();
-        foreach (var col in columns)
-            row[col.Name] = FormatColumn(col, col.Path.AcceptVisitor(_fhirPath, emptyFocus.ForkVariableScope()).ToList());
-        return row;
-    }
+        var results = EvaluatePath(focus, node.Path, context).ToList();
 
-    private object? EvaluateColumn(ColumnExpression node, IElement resource, EvaluationContext context) =>
-        FormatColumn(node, _fhirPath.Evaluate(resource, node.Path, context).ToList());
-
-    private static object? FormatColumn(ColumnExpression node, List<IElement> results)
-    {
         if (node.Collection)
             return FormatCollection(results, node);
 
@@ -346,7 +343,7 @@ internal class SqlOnFhirEvaluationVisitor
     private List<Dictionary<string, object?>> ProcessNestedSelects(
         IEnumerable<Dictionary<string, object?>> current,
         ImmutableArray<SelectExpression> nestedSelects,
-        IElement resource,
+        IElement? focus,
         EvaluationContext context)
     {
         if (nestedSelects.IsEmpty)
@@ -358,10 +355,10 @@ internal class SqlOnFhirEvaluationVisitor
             var newRows = new List<Dictionary<string, object?>>();
             foreach (var currentRow in rows)
             {
-                var nestedRows = EvaluateSelect(nested, resource, context);
+                var nestedRows = EvaluateSelect(nested, focus, context);
                 // A nested select participates in a cross-join (row_product): an empty result
-                // zeroes the product and drops the row. Column-only and forEachOrNull selects
-                // never return empty, so this only fires when a nested forEach/repeat collapses.
+                // zeroes the product and drops the row. Column-only selects never return empty;
+                // this fires when a nested forEach/repeat, including one under a forEachOrNull, collapses.
                 foreach (var nestedRow in nestedRows)
                 {
                     var merged = new Dictionary<string, object?>(currentRow);
@@ -377,7 +374,7 @@ internal class SqlOnFhirEvaluationVisitor
     private List<Dictionary<string, object?>> ProcessUnionAll(
         IEnumerable<Dictionary<string, object?>> current,
         ImmutableArray<SelectExpression> unionAll,
-        IElement resource,
+        IElement? focus,
         EvaluationContext context)
     {
         if (unionAll.IsEmpty)
@@ -387,7 +384,7 @@ internal class SqlOnFhirEvaluationVisitor
         foreach (var currentRow in current)
             foreach (var branch in unionAll)
             {
-                var branchRows = EvaluateSelect(branch, resource, context);
+                var branchRows = EvaluateSelect(branch, focus, context);
                 foreach (var branchRow in branchRows)
                 {
                     var merged = new Dictionary<string, object?>(currentRow);
@@ -406,7 +403,7 @@ internal class SqlOnFhirEvaluationVisitor
     internal const int MaxRepeatDepth = 100;
 
     private List<IElement> RecursivelyCollectItems(
-        IElement root,
+        IElement? root,
         ImmutableArray<FhirPath.Expressions.Expression> repeatPaths,
         EvaluationContext context)
     {
@@ -430,7 +427,7 @@ internal class SqlOnFhirEvaluationVisitor
         }
 
         foreach (var path in repeatPaths)
-            foreach (var item in _fhirPath.Evaluate(root, path, context))
+            foreach (var item in EvaluatePath(root, path, context))
                 Traverse(item, 1);
 
         return result;
