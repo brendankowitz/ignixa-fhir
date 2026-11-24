@@ -96,7 +96,7 @@ internal static class RunCommand
         }
         catch (Exception ex)
         {
-            Print(quiet, $"✗ Error: {ex.Message}");
+            Print(quiet, $"✗ Error: {DescribeError(ex)}");
             await Console.Error.WriteLineAsync(ex.StackTrace.AsMemory(), CancellationToken.None);
             Environment.ExitCode = 1;
         }
@@ -174,8 +174,9 @@ internal static class RunCommand
             }
             catch (Exception ex)
             {
-                Print(quiet, $"  [{i + 1}/{viewFiles.Count}] {vdName}  → ERROR: {ex.Message}");
-                results.Add(new BatchViewResult(vdName, BatchViewStatus.Failed, ErrorMessage: ex.Message));
+                var error = DescribeError(ex);
+                Print(quiet, $"  [{i + 1}/{viewFiles.Count}] {vdName}  → ERROR: {error}");
+                results.Add(new BatchViewResult(vdName, BatchViewStatus.Failed, ErrorMessage: error));
             }
         }
 
@@ -296,6 +297,16 @@ internal static class RunCommand
 
     private static void Print(bool quiet, string message) { if (!quiet) Console.WriteLine(message); }
 
+    // SqlOnFhirEvaluator wraps failures in a generic message. Of its causes, only a ViewDefinitionColumnException is shown:
+    // its message never quotes resource values, while others, such as a failed type conversion, can.
+    private static string DescribeError(Exception ex)
+    {
+        for (var cause = ex.InnerException; cause is not null; cause = cause.InnerException)
+            if (cause is ViewDefinitionColumnException)
+                return $"{ex.Message}: {cause.Message}";
+        return ex.Message;
+    }
+
     private static (ParquetSchema Schema, Dictionary<string, string> TypeMap) BuildParquetSchema(
         IReadOnlyList<ColumnSchema> columnSchemas)
     {
@@ -303,7 +314,8 @@ internal static class RunCommand
         var typeMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var col in columnSchemas)
         {
-            var sqlType = (col.Type ?? "STRING").ToUpperInvariant();
+            // A collection cell holds JSON array text whatever the item type.
+            var sqlType = col.Collection ? "STRING" : (col.Type ?? "STRING").ToUpperInvariant();
             fields.Add(MapToParquetField(col.Name, sqlType));
             typeMap[col.Name] = sqlType;
         }

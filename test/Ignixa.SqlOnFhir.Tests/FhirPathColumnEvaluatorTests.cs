@@ -5,6 +5,7 @@
  * Tests ViewDefinition evaluation with WHERE clauses, SELECT groups, and forEach semantics.
  */
 
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ignixa.FhirPath.Evaluation;
@@ -1158,6 +1159,235 @@ public class SqlOnFhirEvaluatorTests
         // And it is still an InvalidOperationException, so existing catch sites are unaffected.
         Assert.IsAssignableFrom<InvalidOperationException>(ex);
     }
+
+    [Fact]
+    public void GivenAComplexCollectionColumnInAForEachOrNullNullRow_WhenEvaluated_ThenItemsAreTheSourceJsonObjects()
+    {
+        // The forEachOrNull null row evaluates its columns on a separate path from ordinary rows (#548).
+        const string identifiers = """[{"system":"urn:example:a","value":"A-1"},{"system":"urn:example:b","value":"B-2"}]""";
+        var patient = ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"p1","identifier":{{identifiers}}}""").ToElement(_schemaProvider);
+        var view = ParseView("""
+            { "resource": "Patient", "select": [{ "forEachOrNull": "contact",
+              "column": [{ "name": "ids", "path": "%rootResource.identifier", "type": "string", "collection": true }] }] }
+            """);
+
+        var rows = _evaluator.Evaluate(view, patient).ToList();
+
+        var row = Assert.Single(rows);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse((string)row["ids"]!), JsonNode.Parse(identifiers)), (string?)row["ids"]);
+    }
+
+    [Fact]
+    public void GivenAForEachOrNullNullRow_WhenItsColumnsShareNamesWithTheParent_ThenTheParentValuesDoNotLeakIntoTheRow()
+    {
+        var patient = ResourceJsonNode.Parse("""
+            {"resourceType":"Patient","id":"p1","telecom":[{"system":"phone","value":"555-0100"}],"name":[{"family":"Doe"}]}
+            """).ToElement(_schemaProvider);
+        var view = ParseView("""
+            { "resource": "Patient", "select": [{ "forEachOrNull": "contact", "column": [
+              { "name": "telecoms", "path": "telecom", "collection": true },
+              { "name": "phones", "path": "telecom.value", "collection": true },
+              { "name": "family", "path": "name.family" },
+              { "name": "index", "path": "%rowIndex" }] }] }
+            """);
+
+        var row = Assert.Single(_evaluator.Evaluate(view, patient).ToList());
+
+        Assert.Equal("[]", row["telecoms"]);
+        Assert.Equal("[]", row["phones"]);
+        Assert.Null(row["family"]);
+        Assert.Equal(0, row["index"]);
+    }
+
+    [Fact]
+    public void GivenAForEachOrNullNullRowColumnThatDefinesAVariable_WhenEvaluated_ThenLaterColumnsStillSeeTheConstant()
+    {
+        var patient = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"p1"}""").ToElement(_schemaProvider);
+        var view = ParseView("""
+            { "resource": "Patient", "constant": [{ "name": "v", "valueString": "const" }], "select": [
+              { "forEachOrNull": "contact", "column": [{ "name": "a", "path": "defineVariable('v', 'leaked').select(%v)" }] },
+              { "column": [{ "name": "b", "path": "%v" }] }] }
+            """);
+
+        var row = Assert.Single(_evaluator.Evaluate(view, patient).ToList());
+
+        Assert.Equal("const", row["b"]);
+    }
+
+    [Fact]
+    public void GivenAForEachOrNullNullRowWithNestedSelects_WhenEvaluated_ThenTheyDoNotSeeTheParent()
+    {
+        var patient = ResourceJsonNode.Parse("""
+            {"resourceType":"Patient","id":"p1","identifier":[{"value":"A-1"},{"value":"B-2"}],"name":[{"family":"Doe"},{"family":"Roe"}]}
+            """).ToElement(_schemaProvider);
+        var view = ParseView("""
+            { "resource": "Patient", "select": [{ "forEachOrNull": "contact", "select": [
+              { "column": [{ "name": "ids", "path": "identifier", "collection": true },
+                           { "name": "rootId", "path": "%rootResource.id" }] },
+              { "forEachOrNull": "name", "column": [{ "name": "family", "path": "family" }] }] }] }
+            """);
+
+        var row = Assert.Single(_evaluator.Evaluate(view, patient).ToList());
+
+        Assert.Equal("[]", row["ids"]);
+        Assert.Equal("p1", row["rootId"]);
+        Assert.Null(row["family"]);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GivenAForEachOrNullWhoseNestedForEachIsEmpty_WhenEvaluated_ThenTheRowIsDroppedWhateverTheSelectOrder(bool forEachOrNullFirst)
+    {
+        var patient = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"p1"}""").ToElement(_schemaProvider);
+        const string IdSelect = """{ "column": [{ "name": "id", "path": "id" }] }""";
+        const string ContactSelect = """{ "forEachOrNull": "contact", "select": [{ "forEach": "telecom", "column": [{ "name": "tel", "path": "value" }] }] }""";
+        var selects = forEachOrNullFirst ? $"{ContactSelect}, {IdSelect}" : $"{IdSelect}, {ContactSelect}";
+        var view = ParseView($$"""{ "resource": "Patient", "select": [{{selects}}] }""");
+
+        Assert.Empty(_evaluator.Evaluate(view, patient));
+    }
+
+    [Theory]
+    [InlineData("integer")]
+    [InlineData("date")]
+    public void GivenAComplexCollectionColumnWithANonStringType_WhenEvaluated_ThenItIsRejectedNotWrittenAsNull(string type)
+    {
+        var patient = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"p1","identifier":[{"value":"A-1"}]}""").ToElement(_schemaProvider);
+        var view = ParseView($$"""
+            { "resource": "Patient", "select": [{ "column": [{ "name": "ids", "path": "identifier", "type": "{{type}}", "collection": true }] }] }
+            """);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => _evaluator.Evaluate(view, patient).ToList());
+
+        var cause = Assert.IsType<ViewDefinitionColumnException>(ex.InnerException);
+        Assert.Contains("'ids'", cause.Message, StringComparison.Ordinal);
+        Assert.Contains("Identifier", cause.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GivenAComputedComplexCollectionWithoutSourceJson_WhenEvaluated_ThenTheProjectionIsRejected()
+    {
+        var patient = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"p1"}""").ToElement(_schemaProvider);
+        var view = ParseView("""
+            { "resource": "Patient", "select": [{ "column": [{ "name": "classes", "path": "id.type()", "type": "string", "collection": true }] }] }
+            """);
+
+        var error = Assert.Throws<InvalidOperationException>(() => _evaluator.Evaluate(view, patient).ToList());
+
+        var cause = Assert.IsType<ViewDefinitionColumnException>(error.InnerException);
+        Assert.Contains("'classes'", cause.Message, StringComparison.Ordinal);
+        Assert.Contains("no source JSON object", cause.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GivenAnExtensionOnlyObservationValueString_WhenProjectedAsACollection_ThenItsShadowIsNotAComplexValue()
+    {
+        var observation = ResourceJsonNode.Parse("""
+            {"resourceType":"Observation","id":"o1","_valueString":{"extension":[{"url":"urn:example:x","valueString":"unknown"}]}}
+            """).ToElement(_schemaProvider);
+        var view = ParseView("""
+            { "resource": "Observation", "select": [{ "column": [{ "name": "values", "path": "value", "collection": true }] }] }
+            """);
+
+        var row = Assert.Single(_evaluator.Evaluate(view, observation));
+
+        Assert.Equal("[null]", row["values"]);
+    }
+
+    [Fact]
+    public void GivenAPrimitiveCollectionWithAnExtensionOnlyItemAndADate_WhenEvaluated_ThenTheExistingConversionIsKept()
+    {
+        var patient = ResourceJsonNode.Parse("""
+            {"resourceType":"Patient","id":"p1","birthDate":"1970-01-02",
+             "name":[{"given":["Jane",null],"_given":[null,{"extension":[{"url":"urn:example:x","valueString":"y"}]}]}]}
+            """).ToElement(_schemaProvider);
+        var view = ParseView("""
+            { "resource": "Patient", "select": [{ "column": [
+              { "name": "given", "path": "name.given", "collection": true },
+              { "name": "givenText", "path": "name.given", "type": "string", "collection": true },
+              { "name": "birth", "path": "birthDate", "type": "date", "collection": true }] }] }
+            """);
+
+        var row = Assert.Single(_evaluator.Evaluate(view, patient).ToList());
+
+        Assert.Equal("""["Jane", null]""", row["given"]);
+        Assert.Equal("""["Jane", null]""", row["givenText"]);
+        Assert.Equal("""["1970-01-02"]""", row["birth"]);
+    }
+
+    [Fact]
+    public void GivenAComputedQuantityInACollection_WhenEvaluated_ThenItKeepsItsScalarForm()
+    {
+        var patient = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"p1"}""").ToElement(_schemaProvider);
+        var view = ParseView("""
+            { "resource": "Patient", "select": [{ "column": [{ "name": "doses", "path": "5 'mg'", "collection": true }] }] }
+            """);
+
+        var row = Assert.Single(_evaluator.Evaluate(view, patient).ToList());
+
+        Assert.Equal("""["5 'mg'"]""", row["doses"]);
+    }
+
+    [Fact]
+    public void GivenASourceQuantityInACollection_WhenEvaluated_ThenItIsWrittenAsItsJsonObject()
+    {
+        var observation = ResourceJsonNode.Parse("""
+            {"resourceType":"Observation","id":"o1","status":"final","code":{"text":"x"},"valueQuantity":{"value":5,"unit":"mg"}}
+            """).ToElement(_schemaProvider);
+        var view = ParseView("""
+            { "resource": "Observation", "select": [{ "column": [{ "name": "doses", "path": "value.ofType(Quantity)", "collection": true }] }] }
+            """);
+
+        var row = Assert.Single(_evaluator.Evaluate(view, observation).ToList());
+
+        var expected = JsonNode.Parse("""[{"value":5,"unit":"mg"}]""");
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse((string)row["doses"]!), expected), (string?)row["doses"]);
+    }
+
+    [Fact]
+    public void GivenAComplexItemHoldingAClrBackedJsonValue_WhenProjectedAsACollection_ThenItIsWrittenAsJson()
+    {
+        var resource = JsonNode.Parse("""{"resourceType":"Patient","id":"p1","name":[{"family":"Doe"}]}""")!.AsObject();
+        resource["name"]![0]!["given"] = JsonValue.Create(new List<string> { "Jane", "Quinn" });
+        var patient = new ResourceJsonNode(resource).ToElement(_schemaProvider);
+        var view = ParseView("""
+            { "resource": "Patient", "select": [{ "column": [{ "name": "names", "path": "name", "collection": true }] }] }
+            """);
+
+        var row = Assert.Single(_evaluator.Evaluate(view, patient).ToList());
+
+        var expected = JsonNode.Parse("""[{"family":"Doe","given":["Jane","Quinn"]}]""");
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse((string)row["names"]!), expected), (string?)row["names"]);
+    }
+
+    [Fact]
+    public void GivenADecimalCollectionUnderACommaDecimalCulture_WhenEvaluated_ThenNumbersUseInvariantFormat()
+    {
+        var observation = ResourceJsonNode.Parse("""
+            {"resourceType":"Observation","id":"o1","status":"final","code":{"text":"x"},"valueQuantity":{"value":1.50}}
+            """).ToElement(_schemaProvider);
+        var view = ParseView("""
+            { "resource": "Observation", "select": [{ "column": [{ "name": "values", "path": "value.ofType(Quantity).value", "collection": true }] }] }
+            """);
+        var commaDecimalCulture = (CultureInfo)CultureInfo.InvariantCulture.Clone();
+        commaDecimalCulture.NumberFormat.NumberDecimalSeparator = ",";
+        var originalCulture = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = commaDecimalCulture;
+        try
+        {
+            var row = Assert.Single(_evaluator.Evaluate(view, observation).ToList());
+
+            Assert.Equal("[1.50]", row["values"]);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
+    }
+
+    private static ISourceNavigator ParseView(string json) =>
+        JsonNodeSourceNode.Create(JsonNode.Parse(json)!, "ViewDefinition");
 
     private static IElement CreateTypedElement(Dictionary<string, object?> data)
     {

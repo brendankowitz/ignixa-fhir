@@ -7,9 +7,14 @@
  */
 
 using System.Collections.Immutable;
+using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization.Metadata;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Evaluation.Functions;
 using Ignixa.Abstractions;
+using Ignixa.Serialization;
 using Ignixa.SqlOnFhir.Expressions;
 
 #pragma warning disable CS0618 // Type or member is obsolete - ISourceNode migration pending
@@ -22,6 +27,13 @@ namespace Ignixa.SqlOnFhir.Evaluation;
 /// </summary>
 internal class SqlOnFhirEvaluationVisitor
 {
+    private static readonly JsonSerializerOptions ComplexItemJsonOptions = new()
+    {
+        Encoder = MinimalJsonEncoder.Instance,
+        // JsonNode.ToJsonString fails on a JsonValue wrapping a CLR object unless a resolver is set.
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+    };
+
     private readonly FhirPathEvaluator _fhirPath;
 
     public SqlOnFhirEvaluationVisitor()
@@ -212,18 +224,6 @@ internal class SqlOnFhirEvaluationVisitor
 
         var selectRows = EvaluateSelect(select, resource, context);
 
-        if (selectRows.Count == 0)
-        {
-            if (select.ForEachOrNull != null)
-            {
-                foreach (var row in currentRows)
-                    foreach (var colName in GetAllColumnNames(select))
-                        row[colName] = null;
-                return currentRows;
-            }
-            return [];
-        }
-
         var newRows = new List<Dictionary<string, object?>>();
         foreach (var selectRow in selectRows)
             foreach (var currentRow in currentRows)
@@ -236,18 +236,18 @@ internal class SqlOnFhirEvaluationVisitor
     }
 
     private List<Dictionary<string, object?>> EvaluateSelect(
-        SelectExpression node, IElement resource, EvaluationContext context)
+        SelectExpression node, IElement? focus, EvaluationContext context)
     {
         if (node.ForEach == null && node.ForEachOrNull == null && node.Repeat.IsEmpty)
         {
-            var row = EvaluateColumns(node.Columns, resource, context);
-            var rows = ProcessNestedSelects([row], node.NestedSelect, resource, context);
-            return ProcessUnionAll(rows, node.UnionAll, resource, context);
+            var row = EvaluateColumns(node.Columns, focus, context);
+            var rows = ProcessNestedSelects([row], node.NestedSelect, focus, context);
+            return ProcessUnionAll(rows, node.UnionAll, focus, context);
         }
 
         if (!node.Repeat.IsEmpty)
         {
-            var allItems = RecursivelyCollectItems(resource, node.Repeat, context);
+            var allItems = RecursivelyCollectItems(focus, node.Repeat, context);
             var repeatRows = new List<Dictionary<string, object?>>();
             for (int i = 0; i < allItems.Count; i++)
             {
@@ -261,7 +261,7 @@ internal class SqlOnFhirEvaluationVisitor
         }
 
         var forEachExpr = node.ForEach ?? node.ForEachOrNull!;
-        var items = _fhirPath.Evaluate(resource, forEachExpr, context).ToList();
+        var items = EvaluatePath(focus, forEachExpr, context).ToList();
         var forEachRows = new List<Dictionary<string, object?>>();
 
         for (int i = 0; i < items.Count; i++)
@@ -273,77 +273,49 @@ internal class SqlOnFhirEvaluationVisitor
             forEachRows.AddRange(rowsForItem);
         }
 
-        // forEachOrNull: if collection was empty, emit one null row with rowIndex=0.
-        // Evaluate columns against the base resource with rowIndex=0 context so that
-        // context-only expressions like %rowIndex return 0, while resource-path expressions
-        // that expect a forEach element return null (path won't resolve against the resource).
-        if (node.ForEachOrNull != null && forEachRows.Count == 0)
+        // forEachOrNull: if the collection was empty, evaluate the whole select once for the absent item
+        // (a null focus) with rowIndex=0, so neither its columns nor its nested selects see the parent.
+        if (node.ForEachOrNull != null && items.Count == 0)
         {
             var nullContext = context.WithEnvironmentVariable("rowIndex", new PrimitiveValueElement(0));
-            var nullRow = EvaluateNullRowColumns(node.Columns, resource, nullContext);
-            foreach (var colName in GetAllColumnNames(node).Skip(node.Columns.Length))
-                nullRow.TryAdd(colName, null);
-            var nullRowProcessed = ProcessNestedSelects([nullRow], node.NestedSelect, resource, nullContext);
-            forEachRows.AddRange(nullRowProcessed);
+            var nullRow = EvaluateColumns(node.Columns, null, nullContext);
+            var nullRows = ProcessNestedSelects([nullRow], node.NestedSelect, null, nullContext);
+            forEachRows.AddRange(ProcessUnionAll(nullRows, node.UnionAll, null, nullContext));
         }
 
         return forEachRows;
     }
 
+    /// <summary>
+    /// Evaluates <paramref name="path"/> against <paramref name="focus"/>. A <see langword="null"/> focus is the
+    /// absent <c>forEachOrNull</c> item: navigation yields nothing, while %rootResource, %rowIndex and constants
+    /// still resolve.
+    /// </summary>
+    private IEnumerable<IElement> EvaluatePath(
+        IElement? focus, FhirPath.Expressions.Expression path, EvaluationContext context) =>
+        focus is null
+            // Fork the variable scope as FhirPathEvaluator.Evaluate does for every call.
+            ? path.AcceptVisitor(_fhirPath, context.WithFocus([]).ForkVariableScope())
+            : _fhirPath.Evaluate(focus, path, context);
+
     private Dictionary<string, object?> EvaluateColumns(
-        ImmutableArray<ColumnExpression> columns, IElement resource, EvaluationContext context)
+        ImmutableArray<ColumnExpression> columns, IElement? focus, EvaluationContext context)
     {
         var row = new Dictionary<string, object?>();
         foreach (var col in columns)
-            row[col.Name] = EvaluateColumn(col, resource, context);
+            row[col.Name] = EvaluateColumn(col, focus, context);
         return row;
     }
 
-    private Dictionary<string, object?> EvaluateNullRowColumns(
-        ImmutableArray<ColumnExpression> columns, IElement resource, EvaluationContext context)
+    private object? EvaluateColumn(ColumnExpression node, IElement? focus, EvaluationContext context)
     {
-        var row = new Dictionary<string, object?>();
-        foreach (var col in columns)
-        {
-            List<IElement> results;
-            try
-            {
-                results = _fhirPath.Evaluate(resource, col.Path, context).ToList();
-            }
-            catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or ArgumentException)
-            {
-                // Path evaluation against the base resource is expected to fail for expressions
-                // that navigate into the forEach element (e.g. "family" when the element is absent).
-                // Context-only expressions like %rowIndex succeed and return their value normally.
-                row[col.Name] = null;
-                continue;
-            }
-
-            if (col.Collection)
-            {
-                var values = results.Select(ExtractValue).Select(v => ConvertToSqlType(v, col.Type)).ToArray();
-                row[col.Name] = FormatArrayAsJson(values);
-            }
-            else
-            {
-                row[col.Name] = ConvertToSqlType(ExtractValue(results.FirstOrDefault()), col.Type);
-            }
-        }
-        return row;
-    }
-
-    private object? EvaluateColumn(ColumnExpression node, IElement resource, EvaluationContext context)
-    {
-        var results = _fhirPath.Evaluate(resource, node.Path, context).ToList();
+        var results = EvaluatePath(focus, node.Path, context).ToList();
 
         if (node.Collection)
-        {
-            var values = results.Select(ExtractValue).Select(v => ConvertToSqlType(v, node.Type)).ToArray();
-            return FormatArrayAsJson(values);
-        }
+            return FormatCollection(results, node);
 
         if (results.Count > 1)
-            throw new InvalidOperationException(
+            throw new ViewDefinitionColumnException(
                 $"Column '{node.Name}' has collection=false but FHIRPath expression returned {results.Count} values. " +
                 "Either set collection=true or ensure the path returns at most one value.");
 
@@ -359,7 +331,7 @@ internal class SqlOnFhirEvaluationVisitor
     private List<Dictionary<string, object?>> ProcessNestedSelects(
         IEnumerable<Dictionary<string, object?>> current,
         ImmutableArray<SelectExpression> nestedSelects,
-        IElement resource,
+        IElement? focus,
         EvaluationContext context)
     {
         if (nestedSelects.IsEmpty)
@@ -371,10 +343,10 @@ internal class SqlOnFhirEvaluationVisitor
             var newRows = new List<Dictionary<string, object?>>();
             foreach (var currentRow in rows)
             {
-                var nestedRows = EvaluateSelect(nested, resource, context);
+                var nestedRows = EvaluateSelect(nested, focus, context);
                 // A nested select participates in a cross-join (row_product): an empty result
-                // zeroes the product and drops the row. Column-only and forEachOrNull selects
-                // never return empty, so this only fires when a nested forEach/repeat collapses.
+                // zeroes the product and drops the row. Column-only selects never return empty;
+                // this fires when a nested forEach/repeat, including one under a forEachOrNull, collapses.
                 foreach (var nestedRow in nestedRows)
                 {
                     var merged = new Dictionary<string, object?>(currentRow);
@@ -390,7 +362,7 @@ internal class SqlOnFhirEvaluationVisitor
     private List<Dictionary<string, object?>> ProcessUnionAll(
         IEnumerable<Dictionary<string, object?>> current,
         ImmutableArray<SelectExpression> unionAll,
-        IElement resource,
+        IElement? focus,
         EvaluationContext context)
     {
         if (unionAll.IsEmpty)
@@ -400,7 +372,7 @@ internal class SqlOnFhirEvaluationVisitor
         foreach (var currentRow in current)
             foreach (var branch in unionAll)
             {
-                var branchRows = EvaluateSelect(branch, resource, context);
+                var branchRows = EvaluateSelect(branch, focus, context);
                 foreach (var branchRow in branchRows)
                 {
                     var merged = new Dictionary<string, object?>(currentRow);
@@ -419,7 +391,7 @@ internal class SqlOnFhirEvaluationVisitor
     internal const int MaxRepeatDepth = 100;
 
     private List<IElement> RecursivelyCollectItems(
-        IElement root,
+        IElement? root,
         ImmutableArray<FhirPath.Expressions.Expression> repeatPaths,
         EvaluationContext context)
     {
@@ -443,22 +415,10 @@ internal class SqlOnFhirEvaluationVisitor
         }
 
         foreach (var path in repeatPaths)
-            foreach (var item in _fhirPath.Evaluate(root, path, context))
+            foreach (var item in EvaluatePath(root, path, context))
                 Traverse(item, 1);
 
         return result;
-    }
-
-    private static IEnumerable<string> GetAllColumnNames(SelectExpression select)
-    {
-        foreach (var col in select.Columns)
-            yield return col.Name;
-        foreach (var nested in select.NestedSelect)
-            foreach (var name in GetAllColumnNames(nested))
-                yield return name;
-        foreach (var union in select.UnionAll)
-            foreach (var name in GetAllColumnNames(union))
-                yield return name;
     }
 
     /// <summary>
@@ -572,6 +532,28 @@ internal class SqlOnFhirEvaluationVisitor
         }
     }
 
+    private static string FormatCollection(List<IElement> results, ColumnExpression column) =>
+        FormatArrayAsJson(results.Select(item => ToCollectionItem(item, column)).ToArray());
+
+    private static object? ToCollectionItem(IElement item, ColumnExpression column)
+    {
+        // An extension-only primitive has no scalar value; its JSON object is the shadow, not the value.
+        // A computed System value such as a Quantity literal has no source JSON and keeps its scalar form.
+        if (item.HasPrimitiveValue
+            || item is ISystemValueElement
+            || FhirPrimitiveExtensions.FromTypeString(item.InstanceType) != FhirPrimitive.None)
+            return ConvertToSqlType(item.Value, column.Type);
+
+        if (!string.IsNullOrEmpty(column.Type) && !string.Equals(column.Type, "string", StringComparison.OrdinalIgnoreCase))
+            throw new ViewDefinitionColumnException(
+                $"Column '{column.Name}' has type '{column.Type}' but its collection holds a complex '{item.InstanceType}' value. " +
+                "Declare type 'string' or omit the type to write each item as a JSON object.");
+
+        return item.Meta<JsonNode>() as JsonObject
+            ?? throw new ViewDefinitionColumnException(
+                $"Column '{column.Name}' holds a complex '{item.InstanceType}' value at {item.Location} that has no source JSON object to write.");
+    }
+
     private static string FormatArrayAsJson(object?[] values)
     {
         if (values.Length == 0)
@@ -586,7 +568,8 @@ internal class SqlOnFhirEvaluationVisitor
             {
                 string s => $"\"{EscapeJsonString(s)}\"",
                 bool b => b ? "true" : "false",
-                int or long or decimal or double or float => v.ToString(),
+                int or long or decimal or double or float => Convert.ToString(v, CultureInfo.InvariantCulture),
+                JsonObject complex => complex.ToJsonString(ComplexItemJsonOptions),
                 _ => $"\"{EscapeJsonString(v.ToString()!)}\""
             };
         });
