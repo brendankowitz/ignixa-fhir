@@ -49,6 +49,18 @@ public class SearchParameterResolutionOptions
     public bool FailStartupOnEagerLoadError { get; set; }
 
     /// <summary>
+    /// Whether semantic (vector) search parameters are visible and usable. Bound from configuration key
+    /// <c>VectorSearch:Enabled</c>. When false, a search parameter carrying a parsed
+    /// <see cref="Ignixa.Search.Models.SearchParameterInfo.VectorConfig"/> must behave exactly as if it
+    /// were unsupported — absent from the CapabilityStatement, ignored (with an issue) under lenient
+    /// search handling, and rejected under strict handling — without discarding it from the conformance
+    /// state that tracks which IG packages defined it.
+    /// Default: false (vector search is opt-in; no embedding provider is registered or called unless the
+    /// operator has configured one).
+    /// </summary>
+    public bool VectorSearchEnabled { get; set; }
+
+    /// <summary>
     /// Gets the priority rank for a package ID (lower number = higher priority).
     /// Returns int.MaxValue if package is not in the priority list.
     /// </summary>

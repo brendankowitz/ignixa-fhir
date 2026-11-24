@@ -16,6 +16,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!--
+      Linked, not a ProjectReference to Ignixa.Application.Tests: that project is full of unrelated
+      xUnit facts this suite would otherwise pull in. See DeterministicEmbeddingGenerator's own remarks
+      for why this test-only generator lives there and is shared this way.
+    -->
+    <Compile Include="..\Ignixa.Application.Tests\SemanticSearch\DeterministicEmbeddingGenerator.cs"
+             Link="_Infrastructure\DeterministicEmbeddingGenerator.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="Microsoft.Data.SqlClient" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />

@@ -53,6 +53,13 @@ public class SearchModifierNotSupportedException : InvalidSearchOperationExcepti
     /// caller that skips this check silently executes the widened, unfiltered search instead of the
     /// SHALL-mandated rejection.
     /// </summary>
+    /// <remarks>
+    /// When <see cref="SearchOptions.UnsupportedModifierReasons"/> includes a specific reason for a
+    /// parameter (e.g., a chain terminating in a semantic parameter), that reason is used in the
+    /// thrown message instead of the generic "uses a modifier that is not supported" template, which
+    /// would misreport cases where no modifier was actually unsupported but some other aspect of the
+    /// parameter was incompatible.
+    /// </remarks>
     /// <param name="options">The options produced by <see cref="Parsing.SearchOptionsBuilder"/>.</param>
     public static void ThrowIfAny(SearchOptions options)
     {
@@ -63,7 +70,16 @@ public class SearchModifierNotSupportedException : InvalidSearchOperationExcepti
             return;
         }
 
-        var parameterList = string.Join(", ", options.UnsupportedModifierParams.Select(p => $"'{p}'"));
+        var parameterDetails = options.UnsupportedModifierParams.Select(p =>
+        {
+            if (options.UnsupportedModifierReasons.TryGetValue(p, out var reason))
+            {
+                return $"'{p}': {reason}";
+            }
+
+            return $"'{p}'";
+        });
+        var parameterList = string.Join(", ", parameterDetails);
         var message = string.IsNullOrEmpty(options.ResourceType)
             ? $"Search parameter(s) use a modifier that is not supported: {parameterList}"
             : $"Search parameter(s) use a modifier that is not supported for resource type '{options.ResourceType}': {parameterList}";

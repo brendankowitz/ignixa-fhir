@@ -1,4 +1,5 @@
 using Ignixa.Conformance.Events.Models;
+using Ignixa.Search.Models;
 using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Conformance.Events.Events;
@@ -21,7 +22,9 @@ public record SearchParameterActivated(
     IReadOnlyList<SearchParameterComponentData>? Components,
     string? Name,
     string? Description,
-    string? FhirVersion = null);
+    string? FhirVersion = null,
+    VectorSearchConfig? VectorConfig = null,
+    bool HasInvalidVectorConfig = false);
 
 public record SearchParameterComponentData(
     string DefinitionUrl,

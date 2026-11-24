@@ -33,6 +33,9 @@ public class EndToEndCompilationTests
 
         public Task<int?> GetQuantityCodeIdAsync(string code, CancellationToken cancellationToken)
             => Task.FromResult(QuantityCodeIds.TryGetValue(code, out var id) ? (int?)id : null);
+
+        public Task<short?> GetEmbeddingModelIdAsync(string modelKey, CancellationToken cancellationToken)
+            => Task.FromResult<short?>(null);
     }
 
     [Fact]

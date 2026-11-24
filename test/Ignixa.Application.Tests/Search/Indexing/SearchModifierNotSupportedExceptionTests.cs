@@ -69,4 +69,52 @@ public class SearchModifierNotSupportedExceptionTests
         // Arrange, Act, Assert
         Should.Throw<ArgumentNullException>(() => SearchModifierNotSupportedException.ThrowIfAny(null!));
     }
+
+    [Fact]
+    public void GivenUnsupportedModifierWithReason_WhenThrowIfAnyCalled_ThenMessageIncludesReasonNotGenericText()
+    {
+        // Arrange: a semantic search chain rejection has a specific reason (the chain terminates in
+        // a semantic parameter), and a reason is recorded. The message should use that reason instead
+        // of the generic "uses a modifier that is not supported" text, which would misreport the actual
+        // issue.
+        var options = new SearchOptions
+        {
+            UnsupportedModifierParams = ["subject:Patient.semantic-text"],
+            UnsupportedModifierReasons = new Dictionary<string, string>
+            {
+                ["subject:Patient.semantic-text"] = "Chains cannot terminate in a semantic search parameter"
+            }
+        };
+
+        // Act
+        var exception = Should.Throw<SearchModifierNotSupportedException>(
+            () => SearchModifierNotSupportedException.ThrowIfAny(options));
+
+        // Assert: the specific reason is in the message, not the generic text
+        exception.Message.ShouldContain("subject:Patient.semantic-text");
+        exception.Message.ShouldContain("Chains cannot terminate in a semantic search parameter");
+        exception.Message.ShouldNotContain("uses a modifier that is not supported");
+    }
+
+    [Fact]
+    public void GivenMixedModifiersWithAndWithoutReasons_WhenThrowIfAnyCalled_ThenMessageRendersEachAppropriately()
+    {
+        // Arrange: one parameter has a specific reason, another is a genuine unsupported modifier.
+        var options = new SearchOptions
+        {
+            UnsupportedModifierParams = ["subject:Patient.semantic-text", "_id:above"],
+            UnsupportedModifierReasons = new Dictionary<string, string>
+            {
+                ["subject:Patient.semantic-text"] = "Chains cannot terminate in a semantic search parameter"
+            }
+        };
+
+        // Act
+        var exception = Should.Throw<SearchModifierNotSupportedException>(
+            () => SearchModifierNotSupportedException.ThrowIfAny(options));
+
+        // Assert: the parameter with a reason shows the reason, the one without keeps old format
+        exception.Message.ShouldContain("subject:Patient.semantic-text': Chains cannot terminate in a semantic search parameter");
+        exception.Message.ShouldContain("_id:above");
+    }
 }

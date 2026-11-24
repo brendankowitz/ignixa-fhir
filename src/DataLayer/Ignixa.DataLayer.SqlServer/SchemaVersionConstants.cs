@@ -50,5 +50,10 @@ public static class SchemaVersionConstants
     // deploy command timeouts allow. Retires the unused legacy dbo.ReindexJob table, its five procedures and
     // the unused bulk reindex TVP: Script.PostDeployment.sql removes precisely those objects only when
     // ReindexJob is empty, and otherwise fails with an actionable error and preserves the legacy records.
-    // DacFx leaves all other target-only objects untouched.
+    // DacFx leaves all other target-only objects untouched. Also adds semantic vector search storage:
+    // dbo.EmbeddingModel and dbo.VectorSearchParam (Embedding vector(1536), requiring Azure SQL Database or
+    // SQL Server 2025+), the dbo.VectorResourceList and dbo.VectorSearchParamList table types, and
+    // dbo.MergeVectorSearchParams / dbo.GetOrCreateEmbeddingModel. HardDeleteResource.sql and
+    // DeleteHistory.sql clean up vector rows. Vector writes remain separate from dbo.MergeResources and its
+    // TVPs; semantic vectors are updated after the core resource write.
 }

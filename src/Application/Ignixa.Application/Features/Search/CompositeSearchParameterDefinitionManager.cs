@@ -208,7 +208,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
             resourceTypeSet.Count);
     }
 
-    private static SearchParamInfo ConvertToSearchParameterInfo(ActiveSearchParameter asp)
+    private SearchParamInfo ConvertToSearchParameterInfo(ActiveSearchParameter asp)
     {
         var components = asp.Components?.Select(c =>
             new SearchParameterComponentInfo(
@@ -225,11 +225,34 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
             expression: asp.Expression,
             targetResourceTypes: asp.TargetResourceTypes,
             baseResourceTypes: [asp.ResourceType],
-            description: asp.Description);
+            description: asp.Description,
+            vectorConfig: asp.VectorConfig);
 
         if (!string.IsNullOrEmpty(asp.OverridesCanonical))
         {
             searchParamInfo.OverridesUrl = new Uri(asp.OverridesCanonical);
+        }
+
+        if (asp.HasInvalidVectorConfig)
+        {
+            // Mirrors the IElement/runtime-registration path: a malformed vector-search-config
+            // extension keeps the parameter registered but unsupported (see SearchParameterInfo's
+            // IElement constructor), rather than silently acting as if vector search were never
+            // configured for it.
+            searchParamInfo.IsSupported = false;
+        }
+        else if (searchParamInfo.IsSemantic && !_options.VectorSearchEnabled)
+        {
+            // The vector-search feature gate (SearchParameterResolutionOptions.VectorSearchEnabled,
+            // bound from "VectorSearch:Enabled"). Disabled means invisible: extraction treats the
+            // parameter as unsupported, while query and capability consumers require it to be unsearchable.
+            // The semantic parse branch (SearchParameterExpressionParser.ParseCore) rejects an unsupported
+            // semantic parameter the same way as an invalid config, which is what drives the
+            // lenient-ignored / strict-400 behavior through SearchOptionsBuilder's existing
+            // SearchParameterNotSupportedException handling. The ConformanceState record of which IG
+            // package defined this parameter is untouched; only this materialized view is marked.
+            searchParamInfo.IsSupported = false;
+            searchParamInfo.IsSearchable = false;
         }
 
         // Every caller filters through IsListed, so only extracted statuses reach here.

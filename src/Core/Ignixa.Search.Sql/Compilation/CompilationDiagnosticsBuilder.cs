@@ -285,6 +285,9 @@ internal static class CompilationDiagnosticsBuilder
             case MissingSearchParameterExpression missing:
                 yield return (missing.Parameter, null);
                 break;
+            case VectorSearchExpression vector:
+                yield return (vector.Parameter, null);
+                break;
         }
     }
 

@@ -31,6 +31,10 @@ public static class PlanRowKind
 
     public const string ReferencedTypeExpansion = "referencedTypeExpansion";
 
+    public const string VectorMatchSource = "vectorMatchSource";
+
+    public const string VectorRank = "vectorRank";
+
     public const string IncludeStage = "includeStage";
 
     public const string IncludeBoundary = "includeBoundary";

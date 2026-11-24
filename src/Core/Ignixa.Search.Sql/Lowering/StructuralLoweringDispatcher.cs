@@ -43,6 +43,7 @@ internal static class StructuralLoweringDispatcher
             "whose compartment it expands, so it has no meaning without one. Guarding at the dispatch choke " +
             "point rather than letting the traversal run under a scope it cannot use."),
         PatientEverythingExpression everything => context.LowerPatientEverything(everything),
+        VectorSearchExpression vector => context.LowerVectorSearch(vector, resourceType),
         _ => throw new NotSupportedException(
             $"Lower does not support {expression.GetType().Name} yet -- see this plan's scope notes."),
     };

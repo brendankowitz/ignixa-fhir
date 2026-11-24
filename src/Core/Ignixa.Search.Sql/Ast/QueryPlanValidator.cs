@@ -18,6 +18,7 @@ internal static class QueryPlanValidator
         // would take the "does not over-fetch" branch and let the wrapper guards fall quiet on a spec that
         // is simply invalid. Rejecting it here is what makes null mean what the later reads assume.
         RequireCoherentProbeRow(plan.MatchSpec);
+        RequireRankingSourceInPlan(plan);
         var matchPageCount = 0;
         var matchPageIndex = -1;
         var matchSeedCount = 0;
@@ -136,6 +137,22 @@ internal static class QueryPlanValidator
                 $"MatchPageSpec.Top must be at least 1 when TopIncludesProbeRow is set; got {spec.Top}. The " +
                 "cap covers the page and its probe row, so the include seed trims to Top - 1: a cap of 1 is a " +
                 "legal empty page, but anything below it is a negative row count.");
+        }
+    }
+
+    /// <summary>
+    /// Requires a ranking's gate to be the very instance in the plan's CTE list. The ranking reads the gate's
+    /// parameter, model and embedding; a gate the graph never emits would rank by vectors the match set was not
+    /// filtered on. Reference identity, as for <see cref="MatchPageSpec"/>, because two equal gates are still two
+    /// filters a rewrite could have changed independently.
+    /// </summary>
+    private static void RequireRankingSourceInPlan(QueryPlan plan)
+    {
+        if (plan.MatchSpec.Ranking is { Source: var source } && !plan.Ctes.Any(cte => ReferenceEquals(cte, source)))
+        {
+            throw new NotSupportedException(
+                "MatchPageSpec.Ranking.Source must be a VectorMatchSource instance in QueryPlan.Ctes: the ranking " +
+                "orders the match set by the gate that filtered it, and a gate outside the graph filtered nothing.");
         }
     }
 

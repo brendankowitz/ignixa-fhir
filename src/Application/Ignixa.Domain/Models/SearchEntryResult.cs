@@ -63,4 +63,13 @@ public record SearchEntryResult(
     /// not after the lookahead resource or the count of successfully rendered resources.
     /// </summary>
     public string? ContinuationToken { get; init; }
+
+    /// <summary>
+    /// The semantic (vector) search relevance score, <c>1 - distance / 2</c>, when this entry came from a
+    /// ranked semantic search match. Null for every entry a search did not rank by distance, and for any
+    /// <see cref="SearchEntryMode.Include"/> or <see cref="SearchEntryMode.Outcome"/> entry even on a
+    /// ranked search -- an included resource was not itself matched by the semantic gate, so it has no
+    /// distance to score. Surfaced as FHIR <c>Bundle.entry.search.score</c>.
+    /// </summary>
+    public double? Score { get; init; }
 }
