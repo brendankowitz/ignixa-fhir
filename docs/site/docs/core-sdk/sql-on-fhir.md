@@ -155,6 +155,22 @@ ignixa-sqlonfhir r4 run \
 }
 ```
 
+### Keep a collection in one Parquet column
+
+To keep one row per Patient, select the repeating element in a string column with `collection: true` instead of using `forEach`:
+
+```json
+{
+  "column": [
+    { "name": "identifiers", "path": "identifier", "type": "string", "collection": true }
+  ]
+}
+```
+
+The Parquet cell contains JSON text. Parse it once to get an ordered array of FHIR objects, such as `[{"system":"urn:example:mrn","value":"001"},{"system":"urn:example:member","value":"A7"}]`. A Patient with no identifiers produces `[]`. Selecting `name` the same way keeps each HumanName's `given` array inside the object. Every `collection: true` column is written as a Parquet string column, whatever its declared `type`.
+
+Declare `type: "string"` or omit `type` for a collection of complex values. Evaluation fails, rather than writing `null` items, when such a column declares another type or when an expression computes a complex value that has no source JSON, such as `type()`. The failure's inner exception is a `ViewDefinitionColumnException`, whose message names the column but never quotes resource values. The CLI shows only that cause on the console and in the `--stats-out` `errorMessage`; for other failures, such as a value that cannot convert to the column's `type`, it shows only the generic failure message.
+
 ## `%rowIndex`
 
 The `%rowIndex` environment variable is a 0-based integer available inside any `forEach`, `forEachOrNull`, or `repeat` iteration. It resets to 0 for each new outer context. At the top level (outside any iteration) it is always `0`.
