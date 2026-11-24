@@ -169,7 +169,7 @@ To keep one row per Patient, select the repeating element in a string column wit
 
 The Parquet cell contains JSON text. Parse it once to get an ordered array of FHIR objects, such as `[{"system":"urn:example:mrn","value":"001"},{"system":"urn:example:member","value":"A7"}]`. A Patient with no identifiers produces `[]`. Selecting `name` the same way keeps each HumanName's `given` array inside the object. Every `collection: true` column is written as a Parquet string column, whatever its declared `type`.
 
-Declare `type: "string"` or omit `type` for a collection of complex values. Evaluation fails, rather than writing `null` items, when such a column declares another type or when an expression computes a complex value that has no source JSON, such as `type()`.
+Declare `type: "string"` or omit `type` for a collection of complex values. Evaluation fails, rather than writing `null` items, when such a column declares another type or when an expression computes a complex value that has no source JSON, such as `type()`. The failure's inner exception is a `ViewDefinitionColumnException`, whose message names the column but never quotes resource values. The CLI shows only that cause on the console and in the `--stats-out` `errorMessage`; for other failures, such as a value that cannot convert to the column's `type`, it shows only the generic failure message.
 
 ## `%rowIndex`
 
