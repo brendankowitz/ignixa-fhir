@@ -128,10 +128,9 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
 
             // For bundle operations, construct minimal UpdateResult from ResourceKey
             // Full resource not available until batch is committed
-            var resourceJson = System.Text.Json.JsonSerializer.Serialize(command.JsonNode.MutableNode);
             result = new UpdateResult(
                 Key: key,
-                ResourceBytes: System.Text.Encoding.UTF8.GetBytes(resourceJson),
+                ResourceBytes: command.JsonNode.SerializeToBytes(),
                 LastModified: command.JsonNode.Meta.LastUpdatedOffset ?? DateTimeOffset.UtcNow)
             {
                 IsCreated = coordinator.IsCreated(entryIndex)

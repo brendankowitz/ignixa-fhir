@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text;
+using System.Text.Json.Nodes;
 using Ignixa.Serialization.SourceNodes;
 using Shouldly;
 using Xunit;
@@ -61,6 +62,28 @@ public class JsonSourceNodeFactoryStreamingTests
         stream.WriteSizes.Count.ShouldBeGreaterThan(1);
         stream.WriteSizes.Max().ShouldBeLessThan(512 * 1024);
         Encoding.UTF8.GetString(stream.ToArray()).ShouldBe(bundle.SerializeToString());
+    }
+
+    [Fact]
+    public async Task GivenALongRunOfLeadingPlaceholders_WhenSerializingToAStreamAsync_ThenOutputMatchesSerializeToString()
+    {
+        // Arrange: each empty `given` item keeps a null placeholder because its `_given` companion has content.
+        // A companion pair is written through the whole-resource path, so it is not flushed item by item.
+        const int placeholders = 150_000;
+        var root = new JsonObject
+        {
+            ["resourceType"] = "Patient",
+            ["given"] = new JsonArray([.. Enumerable.Repeat<JsonNode>(null, placeholders), JsonValue.Create("x")]),
+            ["_given"] = new JsonArray([.. Enumerable.Range(0, placeholders).Select(_ => (JsonNode)new JsonObject { ["id"] = "a" })]),
+        };
+        var patient = new ResourceJsonNode(root);
+        using var stream = new MemoryStream();
+
+        // Act
+        await patient.SerializeToStreamAsync(stream);
+
+        // Assert
+        Encoding.UTF8.GetString(stream.ToArray()).ShouldBe(patient.SerializeToString());
     }
 
     private sealed class WriteRecordingStream : MemoryStream

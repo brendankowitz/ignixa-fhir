@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using BenchmarkDotNet.Attributes;
 using Hl7.Fhir.Model;
 using Hl7.Fhir.Serialization;
@@ -18,6 +19,8 @@ public class SerializationBenchmarks
     private string _patientSmallJson = null!;
     private string _observationMediumJson = null!;
     private string _bundleLargeJson = null!;
+    private string _bundleLargeWithNestedEmptiesJson = null!;
+    private string _patientWithNarrativeJson = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -27,6 +30,41 @@ public class SerializationBenchmarks
         _patientSmallJson = ReadEmbeddedResource(assembly, "Ignixa.Benchmarks.TestData.patient-small.json");
         _observationMediumJson = ReadEmbeddedResource(assembly, "Ignixa.Benchmarks.TestData.observation-medium.json");
         _bundleLargeJson = ReadEmbeddedResource(assembly, "Ignixa.Benchmarks.TestData.bundle-large.json");
+        _bundleLargeWithNestedEmptiesJson = AddNestedEmptyBesideLargeString(_bundleLargeJson);
+        _patientWithNarrativeJson = AddNarrative(_patientSmallJson);
+    }
+
+    // A 100 KB XHTML narrative: the quotes in it are escaped, so the text between them must be copied
+    // in runs, not encoded one character at a time.
+    private static string AddNarrative(string patientJson)
+    {
+        var patient = JsonNode.Parse(patientJson)!.AsObject();
+        var div = new System.Text.StringBuilder("<div xmlns=\"http://www.w3.org/1999/xhtml\">");
+        while (div.Length < 100_000)
+        {
+            div.Append("<p class=\"note\">The patient was seen today and reported feeling well overall.</p>\n");
+        }
+
+        patient["text"] = new JsonObject { ["status"] = "generated", ["div"] = div.Append("</div>").ToString() };
+        return patient.ToJsonString();
+    }
+
+    // Every entry gets an extension holding a 4 KB string beside an empty array, so each entry is pruned
+    // a few levels down and the string must not be re-encoded per level.
+    private static string AddNestedEmptyBesideLargeString(string bundleJson)
+    {
+        var bundle = JsonNode.Parse(bundleJson)!.AsObject();
+        foreach (JsonNode? entry in bundle["entry"]!.AsArray())
+        {
+            entry!["resource"]!["extension"] = new JsonArray(new JsonObject
+            {
+                ["url"] = "http://example.org/fhir/StructureDefinition/note",
+                ["valueString"] = new string('x', 4096),
+                ["extension"] = new JsonArray(),
+            });
+        }
+
+        return bundle.ToJsonString();
     }
 
     private static string ReadEmbeddedResource(Assembly assembly, string resourceName)
@@ -134,6 +172,22 @@ public class SerializationBenchmarks
     public string IgnixaSerializeLarge()
     {
         var resource = ResourceJsonNode.Parse(_bundleLargeJson);
+        return resource.SerializeToString();
+    }
+
+    [Benchmark(Description = "Ignixa: Serialize Patient with a 100 KB narrative")]
+    [BenchmarkCategory("Serialize", "Large")]
+    public string IgnixaSerializeNarrative()
+    {
+        var resource = ResourceJsonNode.Parse(_patientWithNarrativeJson);
+        return resource.SerializeToString();
+    }
+
+    [Benchmark(Description = "Ignixa: Serialize large Bundle with nested empty elements")]
+    [BenchmarkCategory("Serialize", "Large")]
+    public string IgnixaSerializeLargeWithNestedEmpties()
+    {
+        var resource = ResourceJsonNode.Parse(_bundleLargeWithNestedEmptiesJson);
         return resource.SerializeToString();
     }
 
