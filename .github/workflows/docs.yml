@@ -198,6 +198,7 @@ jobs:
             --verbosity minimal
         env:
           TEST_SQL_CONNECTION_STRING: "Server=localhost,1433;Database=FhirTest;User Id=sa;Password=${{ env.SQL_SA_PASSWORD }};TrustServerCertificate=true;Encrypt=false"
+          SqlServer__AutomaticSchemaDeploymentEnabled: "true"
           IGNIXA_RUN_CONFORMANCE: "true"
           IGNIXA_CONFORMANCE_REPORT_PATH: ${{ github.workspace }}/docs/site/static/conformance/latest.json
           Logging__LogLevel__Default: "Warning"
