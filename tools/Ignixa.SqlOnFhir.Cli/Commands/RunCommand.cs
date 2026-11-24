@@ -303,7 +303,8 @@ internal static class RunCommand
         var typeMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var col in columnSchemas)
         {
-            var sqlType = (col.Type ?? "STRING").ToUpperInvariant();
+            // A collection cell holds JSON array text whatever the item type.
+            var sqlType = col.Collection ? "STRING" : (col.Type ?? "STRING").ToUpperInvariant();
             fields.Add(MapToParquetField(col.Name, sqlType));
             typeMap[col.Name] = sqlType;
         }

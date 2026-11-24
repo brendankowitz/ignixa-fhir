@@ -7,9 +7,14 @@
  */
 
 using System.Collections.Immutable;
+using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization.Metadata;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Evaluation.Functions;
 using Ignixa.Abstractions;
+using Ignixa.Serialization;
 using Ignixa.SqlOnFhir.Expressions;
 
 #pragma warning disable CS0618 // Type or member is obsolete - ISourceNode migration pending
@@ -22,6 +27,13 @@ namespace Ignixa.SqlOnFhir.Evaluation;
 /// </summary>
 internal class SqlOnFhirEvaluationVisitor
 {
+    private static readonly JsonSerializerOptions ComplexItemJsonOptions = new()
+    {
+        Encoder = MinimalJsonEncoder.Instance,
+        // JsonNode.ToJsonString fails on a JsonValue wrapping a CLR object unless a resolver is set.
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+    };
+
     private readonly FhirPathEvaluator _fhirPath;
 
     public SqlOnFhirEvaluationVisitor()
@@ -273,14 +285,11 @@ internal class SqlOnFhirEvaluationVisitor
             forEachRows.AddRange(rowsForItem);
         }
 
-        // forEachOrNull: if collection was empty, emit one null row with rowIndex=0.
-        // Evaluate columns against the base resource with rowIndex=0 context so that
-        // context-only expressions like %rowIndex return 0, while resource-path expressions
-        // that expect a forEach element return null (path won't resolve against the resource).
+        // forEachOrNull: if the collection was empty, emit one null row with rowIndex=0.
         if (node.ForEachOrNull != null && forEachRows.Count == 0)
         {
             var nullContext = context.WithEnvironmentVariable("rowIndex", new PrimitiveValueElement(0));
-            var nullRow = EvaluateNullRowColumns(node.Columns, resource, nullContext);
+            var nullRow = EvaluateNullRowColumns(node.Columns, nullContext);
             foreach (var colName in GetAllColumnNames(node).Skip(node.Columns.Length))
                 nullRow.TryAdd(colName, null);
             var nullRowProcessed = ProcessNestedSelects([nullRow], node.NestedSelect, resource, nullContext);
@@ -300,47 +309,25 @@ internal class SqlOnFhirEvaluationVisitor
     }
 
     private Dictionary<string, object?> EvaluateNullRowColumns(
-        ImmutableArray<ColumnExpression> columns, IElement resource, EvaluationContext context)
+        ImmutableArray<ColumnExpression> columns, EvaluationContext context)
     {
+        // The forEachOrNull item is absent, so columns see an empty focus: navigation yields nothing,
+        // while context-only expressions such as %rowIndex and %rootResource still resolve.
+        // Each column gets its own variable scope, as FhirPathEvaluator.Evaluate gives every call.
+        var emptyFocus = context.WithFocus([]);
         var row = new Dictionary<string, object?>();
         foreach (var col in columns)
-        {
-            List<IElement> results;
-            try
-            {
-                results = _fhirPath.Evaluate(resource, col.Path, context).ToList();
-            }
-            catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or ArgumentException)
-            {
-                // Path evaluation against the base resource is expected to fail for expressions
-                // that navigate into the forEach element (e.g. "family" when the element is absent).
-                // Context-only expressions like %rowIndex succeed and return their value normally.
-                row[col.Name] = null;
-                continue;
-            }
-
-            if (col.Collection)
-            {
-                var values = results.Select(ExtractValue).Select(v => ConvertToSqlType(v, col.Type)).ToArray();
-                row[col.Name] = FormatArrayAsJson(values);
-            }
-            else
-            {
-                row[col.Name] = ConvertToSqlType(ExtractValue(results.FirstOrDefault()), col.Type);
-            }
-        }
+            row[col.Name] = FormatColumn(col, col.Path.AcceptVisitor(_fhirPath, emptyFocus.ForkVariableScope()).ToList());
         return row;
     }
 
-    private object? EvaluateColumn(ColumnExpression node, IElement resource, EvaluationContext context)
-    {
-        var results = _fhirPath.Evaluate(resource, node.Path, context).ToList();
+    private object? EvaluateColumn(ColumnExpression node, IElement resource, EvaluationContext context) =>
+        FormatColumn(node, _fhirPath.Evaluate(resource, node.Path, context).ToList());
 
+    private static object? FormatColumn(ColumnExpression node, List<IElement> results)
+    {
         if (node.Collection)
-        {
-            var values = results.Select(ExtractValue).Select(v => ConvertToSqlType(v, node.Type)).ToArray();
-            return FormatArrayAsJson(values);
-        }
+            return FormatCollection(results, node);
 
         if (results.Count > 1)
             throw new InvalidOperationException(
@@ -572,6 +559,28 @@ internal class SqlOnFhirEvaluationVisitor
         }
     }
 
+    private static string FormatCollection(List<IElement> results, ColumnExpression column) =>
+        FormatArrayAsJson(results.Select(item => ToCollectionItem(item, column)).ToArray());
+
+    private static object? ToCollectionItem(IElement item, ColumnExpression column)
+    {
+        // An extension-only primitive has no scalar value; its JSON object is the shadow, not the value.
+        // A computed System value such as a Quantity literal has no source JSON and keeps its scalar form.
+        if (item.HasPrimitiveValue
+            || item is ISystemValueElement
+            || FhirPrimitiveExtensions.FromTypeString(item.InstanceType) != FhirPrimitive.None)
+            return ConvertToSqlType(item.Value, column.Type);
+
+        if (!string.IsNullOrEmpty(column.Type) && !string.Equals(column.Type, "string", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"Column '{column.Name}' has type '{column.Type}' but its collection holds a complex '{item.InstanceType}' value. " +
+                "Declare type 'string' or omit the type to write each item as a JSON object.");
+
+        return item.Meta<JsonNode>() as JsonObject
+            ?? throw new InvalidOperationException(
+                $"Column '{column.Name}' holds a complex '{item.InstanceType}' value at {item.Location} that has no source JSON object to write.");
+    }
+
     private static string FormatArrayAsJson(object?[] values)
     {
         if (values.Length == 0)
@@ -586,7 +595,8 @@ internal class SqlOnFhirEvaluationVisitor
             {
                 string s => $"\"{EscapeJsonString(s)}\"",
                 bool b => b ? "true" : "false",
-                int or long or decimal or double or float => v.ToString(),
+                int or long or decimal or double or float => Convert.ToString(v, CultureInfo.InvariantCulture),
+                JsonObject complex => complex.ToJsonString(ComplexItemJsonOptions),
                 _ => $"\"{EscapeJsonString(v.ToString()!)}\""
             };
         });
