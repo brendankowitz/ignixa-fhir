@@ -10,45 +10,72 @@ using Xunit;
 namespace Ignixa.RepoGuards.Tests;
 
 /// <summary>
-/// Guards for ADR 2611 (.NET runtime support with Core multi-targeting). Shippable Core libraries
-/// must run on both supported runtimes, so any <c>src/Core/**</c> project that targets one of
-/// {net10.0, net11.0} must target both. The netstandard2.0 analyzer projects do not intersect
-/// that set and are therefore exempt without special-casing.
+/// Guards the ADR 2611 target framework table for shipped libraries and public tools. Each guarded project
+/// must target exactly the frameworks of its row, so an extra, missing or replaced framework fails.
 /// </summary>
 public class RuntimeMultiTargetingGuardTests
 {
-    private static readonly string[] RequiredTargetFrameworks = ["net10.0", "net11.0"];
+    private static readonly string[] SupportedRuntimes = ["net10.0", "net11.0"];
+
+    private static readonly string[] NetStandard = ["netstandard2.0"];
+
+    // Analyzers, source generators and the content-only suites package.
+    private static readonly HashSet<string> NetStandardProjects = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Ignixa.Analyzers",
+        "Ignixa.FhirPath.Generators",
+        "Ignixa.Search.Sql.Generators",
+        "Ignixa.TestScript.Suites",
+    };
+
+    private static readonly string[][] MultiTargetedProjectsOutsideCore =
+    [
+        ["src", "Application", "Ignixa.Sidecar.Contracts", "Ignixa.Sidecar.Contracts.csproj"],
+        ["tools", "Ignixa.ConformanceMatrix.Cli", "Ignixa.ConformanceMatrix.Cli.csproj"],
+        ["tools", "Ignixa.DeId.Cli", "Ignixa.DeId.Cli.csproj"],
+        ["tools", "Ignixa.FhirFakes.Cli", "Ignixa.FhirFakes.Cli.csproj"],
+        ["tools", "Ignixa.SqlOnFhir.Cli", "Ignixa.SqlOnFhir.Cli.csproj"],
+        ["tools", "Ignixa.Validation.Cli", "Ignixa.Validation.Cli.csproj"],
+    ];
 
     [Fact]
-    public void GivenCoreProjects_WhenTargetingASupportedRuntime_ThenTheyTargetBothRuntimes()
+    public void GivenShippedLibrariesAndPublicTools_WhenTargetFrameworksAreRead_ThenEachMatchesItsAdrRow()
     {
-        var violations = LoadCoreProjects()
-            .Where(project => project.TargetFrameworks.Overlaps(RequiredTargetFrameworks))
-            .Where(project => !RequiredTargetFrameworks.All(project.TargetFrameworks.Contains))
-            .Select(project => $"{project.Name}: [{string.Join(';', project.TargetFrameworks)}]")
+        var violations = LoadGuardedProjects()
+            .Select(project => (Project: project, Expected: ExpectedFrameworks(project.Name)))
+            .Where(entry => !entry.Project.TargetFrameworks.SetEquals(entry.Expected))
+            .Select(entry => $"{entry.Project.Name}: expected [{Format(entry.Expected)}], found [{Format(entry.Project.TargetFrameworks)}]")
             .ToList();
 
         violations.ShouldBeEmpty(
-            "Core libraries must multi-target both net10.0 and net11.0 (ADR 2611). " +
-            "A project that targets one supported runtime must target both so it ships for each.");
+            "Core libraries, Ignixa.Sidecar.Contracts and the public CLIs target exactly net10.0;net11.0, " +
+            "and the analyzer, generator and content-only projects target exactly netstandard2.0 (ADR 2611).");
     }
 
-    private static IEnumerable<CoreProject> LoadCoreProjects()
+    private static string[] ExpectedFrameworks(string projectName) =>
+        NetStandardProjects.Contains(projectName) ? NetStandard : SupportedRuntimes;
+
+    private static string Format(IEnumerable<string> frameworks) =>
+        string.Join(';', frameworks.Order(StringComparer.OrdinalIgnoreCase));
+
+    private static List<GuardedProject> LoadGuardedProjects()
     {
         var repoRoot = RepoRoot.Find();
         var coreDir = Path.Combine(repoRoot, "src", "Core");
         Directory.Exists(coreDir).ShouldBeTrue($"Expected Core source directory at {coreDir}.");
 
-        var projects = Directory
-            .EnumerateFiles(coreDir, "*.csproj", SearchOption.AllDirectories)
-            .Select(ParseProject)
-            .ToList();
+        var corePaths = Directory.EnumerateFiles(coreDir, "*.csproj", SearchOption.AllDirectories).ToList();
+        corePaths.ShouldNotBeEmpty("Expected to find Core projects; scan path may be wrong.");
 
-        projects.ShouldNotBeEmpty("Expected to find Core projects; scan path may be wrong.");
-        return projects;
+        var outsideCorePaths = MultiTargetedProjectsOutsideCore
+            .Select(segments => Path.Combine([repoRoot, .. segments]))
+            .ToList();
+        outsideCorePaths.Where(path => !File.Exists(path)).ShouldBeEmpty("A guarded project moved; update the ADR 2611 guard.");
+
+        return corePaths.Concat(outsideCorePaths).Select(ParseProject).ToList();
     }
 
-    private static CoreProject ParseProject(string csprojPath)
+    private static GuardedProject ParseProject(string csprojPath)
     {
         var doc = XDocument.Load(csprojPath);
         var properties = doc.Descendants("PropertyGroup").Elements().ToList();
@@ -60,8 +87,8 @@ public class RuntimeMultiTargetingGuardTests
             .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        return new CoreProject(Path.GetFileNameWithoutExtension(csprojPath), frameworks);
+        return new GuardedProject(Path.GetFileNameWithoutExtension(csprojPath), frameworks);
     }
 
-    private sealed record CoreProject(string Name, HashSet<string> TargetFrameworks);
+    private sealed record GuardedProject(string Name, HashSet<string> TargetFrameworks);
 }
