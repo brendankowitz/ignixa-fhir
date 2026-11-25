@@ -46,10 +46,18 @@ public class FabricSilverDeltaWriterMergeTests
     {
         using var root = new TemporaryDirectory();
         var table = root.Combine("Patient");
-        var contract = await SeedAsync(table, Patient("a", Stored, "Stored", r => r["gender"] = "female"));
+        var contract = await SeedAsync(table, Patient("a", Stored, "Stored", r =>
+        {
+            r["gender"] = "female";
+            r["balance"] = 1.5;
+        }));
 
         var result = await FabricSilverDeltaWriter.WriteBatchAsync(
-            [WriterContracts.Batch(table, contract, Patient("a", "2024-01-01T00:00:00.000002Z", "Newer"))],
+            [WriterContracts.Batch(table, contract, Patient("a", "2024-01-01T00:00:00.000002Z", "Newer", r =>
+            {
+                r["meta"]!["versionId"] = "2";
+                r["balance"] = 2.25;
+            }))],
             WriterContracts.Ingestion(filePath: WriterContracts.SecondFile, ingestedAt: WriterContracts.SecondIngestion),
             CancellationToken.None);
 
@@ -57,6 +65,11 @@ public class FabricSilverDeltaWriterMergeTests
         (outcome.CommittedVersion, outcome.InsertedRows, outcome.UpdatedRows, outcome.UnchangedRows).ShouldBe((2L, 0L, 1L, 0L));
         var row = RowOf(await DeltaParquetReader.ReadLiveRowsAsync(table), "a");
         FamilyOf(row).ShouldBe("Newer");
+        var nameString = (string?)row["name_string"];
+        nameString.ShouldNotBeNull().ShouldContain("Newer");
+        nameString.ShouldNotContain("Stored");
+        ((string?)row["meta"]!["versionId"]).ShouldBe("2");
+        ((string?)row["balance"]).ShouldBe("2.2500000000");
         ((string?)row["meta_lastUpdated"]).ShouldBe("2024-01-01T00:00:00.000002Z");
         ((string?)row["msftCreatedDatetime"]).ShouldBe(FirstIngestedAt);
         ((string?)row["msftModifiedDatetime"]).ShouldBe(SecondIngestedAt);

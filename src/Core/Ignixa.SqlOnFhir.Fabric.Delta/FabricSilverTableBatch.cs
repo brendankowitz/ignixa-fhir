@@ -25,8 +25,10 @@ public sealed partial class FabricSilverTableBatch
     /// <param name="resources">The resources to write, all of the contract's resource type; copied.</param>
     /// <exception cref="ArgumentException">
     /// <paramref name="tablePath"/> is blank; <paramref name="resources"/> holds a null; the projection was not created
-    /// for this contract; or the contract has a column name outside <c>[A-Za-z_][A-Za-z0-9_-]*</c>, a column type the
-    /// writer does not convert, or no timestamp <c>meta_lastUpdated</c> column.
+    /// for this contract (the same instance, or one with the same resource type and an ordinal-equal schema string);
+    /// or the contract has a column name outside <c>[A-Za-z_][A-Za-z0-9_-]*</c>, a column type the writer does not
+    /// convert, no timestamp <c>meta_lastUpdated</c> column, or no <c>meta</c> struct with a timestamp
+    /// <c>lastUpdated</c> field.
     /// </exception>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     public FabricSilverTableBatch(
@@ -40,12 +42,16 @@ public sealed partial class FabricSilverTableBatch
         ArgumentNullException.ThrowIfNull(projection);
         ArgumentNullException.ThrowIfNull(resources);
 
-        var columns = DeltaColumnType.ReadColumns(contract.Fields);
-        var columnNames = columns.Select(column => column.Name).ToList();
-        if (projection.ResourceType != contract.ResourceType || !projection.ColumnNames.SequenceEqual(columnNames, StringComparer.Ordinal))
+        // Column names alone would pair a projection with a contract that differs only in a type or nullability.
+        if (!ReferenceEquals(projection.Contract, contract) &&
+            (projection.Contract.ResourceType != contract.ResourceType ||
+             !string.Equals(projection.Contract.SchemaString, contract.SchemaString, StringComparison.Ordinal)))
         {
             throw new ArgumentException("The projection was not created from this contract.", nameof(projection));
         }
+
+        var columns = DeltaColumnType.ReadColumns(contract.Fields);
+        var columnNames = columns.Select(column => column.Name).ToList();
 
         if (columns.FirstOrDefault(column => !SqlSafeColumnName().IsMatch(column.Name)) is { } unsafeColumn)
         {
@@ -61,12 +67,20 @@ public sealed partial class FabricSilverTableBatch
             throw new ArgumentException("The contract has no timestamp column 'meta_lastUpdated', which the merge depends on.", nameof(contract));
         }
 
+        if (!columns.Any(column =>
+                column.Name == HdsColumns.Meta &&
+                column.Type.Kind == DeltaTypeKind.Struct &&
+                column.Type.Fields.Any(field => field.Name == HdsColumns.LastUpdatedField && field.Type.Kind == DeltaTypeKind.Timestamp)))
+        {
+            throw new ArgumentException("The contract has no struct column 'meta' with a timestamp field 'lastUpdated'.", nameof(contract));
+        }
+
         if (resources.Any(resource => resource is null))
         {
             throw new ArgumentException("The resources hold a null.", nameof(resources));
         }
 
-        TablePath = Path.GetFullPath(tablePath);
+        TablePath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(tablePath));
         Contract = contract;
         Projection = projection;
         Resources = System.Array.AsReadOnly(resources.ToArray());

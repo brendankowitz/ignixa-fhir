@@ -49,7 +49,7 @@ public static class FabricSilverDeltaTables
     /// on a file system without hard links creation fails closed with an <see cref="IOException"/> rather than falling
     /// back to a rename that could replace an existing version 0.
     /// </para>
-    /// <para>Each call starts and disposes its own Delta engine.</para>
+    /// <para>A call that validates starts and disposes its own Delta engine.</para>
     /// </remarks>
     /// <param name="tablePath">The local table directory; relative paths resolve against the current directory.</param>
     /// <param name="contract">The Silver table contract the table must hold.</param>

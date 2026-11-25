@@ -8,14 +8,16 @@ using System.Diagnostics.CodeAnalysis;
 namespace Ignixa.SqlOnFhir.Fabric.Delta;
 
 /// <summary>
-/// The Delta engine or the file system failed while the writer validated, created or merged a table.
-/// <see cref="Phase"/> states which tables may have changed; replaying the same batch is safe and repairs a partial
-/// write, because the merge only replaces older rows.
+/// The Delta engine or the file system failed, or a table did not match its contract, while the writer validated,
+/// created or merged a table. <see cref="Phase"/> states which tables may have changed. After an engine or I/O failure
+/// replaying the same batch is safe and repairs a partial write, because the merge only replaces older rows. A contract
+/// mismatch (<see cref="Exception.InnerException"/> is a <see cref="FabricSilverTableMismatchException"/>) fails the
+/// same way on every replay until the table is fixed.
 /// </summary>
 /// <remarks>
-/// The message is fixed text naming the table and the phase. The engine's own error is kept as
-/// <see cref="Exception.InnerException"/>; engine messages can name data files and row positions, so log the inner
-/// exception with the same care as the table's data.
+/// The message is fixed text naming the table and the phase. <see cref="Exception.InnerException"/> is the engine's
+/// own error or the writer's <see cref="FabricSilverTableMismatchException"/>; engine messages can name data files and
+/// row positions, so log the inner exception with the same care as the table's data.
 /// </remarks>
 [SuppressMessage(
     "Design",
@@ -30,7 +32,8 @@ public sealed class FabricSilverWriteException : Exception
         IReadOnlyList<FabricSilverTableResult> completedTables,
         Exception innerException,
         bool mayHaveCommitted = false,
-        Exception? versionCheckException = null)
+        Exception? versionCheckException = null,
+        long? committedVersion = null)
         : base(Describe(tablePath, phase, attempts), innerException)
     {
         TablePath = tablePath;
@@ -39,6 +42,7 @@ public sealed class FabricSilverWriteException : Exception
         CompletedTables = completedTables;
         MayHaveCommitted = mayHaveCommitted || versionCheckException is not null || phase == FabricSilverWritePhase.ReadCommit;
         VersionCheckException = versionCheckException;
+        CommittedVersion = committedVersion;
     }
 
     /// <summary>The full path of the table that failed.</summary>
@@ -52,8 +56,10 @@ public sealed class FabricSilverWriteException : Exception
 
     /// <summary>
     /// Whether the failed table may hold this batch's rows. <see langword="false"/> means it is proven unchanged by
-    /// this call. In <see cref="FabricSilverWritePhase.Merge"/> it is <see langword="true"/> when the table's version
-    /// advanced during the failed merge (an engine step after the commit failed, or another writer committed) or the
+    /// this call. In <see cref="FabricSilverWritePhase.Merge"/> the table is read again only after an engine merge
+    /// that failed for a reason other than a lost commit race (a lost race committed nothing, so it is
+    /// <see langword="false"/>); it is <see langword="true"/> when the table's version advanced during that merge (an
+    /// engine step after the commit failed, or another writer committed) or the
     /// version could not be read again (<see cref="VersionCheckException"/> then says why); it is always <see langword="true"/> in
     /// <see cref="FabricSilverWritePhase.ReadCommit"/>. A table that may have committed has no row counts, so it is
     /// not in <see cref="CompletedTables"/>.
@@ -69,14 +75,23 @@ public sealed class FabricSilverWriteException : Exception
     /// </summary>
     public Exception? VersionCheckException { get; }
 
-    /// <summary>The tables of the batch merged and committed before the failure, in batch order.</summary>
+    /// <summary>
+    /// The table version the engine reported committing, or <see langword="null"/>. Only
+    /// <see cref="FabricSilverWritePhase.ReadCommit"/> sets it, because only there is the commit known.
+    /// </summary>
+    public long? CommittedVersion { get; }
+
+    /// <summary>
+    /// The tables of the batch completed (committed, or unchanged with no new version) before the failure, in batch
+    /// order.
+    /// </summary>
     public IReadOnlyList<FabricSilverTableResult> CompletedTables { get; }
 
     private static string Describe(string tablePath, FabricSilverWritePhase phase, int attempts) => phase switch
     {
         FabricSilverWritePhase.Validate => $"Table '{tablePath}' could not be validated before writing; no merge ran, but an empty version 0 may have been created.",
-        FabricSilverWritePhase.Create => $"Table '{tablePath}' could not be created; no rows were written.",
-        FabricSilverWritePhase.Merge => $"The merge into table '{tablePath}' failed after {attempts} attempt(s); the table may or may not be committed (see MayHaveCommitted) and earlier tables of the batch are committed. Replaying the batch is safe.",
+        FabricSilverWritePhase.Create => $"Table '{tablePath}' could not be created; this call merged no rows into it.",
+        FabricSilverWritePhase.Merge => $"The merge into table '{tablePath}' failed after {attempts} attempt(s); the table may or may not be committed (see MayHaveCommitted) and earlier tables of the batch are completed. Replaying the batch is safe unless the table does not match its contract.",
         FabricSilverWritePhase.ReadCommit => $"The merge into table '{tablePath}' committed, but its commit could not be read back to report the result.",
         _ => throw new ArgumentOutOfRangeException(nameof(phase)),
     };

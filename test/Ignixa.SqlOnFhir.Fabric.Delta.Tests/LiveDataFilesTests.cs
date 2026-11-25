@@ -129,6 +129,7 @@ public class LiveDataFilesTests
     [InlineData("""{"remove":{"path":""}}""", typeof(InvalidDataException))]
     [InlineData("""{"add":"a.parquet"}""", typeof(InvalidDataException))]
     [InlineData("""{"add":{"path":7}}""", typeof(InvalidDataException))]
+    [InlineData("""{"add":{"path":"b.parquet"},"remove":{"path":"a.parquet"}}""", typeof(InvalidDataException))]
     [InlineData("{\"add\":", typeof(JsonException))]
     public async Task GivenAMalformedCommitLine_WhenCounted_ThenItFails(string line, Type expected)
     {
@@ -163,6 +164,20 @@ public class LiveDataFilesTests
         await using (var stream = File.Create(Path.Combine(log, "00000000000000000000.checkpoint.parquet")))
         {
             await ParquetSerializer.SerializeAsync(new[] { new NoAddRow { Txn = "x" } }, stream);
+        }
+
+        await Should.ThrowAsync<InvalidDataException>(() => LiveDataFiles.CountAsync(table, 0, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GivenACheckpointWhosePathIsNotAString_WhenCounted_ThenItFailsRatherThanCountingNoFiles()
+    {
+        using var root = new TemporaryDirectory();
+        var table = root.Combine("Synthetic");
+        var log = Directory.CreateDirectory(Path.Combine(table, "_delta_log")).FullName;
+        await using (var stream = File.Create(Path.Combine(log, "00000000000000000000.checkpoint.parquet")))
+        {
+            await ParquetSerializer.SerializeAsync(new[] { new NumericPathRow { Add = new NumericPathAdd { Path = 7 } } }, stream);
         }
 
         await Should.ThrowAsync<InvalidDataException>(() => LiveDataFiles.CountAsync(table, 0, CancellationToken.None));
@@ -273,5 +288,17 @@ public class LiveDataFilesTests
     {
         [JsonPropertyName("txn")]
         public string? Txn { get; set; }
+    }
+
+    private sealed class NumericPathRow
+    {
+        [JsonPropertyName("add")]
+        public NumericPathAdd? Add { get; set; }
+    }
+
+    private sealed class NumericPathAdd
+    {
+        [JsonPropertyName("path")]
+        public int? Path { get; set; }
     }
 }

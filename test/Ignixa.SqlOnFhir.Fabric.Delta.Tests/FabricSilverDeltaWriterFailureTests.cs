@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Globalization;
+using System.Text.Json.Nodes;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.SqlOnFhir.Fabric.Delta.Tests;
@@ -33,7 +34,7 @@ public class FabricSilverDeltaWriterFailureTests
                     second,
                     contract,
                     SyntheticPatients.Patient("b", "2024-02-01T00:00:00Z"),
-                    SyntheticPatients.Patient("bad", "2024-02-01T00:00:00Z", customize: resource => resource["seenAt"] = new System.Text.Json.Nodes.JsonArray(InvalidDate))),
+                    SyntheticPatients.Patient("bad", "2024-02-01T00:00:00Z", customize: resource => resource["seenAt"] = new JsonArray(InvalidDate))),
             ],
             WriterContracts.Ingestion(filePath: WriterContracts.SecondFile),
             CancellationToken.None));
@@ -54,6 +55,7 @@ public class FabricSilverDeltaWriterFailureTests
     // A source id is reported only when it is a well-formed FHIR id; anything else may be a field value in disguise.
     [Theory]
     [InlineData("has space")]
+    [InlineData("abc\n")]
     [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
     public async Task GivenARejectedResourceWithAMalformedSourceId_WhenWritten_ThenTheErrorOmitsTheId(string sourceId)
     {
@@ -351,6 +353,280 @@ public class FabricSilverDeltaWriterFailureTests
         }
     }
 
+    /// <summary>
+    /// The seam rewrites the merge's commit info as the engine returns, so the committed version holds no MERGE result
+    /// to read back. Moving the commit file away instead would hide the commit from the table's version too.
+    /// </summary>
+    [Fact]
+    public async Task GivenACommitThatCannotBeReadBack_WhenWritten_ThenTheFailureIsReadCommitWithTheCommittedVersion()
+    {
+        using var root = new TemporaryDirectory();
+        var table = root.Combine("Patient");
+        var contract = await SyntheticPatients.SeedAsync(table, SyntheticPatients.Patient("a", "2024-01-01T00:00:00Z"));
+        var options = new FabricSilverWriterOptions
+        {
+            AfterEngineMerge = path =>
+            {
+                var commit = Path.Combine(LogDirectory(path), "00000000000000000002.json");
+                File.WriteAllText(commit, File.ReadAllText(commit).Replace("\"operation\":\"MERGE\"", "\"operation\":\"WRITE\"", StringComparison.Ordinal));
+            },
+        };
+
+        var exception = await Should.ThrowAsync<FabricSilverWriteException>(() => FabricSilverDeltaWriter.WriteBatchAsync(
+            [WriterContracts.Batch(table, contract, SyntheticPatients.Patient("a", "2024-02-01T00:00:00Z", "Changed"))],
+            WriterContracts.Ingestion(),
+            options,
+            CancellationToken.None));
+
+        exception.Phase.ShouldBe(FabricSilverWritePhase.ReadCommit);
+        exception.MayHaveCommitted.ShouldBeTrue();
+        exception.CommittedVersion.ShouldBe(2);
+        exception.Attempts.ShouldBe(1);
+        exception.CompletedTables.ShouldBeEmpty();
+        exception.InnerException.ShouldBeOfType<InvalidDataException>();
+    }
+
+    [Fact]
+    public async Task GivenAMergeFailureOutsideReadCommit_WhenWritten_ThenNoCommittedVersionIsReported()
+    {
+        using var root = new TemporaryDirectory();
+        var table = root.Combine("Patient");
+        var contract = await SyntheticPatients.SeedAsync(table, SyntheticPatients.Patient("a", "2024-01-01T00:00:00Z"));
+        var options = new FabricSilverWriterOptions { AfterEngineMerge = _ => throw new IOException("Injected engine failure.") };
+
+        var exception = await Should.ThrowAsync<FabricSilverWriteException>(() => FabricSilverDeltaWriter.WriteBatchAsync(
+            [WriterContracts.Batch(table, contract, SyntheticPatients.Patient("a", "2024-02-01T00:00:00Z", "Changed"))],
+            WriterContracts.Ingestion(),
+            options,
+            CancellationToken.None));
+
+        exception.Phase.ShouldBe(FabricSilverWritePhase.Merge);
+        exception.MayHaveCommitted.ShouldBeTrue();
+        exception.CommittedVersion.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task GivenMergesThatLoseTheCommitRaceFewerTimesThanTheLimit_WhenWritten_ThenTheRetryCommitsAndCountsTheAttempts(int conflicts)
+    {
+        using var root = new TemporaryDirectory();
+        var table = root.Combine("Patient");
+        var contract = await SyntheticPatients.SeedAsync(table, SyntheticPatients.Patient("a", "2024-01-01T00:00:00Z"));
+        var thrown = 0;
+        var options = new FabricSilverWriterOptions
+        {
+            MaxMergeAttempts = 3,
+            BeforeEngineMerge = _ =>
+            {
+                if (thrown++ < conflicts)
+                {
+                    throw CommitConflict();
+                }
+            },
+        };
+
+        var result = await FabricSilverDeltaWriter.WriteBatchAsync(
+            [WriterContracts.Batch(table, contract, SyntheticPatients.Patient("a", "2024-02-01T00:00:00Z", "Changed"))],
+            WriterContracts.Ingestion(),
+            options,
+            CancellationToken.None);
+
+        var outcome = result.Tables.ShouldHaveSingleItem();
+        (outcome.Attempts, outcome.CommittedVersion, outcome.UpdatedRows).ShouldBe((conflicts + 1, 2L, 1L));
+        DeltaLogReader.Read(table).Version.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task GivenAMergeThatLosesEveryCommitRace_WhenWritten_ThenItFailsAfterTheLastAttemptAndCommittedNothing()
+    {
+        using var root = new TemporaryDirectory();
+        var table = root.Combine("Patient");
+        var contract = await SyntheticPatients.SeedAsync(table, SyntheticPatients.Patient("a", "2024-01-01T00:00:00Z"));
+        var tries = 0;
+        var options = new FabricSilverWriterOptions
+        {
+            MaxMergeAttempts = 3,
+            BeforeEngineMerge = _ =>
+            {
+                tries++;
+                throw CommitConflict();
+            },
+        };
+
+        var exception = await Should.ThrowAsync<FabricSilverWriteException>(() => FabricSilverDeltaWriter.WriteBatchAsync(
+            [WriterContracts.Batch(table, contract, SyntheticPatients.Patient("a", "2024-02-01T00:00:00Z", "Changed"))],
+            WriterContracts.Ingestion(),
+            options,
+            CancellationToken.None));
+
+        tries.ShouldBe(3);
+        exception.Phase.ShouldBe(FabricSilverWritePhase.Merge);
+        exception.Attempts.ShouldBe(3);
+        exception.MayHaveCommitted.ShouldBeFalse();
+        exception.VersionCheckException.ShouldBeNull();
+        exception.InnerException.ShouldBeOfType<DeltaLake.Errors.DeltaRuntimeException>();
+        DeltaLogReader.Read(table).Version.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task GivenCancellationDuringTheRetryBackoff_WhenWritten_ThenItIsAWriteCancellationAndTheTableIsUnchanged()
+    {
+        using var root = new TemporaryDirectory();
+        var table = root.Combine("Patient");
+        var contract = await SyntheticPatients.SeedAsync(table, SyntheticPatients.Patient("a", "2024-01-01T00:00:00Z"));
+        using var cancellation = new CancellationTokenSource();
+        var tries = 0;
+        var options = new FabricSilverWriterOptions
+        {
+            BeforeEngineMerge = _ =>
+            {
+                tries++;
+                cancellation.Cancel();
+                throw CommitConflict();
+            },
+        };
+
+        FabricSilverWriteCanceledException? exception = null;
+        try
+        {
+            await FabricSilverDeltaWriter.WriteBatchAsync(
+                [WriterContracts.Batch(table, contract, SyntheticPatients.Patient("a", "2024-02-01T00:00:00Z", "Changed"))],
+                WriterContracts.Ingestion(),
+                options,
+                cancellation.Token);
+        }
+        catch (FabricSilverWriteCanceledException caught)
+        {
+            exception = caught;
+        }
+
+        exception.ShouldNotBeNull();
+        exception.CompletedTables.ShouldBeEmpty();
+        tries.ShouldBe(1);
+        DeltaLogReader.Read(table).Version.ShouldBe(1);
+    }
+
+    /// <summary>
+    /// The first table's merge seam queues a waiter on the private merge gate, which takes the gate as the first table
+    /// releases it and then cancels, so the second table's merge is canceled while it waits for the gate.
+    /// </summary>
+    [Fact]
+    public async Task GivenCancellationWhileWaitingForTheMergeGate_WhenWritten_ThenItIsAWriteCancellationListingTheCompletedTable()
+    {
+        using var root = new TemporaryDirectory();
+        var first = root.Combine("First");
+        var second = root.Combine("Second");
+        var contract = await SyntheticPatients.SeedAsync(first, SyntheticPatients.Patient("a", "2024-01-01T00:00:00Z"));
+        await SyntheticPatients.SeedAsync(second, SyntheticPatients.Patient("a", "2024-01-01T00:00:00Z"));
+        using var cancellation = new CancellationTokenSource();
+        using var gate = new SemaphoreSlim(1, 1);
+        Task? held = null;
+        var options = new FabricSilverWriterOptions
+        {
+            MergeGate = gate,
+            AfterEngineMerge = table =>
+            {
+                if (table == first)
+                {
+                    held = gate.WaitAsync();
+                    _ = held.ContinueWith(_ => cancellation.Cancel(), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+                }
+            },
+        };
+
+        FabricSilverWriteCanceledException? exception = null;
+        try
+        {
+            await FabricSilverDeltaWriter.WriteBatchAsync(
+                [
+                    WriterContracts.Batch(first, contract, SyntheticPatients.Patient("a", "2024-02-01T00:00:00Z", "Changed")),
+                    WriterContracts.Batch(second, contract, SyntheticPatients.Patient("a", "2024-02-01T00:00:00Z", "Changed")),
+                ],
+                WriterContracts.Ingestion(),
+                options,
+                cancellation.Token);
+        }
+        catch (FabricSilverWriteCanceledException caught)
+        {
+            exception = caught;
+        }
+        finally
+        {
+            if (held is not null)
+            {
+                await held;
+                gate.Release();
+            }
+        }
+
+        exception.ShouldNotBeNull();
+        exception.CompletedTables.ShouldHaveSingleItem().TablePath.ShouldBe(first);
+        DeltaLogReader.Read(first).Version.ShouldBe(2);
+        DeltaLogReader.Read(second).Version.ShouldBe(1);
+    }
+
+    /// <summary>
+    /// The first table's merge seam commits a schema change to the second table after that table was validated, so
+    /// the second table's merge attempt loads a table that no longer matches the contract.
+    /// </summary>
+    [Fact]
+    public async Task GivenATableWhoseSchemaChangesAfterValidation_WhenItsMergeAttemptLoadsIt_ThenTheMergeFailsUnmergedWithTheMismatch()
+    {
+        using var root = new TemporaryDirectory();
+        var first = root.Combine("First");
+        var second = root.Combine("Second");
+        var contract = await SyntheticPatients.SeedAsync(first, SyntheticPatients.Patient("a", "2024-01-01T00:00:00Z"));
+        await SyntheticPatients.SeedAsync(second, SyntheticPatients.Patient("a", "2024-01-01T00:00:00Z"));
+        var options = new FabricSilverWriterOptions
+        {
+            AfterEngineMerge = table =>
+            {
+                if (table == first)
+                {
+                    CommitExtraColumn(second, version: 2);
+                }
+            },
+        };
+
+        var exception = await Should.ThrowAsync<FabricSilverWriteException>(() => FabricSilverDeltaWriter.WriteBatchAsync(
+            [
+                WriterContracts.Batch(first, contract, SyntheticPatients.Patient("a", "2024-02-01T00:00:00Z", "Changed")),
+                WriterContracts.Batch(second, contract, SyntheticPatients.Patient("a", "2024-02-01T00:00:00Z", "Changed")),
+            ],
+            WriterContracts.Ingestion(),
+            options,
+            CancellationToken.None));
+
+        exception.TablePath.ShouldBe(second);
+        exception.Phase.ShouldBe(FabricSilverWritePhase.Merge);
+        exception.MayHaveCommitted.ShouldBeFalse();
+        exception.Attempts.ShouldBe(1);
+        exception.InnerException.ShouldBeOfType<FabricSilverTableMismatchException>().Aspect.ShouldBe(FabricSilverTableAspect.Schema);
+        exception.CompletedTables.ShouldHaveSingleItem().TablePath.ShouldBe(first);
+        DeltaLogReader.Read(second).Version.ShouldBe(2);
+        SyntheticPatients.FamilyOf(SyntheticPatients.RowOf(await DeltaParquetReader.ReadLiveRowsAsync(second), "a")).ShouldBe("Doe");
+    }
+
+    // The delta-rs conflict wording, including its "transactions" (sic).
+    private static DeltaLake.Errors.DeltaRuntimeException CommitConflict() =>
+        new("Commit failed: a concurrent transactions added new data", 1);
+
+    // Appends a metaData commit whose schema adds a nullable column to the table's version 0 schema.
+    private static void CommitExtraColumn(string table, long version)
+    {
+        var metaData = DeltaLogReader.ReadCommitLines(table, 0)
+            .Select(line => JsonNode.Parse(line)!.AsObject())
+            .Single(action => action.ContainsKey("metaData"))["metaData"]!.AsObject();
+        var schema = JsonNode.Parse((string)metaData["schemaString"]!)!.AsObject();
+        schema["fields"]!.AsArray().Add(WriterContracts.Field("extra", "string"));
+        metaData["schemaString"] = schema.ToJsonString();
+        var action = new JsonObject { ["metaData"] = metaData.DeepClone() };
+        File.WriteAllText(
+            Path.Combine(LogDirectory(table), version.ToString("D20", CultureInfo.InvariantCulture) + ".json"),
+            action.ToJsonString() + "\n");
+    }
+
     private static async Task<(FabricSilverBatchResult Result, bool Replayed)> WriteOrReplayAsync(
         string table,
         FabricSilverContract contract,
@@ -363,6 +639,11 @@ public class FabricSilverDeltaWriterFailureTests
         }
         catch (FabricSilverWriteException)
         {
+            return (await WriteAsync(table, contract, gate, resource), true);
+        }
+        catch (FabricSilverLimitExceededException exception) when (exception.Limit == FabricSilverLimit.TargetFilesUnknown)
+        {
+            // Counting the files replays the log, so the same I/O error there fails the file ceiling closed.
             return (await WriteAsync(table, contract, gate, resource), true);
         }
     }

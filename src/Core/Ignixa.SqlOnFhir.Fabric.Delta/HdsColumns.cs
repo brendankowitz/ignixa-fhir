@@ -10,5 +10,7 @@ internal static class HdsColumns
 {
     public const string Id = "id";
     public const string MetaLastUpdated = "meta_lastUpdated";
+    public const string Meta = "meta";
+    public const string LastUpdatedField = "lastUpdated";
     public const string CreatedDatetime = "msftCreatedDatetime";
 }

@@ -10,8 +10,8 @@ namespace Ignixa.SqlOnFhir.Fabric.Delta;
 /// fails the MERGE, and an unmatched one would be inserted twice. The row with the greatest
 /// <c>meta_lastUpdated</c> wins, compared at the microsecond value the MERGE compares. POLICY: on a tie the later row
 /// in the batch wins; healthcare data solutions leaves ties nondeterministic, so this is an Ignixa choice that makes
-/// replays reproducible. A row without <c>meta_lastUpdated</c> is dropped, as the HDS ordering (nulls last, never
-/// inserted) would, and because the MERGE could neither insert nor update it.
+/// replays reproducible. A row without <c>meta_lastUpdated</c> is dropped, because the MERGE could neither insert nor
+/// update it; that the HDS ordering (nulls last, never inserted) does the same is inferred, not tested.
 /// </summary>
 internal static class LatestRowReducer
 {

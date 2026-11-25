@@ -18,8 +18,8 @@ namespace Ignixa.SqlOnFhir.Fabric.Delta;
 /// <remarks>
 /// <para>
 /// The binding's <c>ITable.FilesAsync</c> and <c>ITable.FileUrisAsync</c> must not be used: in DeltaLake.Net 0.33.3
-/// the native bridge drops the path array it hands out and frees it again when the managed side releases it. That
-/// double free corrupts the process heap once a table has more than one file.
+/// the native bridge frees the path array it hands out twice, which was measured to corrupt the process heap. The writer
+/// replays the log instead.
 /// </para>
 /// <para>
 /// The validator pins the protocol at reader 1 / writer 4, so the only checkpoints a valid table can have are classic
@@ -104,6 +104,12 @@ internal static partial class LiveDataFiles
         var path = add.Fields.OfType<DataField>().SingleOrDefault(field => field.Name == PathProperty)
             ?? throw new InvalidDataException("A checkpoint's add column has no path.");
 
+        // Rows whose action is not an add hold a null path; a non-string path column would otherwise count no files.
+        if (path.ClrType != typeof(string))
+        {
+            throw new InvalidDataException("A checkpoint's add path column is not a string.");
+        }
+
         for (var group = 0; group < reader.RowGroupCount; group++)
         {
             using var rowGroup = reader.OpenRowGroupReader(group);
@@ -131,11 +137,18 @@ internal static partial class LiveDataFiles
             throw new InvalidDataException("A commit line is not a JSON object.");
         }
 
-        if (action.RootElement.TryGetProperty(AddAction, out var added))
+        var hasAdd = action.RootElement.TryGetProperty(AddAction, out var added);
+        var hasRemove = action.RootElement.TryGetProperty(RemoveAction, out var removed);
+        if (hasAdd && hasRemove)
+        {
+            throw new InvalidDataException("A commit line holds both an add and a remove action.");
+        }
+
+        if (hasAdd)
         {
             live.Add(PathOf(added, AddAction));
         }
-        else if (action.RootElement.TryGetProperty(RemoveAction, out var removed))
+        else if (hasRemove)
         {
             live.Remove(PathOf(removed, RemoveAction));
         }

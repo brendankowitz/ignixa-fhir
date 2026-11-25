@@ -55,6 +55,6 @@ public sealed partial class FabricSilverResourceRejectedException : Exception
     /// <summary>Where in the resource the projection failed, for example <c>identifier[2].assigner.identifier.type</c>.</summary>
     public string FieldPath { get; }
 
-    [GeneratedRegex("^[A-Za-z0-9\\-.]{1,64}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("^[A-Za-z0-9\\-.]{1,64}\\z", RegexOptions.CultureInvariant)]
     private static partial Regex WellFormedFhirId();
 }

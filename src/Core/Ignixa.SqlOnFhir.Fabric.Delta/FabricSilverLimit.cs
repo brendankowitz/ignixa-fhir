@@ -14,7 +14,10 @@ public enum FabricSilverLimit
     /// <summary>A target table holds more rows than <see cref="FabricSilverWriterOptions.MaxTargetRows"/>.</summary>
     TargetRows,
 
-    /// <summary>A target table's row count could not be determined, so the row ceiling cannot be proven.</summary>
+    /// <summary>
+    /// A target table's row count returned no usable value, so the row ceiling cannot be proven. An engine error while
+    /// counting surfaces instead as a <see cref="FabricSilverWriteException"/> in <see cref="FabricSilverWritePhase.Validate"/>.
+    /// </summary>
     TargetRowsUnknown,
 
     /// <summary>

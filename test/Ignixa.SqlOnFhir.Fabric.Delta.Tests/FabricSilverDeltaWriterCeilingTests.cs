@@ -56,6 +56,59 @@ public class FabricSilverDeltaWriterCeilingTests
     }
 
     [Fact]
+    public async Task GivenDuplicatesThatReduceUnderTheSourceCeiling_WhenWritten_ThenTheInputResourcesAreCounted()
+    {
+        using var root = new TemporaryDirectory();
+        var table = root.Combine("Patient");
+        var contract = await WriterContracts.PatientAsync();
+
+        var exception = await Should.ThrowAsync<FabricSilverLimitExceededException>(() => FabricSilverDeltaWriter.WriteBatchAsync(
+            [
+                WriterContracts.Batch(
+                    table,
+                    contract,
+                    SyntheticPatients.Patient("a", "2024-01-01T00:00:00Z"),
+                    SyntheticPatients.Patient("a", "2024-02-01T00:00:00Z"),
+                    SyntheticPatients.Patient("a", "2024-03-01T00:00:00Z")),
+            ],
+            WriterContracts.Ingestion(),
+            new FabricSilverWriterOptions { MaxSourceResourcesPerTable = 2 },
+            CancellationToken.None));
+
+        exception.Limit.ShouldBe(FabricSilverLimit.SourceResources);
+        exception.Actual.ShouldBe(3);
+        Directory.Exists(table).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// Another writer creates the table and fills it past the row ceiling between this call's first look and its own
+    /// creation, so the call loses the creation race to a table it must still refuse to merge into.
+    /// </summary>
+    [Fact]
+    public async Task GivenACreationRaceLostToATableOverTheTargetRowCeiling_WhenWritten_ThenTheCeilingStillFails()
+    {
+        using var root = new TemporaryDirectory();
+        var table = root.Combine("Patient");
+        var contract = await WriterContracts.PatientAsync();
+        var options = new FabricSilverWriterOptions
+        {
+            MaxTargetRows = 2,
+            BeforeCreateTable = async path => await SyntheticPatients.SeedAsync(path, Patients("a", "b", "c")),
+        };
+
+        var exception = await Should.ThrowAsync<FabricSilverLimitExceededException>(() => FabricSilverDeltaWriter.WriteBatchAsync(
+            [WriterContracts.Batch(table, contract, Patients("new"))],
+            WriterContracts.Ingestion(),
+            options,
+            CancellationToken.None));
+
+        exception.Limit.ShouldBe(FabricSilverLimit.TargetRows);
+        exception.TablePath.ShouldBe(table);
+        exception.Actual.ShouldBe(3);
+        DeltaLogReader.Read(table).Version.ShouldBe(1);
+    }
+
+    [Fact]
     public async Task GivenTheSecondTableOverTheTargetRowCeiling_WhenWritten_ThenNoTableChangesAndTheErrorNamesThatTable()
     {
         using var root = new TemporaryDirectory();

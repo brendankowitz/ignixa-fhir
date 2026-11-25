@@ -9,8 +9,8 @@ namespace Ignixa.SqlOnFhir.Fabric.Delta;
 
 /// <summary>
 /// The writer was canceled after it began merging tables. It is an <see cref="OperationCanceledException"/>, so
-/// cancellation handling sees it as one, and it also lists the tables committed before the cancellation was
-/// observed. A merge the engine had started is never abandoned: it finishes and is listed here if it committed.
+/// cancellation handling sees it as one, and it also lists the tables completed (committed, or unchanged with no
+/// new version) before the cancellation was observed. A merge the engine had started is never abandoned: it finishes and is listed here if it committed.
 /// Replaying the same batch completes the rest.
 /// </summary>
 /// <remarks>
@@ -31,13 +31,16 @@ public sealed class FabricSilverWriteCanceledException : OperationCanceledExcept
         OperationCanceledException innerException,
         CancellationToken cancellationToken)
         : base(
-            $"The batch was canceled after {completedTables.Count} table(s) were merged; replaying the batch completes the rest.",
+            $"The batch was canceled after {completedTables.Count} table(s) were completed; replaying the batch completes the rest.",
             innerException,
             cancellationToken)
     {
         CompletedTables = completedTables;
     }
 
-    /// <summary>The tables of the batch merged and committed before the cancellation, in batch order.</summary>
+    /// <summary>
+    /// The tables of the batch completed (committed, or unchanged with no new version) before the cancellation, in batch
+    /// order.
+    /// </summary>
     public IReadOnlyList<FabricSilverTableResult> CompletedTables { get; }
 }

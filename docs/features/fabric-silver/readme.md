@@ -14,7 +14,8 @@ beyond these two resource types.
 
 - Must reproduce the Silver column layout, `id`/`idOrig`, identifier/reference normalization, `*Orig`
   columns, `_string` companions, lineage columns and upsert semantics documented in the investigation.
-- Must not copy HDS code, schemas or depot contracts into this repository.
+- Must not copy HDS code, schemas or [viewdefinition-depot](https://github.com/brendankowitz/viewdefinition-depot)
+  contracts into this repository.
 - No HDS-captured row oracle exists. Only **schema parity** (names, order, types, nullability, protocol,
   table properties) is checkable today; a schema match is **not** row parity.
 
@@ -22,7 +23,7 @@ beyond these two resource types.
 
 | # | Decision | Status | Current direction |
 |---|----------|--------|-------------------|
-| 1 | Native column derivation | Proposed (awaiting user ratification) | Option B: bypass ViewDefinitions and do a target-schema-driven walk of the parsed `ResourceJsonNode`, with the R4 `ISchema` deciding reference type validity. This departs from the approved element-tree plan because Silver leaves follow Spark `from_json` token semantics (source number text, compact JSON text for `extension`/`contained`/string slots, wire names), which the element tree normalizes away. Contained and reversible: the walker is internal and the public input is `ResourceJsonNode` |
+| 1 | Native column derivation | Proposed (awaiting owner ratification) | Option B: bypass ViewDefinitions and do a target-schema-driven walk of the parsed `ResourceJsonNode`, with the R4 `ISchema` deciding reference type validity. Silver leaves follow Spark `from_json` token semantics (source number text, compact JSON text for `extension`/`contained`/string slots, wire names), which the element tree normalizes away. Contained and reversible: the walker is internal and the public input is `ResourceJsonNode` |
 | 2 | Delta library | Proposed ([ADR 2611](adr-2611-fabric-silver-delta-engine.md)) | Hybrid: Ignixa writes version 0; DeltaLake.Net owns data writes, MERGE, CDF and later commits, isolated in the alpha `Ignixa.SqlOnFhir.Fabric.Delta` package |
 | 3 | Batch atomicity | Proposed ([ADR 2611](adr-2611-fabric-silver-delta-engine.md)) | Not atomic across tables; project and validate everything, create missing version 0s, then merge table by table; a typed error lists committed tables and replay repairs the rest |
 | 4 | V-Order | Proposed | Set the table property; do not claim file-layout parity |

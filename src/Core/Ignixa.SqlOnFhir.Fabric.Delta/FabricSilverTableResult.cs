@@ -52,7 +52,7 @@ public sealed class FabricSilverTableResult
     /// <summary>Resources left out because they have no <c>meta.lastUpdated</c>.</summary>
     public int DroppedRows { get; }
 
-    /// <summary>Resources left out because a later or newer resource in the same batch has the same Silver id.</summary>
+    /// <summary>Resources left out because a newer resource in the same batch, or a later one with equal <c>meta_lastUpdated</c>, has the same Silver id.</summary>
     public int CollapsedRows { get; }
 
     /// <summary>Merge attempts made; more than one means the merge lost commit races and was retried. Zero when the batch reduced to no rows.</summary>

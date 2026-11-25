@@ -80,6 +80,68 @@ public class FabricSilverDeltaWriterValidationTests
             .ParamName.ShouldBe("projection");
     }
 
+    [Theory]
+    [InlineData("type")]
+    [InlineData("nullability")]
+    public async Task GivenAProjectionOfAContractDifferingOnlyInAColumnTypeOrNullability_WhenABatchIsCreated_ThenItIsRejected(string difference)
+    {
+        var contract = await WriterContracts.PatientAsync();
+        var other = await PatientContractAsync(fields =>
+        {
+            if (difference == "type")
+            {
+                FieldNamed(fields, "visits")["type"] = "integer";
+            }
+            else
+            {
+                FieldNamed(fields, "gender")["nullable"] = false;
+            }
+        });
+
+        Should.Throw<ArgumentException>(() => new FabricSilverTableBatch("Patient", contract, FabricSilverProjection.Create(other, WriterContracts.R4), []))
+            .ParamName.ShouldBe("projection");
+    }
+
+    [Fact]
+    public async Task GivenAProjectionOfAnEqualContractLoadedSeparately_WhenABatchIsCreated_ThenItIsAccepted()
+    {
+        var contract = await WriterContracts.PatientAsync();
+        var equal = await WriterContracts.PatientAsync();
+
+        var batch = new FabricSilverTableBatch("Patient", contract, FabricSilverProjection.Create(equal, WriterContracts.R4), []);
+
+        batch.Contract.ShouldBeSameAs(contract);
+    }
+
+    [Theory]
+    [InlineData("remove meta")]
+    [InlineData("meta as string")]
+    [InlineData("meta without lastUpdated")]
+    public async Task GivenAContractWithoutATimestampMetaLastUpdatedField_WhenABatchIsCreated_ThenItIsRejected(string change)
+    {
+        var contract = await PatientContractAsync(fields =>
+        {
+            var meta = FieldNamed(fields, "meta");
+            switch (change)
+            {
+                case "remove meta":
+                    fields.Remove(meta);
+                    break;
+                case "meta as string":
+                    meta["type"] = "string";
+                    break;
+                default:
+                    meta["type"] = WriterContracts.Struct(WriterContracts.Field("versionId", "string"));
+                    break;
+            }
+        });
+
+        var exception = Should.Throw<ArgumentException>(() => WriterContracts.Batch("Patient", contract));
+
+        exception.ParamName.ShouldBe("contract");
+        exception.Message.ShouldContain("struct column 'meta' with a timestamp field 'lastUpdated'");
+    }
+
     [Fact]
     public async Task GivenAContractWithoutMetaLastUpdated_WhenABatchIsCreated_ThenTheWriterNamesTheMergeColumn()
     {
@@ -216,6 +278,30 @@ public class FabricSilverDeltaWriterValidationTests
     }
 
     [Fact]
+    public async Task GivenACreationRaceLostToATableOfAnotherContract_WhenWritten_ThenItFailsInValidateWithTheMismatch()
+    {
+        using var root = new TemporaryDirectory();
+        var table = root.Combine("Patient");
+        var contract = await WriterContracts.PatientAsync();
+        var other = await PatientContractAsync(fields => fields.Remove(FieldNamed(fields, "gender")));
+        var options = new FabricSilverWriterOptions
+        {
+            BeforeCreateTable = async path => await FabricSilverDeltaTables.EnsureTableAsync(path, other, CancellationToken.None),
+        };
+
+        var exception = await Should.ThrowAsync<FabricSilverWriteException>(() => FabricSilverDeltaWriter.WriteBatchAsync(
+            [WriterContracts.Batch(table, contract, SyntheticPatients.Patient("a", "2024-02-01T00:00:00Z"))],
+            WriterContracts.Ingestion(),
+            options,
+            CancellationToken.None));
+
+        exception.Phase.ShouldBe(FabricSilverWritePhase.Validate);
+        exception.MayHaveCommitted.ShouldBeFalse();
+        exception.InnerException.ShouldBeOfType<FabricSilverTableMismatchException>().Aspect.ShouldBe(FabricSilverTableAspect.Schema);
+        DeltaLogReader.Read(table).Version.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task GivenACanceledToken_WhenWritten_ThenCancellationSurfacesAndNoTableIsCreated()
     {
         using var root = new TemporaryDirectory();
@@ -234,7 +320,7 @@ public class FabricSilverDeltaWriterValidationTests
 
     [Theory]
     [InlineData("Commit failed: a concurrent transaction deleted data this operation read.", true)]
-    [InlineData("Commit failed: a concurrent transaction added new data", true)]
+    [InlineData("Commit failed: a concurrent transactions added new data", true)]
     [InlineData("Metadata changed since last commit.", false)]
     [InlineData("commit failed: a concurrent transaction", false)]
     public void GivenAnEngineError_WhenClassified_ThenOnlyAConcurrentCommitConflictIsRetryable(string message, bool retryable)

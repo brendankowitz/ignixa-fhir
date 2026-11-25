@@ -22,12 +22,16 @@ public class MergeCommitMetricsTests
             AddAction,
             """{"commitInfo":{"operation":"MERGE","operationMetrics":{"num_target_rows_inserted":3,"num_target_rows_updated":2,"num_target_rows_copied":7}}}""");
 
-        var metrics = await MergeCommitMetrics.ReadAsync(root.Path, 1, CancellationToken.None);
+        var metrics = await MergeCommitMetrics.ReadAsync(root.Path, 1, sourceRows: 5, CancellationToken.None);
 
         metrics.ShouldBe(new MergeCommitMetrics(3, 2));
     }
 
     [Theory]
+    [InlineData("[1]")]
+    [InlineData("\"commitInfo\"")]
+    [InlineData("""{"commitInfo":1}""")]
+    [InlineData("""{"commitInfo":["MERGE"]}""")]
     [InlineData("""{"protocol":{"minReaderVersion":1,"minWriterVersion":4}}""")]
     [InlineData("""{"commitInfo":{"operationMetrics":{"num_target_rows_inserted":1,"num_target_rows_updated":1}}}""")]
     [InlineData("""{"commitInfo":{"operation":1,"operationMetrics":{"num_target_rows_inserted":1,"num_target_rows_updated":1}}}""")]
@@ -43,7 +47,23 @@ public class MergeCommitMetricsTests
         using var root = new TemporaryDirectory();
         await WriteCommitAsync(root.Path, AddAction, action);
 
-        var exception = await Should.ThrowAsync<InvalidDataException>(() => MergeCommitMetrics.ReadAsync(root.Path, 1, CancellationToken.None));
+        var exception = await Should.ThrowAsync<InvalidDataException>(() => MergeCommitMetrics.ReadAsync(root.Path, 1, sourceRows: 5, CancellationToken.None));
+
+        exception.Message.ShouldContain("table version 1 ");
+    }
+
+    [Theory]
+    [InlineData(3, 3)]
+    [InlineData(0, 5)]
+    public async Task GivenMetricsCountingMoreRowsThanTheMergeWasGiven_WhenRead_ThenTheyAreRefused(long inserted, long updated)
+    {
+        using var root = new TemporaryDirectory();
+        await WriteCommitAsync(
+            root.Path,
+            AddAction,
+            "{\"commitInfo\":{\"operation\":\"MERGE\",\"operationMetrics\":{\"num_target_rows_inserted\":" + inserted + ",\"num_target_rows_updated\":" + updated + "}}}");
+
+        var exception = await Should.ThrowAsync<InvalidDataException>(() => MergeCommitMetrics.ReadAsync(root.Path, 1, sourceRows: 4, CancellationToken.None));
 
         exception.Message.ShouldContain("table version 1 ");
     }

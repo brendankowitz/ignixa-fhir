@@ -14,7 +14,7 @@ The candidates were:
 - **(a)** DeltaLake.Net 0.33.3. This is a .NET binding over delta-rs `deltalake-core` 0.32.1, delta-kernel-rs 0.26.0 and object_store 0.13.2.
 - **(b)** A managed Delta writer built on Parquet.Net.
 - **(c)** A hybrid of the two.
-- **(d)** EngineeredWood, a pure-managed Delta library. It was found during the review round and characterised on paper only.
+- **(d)** EngineeredWood, a pure-managed Delta library, characterised on paper only.
 
 **Recommendation for Phase 1: (c), the hybrid.**
 
@@ -60,7 +60,7 @@ The candidates were:
      - **One MERGE at a time per process.**
      - **`MaxTargetRows = 50,000`** and **`MaxSourceResourcesPerTable = 50,000`.** Above either, the sink refuses the write instead of starting a merge that may exhaust memory. Both are configurable, and raising them is at the caller's risk.
      - **`MaxTargetFiles = 100`.** The sink checks the table's live file count before writing. Above the limit it refuses the write, and the error tells the operator to compact the table. It is configurable at the caller's risk. Compaction itself (OPTIMIZE or an equivalent) is a follow-up for the ADR.
-     - **The row limits are calibrated only for synthetic rows.** Every B3 run used synthetic Observation rows of about 220 bytes of Parquet each (10.4 MiB for 50k rows). Real rows carry `*_string` companions and nested components and are likely several times wider; the spike never measured Patient. The Phase 2 sink (ADR 2611 §5) later measured realistic-width Observation and Patient rows and kept the 50,000 defaults.
+     - **The row limits are calibrated only for synthetic rows.** Every B3 run used synthetic Observation rows of about 220 bytes of Parquet each (10.4 MiB for 50k rows). Real rows carry `*_string` companions and nested components and are likely several times wider; the spike never measured Patient. The Phase 2 sink (ADR 2611 §5) later measured 5,000-row merges of realistic-width Observation and Patient rows into 10- and 100-file tables at batch size 1024 and kept the 50,000 defaults. The small-update, 100-file pattern was not re-measured.
      - **An opt-in memory-budget test** asserts that peak process private bytes stay within **4.5 GiB (4,831,838,208 bytes, 4,608 MiB)** at `MaxTargetRows`. The measured margins at 50k rows, all with 1 target partition, are in the table below.
 
        | 50k-row layout | Source | Batch size | Peak private | Margin to 4,608 MiB |
@@ -86,7 +86,7 @@ The candidates were:
 - **OneLake:** authentication, token refresh, and whether OneLake honours the conditional create (`If-None-Match: *`). The paper evidence is in experiment 8.
 - **Platforms:** Linux and macOS native binaries. Spike executed on win-x64 only; see ADR 2611 for later Linux runs.
 - **Which DataFusion operators hold the MERGE memory (B3).** That the memory is native was measured. The operator breakdown is inferred from the delta-rs plan source and DataFusion's error text, not profiled. Only two target sizes were measured with 1 target partition (50k and 100k rows).
-- **MERGE memory with realistic rows or fragmented tables at batch size 1024 (B3).** Every B3 run in the spike used synthetic Observation rows of about 220 bytes of Parquet each. The spike measured no Patient table and no 100-file table with batch size 1024. The Phase 2 sink (ADR 2611 §5) later measured these.
+- **MERGE memory with realistic rows or fragmented tables at batch size 1024 (B3).** Every B3 run in the spike used synthetic Observation rows of about 220 bytes of Parquet each. The spike measured no Patient table and no 100-file table with batch size 1024. The Phase 2 sink (ADR 2611 §5) later measured 5,000-row merges of realistic Patient and Observation rows into 10- and 100-file tables at batch size 1024. The small-update, 100-file pattern was not re-measured.
 - **Fallback effort:** the sizing of (b) is an estimate, not a measurement. (d) was not run.
 
 ## Results by experiment
@@ -109,7 +109,7 @@ The setup for every experiment:
 | 4 | Change data feed | **PASS** with `true`. **FAIL (silent, wrong in Spark)** with `True` | With `true`: the raw log, the library's kernel CDF read and Spark `readChangeFeed`/`table_changes` all agree, and copied rows are not reported. With `True`: delta-rs writes no CDF, and Spark reports updates as delete+insert, plus spurious delete+insert for copied rows. |
 | 5 | Interop reads | **PASS** with DuckDB. **PARTIAL** in local Spark 3.5/Delta 3.2 (B4). **UNVERIFIED** in Fabric | DuckDB and the raw reader agree on every column of every row. Spark reads all four hybrid tables, but under Spark's default `datetimeRebaseModeInRead=EXCEPTION` the full Patient read fails on a 0001-01-01 value. Only with the non-default `CORRECTED` does every column decode exactly. |
 | 6 | Concurrency and crash | **PASS** locally on Windows, including deterministic injection into the data-written/commit-not-written window. Linux and OneLake **UNVERIFIED** | Two writers, 3 runs, 86 conflicts: no lost or duplicate keys. Three fault injections in the commit window (denied commit, staged-commit litter, process frozen between data file and commit): every case left a contiguous log, readers saw only committed rows, and the next writer committed. |
-| 7 | Memory/scale | **Measured scale blocker (B3); bounded only under the Phase-2 ceilings** | Clustered ids: update-MERGE peak working set 1,389 MiB. SHA-256 ids (as HDS uses): every merge scans every file, scattered updates rewrite the whole table, and default-setting peaks reach 9.1–11.3 GiB per 5k-row merge into a 10.4 MiB table. With 1 target partition at 50k rows: 2,766 MiB (batch size 1024) to 4,572 MiB (100 files, default batch size), the last only 36 MiB under the 4.5 GiB budget. At 100k rows: 5,358 MiB. Synthetic rows only. |
+| 7 | Memory/scale | **Measured scale blocker (B3); bounded only under the Phase-2 ceilings** | Clustered ids: update-MERGE peak working set 1,389 MiB. SHA-256 ids (as HDS uses): every merge scans every file, scattered updates rewrite the whole table, and default-setting merges peak at 9.1–10.5 GiB working set (private bytes up to 11.3 GiB) per 5k-row merge into a 10.4 MiB table. With 1 target partition at 50k rows: 2,766 MiB (batch size 1024) to 4,572 MiB (100 files, default batch size), the last only 36 MiB under the 4.5 GiB budget. At 100k rows: 5,358 MiB. Synthetic rows only. |
 | 8 | OneLake/auth | **UNVERIFIED** (paper evidence below) | Azure support is compiled in. Credentials can be passed only as string storage options, with no .NET `TokenCredential` hook. OAuth flows refresh tokens; a static bearer token does not. The commit uses `If-None-Match: *`. |
 | 9 | Packaging/ops | **PARTIAL** | The package is 233 MB with natives for 5 RIDs (no musl, no win-arm64). The license mismatch is B2. The repo's Docker image is glibc (azurelinux3.0). Spike executed on win-x64 only; see ADR 2611 for later Linux runs. |
 | 10 | Fallback sizing | **ESTIMATE** (judgment, not measured) | (b): about 27–45 engineer-days beyond the managed v0 writer. (d): characterised from its package and README only. |

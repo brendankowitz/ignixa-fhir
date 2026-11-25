@@ -9,7 +9,8 @@
 Issue #550 asks for a native writer that produces Fabric-compatible Silver Delta tables for FHIR R4
 `Patient` and `Observation`. Before choosing a design, the row semantics the writer must reproduce have to be
 known. This document derives them from the HDS v1.4.0 package source and the shipped Silver
-schemas, **before** reading the viewdefinition-depot's claims, then cross-checks those claims (section I).
+schemas, **before** reading the [viewdefinition-depot](https://github.com/brendankowitz/viewdefinition-depot)'s
+claims, then cross-checks those claims (section I).
 
 Nothing here is transplanted. Behavior is described in original wording; HDS is cited by package-relative
 path and line. Paths are relative to `HDS.SourceCode/src/microsoft/fabric/hls/hds/` unless prefixed
@@ -65,7 +66,8 @@ inside the row function (section C), so the task fails.
 
 ## B. `id` / `idOrig`
 
-OBS `flatten/normalization/identifier_normalization.py:26-43` (hash), `flatten/normalization/utils.py:12-36`
+OBS `flatten/normalization/identifier_normalization.py:15-24` (hash), `:27-43` (id string),
+`flatten/normalization/utils.py:12-36`
 (scheme and trailing-slash stripping, returns null when nothing is left).
 
 - Inputs: the resource type literal for the table (generator :162 passes `Patient` / `Observation`),
@@ -356,7 +358,7 @@ OBS from the avsc and deployed schema:
   A native writer must set these itself; Parquet file layout is not part of the observable row contract.
 - The merge is per micro-batch and per resource; there is no cross-table transaction (OBS).
 
-## I. Cross-check of depot claims (depot ref `5ff5d76`; read only after sections A-H)
+## I. Cross-check of depot claims (depot commit [`5ff5d76`](https://github.com/brendankowitz/viewdefinition-depot/commit/5ff5d76454e26a56d9f345c752f3ab30d3af434a); read only after sections A-H)
 
 | # | Depot claim | Verdict | Evidence |
 |---|-------------|---------|----------|
@@ -375,8 +377,7 @@ OBS from the avsc and deployed schema:
 | 6c | Depot null/tied-version failures are stricter than HDS | **AGREE** (HDS never fails here; in-batch ties are nondeterministic) | H |
 
 The depot Patient column list was compared by **names and order only** (51 columns) against the deployed
-log; no depot contract content is reused here. The depot is removing its Python shaper/writer and keeping
-views/contracts for 146 R4 types; nothing in this document relies on either.
+log; no depot contract content is reused here, and nothing in this document relies on depot code.
 
 ## J. Residual capture questions (only a real HDS run settles these)
 

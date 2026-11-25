@@ -17,8 +17,11 @@ internal sealed record MergeCommitMetrics(long InsertedRows, long UpdatedRows)
 {
     private const string MergeOperation = "MERGE";
 
-    /// <exception cref="InvalidDataException">The commit has no MERGE commit info with the row count metrics.</exception>
-    public static async Task<MergeCommitMetrics> ReadAsync(string tablePath, long version, CancellationToken cancellationToken)
+    /// <exception cref="InvalidDataException">
+    /// The commit has no MERGE commit info with the row count metrics, or the metrics count more inserted and updated
+    /// rows than the <paramref name="sourceRows"/> the merge was given.
+    /// </exception>
+    public static async Task<MergeCommitMetrics> ReadAsync(string tablePath, long version, long sourceRows, CancellationToken cancellationToken)
     {
         var commitPath = Path.Combine(
             tablePath,
@@ -28,9 +31,17 @@ internal sealed record MergeCommitMetrics(long InsertedRows, long UpdatedRows)
         foreach (var line in await File.ReadAllLinesAsync(commitPath, cancellationToken))
         {
             using var action = JsonDocument.Parse(line);
+            if (action.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                throw Missing(version, "has a line that is not a JSON object");
+            }
+
             if (action.RootElement.TryGetProperty("commitInfo", out var commitInfo))
             {
-                return FromCommitInfo(commitInfo, version);
+                var metrics = FromCommitInfo(commitInfo, version);
+                return metrics.InsertedRows + metrics.UpdatedRows <= sourceRows
+                    ? metrics
+                    : throw Missing(version, $"counts more inserted and updated rows than the {sourceRows} merged");
             }
         }
 
@@ -39,6 +50,11 @@ internal sealed record MergeCommitMetrics(long InsertedRows, long UpdatedRows)
 
     private static MergeCommitMetrics FromCommitInfo(JsonElement commitInfo, long version)
     {
+        if (commitInfo.ValueKind != JsonValueKind.Object)
+        {
+            throw Missing(version, "has commit info that is not a JSON object");
+        }
+
         if (!commitInfo.TryGetProperty("operation", out var operation) || operation.ValueKind != JsonValueKind.String || operation.GetString() != MergeOperation)
         {
             throw Missing(version, "is not a MERGE");

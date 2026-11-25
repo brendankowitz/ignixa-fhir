@@ -53,8 +53,10 @@ public static class FabricSilverDeltaWriter
     /// <para>
     /// <b>Atomicity is per table.</b> Each table's rows commit in one MERGE, all or nothing. Tables are merged one at a
     /// time in batch order and a failure stops the call, so earlier tables may be committed while later ones are not
-    /// (<see cref="FabricSilverWriteException.CompletedTables"/>). Replaying the same batch is safe and completes it:
-    /// rows already written are left as they are, because only a strictly newer row replaces a stored one.
+    /// (<see cref="FabricSilverWriteException.CompletedTables"/> lists the tables completed: committed, or unchanged
+    /// with no new version). Replaying the same batch is safe and completes it: rows already written are left as they
+    /// are, because only a strictly newer row replaces a stored one. Each merge attempt validates the table it loads
+    /// against the contract again, so a table changed after validation fails the merge before the engine starts.
     /// </para>
     /// <para>
     /// <b>Concurrency.</b> Writers in other processes may target the same tables. A merge that loses the commit race
@@ -69,8 +71,9 @@ public static class FabricSilverDeltaWriter
     /// <see cref="OperationCanceledException"/>. From the first table's merge on, including while it waits for another
     /// merge in the process to finish or backs off between retries, it is a
     /// <see cref="FabricSilverWriteCanceledException"/> (also an <see cref="OperationCanceledException"/>) listing the
-    /// tables already committed, which is empty when the first table had not committed. Either way a replay completes
-    /// the rest.
+    /// tables already completed (committed, or unchanged with no new version), which is empty when the first table had
+    /// not completed. A table whose input reduces to no rows is reported unchanged without observing cancellation.
+    /// Either way a replay completes the rest.
     /// </para>
     /// </remarks>
     /// <param name="batches">One batch per table; each table path at most once.</param>
@@ -82,8 +85,8 @@ public static class FabricSilverDeltaWriter
     /// <exception cref="ArgumentException">Two batches name the same table path (compared ignoring case).</exception>
     /// <exception cref="FabricSilverLimitExceededException">A batch or a table is over a ceiling, or a table's size cannot be proven; no merge ran, but tables created earlier in this call may hold an empty version 0.</exception>
     /// <exception cref="FabricSilverResourceRejectedException">A resource cannot be projected; nothing was written.</exception>
-    /// <exception cref="FabricSilverWriteException">The engine or the file system failed; <see cref="FabricSilverWriteException.Phase"/> and <see cref="FabricSilverWriteException.MayHaveCommitted"/> state what was written.</exception>
-    /// <exception cref="FabricSilverWriteCanceledException"><paramref name="cancellationToken"/> was canceled after merging started; it lists the committed tables.</exception>
+    /// <exception cref="FabricSilverWriteException">The engine or the file system failed, or a table does not match its contract (<see cref="Exception.InnerException"/> is then a <see cref="FabricSilverTableMismatchException"/>, and a replay fails again until the table is fixed); <see cref="FabricSilverWriteException.Phase"/> and <see cref="FabricSilverWriteException.MayHaveCommitted"/> state what was written. After an engine or I/O failure a replay is safe.</exception>
+    /// <exception cref="FabricSilverWriteCanceledException"><paramref name="cancellationToken"/> was canceled after merging started; it lists the completed tables.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before merging started.</exception>
     public static async Task<FabricSilverBatchResult> WriteBatchAsync(
         IReadOnlyList<FabricSilverTableBatch> batches,
@@ -130,7 +133,7 @@ public static class FabricSilverDeltaWriter
             }
             catch (OperationCanceledException exception)
             {
-                throw new FabricSilverWriteCanceledException(completed.ToArray(), exception, cancellationToken);
+                throw new FabricSilverWriteCanceledException(System.Array.AsReadOnly(completed.ToArray()), exception, cancellationToken);
             }
         }
 
@@ -182,6 +185,15 @@ public static class FabricSilverDeltaWriter
             }
             else if (FabricSilverDeltaTables.HasEntriesOtherThanLog(batches[index].TablePath))
             {
+                // Another writer may have created the table since the log was first checked.
+                if (FabricSilverDeltaTables.HasLog(LogDirectory(batches[index])))
+                {
+                    hasLog[index] = true;
+                    await InspectAsync(engine, batches[index], options, cancellationToken);
+                    outcomes[index] = FabricSilverTableOutcome.Validated;
+                    continue;
+                }
+
                 throw new FabricSilverWriteException(
                     batches[index].TablePath,
                     FabricSilverWritePhase.Validate,
@@ -202,13 +214,22 @@ public static class FabricSilverDeltaWriter
             }
 
             var batch = batches[index];
+            if (options.BeforeCreateTable is { } beforeCreateTable)
+            {
+                await beforeCreateTable(batch.TablePath);
+            }
+
             try
             {
                 outcomes[index] = await FabricSilverDeltaTables.EnsureTableAsync(batch.TablePath, batch.Contract, cancellationToken);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                throw new FabricSilverWriteException(batch.TablePath, FabricSilverWritePhase.Create, attempts: 0, completedTables: [], exception);
+                // A lost creation race validates the winner's table; its mismatch or unreadable log is a validation failure.
+                var phase = exception is FabricSilverTableMismatchException or InvalidDataException
+                    ? FabricSilverWritePhase.Validate
+                    : FabricSilverWritePhase.Create;
+                throw new FabricSilverWriteException(batch.TablePath, phase, attempts: 0, completedTables: [], exception);
             }
 
             // Another creator won the race and may already have written to the table.
@@ -265,6 +286,7 @@ public static class FabricSilverDeltaWriter
                 try
                 {
                     using var table = await LoadAsync(engine, batch, cancellationToken);
+                    ExistingTableValidator.Validate(table.ProtocolVersions(), table.Metadata(), batch.Contract);
                     before = table.Version();
 
                     // Each attempt exports its own record batch, so a retry never reuses one the engine has consumed.
@@ -296,7 +318,7 @@ public static class FabricSilverDeltaWriter
                         batch.TablePath,
                         FabricSilverWritePhase.Merge,
                         attempt,
-                        completed.ToArray(),
+                        System.Array.AsReadOnly(completed.ToArray()),
                         exception,
                         mayHaveCommitted,
                         versionCheckFailure);
@@ -313,11 +335,17 @@ public static class FabricSilverDeltaWriter
                 try
                 {
                     // The merge is committed, so its result is read whatever the caller's token says.
-                    metrics = await MergeCommitMetrics.ReadAsync(batch.TablePath, version, CancellationToken.None);
+                    metrics = await MergeCommitMetrics.ReadAsync(batch.TablePath, version, reduction.Rows.Count, CancellationToken.None);
                 }
                 catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or JsonException)
                 {
-                    throw new FabricSilverWriteException(batch.TablePath, FabricSilverWritePhase.ReadCommit, attempt, completed.ToArray(), exception);
+                    throw new FabricSilverWriteException(
+                        batch.TablePath,
+                        FabricSilverWritePhase.ReadCommit,
+                        attempt,
+                        System.Array.AsReadOnly(completed.ToArray()),
+                        exception,
+                        committedVersion: version);
                 }
 
                 return new FabricSilverTableResult(batch.TablePath, outcome, version, reduction, metrics.InsertedRows, metrics.UpdatedRows, attempt);

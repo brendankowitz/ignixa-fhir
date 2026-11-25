@@ -60,8 +60,8 @@ source reading, not profiled), **Paper** (documentation or source only), **Estim
   through v105 including a checkpoint.
 - **The seam.** The package's public surface (table create/validate, the batch writer, options, results and
   typed errors) exposes no DeltaLake.Net type. Swapping to (b), (d) or a fixed delta-rs replaces package
-  internals. The contract tests verify through an independent Delta-log and Parquet reader, not through the
-  engine.
+  internals. The contract tests verify through an independent Delta-log and Parquet reader as well as through
+  the engine.
 - **Isolation.** The engine lives only in the alpha package `Ignixa.SqlOnFhir.Fabric.Delta`. Repository guard
   tests enforce two rules:
   - only that project references DeltaLake.Net;
@@ -91,9 +91,9 @@ source reading, not profiled), **Paper** (documentation or source only), **Estim
   win-arm64 build.
 - **Platforms executed.** win-x64 runs everything in this ADR. linux-x64 (glibc 2.39, the Ubuntu-based
   `mcr.microsoft.com/dotnet/sdk:10.0` container, run locally as a non-root user) passed the full
-  `Ignixa.SqlOnFhir.Fabric.Delta.Tests` suite on net10.0, including the HDS real-schema cases: create, validate,
-  the 8-way publish race through `link(2)`, MERGE, and the denied-commit failure tests (Measured, container). The
-  memory-budget cases skip off Windows. linux-arm64, osx-x64, osx-arm64 and musl/Alpine were never executed
+  `Ignixa.SqlOnFhir.Fabric.Delta.Tests` suite on net10.0 (Measured, container): the HDS real-schema cases
+  (create, validate, MERGE) and the synthetic-contract cases (the 8-way publish race through `link(2)`, the
+  denied-commit failure tests). The memory-budget cases skip off Windows. linux-arm64, osx-x64, osx-arm64 and musl/Alpine were never executed
   (Unverified). No CI run exists.
 - This footprint is why the isolation rule in section 1 exists.
 
@@ -105,8 +105,8 @@ source reading, not profiled), **Paper** (documentation or source only), **Estim
 - **Default engine settings:** 9,317–10,736 MiB peak working set and 31–89 s per merge. Clustered ids at the same
   scale: 1,389 MiB and about 2 s.
 - **No pruning:** every merge scans every file (0 skipped), and scattered updates rewrite the whole table.
-- **Native memory:** the memory is native, and the .NET GC heap stayed at or below 93 MiB. A 50-row source costs
-  about the same as a 5,000-row source.
+- **Native memory:** the memory is native, and the .NET GC heap stayed at or below 93 MiB. At default engine
+  settings, a 50-row source costs about the same as a 5,000-row source.
 - **Bounded settings** (peak private bytes):
   - 1 target partition: 3,537 MiB;
   - 1 partition plus batch size 1024: 2,766 MiB in 18 s;
@@ -130,8 +130,7 @@ source reading, not profiled), **Paper** (documentation or source only), **Estim
 
 ### 5. B3 as implemented in the Phase 2 MERGE sink
 
-**Fail-closed ceilings.** All are configurable at the caller's risk, and all are checked before anything is
-written:
+**Fail-closed ceilings.** All are configurable at the caller's risk, and all are checked before any merge:
 
 | Ceiling | Default | Checked | When exceeded or unknown |
 |---|---:|---|---|
@@ -150,8 +149,9 @@ raises the limit.
   spill size or memory pool is set.
 - One MERGE at a time per process, through a process-wide gate held around each table's merge and its retries.
 - One merge per table per batch; a source is never split.
-- One engine per batch call, then disposed. A fresh table handle per attempt. Every binding query stream is fully
-  drained.
+- One engine per batch call, then disposed, plus a short-lived validation engine when a creation race is lost. A
+  fresh table handle per attempt, re-validated against the contract before its merge. Every binding query stream is
+  fully drained.
 
 **Measured memory (Phase 2).** An opt-in test, gated by an environment variable, ran on a single Windows host
 (28 logical cores, 63.7 GiB RAM).
@@ -186,14 +186,17 @@ defaults stay at 50,000 rows and 100 files. Figures are in MiB/GiB (2^20 bytes).
 **Measured envelope versus what the ceilings permit:**
 
 - **Measured:** a 50,000-row target plus a 5,000-row source, up to 100 files.
-- **Permitted, not measured:** a source of up to 50,000 resources per table, and a result of up to about 100,000
-  rows (a target at the row ceiling plus a full source).
+- **Permitted, not measured:**
+  - a source of up to 50,000 resources per table, and a result of up to about 100,000 rows (a target at the row
+    ceiling plus a full source);
+  - a small (for example 50-row) update into a table at the 100-file ceiling, at the shipped settings. The
+    spike's highest 50,000-row peak (4,572 MiB, at the default batch size) was this pattern.
 
 **Compaction gates any sustained Phase 2 use.**
 
 - **MERGE only never compacts.** An insert adds a file and removes none, and a small update rewrites only the
-  files it touches. With small insert-heavy batches, the 100-file ceiling is reached after about 90 commits, long
-  before 50,000 rows.
+  files it touches. With small insert-heavy batches, the 100-file ceiling is reached after roughly 100
+  insert-only commits (Estimate: each adds one file), long before 50,000 rows.
 - **The binding offers compaction tools, all untested.** It exposes `ITable.OptimizeAsync(OptimizeOptions, ct)`
   (bin-packing or Z-order, with a target file size), plus `VacuumAsync` and `CheckpointAsync`. None is tested:
   - whether they keep protocol 1/4, the configuration and the schemaString unchanged is unknown;
@@ -219,9 +222,9 @@ seam:
 
 **Risk: `FilesAsync` crash.**
 
-- **Measured:** in DeltaLake.Net 0.33.3, the latest release, `ITable.FilesAsync` and `FileUrisAsync` corrupt the
-  native heap (0xC0000374) and crash the process. From the binding source, the bridge frees the returned string
-  array that the managed side then reads and frees again.
+- **Measured:** in DeltaLake.Net 0.33.3 (the pinned version), `ITable.FilesAsync` and `FileUrisAsync` corrupt
+  the native heap (0xC0000374) and crash the process. **Inferred** from the binding source: the returned path
+  array is freed twice.
 - **Workaround:** the writer counts live files by replaying `_delta_log` itself: the newest complete checkpoint,
   then the JSON commits. It fails closed on anything it cannot read. That slice of the Delta protocol is
   Ignixa-owned until the binding is fixed.
@@ -237,7 +240,7 @@ seam:
 | Existing-table validation | Proposed, implemented (`ExistingTableValidator`; contract loader `DeltaSchemaReader`) | The schemaString is compared structurally, not byte-for-byte, because DeltaLake.Net re-serializes it. The contract loader requires exact Delta member sets, so every loadable contract can be created and later validated. There is no `format` check on existing tables. |
 | Batch reduction | Policy, implemented | A row with a null `meta.lastUpdated` is dropped. The latest row per Silver `id` wins. A tie keeps the **last occurrence in batch order**, because HDS is nondeterministic for ties. Reduction is mandatory: a duplicate source key would either fail the MERGE or, when unmatched, insert twice (Inferred from delta-rs MERGE semantics; the writer pre-reduces, so it is not exercised). |
 | Merge rule | Proposed, implemented | Strict newer-wins: `target.meta_lastUpdated < source.meta_lastUpdated`. An equal or older row changes nothing and writes no version. `msftCreatedDatetime` is preserved on update. |
-| Batch atomicity | Proposed, implemented | Atomicity across tables is impossible, because Delta commits are per table. Order: project everything, validate everything, create the missing v0s, then merge table by table. A partial failure raises a typed error listing which tables committed and at which version. Replaying the batch is safe and repairs the rest. An empty v0 left behind is acceptable. |
+| Batch atomicity | Proposed, implemented | Atomicity across tables is impossible, because Delta commits are per table. Order: project everything, validate everything, create the missing v0s, then merge table by table. A partial failure raises a typed error listing which tables completed (committed, or unchanged with no new version) and at which version. Replaying the batch is safe and repairs the rest. An empty v0 left behind is acceptable. |
 | Merge failure and cancellation | Proposed, implemented (`FabricSilverDeltaWriter`, `FabricSilverWriteException.MayHaveCommitted`) | A started engine merge is never canceled: it runs with `CancellationToken.None`, because the binding reports cancellation even when the native merge committed. The caller's token is honoured before each attempt and during backoff. Cancellation once merging has started throws `FabricSilverWriteCanceledException` (an `OperationCanceledException`) carrying `CompletedTables`. A failed merge does **not** imply the table is unchanged. On a non-conflict failure after the engine started, `FabricSilverWriteException.MayHaveCommitted` is set when the reloaded version advanced or cannot be read; in the latter case `VersionCheckException` carries the reload failure, while the inner exception stays the merge's own. A conflict that exhausts its retries reports false. The message states the table may or may not be committed and that replaying is safe. Tested with injected failures; a real post-commit hook failure (checkpoint or log cleanup) is untested, and its handling is Inferred. |
 | Conflict handling | Proposed, implemented; known fragility | Conflicts arrive only as an untyped `DeltaRuntimeException` and are classified by its message. They are retried with bounded jittered backoff (default 5 attempts) on a fresh handle. A wording change in the binding turns retries into failures, which fails safe. |
 
@@ -252,7 +255,7 @@ seam:
 | **Orphan files.** Aborted attempts leave data and `_change_data` files that readers ignore | Measured | Vacuum policy (Phase 3) |
 | **OneLake auth.** Credentials are string options only; a static bearer token is never refreshed; there is no `TokenCredential` hook. Whether OneLake honours `If-None-Match: *` is unknown | Paper | Phase 3 |
 | **Crash safety.** The spike's commit-window fault injection (including a process frozen between data file and commit) ran on Windows only. The writer's denied-commit tests also pass on linux-x64 in a container; a frozen-process injection on Unix was not run | Measured (Windows; linux-x64 container for denied commits) | Frozen-process injection on Linux before GA |
-| **Racing writers on a Windows local filesystem.** A merge racing another writer's commit occasionally fails with a non-conflict engine I/O error ("Access is denied (os error 5)" while opening the other writer's commit file), about 1 in 40 runs of the ten-round racing-writers test. It is not a commit conflict, so it is not retried: the writer fails closed with `MayHaveCommitted` set, because the other writer's commit advanced the version, and replaying the batch is safe. The root cause is not established (possibly delete-pending or antivirus semantics). Not seen in 40 linux-x64 container runs, which is too few to rule it out at this rate | Observed (Windows); root cause Unverified; linux-x64 container: 40 of 40 runs of the test without replay passed, too few to rule it out | Not a production target; the racing test replays a failed write once. Revisit if seen on OneLake or Linux |
+| **Racing writers on a Windows local filesystem.** A merge racing another writer's commit occasionally fails with a non-conflict engine I/O error ("Access is denied (os error 5)" while opening the other writer's commit file), about 1 in 40 runs of the ten-round racing-writers test. It is not a commit conflict, so it is not retried: the writer fails closed in whichever phase the error hits (Validate or Merge). `MayHaveCommitted` is set only when the engine merge had started and the version then advanced. Replaying the batch is safe either way. The root cause is not established (possibly delete-pending or antivirus semantics). Not seen in 40 linux-x64 container runs, which is too few to rule it out at this rate | Measured (Windows, about 1 in 40 runs); root cause Unverified; linux-x64 container: 40 of 40 runs of the test without replay passed, too few to rule it out | Not a production target; the racing test replays a failed write once. Revisit if seen on OneLake or Linux |
 | **Platforms.** linux-x64 (glibc) passed the Delta test suite in a local container; no memory-budget measurement exists off Windows. linux-arm64, macOS and musl were never exercised at runtime | Measured (linux-x64 container); others Unverified | Run on each RID the product supports before GA |
 | **Protocol pin.** 79 of the 285 version-0 logs in the HDS v1.4.0 package (other tables) are protocol 1/2; the writer pins 1/4, which Patient and Observation use | Measured (local package) | Revisit when scope widens |
 
