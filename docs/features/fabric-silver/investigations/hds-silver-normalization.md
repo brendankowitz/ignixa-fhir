@@ -7,11 +7,11 @@
 ## Approach
 
 Issue #550 asks for a native writer that produces Fabric-compatible Silver Delta tables for FHIR R4
-`Patient` and `Observation`. Before choosing a design we need the row semantics the writer must
-reproduce. This document derives them from the HDS v1.4.0 package source and the shipped Silver
-schemas, **before** reading the depot session's claims, then cross-checks those claims (section I).
+`Patient` and `Observation`. Before choosing a design, the row semantics the writer must reproduce have to be
+known. This document derives them from the HDS v1.4.0 package source and the shipped Silver
+schemas, **before** reading the viewdefinition-depot's claims, then cross-checks those claims (section I).
 
-Nothing here is transplanted. Behavior is described in my own words; HDS is cited by package-relative
+Nothing here is transplanted. Behavior is described in original wording; HDS is cited by package-relative
 path and line. Paths are relative to `HDS.SourceCode/src/microsoft/fabric/hls/hds/` unless prefixed
 with `config/` (then `HDS.SourceCode/src/config/fhir4/`), `deployed/` (the deployed Silver
 `_delta_log` v0 under `HDS.SourceCode/hds-build-artifacts/healthcare-tables/1.4.0/Silver/<Table>/`,
@@ -21,8 +21,8 @@ read locally for field order and types only; no schema text is reproduced) or `r
 **Reproducibility.** The per-resource rule lists (C3, D) and the column counts are *computed* by
 emulating the HDS rule generator over the Patient/Observation `.avsc` files and by reading the deployed
 Delta log. Both inputs come from the HDS v1.4.0 package, which is supplied by the caller and is not part
-of this repository (licensing is unresolved). The emulation script and its output are kept in the
-run directory, not committed. Someone with the same package can re-derive the lists by running the
+of this repository (licensing is unresolved). The emulation script and its output are not published.
+Someone with the same package can re-derive the lists by running the
 generator logic at `flatten/flatten_config_generator.py:143-343` over those two files; someone without
 it can only trust the tables below.
 
@@ -98,7 +98,7 @@ the Silver rename). Consequences:
 
 ## C. Identifier and reference normalization
 
-### C1. `identifier` / `identifierOrig` (OBS `identifier_normalization.py:241-457`, `normalization/utils.py:97-138`)
+### C1. `identifier` / `identifierOrig` (OBS `identifier_normalization.py:241-428, 431-509`, `normalization/utils.py:97-138`)
 
 1. `identifierOrig` = copy of the parsed identifier array **before** any change. Null stays null.
 2. Schema check: the column must match a fixed Identifier layout (`flatten/constants.py:166-175`
@@ -135,12 +135,13 @@ Output struct per reference (also per array element), field order: `reference`, 
 |---|---|---|
 | Falsy `msftSourceSystem` (any input) | `ValueError`, task fails | OBS :25-27 |
 | Not a struct/dict, e.g. a **missing scalar Reference** (SQL null) | A **non-null** Reference-layout struct with every field null, including a **non-null `identifier` struct whose fields are all null** (not conformed) | OBS :31-42 for the row function; that Spark hands SQL null to the function as `None` and keeps the returned struct is INF |
-| Present struct, `reference` empty/null | Passes `type`, `display`, `extension` through, conforms the identifier (:72); nothing to clear, `msftSourceReference` null, `id`/`idOrig` null | OBS :44-72, :107-114 |
+| Present struct, `reference` null or absent | Passes `type`, `display`, `extension` through, conforms the identifier (:72); nothing to clear, `msftSourceReference` null, `id`/`idOrig` null | OBS :44-72, :107-114 |
+| Present struct, `reference` empty string | As above, but `reference` stays `""` and `msftSourceReference` is `""` (copied at :50 before the emptiness test), not null | OBS :50, :75, :107-114 |
 | Present struct, `reference` non-empty | See below | OBS :75-105 |
 | **Missing array** of References (null) or empty array | Unchanged: stays null / stays empty | OBS :118-126 |
 | Array with elements | Each element goes through the row function; a null element becomes the all-null struct above | OBS :124 (element behavior INF) |
-| Nested rule: parent struct null | Parent returned unchanged (null); a non-null parent with a missing child gets the all-null Reference struct in that child | OBS :145-160 |
-| Nested rule: parent array | Null or empty parent array unchanged; each element's child normalized, so a missing child becomes the all-null struct | OBS :130-142, :182-194 |
+| Nested rule: parent struct null | Parent returned unchanged (null); a non-null parent with a missing **scalar** child gets the all-null Reference struct in that child. A missing **array** child stays null | OBS :145-160 (scalar child), :163-178 (array child) |
+| Nested rule: parent array | Null or empty parent array unchanged; each element's child normalized, so a missing **scalar** child becomes the all-null struct, while a missing **array** child stays null | OBS :130-142 (scalar child), :182-194 (array child) |
 
 So a **missing scalar Reference column becomes a non-null all-null struct while a missing array stays
 null**, which changes `*_string` (E2) and the native column.
@@ -174,11 +175,12 @@ parsed from the string (:77). Two unanchored searches are then tried
   from the existing identifier (`normalization/utils.py:140-150`).
 - **Whenever the incoming `reference` is non-empty, the output `reference` is NULL** and the original
   text is in `msftSourceReference` (:103-105), including strings matching neither pattern (`#frag`,
-  `urn:uuid:...`), for which nothing else changes. An empty `reference` leaves `msftSourceReference` null.
+  `urn:uuid:...`), for which nothing else changes. A null or absent `reference` leaves `msftSourceReference`
+  null; an empty-string `reference` is kept as `""` in both `reference` and `msftSourceReference` (:50).
 - No `*Orig` column is created for references (`preserve` defaults false, `flatten/core.py:236`).
 - `display` passes through; `extension` is a string.
 
-### C3. Reference-typed columns (computed by emulating the generator; run-dir evidence `walk_avsc`)
+### C3. Reference-typed columns (computed by emulating the generator; emulation output not published)
 
 Rule: any avsc field whose type name ends in `.Reference` (or array of it) at nesting <= 2. Level-1 rules
 rewrite the column; level-2 rules rewrite a named child inside a struct or array of struct. Rule order:
@@ -339,7 +341,7 @@ OBS from the avsc and deployed schema:
   Delta table (:231-244). Packaged table creation (`flatten/flatten_manager.py:178-192`) runs the
   **same flatten and upsert path on an empty dataframe** (:190-191), built from the avsc schema plus null
   string `msftSourceSystem` / `msftFilePath` (:194-213). So the created layout is the pipeline's output
-  layout, not a separate pre-created schema (OBS). The merge itself sets no schema-merge option; schema
+  layout, not a separate pre-created schema (INF). The merge itself sets no schema-merge option; schema
   evolution is a session setting.
 - **Table properties are session defaults, not code (OBS unless marked):**
   - The packaged config notebook sets the session defaults `schema.autoMerge.enabled` and
@@ -429,7 +431,7 @@ Feed to the depot capture recipe (initial, replay, update events):
 
 - Source: HDS v1.4.0 package paths cited inline (`flatten/`, `flatten/normalization/`, `services/`, `utils/`).
 - Computed: the rule lists in C3 and D come from emulating the generator over the shipped avsc; the
-  throwaway script and output live in the run directory, not in this repository. They are reproducible
+  throwaway script and its output are not published. They are reproducible
   only from the caller-supplied HDS package (see Approach); the package is not part of this repository.
 - Deployed schema v0 (local only): field order, types, nullability, nested layouts, protocol and table
   properties for `Patient` and `Observation`.

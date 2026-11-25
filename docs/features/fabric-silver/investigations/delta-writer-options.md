@@ -1,7 +1,10 @@
 # Investigation: Delta engine for the native Fabric Silver writer
 
+> **Phase 1 spike record.** The Phase 2 measurements and the implemented design are in
+> [ADR 2611](../adr-2611-fabric-silver-delta-engine.md) §5–6, which supersede the figures and the API sketch here.
+
 **Feature**: fabric-silver
-**Status**: Complete for local evidence; synthesized into the proposed [ADR 2611](../adr-2611-fabric-silver-delta-engine.md). Fabric runtime, OneLake and Linux are unverified.
+**Status**: Complete for local evidence; synthesized into the proposed [ADR 2611](../adr-2611-fabric-silver-delta-engine.md). Fabric runtime and OneLake are unverified; this spike ran on win-x64 only.
 **Created**: 2026-11-24
 
 ## Summary and recommendation
@@ -17,13 +20,13 @@ The candidates were:
 
 - **Ignixa owns the version-0 commit.** That covers the protocol and metaData actions, and any later metaData change. It is a small managed JSON writer that publishes the commit with create-if-absent semantics.
 - **DeltaLake.Net owns data movement.** That covers appends, the conditional MERGE that implements the HDS upsert, change-data-feed (CDF) emission, conflict detection and the atomic log commit.
-- **A seam keeps the engine swappable.** The engine sits behind an Ignixa-owned seam inside `Ignixa.SqlOnFhir.Writers.Delta`. Swapping it later for (b) or (d) is a contained change, and B3 below makes such a swap a real possibility.
+- **A seam keeps the engine swappable.** The engine sits behind an Ignixa-owned seam inside `Ignixa.SqlOnFhir.Fabric.Delta`. Swapping it later for (b) or (d) is a contained change, and B3 below makes such a swap a real possibility.
 
 | Candidate | Verdict |
 |---|---|
 | (a) DeltaLake.Net alone | **Not sufficient.** It cannot create a table with the HDS table properties, because delta-rs rejects `delta.parquet.vorder.enabled`. It also silently disables CDF when the property value is HDS's literal `True` (capital T). |
 | (b) Managed writer over Parquet.Net | **Not chosen for Phase 1.** The estimate is roughly 27–45 engineer-days for the gaps beyond the managed v0 writer (see experiment 10). That is the largest correctness surface of any option, and (a) already passes it locally. |
-| (c) Hybrid | **Recommended for Phase 1, with two caveats.** Every local correctness experiment the hybrid depends on passed against DuckDB and the raw-log reader, and checkpoints passed. The managed part is about 100 lines of spike code. **Caveat 1, Spark read is PARTIAL (B4):** a real Spark 3.5 / Delta 3.2 reader reads every table, but under Spark's default rebase mode it fails on Patient's pre-1582 dates. **Caveat 2, scale is bounded (B3):** Phase 2 runs only under fail-closed ceilings of 50,000 target rows, 50,000 source resources and 100 live files per table. The row limits were calibrated on narrow synthetic rows and may change once Task 7 measures realistic-width rows. No measured configuration is safe above about 100k target rows. |
+| (c) Hybrid | **Recommended for Phase 1, with two caveats.** Every local correctness experiment the hybrid depends on passed against DuckDB and the raw-log reader, and checkpoints passed. The managed part is about 100 lines of spike code. **Caveat 1, Spark read is PARTIAL (B4):** a real Spark 3.5 / Delta 3.2 reader reads every table, but under Spark's default rebase mode it fails on Patient's pre-1582 dates. **Caveat 2, scale is bounded (B3):** Phase 2 runs only under fail-closed ceilings of 50,000 target rows, 50,000 source resources and 100 live files per table. The spike calibrated the row limits on narrow synthetic rows; the Phase 2 sink (ADR 2611 §5) then measured realistic-width rows and kept the defaults. No measured configuration is safe above about 100k target rows. |
 | (d) EngineeredWood | **Not evaluated.** It is a pre-1.0, Apache-2.0 managed library that claims MERGE, CDF and checkpoints. It was not run here. It is the cheapest candidate to try if B3 rules out delta-rs MERGE. |
 
 **Blocking decisions.** These need an owner decision; none of them is an engine bug to work around silently.
@@ -31,7 +34,7 @@ The candidates were:
 1. **B1: the `True` value on tables HDS already deployed.** HDS deploys `delta.enableChangeDataFeed` with the value `True`. delta-rs 0.32.1 parses that value case-sensitively and treats the table as CDF-off, so its merges write no `cdc` actions.
    - **Measured downstream effect.** Spark parses `True` case-insensitively, so it treats the table as CDF-on. Finding no `cdc` files, it infers changes from the add and remove actions (experiment 4). Every update appears as a delete plus an insert. Worse, rows the merge only *copied* into a rewritten file appear as **spurious delete-plus-insert pairs**.
    - **Consequence:** with this engine, an exact HDS configuration value and a working CDF cannot both hold.
-   - **Proposed ruling.** The coordinator's proposal, to be recorded in an ADR and not decided here, has two parts:
+   - **Proposed ruling.** The proposal, to be recorded in an ADR and not decided here, has two parts:
      - Tables Ignixa creates write lowercase `true`.
      - Existing tables whose value is not lowercase `true` fail closed.
    - **Later option:** normalising the value with an Ignixa-written metaData commit is possible as a follow-up.
@@ -57,7 +60,7 @@ The candidates were:
      - **One MERGE at a time per process.**
      - **`MaxTargetRows = 50,000`** and **`MaxSourceResourcesPerTable = 50,000`.** Above either, the sink refuses the write instead of starting a merge that may exhaust memory. Both are configurable, and raising them is at the caller's risk.
      - **`MaxTargetFiles = 100`.** The sink checks the table's live file count before writing. Above the limit it refuses the write, and the error tells the operator to compact the table. It is configurable at the caller's risk. Compaction itself (OPTIMIZE or an equivalent) is a follow-up for the ADR.
-     - **The row limits are calibrated only for synthetic rows.** Every B3 run used synthetic Observation rows of about 220 bytes of Parquet each (10.4 MiB for 50k rows). Real rows carry `*_string` companions and nested components and are likely several times wider; Patient was never measured. Task 7 recalibrates the limits with realistic-width Observation rows, and Patient rows if that is cheap. **The 50,000 defaults may change after that measurement.**
+     - **The row limits are calibrated only for synthetic rows.** Every B3 run used synthetic Observation rows of about 220 bytes of Parquet each (10.4 MiB for 50k rows). Real rows carry `*_string` companions and nested components and are likely several times wider; the spike never measured Patient. The Phase 2 sink (ADR 2611 §5) later measured realistic-width Observation and Patient rows and kept the 50,000 defaults.
      - **An opt-in memory-budget test** asserts that peak process private bytes stay within **4.5 GiB (4,831,838,208 bytes, 4,608 MiB)** at `MaxTargetRows`. The measured margins at 50k rows, all with 1 target partition, are in the table below.
 
        | 50k-row layout | Source | Batch size | Peak private | Margin to 4,608 MiB |
@@ -67,7 +70,7 @@ The candidates were:
        | 100 files | 5,000-row scattered update | default | 3,605 MiB (3.52 GiB) | 1,003 MiB (22%) |
        | 100 files | 50-row update | default | 4,572 MiB (4.46 GiB) | **36 MiB (0.8%)** |
 
-       The fragmented case, which is the expected steady state, has effectively no margin. No 100-file layout was measured with batch size 1024, and no layout was measured with realistic-width rows. Task 7 measures the 10-file and 100-file layouts with batch size 1024 on realistic-width rows. Until then the budget is unproven for the layout the sink will normally see.
+       The fragmented case, which is the expected steady state, has effectively no margin. The spike measured no 100-file layout with batch size 1024 and no layout with realistic-width rows. The Phase 2 sink (ADR 2611 §5) measured the 10-file and 100-file layouts with batch size 1024 on realistic-width rows; the worst case there peaked at 2,431 MiB of private bytes.
    - **No measured configuration is safe above about 100k target rows.** At 100k rows, 1 target partition with the default batch size peaked at 5,358 MiB (5.23 GiB), 750 MiB over the budget. Batch size 1024 was not measured at 100k. Memory grows with target rows. B3 therefore **remains a production blocker for large tables**. Lifting it needs one of the following:
      - an update path that prunes files without min/max stats, for example a key-to-file index;
      - a fix for the memory amplification inside delta-rs;
@@ -81,9 +84,9 @@ The candidates were:
 
 - **Fabric itself:** the Fabric runtime reading these tables, and its `datetimeRebaseModeInRead` default. A stock Spark 3.5.6 + Delta 3.2.1 reader *was* run locally; see experiment 5. There is still no HDS-captured row oracle.
 - **OneLake:** authentication, token refresh, and whether OneLake honours the conditional create (`If-None-Match: *`). The paper evidence is in experiment 8.
-- **Platforms:** Linux and macOS native binaries. Only win-x64 was executed.
+- **Platforms:** Linux and macOS native binaries. Spike executed on win-x64 only; see ADR 2611 for later Linux runs.
 - **Which DataFusion operators hold the MERGE memory (B3).** That the memory is native was measured. The operator breakdown is inferred from the delta-rs plan source and DataFusion's error text, not profiled. Only two target sizes were measured with 1 target partition (50k and 100k rows).
-- **MERGE memory with realistic rows or fragmented tables at batch size 1024 (B3).** Every B3 run used synthetic Observation rows of about 220 bytes of Parquet each. Patient was never measured. No 100-file table was measured with batch size 1024. Task 7 owns these measurements.
+- **MERGE memory with realistic rows or fragmented tables at batch size 1024 (B3).** Every B3 run in the spike used synthetic Observation rows of about 220 bytes of Parquet each. The spike measured no Patient table and no 100-file table with batch size 1024. The Phase 2 sink (ADR 2611 §5) later measured these.
 - **Fallback effort:** the sizing of (b) is an estimate, not a measurement. (d) was not run.
 
 ## Results by experiment
@@ -92,11 +95,11 @@ The setup for every experiment:
 
 - **Schemas.** Each table was created from the real HDS v1.4.0 deployed Silver schemas for Patient and Observation, read at runtime from the caller-supplied package.
 - **Environment.** Local filesystem on win-x64, .NET 10.
-- **Independent checks.** I checked results without relying on the writer's engine:
+- **Independent checks.** Results were checked without relying on the writer's engine:
   - **Raw-log reader.** A raw replay of the `_delta_log` JSON, reading parquet with pyarrow. It shares no code with delta-rs or delta-kernel.
   - **DuckDB.** DuckDB's `delta_scan`, which runs on delta-kernel-rs.
   - **Spark.** Apache Spark 3.5.6 with delta-spark 3.2.1 on Java 17, run from the official `spark` Docker image. This matches the Spark and Delta versions of Fabric Runtime 1.3. It is not Fabric itself.
-- **Not independent.** The Python `deltalake` package is delta-rs itself, so I did not count it as an independent reader.
+- **Not independent.** The Python `deltalake` package is delta-rs itself, so it does not count as an independent reader.
 
 | # | Experiment | Result | Evidence (one line) |
 |---|---|---|---|
@@ -108,19 +111,17 @@ The setup for every experiment:
 | 6 | Concurrency and crash | **PASS** locally on Windows, including deterministic injection into the data-written/commit-not-written window. Linux and OneLake **UNVERIFIED** | Two writers, 3 runs, 86 conflicts: no lost or duplicate keys. Three fault injections in the commit window (denied commit, staged-commit litter, process frozen between data file and commit): every case left a contiguous log, readers saw only committed rows, and the next writer committed. |
 | 7 | Memory/scale | **Measured scale blocker (B3); bounded only under the Phase-2 ceilings** | Clustered ids: update-MERGE peak working set 1,389 MiB. SHA-256 ids (as HDS uses): every merge scans every file, scattered updates rewrite the whole table, and default-setting peaks reach 9.1–11.3 GiB per 5k-row merge into a 10.4 MiB table. With 1 target partition at 50k rows: 2,766 MiB (batch size 1024) to 4,572 MiB (100 files, default batch size), the last only 36 MiB under the 4.5 GiB budget. At 100k rows: 5,358 MiB. Synthetic rows only. |
 | 8 | OneLake/auth | **UNVERIFIED** (paper evidence below) | Azure support is compiled in. Credentials can be passed only as string storage options, with no .NET `TokenCredential` hook. OAuth flows refresh tokens; a static bearer token does not. The commit uses `If-None-Match: *`. |
-| 9 | Packaging/ops | **PARTIAL** | The package is 233 MB with natives for 5 RIDs (no musl, no win-arm64). The license mismatch is B2. The repo's Docker image is glibc (azurelinux3.0), but the linux-x64 natives were not run. |
+| 9 | Packaging/ops | **PARTIAL** | The package is 233 MB with natives for 5 RIDs (no musl, no win-arm64). The license mismatch is B2. The repo's Docker image is glibc (azurelinux3.0). Spike executed on win-x64 only; see ADR 2611 for later Linux runs. |
 | 10 | Fallback sizing | **ESTIMATE** (judgment, not measured) | (b): about 27–45 engineer-days beyond the managed v0 writer. (d): characterised from its package and README only. |
 | 11 | Checkpoints | **PASS** (local) | A hybrid table driven to v105 got a delta-rs checkpoint at v99. It preserved both properties, protocol 1/4 with no features, and a byte-identical schemaString. DeltaLake.Net, DuckDB and Spark all read the table, including a copy where only the checkpoint could be used. |
 
 ## Evidence detail
 
-The spike harness lives outside the repository, so the HDS package never lands in git. It contains:
+The spike harness and its raw outputs are not published, so the HDS package never lands in git. The harness consisted of:
 
 - a .NET 10 console app;
 - Python readers: `compare_log.py`, `raw_read.py`, `duckdb_read.py`, `parquet_types.py` and `spark_read.py`;
 - PowerShell drivers: `race.ps1`, `crash.ps1`, `commit-window.ps1`, `mem-ids.ps1`, `checkpoint.ps1` and `b3-probe.ps1`.
-
-The raw outputs of every command are kept in the run directory, which is also not committed. The commands are in the harness README.
 
 ### 1. Table creation
 
@@ -147,7 +148,7 @@ In both variants the schemaString *is* byte-identical to HDS for both types: the
   - `commitInfo`, which readers do not interpret;
   - the CDF value, when the writer is given `true` instead of HDS's `True`.
 
-  The writer stores whatever value it is given. With `True` it is byte-for-byte HDS, but CDF is then broken (B1). With `true` it differs from HDS in the casing of that one value, which is the expected product behaviour.
+  The writer stores whatever value it is given. With `True` it matches HDS's configuration value (commitInfo, the metaData `id` and `createdTime` still differ), but CDF is then broken (B1). With `true` it differs from HDS in the casing of that one value, which is the expected product behaviour.
 
 DeltaLake.Net loads that table and appends and merges into it. A table holding the exact HDS-written version-0 commit also loads and accepts appends.
 
@@ -258,7 +259,7 @@ Spark's projected read of the merged tables returned the expected ids and `meta_
   - have the writer stamp Spark-compatible key-value metadata into each Parquet file. The binding does not appear to expose Parquet key-value metadata (unverified);
   - reject or clamp pre-1582 values at projection. This loses data, so it is not recommended.
 
-**Windows-native Spark.** It needs `winutils.exe`, which I did not install, so Docker is the reproducible route.
+**Windows-native Spark.** It needs `winutils.exe`, which was not installed, so Docker is the reproducible route.
 
 ### 6. Concurrency and crash
 
@@ -395,7 +396,7 @@ delta-rs's own `with_streaming(true)` is not a lower-memory mode in this version
 - **Unconfirmed:** that early exit is the cause.
 - **Rule for the sink:** always fully drain or dispose binding query streams.
 
-**Resulting ceiling.** The Phase-2 sink enforces the B3 ceiling in the summary: MERGE only, with partitions 1 and batch size 1024, one MERGE at a time per process, and fail-closed limits of 50,000 target rows, 50,000 source resources and 100 live files per table. An opt-in test checks a 4.5 GiB (4,831,838,208-byte) budget at that size. The one measured 100-file case left only 36 MiB of margin, so Task 7 measures 10-file and 100-file layouts with batch size 1024 on realistic-width rows, and the row limits may change with that result. No measured configuration is safe above about 100k target rows.
+**Resulting ceiling.** The Phase-2 sink enforces the B3 ceiling in the summary: MERGE only, with partitions 1 and batch size 1024, one MERGE at a time per process, and fail-closed limits of 50,000 target rows, 50,000 source resources and 100 live files per table. An opt-in test checks a 4.5 GiB (4,831,838,208-byte) budget at that size. The one 100-file case the spike measured left only 36 MiB of margin. The Phase 2 sink (ADR 2611 §5) then measured 10-file and 100-file layouts with batch size 1024 on realistic-width rows and kept the row limits. No measured configuration is safe above about 100k target rows.
 
 ### 8. OneLake and authentication (paper only)
 
@@ -425,6 +426,14 @@ No Azure calls were made. The sources are the DeltaLake.Net 0.33.3 source and th
   - concurrent writers, checking that the conditional create is honoured;
   - a Fabric Spark read and CDF read of an Ignixa-written table;
   - Fabric's rebase default.
+
+### 9. Packaging and operations
+
+- **Package.** DeltaLake.Net 0.33.3 is about 233 MB, with natives for win-x64, linux-x64, linux-arm64, osx-x64 and
+  osx-arm64. There is no musl and no win-arm64 build.
+- **Licence.** The nuspec declares MIT and the upstream source Apache-2.0 (B2).
+- **Runtime.** The repo's Docker image is glibc (azurelinux3.0). Spike executed on win-x64 only; see ADR 2611 for
+  later Linux runs.
 
 ### 10. Fallback sizing
 
@@ -500,19 +509,21 @@ A hybrid table (Ignixa v0 with the vorder property and CDF `true`) was driven to
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| MERGE cost with SHA-256 ids (B3) | Merges scan and rewrite the whole table. At default settings they use about 11 GiB for a 10.4 MiB table; with bounded settings memory still grows with target rows (5,358 MiB at 100k). Inserts add a file per merge and nothing compacts, so tables fragment. Calibrated only on narrow synthetic rows. Out-of-memory at production size | Partitions 1 and batch size 1024; one MERGE at a time per process; fail-closed limits of 50,000 target rows, 50,000 source resources and 100 live files per table (the file-limit error tells the operator to compact); opt-in 4.5 GiB memory-budget test. Task 7 recalibrates the row limits on realistic-width rows. Compaction policy goes to the ADR. Pre-read + append deferred until a single-writer lease exists. Evaluate (b) or (d), or key-based file pruning, before large tables |
+| MERGE cost with SHA-256 ids (B3) | Merges scan and rewrite the whole table. At default settings they use about 11 GiB for a 10.4 MiB table; with bounded settings memory still grows with target rows (5,358 MiB at 100k). Inserts add a file per merge and nothing compacts, so tables fragment. Calibrated only on narrow synthetic rows. Out-of-memory at production size | Partitions 1 and batch size 1024; one MERGE at a time per process; fail-closed limits of 50,000 target rows, 50,000 source resources and 100 live files per table (the file-limit error tells the operator to compact); opt-in 4.5 GiB memory-budget test. The Phase 2 sink (ADR 2611 §5) measured realistic-width rows and kept the row limits. Compaction policy goes to the ADR. Pre-read + append deferred until a single-writer lease exists. Evaluate (b) or (d), or key-based file pruning, before large tables |
 | CDF on `True` tables (B1) | Missing CDF in delta-rs, and phantom delete+insert changes in Spark | Ignixa-created tables write `true`; fail closed on any other value; startup check |
 | Spark ancient-timestamp rebase (B4) | Spark readers fail on pre-1582 dates under the default `datetimeRebaseModeInRead=EXCEPTION` | Owner decides between writer-stamped rebase metadata and reader `CORRECTED`/`LEGACY`; confirm on a Fabric runtime |
 | Fabric runtime unverified | Fabric-specific behaviour, such as V-Order or the rebase default, may differ from stock Spark | Manual or nightly Fabric job before GA |
 | Native binary (≈150 MB per RID; 233 MB package) | Image size; no musl or win-arm64 | The repo image is glibc. Document the supported RIDs and fail fast when the native library cannot be loaded |
 | 0.x binding; author-maintained; dependabot-driven cadence | API churn; slow fixes | Pin the version; keep it behind the Ignixa seam; the managed v0 writer already removes one dependency |
-| Untyped conflict exceptions, and post-commit hook errors | Wrong retry classification | Bounded retries on any commit failure; the upsert is idempotent by `meta_lastUpdated`, so re-running is safe |
+| Untyped conflict exceptions, and post-commit hook errors | Wrong retry classification | Bounded retries on commit conflicts only (classified by message); any other failure surfaces, and the upsert is idempotent by `meta_lastUpdated`, so replaying is safe |
 | Unix stack overflow (documented by the binding) | Process crash on Linux | Set `DOTNET_DefaultStackSize` in the container; verify on Linux |
 | OneLake token refresh and conditional put | Long jobs fail with a static token, or a commit race corrupts the log | Use a refreshing OAuth flow or reload per commit; real-lakehouse test required |
 
 ## Recommended Phase-2 architecture for the Delta sink
 
-`Ignixa.SqlOnFhir.Writers.Delta` should expose a small, engine-neutral surface. The product only ever talks to Silver tables in Ignixa terms.
+> **Spike proposal; the implemented surface differs, see ADR 2611 §6.**
+
+`Ignixa.SqlOnFhir.Fabric.Delta` should expose a small, engine-neutral surface. The product only ever talks to Silver tables in Ignixa terms.
 
 - **`SilverTableDefinition`** is an immutable value: name, ordered Delta schema JSON, and table properties. It is built from the loaded Silver contract and validates its invariants at construction.
 - **`ISilverDeltaTable`**, with one implementation per engine, has two operations:

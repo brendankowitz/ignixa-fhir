@@ -36,7 +36,7 @@ beyond these two resource types.
 
 | Investigation | Status | Summary |
 |--------------|--------|---------|
-| [hds-silver-normalization](investigations/hds-silver-normalization.md) | Complete | Row semantics of HDS Silver for Patient/Observation, derived from source, with a cross-check of the depot session's claims |
+| [hds-silver-normalization](investigations/hds-silver-normalization.md) | Complete | Row semantics of HDS Silver for Patient/Observation, derived from source, with a cross-check of the viewdefinition-depot's claims |
 | [delta-writer-options](investigations/delta-writer-options.md) | Complete | Delta engine options, the B1–B4 blockers and their local evidence; synthesized into ADR 2611 |
 
 ## Known Gaps
@@ -44,7 +44,9 @@ beyond these two resource types.
 - No HDS-captured oracle; residual questions that only a real HDS run can settle are listed in section J
   of the normalization investigation.
 - Licensing of HDS-derived artifacts is unresolved; the writer avoids redistribution by loading contracts at runtime.
-- The Fabric runtime has not been exercised (B4: Spark datetime rebase default), and Linux/macOS natives have not been run.
+- The Fabric runtime has not been exercised (B4: Spark datetime rebase default). The Delta test suite passed on
+  linux-x64 (glibc) in a local container; linux-arm64, macOS and musl natives have not been run, and no CI run
+  exists.
 
 ## Decision
 
