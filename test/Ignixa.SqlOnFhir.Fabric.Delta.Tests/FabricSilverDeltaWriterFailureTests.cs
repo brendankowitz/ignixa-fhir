@@ -121,10 +121,12 @@ public class FabricSilverDeltaWriterFailureTests
         DeltaLogReader.Read(table).Version.ShouldBe(1);
     }
 
-    // Neither id can be decoded: one is a lone surrogate, the other sits beside a resource property name that is one.
+    // No id can be decoded: one is a lone surrogate, one sits beside a resource property name that is one, and one sits
+    // beside a resource property name that is repeated.
     [Theory]
     [InlineData("""{"resourceType":"Patient","id":"\ud800","meta":{"lastUpdated":"2024-02-01T00:00:00Z"}}""", "id")]
     [InlineData("""{"resourceType":"Patient","id":"bad","\ud800":1,"meta":{"lastUpdated":"2024-02-01T00:00:00Z"}}""", "Patient")]
+    [InlineData("""{"resourceType":"Patient","id":"bad","invented-secret":1,"invented-secret":2,"meta":{"lastUpdated":"2024-02-01T00:00:00Z"}}""", "Patient")]
     public async Task GivenAnIdThatCannotBeDecoded_WhenWritten_ThenRejectedWithoutASourceId(string json, string fieldPath)
     {
         using var root = new TemporaryDirectory();
@@ -138,6 +140,7 @@ public class FabricSilverDeltaWriterFailureTests
 
         exception.SourceId.ShouldBeNull();
         exception.FieldPath.ShouldBe(fieldPath);
+        exception.Message.ShouldNotContain("invented-secret");
     }
 
     [SkippableFact]

@@ -164,15 +164,15 @@ public static class FabricSilverDeltaWriter
     }
 
     // The typed getter throws for a non-string id, which is exactly the resource worth reporting. Decoding throws when
-    // the id, or a property name of the resource, is a lone surrogate escape; such an id is not reportable, and the
-    // projection error already names where the text is invalid.
+    // the id, or a property name of the resource, is a lone surrogate escape, and indexing throws when a property name
+    // of the resource is repeated; such an id is not reportable, and the projection error already names the problem.
     private static string? RawId(ResourceJsonNode resource)
     {
         try
         {
             return ((IMutableJsonNode)resource).MutableNode["id"] is JsonValue value && value.TryGetValue<string>(out var id) ? id : null;
         }
-        catch (InvalidOperationException)
+        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
         {
             return null;
         }

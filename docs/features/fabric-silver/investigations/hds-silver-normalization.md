@@ -416,6 +416,11 @@ Feed to the depot capture recipe (initial, replay, update events):
     otherwise store U+FFFD silently; a property name the contract does not name appears in the path as
     `<property N>`, so resource text never reaches the error. Whether Spark nulls the field, replaces the
     text or fails is **UNV**.
+16. **Repeated property names and deep nesting:** Ignixa rejects the whole resource at the object that
+    repeats a name (the .NET parse error would quote it) and at the first object or array nested more
+    than 64 deep, counting the resource as 1 (Ignixa's parser limit; deeper trees built in code would
+    otherwise overflow the stack). Whether Spark keeps the first or last duplicate, and its depth limit,
+    are **UNV**.
 
 ## Tradeoffs
 

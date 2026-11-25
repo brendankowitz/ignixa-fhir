@@ -13,7 +13,9 @@ namespace Ignixa.SqlOnFhir.Fabric;
 /// Rejects a source resource holding a string or property name that is not valid Unicode, anywhere in the resource
 /// (the policy <see cref="StrictJson"/> applies to contracts). Parsed text can carry a lone surrogate escape, which
 /// fails when decoded; a resource built in code can hold a lone surrogate, which every JSON or UTF-8 writer silently
-/// replaces with U+FFFD, so ids, cells and companions would otherwise be stored corrupted.
+/// replaces with U+FFFD, so ids, cells and companions would otherwise be stored corrupted. It also rejects a parsed
+/// object that repeats a property name, which fails when first read with an error quoting the name, and objects and
+/// arrays nested deeper than <see cref="MaxDepth"/>.
 /// </summary>
 /// <remarks>
 /// Property names are resource data, which may be sensitive or hold line breaks, so a rejection path shows a name only
@@ -24,7 +26,19 @@ internal sealed class SilverSourceText
 {
     public const string InvalidReason = "contains text that is not valid Unicode";
 
+    /// <summary>
+    /// The deepest nesting of objects and arrays accepted, counting the resource itself as 1. It is the System.Text.Json
+    /// default that Ignixa's resource parser keeps, so no resource it parses is rejected; deeper trees can only be built
+    /// in code or parsed with a raised ceiling. The bound keeps this walk, and every later read of the resource, far
+    /// from a stack overflow, which would end the process.
+    /// </summary>
+    public const int MaxDepth = 64;
+
+    private const string DuplicateNameReason = "holds a property name more than once";
+
     private const string ShadowPrefix = "_";
+
+    private static readonly string TooDeepReason = $"is nested more than {MaxDepth} objects and arrays deep";
 
     // Read from every resource, whatever columns the contract has besides the id it must have.
     private static readonly string[] AlwaysRead = ["resourceType", "meta", "lastUpdated"];
@@ -65,9 +79,10 @@ internal sealed class SilverSourceText
     /// <param name="root">The resource.</param>
     /// <param name="rootPath">The path reported for a property name of the resource itself.</param>
     /// <exception cref="FabricSilverProjectionException">
-    /// At the path of the invalid string, or of the object whose property name is invalid.
+    /// At the path of the invalid string, of the object whose property name is invalid or repeated, or of the first
+    /// object or array nested too deeply.
     /// </exception>
-    public void Validate(JsonObject root, string rootPath) => ValidateMembers(root, null, rootPath);
+    public void Validate(JsonObject root, string rootPath) => ValidateMembers(root, null, rootPath, depth: 1);
 
     private static void AddFieldNames(IEnumerable<SilverField> fields, HashSet<string> names)
     {
@@ -109,19 +124,31 @@ internal sealed class SilverSourceText
 
     private static FabricSilverProjectionException Reject(string path) => SilverValueReader.Reject(path, InvalidReason);
 
-    private void Validate(JsonNode? node, string path)
+    private static void RequireDepth(int depth, string path)
+    {
+        if (depth > MaxDepth)
+        {
+            throw SilverValueReader.Reject(path, TooDeepReason);
+        }
+    }
+
+    /// <param name="node">The value.</param>
+    /// <param name="path">The value's path.</param>
+    /// <param name="depth">The value's depth when it is an object or array.</param>
+    private void Validate(JsonNode? node, string path, int depth)
     {
         switch (node)
         {
             case null:
                 break;
             case JsonObject members:
-                ValidateMembers(members, path, path);
+                ValidateMembers(members, path, path, depth);
                 break;
             case JsonArray items:
+                RequireDepth(depth, path);
                 for (var index = 0; index < items.Count; index++)
                 {
-                    Validate(items[index], $"{path}[{index}]");
+                    Validate(items[index], $"{path}[{index}]", depth + 1);
                 }
 
                 break;
@@ -138,18 +165,25 @@ internal sealed class SilverSourceText
 
     /// <param name="members">The object.</param>
     /// <param name="path">The object's path, or null for the resource, whose members' paths are their bare names.</param>
-    /// <param name="reportedPath">The path reported when a property name is invalid.</param>
-    private void ValidateMembers(JsonObject members, string? path, string reportedPath)
+    /// <param name="reportedPath">The path reported when the object is rejected.</param>
+    /// <param name="depth">The object's depth.</param>
+    private void ValidateMembers(JsonObject members, string? path, string reportedPath, int depth)
     {
+        RequireDepth(depth, reportedPath);
         try
         {
-            // The first access to a parsed object decodes all of its property names.
+            // The first access to a parsed object decodes all of its property names and indexes them.
             _ = members.Count;
         }
         catch (InvalidOperationException)
         {
-            // The message is not chained because it is about input text.
+            // Raised for a lone surrogate escape. Neither message is chained because each quotes input text.
             throw Reject(reportedPath);
+        }
+        catch (ArgumentException)
+        {
+            // Raised for a repeated property name.
+            throw SilverValueReader.Reject(reportedPath, DuplicateNameReason);
         }
 
         var position = 0;
@@ -161,7 +195,7 @@ internal sealed class SilverSourceText
             }
 
             var shown = _pathNames.Contains(name) ? name : $"<property {position}>";
-            Validate(member, path is null ? shown : SilverValueReader.Child(path, shown));
+            Validate(member, path is null ? shown : SilverValueReader.Child(path, shown), depth + 1);
             position++;
         }
     }

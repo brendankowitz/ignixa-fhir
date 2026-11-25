@@ -126,7 +126,9 @@ public sealed class FabricSilverProjection
     /// <exception cref="ArgumentNullException"><paramref name="resource"/> or <paramref name="ingestion"/> is null.</exception>
     /// <exception cref="FabricSilverProjectionException">
     /// The resource holds a string or property name that is not valid Unicode (anywhere, even where the table does not
-    /// read; a property name of the resource itself is reported at the table's resource type), is of another type, has
+    /// read; a property name of the resource itself is reported at the table's resource type), holds an object that
+    /// repeats a property name, nests objects and arrays more than 64 deep (the resource itself counting as 1), is of
+    /// another type, has
     /// no id, has a <c>meta.lastUpdated</c> that is not a FHIR date, dateTime or instant with at most microsecond
     /// precision (checked even when the contract has no <c>meta</c> column), or holds a value the table's schema cannot
     /// store.
