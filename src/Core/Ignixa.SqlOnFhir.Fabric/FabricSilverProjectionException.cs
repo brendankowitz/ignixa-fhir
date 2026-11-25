@@ -18,5 +18,9 @@ public sealed class FabricSilverProjectionException : Exception
     }
 
     /// <summary>Where in the resource the projection failed, for example <c>identifier[2].assigner.identifier.type</c>.</summary>
+    /// <remarks>
+    /// A source property name the contract does not name appears as <c>&lt;property N&gt;</c>, its zero-based position in
+    /// its object, so the path never holds resource text.
+    /// </remarks>
     public string Path { get; }
 }

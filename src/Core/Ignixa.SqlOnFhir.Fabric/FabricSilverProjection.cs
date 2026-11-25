@@ -44,6 +44,7 @@ public sealed class FabricSilverProjection
     private readonly IReadOnlyDictionary<string, int> _indexes;
     private readonly int[] _derivedOrder;
     private readonly SilverReferencePattern _pattern;
+    private readonly SilverSourceText _sourceText;
 
     private FabricSilverProjection(
         FabricSilverContract contract,
@@ -56,6 +57,7 @@ public sealed class FabricSilverProjection
         _columns = columns;
         _plans = plans;
         _pattern = pattern;
+        _sourceText = new SilverSourceText(columns);
 
         // A derived column's base name is a strict prefix of its own, so shorter names first puts every base
         // (which may itself be derived) before its dependants, whatever the contract order.
@@ -137,7 +139,7 @@ public sealed class FabricSilverProjection
         // The raw JSON is read rather than the element tree: Silver leaves follow JSON-token semantics (number text,
         // structured text for extensions) that the element tree normalizes away.
         var root = ((IMutableJsonNode)resource).MutableNode;
-        SilverSourceText.Validate(root, ResourceType);
+        _sourceText.Validate(root, ResourceType);
         if (root["resourceType"] is not JsonValue type ||
             type.GetValueKind() != JsonValueKind.String ||
             type.GetValue<string>() != ResourceType)

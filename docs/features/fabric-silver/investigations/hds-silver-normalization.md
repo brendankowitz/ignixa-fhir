@@ -413,7 +413,9 @@ Feed to the depot capture recipe (initial, replay, update events):
 14. **Null source system** on a row with no references at all: confirm the task fails.
 15. **Text that is not valid Unicode** (a lone surrogate escape such as `\ud800`, in a mapped or unmapped
     property value or name): Ignixa rejects the whole resource at that path, because .NET writers would
-    otherwise store U+FFFD silently. Whether Spark nulls the field, replaces the text or fails is **UNV**.
+    otherwise store U+FFFD silently; a property name the contract does not name appears in the path as
+    `<property N>`, so resource text never reaches the error. Whether Spark nulls the field, replaces the
+    text or fails is **UNV**.
 
 ## Tradeoffs
 

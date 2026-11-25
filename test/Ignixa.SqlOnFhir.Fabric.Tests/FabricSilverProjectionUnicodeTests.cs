@@ -28,8 +28,8 @@ public class FabricSilverProjectionUnicodeTests
         ["id"] = (() => new JsonObject { ["resourceType"] = "Patient", ["id"] = Lone }, "id"),
         ["nested property name"] = (() => Patient(new() { ["name"] = new JsonArray(new JsonObject { [Lone] = "x" }) }), "name[0]"),
         ["resource property name"] = (() => Patient(new() { [Lone] = 1 }), "Patient"),
-        ["extension text"] = (() => Patient(new() { ["extension"] = new JsonArray(new JsonObject { ["url"] = Lone }) }), "extension[0].url"),
-        ["unmapped property"] = (() => Patient(new() { ["unmapped"] = Lone }), "unmapped"),
+        ["extension text"] = (() => Patient(new() { ["extension"] = new JsonArray(new JsonObject { ["url"] = Lone }) }), "extension[0].<property 0>"),
+        ["unmapped property"] = (() => Patient(new() { ["unmapped"] = Lone }), "<property 2>"),
         ["parsed resource property name"] = (() => JsonNode.Parse("""{"resourceType":"Patient","id":"p1","\ud800":1}""")!.AsObject(), "Patient"),
     };
 
@@ -41,7 +41,7 @@ public class FabricSilverProjectionUnicodeTests
     [InlineData("""{"resourceType":"Patient","id":"p1","birthDate":"\ud800"}""", "birthDate")]
     [InlineData("""{"resourceType":"Patient","id":"p1","name":[{"family":"\ud800"}]}""", "name[0].family")]
     [InlineData("""{"resourceType":"Patient","id":"p1","name":[{"\ud800":"x","family":"a"}]}""", "name[0]")]
-    [InlineData("""{"resourceType":"Patient","id":"p1","extension":[{"url":"u","valueString":"\ud800"}]}""", "extension[0].valueString")]
+    [InlineData("""{"resourceType":"Patient","id":"p1","extension":[{"url":"u","valueString":"\ud800"}]}""", "extension[0].<property 1>")]
     [InlineData("""{"resourceType":"Patient","id":"p1","extension":[{"\ud800":"x"}]}""", "extension[0]")]
     [InlineData("""{"resourceType":"Patient","id":"p1","managingOrganization":{"reference":"Organization/\ud800"}}""", "managingOrganization.reference")]
     [InlineData("""{"resourceType":"Patient","id":"p1","managingOrganization":{"display":"\ud800"}}""", "managingOrganization.display")]
@@ -49,8 +49,8 @@ public class FabricSilverProjectionUnicodeTests
     [InlineData("""{"resourceType":"Patient","id":"p1","identifier":[{"value":"\ud800"}]}""", "identifier[0].value")]
     [InlineData("""{"resourceType":"Patient","id":"p1","identifier":[{"type":{"coding":[{"code":"\ud800"}]}}]}""", "identifier[0].type.coding[0].code")]
     [InlineData("""{"resourceType":"Patient","id":"p1","identifier":[{"type":{"\ud800":"x"}}]}""", "identifier[0].type")]
-    [InlineData("""{"resourceType":"Patient","id":"p1","_gender":{"extension":[{"url":"u","valueString":"\ud800"}]}}""", "_gender.extension[0].valueString")]
-    [InlineData("""{"resourceType":"Patient","id":"p1","unmapped":{"\ud800":1}}""", "unmapped")]
+    [InlineData("""{"resourceType":"Patient","id":"p1","_gender":{"extension":[{"url":"u","valueString":"\ud800"}]}}""", "_gender.extension[0].<property 1>")]
+    [InlineData("""{"resourceType":"Patient","id":"p1","unmapped":{"\ud800":1}}""", "<property 2>")]
     public async Task GivenALoneSurrogateEscape_WhenProjected_ThenRejectedAtItsPath(string json, string path)
     {
         var projection = await PatientProjectionAsync();
@@ -92,6 +92,34 @@ public class FabricSilverProjectionUnicodeTests
         var error = projection.Rejection($$"""{"resourceType":"Patient","id":"p1","name":[{"family":"{{Secret}}\ud800"}]}""");
 
         error.Message.ShouldNotContain(Secret);
+    }
+
+    // A property name the contract does not name is resource data, so the path shows its position instead.
+    [Theory]
+    [InlineData("""{"resourceType":"Patient","id":"p1","invented-secret\nforged-entry":"\ud800"}""", "<property 2>")]
+    [InlineData("""{"resourceType":"Patient","id":"p1","invented-secret\nforged-entry":{"\ud800":1}}""", "<property 2>")]
+    [InlineData("""{"resourceType":"Patient","id":"p1","name":[{"family":"a","invented-secret\nforged-entry":{"x":"\ud800"}}]}""", "name[0].<property 1>.<property 0>")]
+    public async Task GivenInvalidTextUnderAPropertyNameTheContractLacks_WhenRejected_ThenThePathShowsItsPositionNotItsName(
+        string json,
+        string path)
+    {
+        var projection = await PatientProjectionAsync();
+
+        var error = projection.Rejection(json);
+
+        error.Path.ShouldBe(path);
+        error.Message.ShouldNotContain("invented-secret");
+        error.Message.ShouldNotContain("\n");
+    }
+
+    [Fact]
+    public async Task GivenAContractWithoutMeta_WhenMetaLastUpdatedIsInvalid_ThenThePathStillNamesIt()
+    {
+        var projection = await CreateAsync("Patient", Field("gender", "string"));
+
+        var error = projection.Rejection("""{"resourceType":"Patient","id":"p1","meta":{"lastUpdated":"\ud800"}}""");
+
+        error.Path.ShouldBe("meta.lastUpdated");
     }
 
     [Fact]

@@ -101,6 +101,26 @@ public class FabricSilverDeltaWriterFailureTests
         SyntheticPatients.FamilyOf(SyntheticPatients.RowOf(await DeltaParquetReader.ReadLiveRowsAsync(table), "a")).ShouldBe("Doe");
     }
 
+    [Fact]
+    public async Task GivenInvalidTextUnderAPropertyNameTheContractLacks_WhenWritten_ThenTheErrorShowsItsPositionNotItsName()
+    {
+        using var root = new TemporaryDirectory();
+        var table = root.Combine("Patient");
+        var contract = await SyntheticPatients.SeedAsync(table, SyntheticPatients.Patient("a", "2024-01-01T00:00:00Z"));
+        var invalid = ResourceJsonNode.Parse(
+            """{"resourceType":"Patient","id":"bad","meta":{"lastUpdated":"2024-02-01T00:00:00Z"},"invented-secret\nforged-entry":"\ud800"}""");
+
+        var exception = await Should.ThrowAsync<FabricSilverResourceRejectedException>(() => FabricSilverDeltaWriter.WriteBatchAsync(
+            [WriterContracts.Batch(table, contract, invalid)],
+            WriterContracts.Ingestion(),
+            CancellationToken.None));
+
+        exception.FieldPath.ShouldBe("<property 3>");
+        exception.Message.ShouldNotContain("invented-secret");
+        exception.Message.ShouldNotContain("\n");
+        DeltaLogReader.Read(table).Version.ShouldBe(1);
+    }
+
     // Neither id can be decoded: one is a lone surrogate, the other sits beside a resource property name that is one.
     [Theory]
     [InlineData("""{"resourceType":"Patient","id":"\ud800","meta":{"lastUpdated":"2024-02-01T00:00:00Z"}}""", "id")]

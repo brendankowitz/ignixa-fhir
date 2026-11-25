@@ -52,7 +52,10 @@ public sealed partial class FabricSilverResourceRejectedException : Exception
     /// <summary>The resource's <c>id</c> when it is a well-formed FHIR id; otherwise <see langword="null"/>.</summary>
     public string? SourceId { get; }
 
-    /// <summary>Where in the resource the projection failed, for example <c>identifier[2].assigner.identifier.type</c>.</summary>
+    /// <summary>
+    /// Where in the resource the projection failed, for example <c>identifier[2].assigner.identifier.type</c>; see
+    /// <see cref="FabricSilverProjectionException.Path"/>.
+    /// </summary>
     public string FieldPath { get; }
 
     [GeneratedRegex("^[A-Za-z0-9\\-.]{1,64}\\z", RegexOptions.CultureInvariant)]
