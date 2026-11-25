@@ -23,8 +23,10 @@ public sealed record FabricSilverWriterOptions
 
     /// <summary>
     /// The most rows a target table may hold before a merge: the Phase-2 limit pending the fix of the MERGE memory
-    /// growth (B3). Default 50,000, the largest table measured to merge within the memory budget (peak private bytes
-    /// about 2,800 to 3,600 MiB at one partition; 100,000 rows took about 5,400 MiB); must be positive. A larger table fails with
+    /// growth (B3). Default 50,000, the largest table measured to merge within the memory budget: a 5,000-row merge
+    /// into a 50,000-row table of realistic rows, in up to 100 files, peaked at 2,431 MiB of private bytes (commit
+    /// charge) against a 4.5 GiB budget, measured on a single Windows host. A full 50,000-resource source (a result of about
+    /// 100,000 rows) is permitted but unmeasured. Must be positive. A larger table fails with
     /// <see cref="FabricSilverLimit.TargetRows"/>.
     /// </summary>
     /// <remarks>

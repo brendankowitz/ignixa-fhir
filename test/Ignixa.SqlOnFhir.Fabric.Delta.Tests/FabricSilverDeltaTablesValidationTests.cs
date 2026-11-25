@@ -258,16 +258,21 @@ public sealed class FabricSilverDeltaTablesValidationTests : IDisposable
         Directory.GetFiles(Path.Combine(TablePath, "_delta_log"), "*.json").ShouldBeEmpty();
     }
 
-    [Fact]
-    public async Task GivenLogDirectoryTheEngineCannotLoad_WhenEnsuringTable_ThenTheEngineErrorSurfacesAndNothingIsCreated()
+    [Theory]
+    [InlineData("notes.txt", "not a commit")]
+    [InlineData("00000000000000000000.json", "not json")]
+    public async Task GivenLogDirectoryTheEngineCannotLoad_WhenEnsuringTable_ThenInvalidDataWrapsTheEngineErrorAndNothingIsCreated(
+        string fileName,
+        string content)
     {
         var logDirectory = Path.Combine(TablePath, "_delta_log");
         Directory.CreateDirectory(logDirectory);
-        await File.WriteAllTextAsync(Path.Combine(logDirectory, "notes.txt"), "not a commit");
+        await File.WriteAllTextAsync(Path.Combine(logDirectory, fileName), content);
 
-        await Should.ThrowAsync<DeltaLakeException>(EnsureAsync);
+        var exception = await Should.ThrowAsync<InvalidDataException>(EnsureAsync);
 
-        Directory.GetFiles(logDirectory).Select(Path.GetFileName).ShouldBe(["notes.txt"]);
+        exception.InnerException.ShouldBeAssignableTo<DeltaLakeException>();
+        Directory.GetFiles(logDirectory).Select(Path.GetFileName).ShouldBe([fileName]);
     }
 
     private async Task<FabricSilverTableOutcome> EnsureAsync() =>

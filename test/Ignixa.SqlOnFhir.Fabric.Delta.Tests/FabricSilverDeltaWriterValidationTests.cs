@@ -130,6 +130,7 @@ public class FabricSilverDeltaWriterValidationTests
     [InlineData("bad name")]
     [InlineData("1st")]
     [InlineData("tick`")]
+    [InlineData("trailing\n")]
     public async Task GivenAColumnNameTheWriterCannotQuote_WhenABatchIsCreated_ThenItIsRejectedWithoutTheName(string name)
     {
         var contract = await PatientContractAsync(fields => fields.Add(WriterContracts.Field(name, "string")));

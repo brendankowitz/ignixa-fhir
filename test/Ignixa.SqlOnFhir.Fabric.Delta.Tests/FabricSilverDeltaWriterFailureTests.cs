@@ -244,6 +244,7 @@ public class FabricSilverDeltaWriterFailureTests
         exception.Attempts.ShouldBe(1);
         exception.CompletedTables.ShouldBeEmpty();
         exception.InnerException.ShouldBeOfType<IOException>();
+        exception.VersionCheckException.ShouldBeNull();
         exception.Message.ShouldContain("may or may not be committed");
         DeltaLogReader.Read(table).Version.ShouldBe(versionAfterFailure);
 
@@ -253,6 +254,39 @@ public class FabricSilverDeltaWriterFailureTests
         replay.Tables[0].UnchangedRows.ShouldBe(replayFindsTheRowWritten ? 1 : 0);
         DeltaLogReader.Read(table).Version.ShouldBe(2);
         SyntheticPatients.FamilyOf(SyntheticPatients.RowOf(await DeltaParquetReader.ReadLiveRowsAsync(table), "a")).ShouldBe("Changed");
+    }
+
+    /// <summary>
+    /// The seam fails the merge after its commit and first leaves a malformed next commit in the log, so the engine
+    /// cannot load the table to read its version again. The table is then reported as possibly committed, and the
+    /// load failure is kept beside the merge's own failure rather than dropped.
+    /// </summary>
+    [Fact]
+    public async Task GivenAFailureAfterTheCommitAndATableThatCannotBeReloaded_WhenWritten_ThenMayHaveCommittedIsSetAndTheReloadFailureIsReported()
+    {
+        using var root = new TemporaryDirectory();
+        var table = root.Combine("Patient");
+        var contract = await SyntheticPatients.SeedAsync(table, SyntheticPatients.Patient("a", "2024-01-01T00:00:00Z"));
+        var options = new FabricSilverWriterOptions
+        {
+            AfterEngineMerge = path =>
+            {
+                File.WriteAllText(Path.Combine(LogDirectory(path), "00000000000000000003.json"), "not json");
+                throw new IOException("Injected engine failure.");
+            },
+        };
+
+        var exception = await Should.ThrowAsync<FabricSilverWriteException>(() => FabricSilverDeltaWriter.WriteBatchAsync(
+            [WriterContracts.Batch(table, contract, SyntheticPatients.Patient("a", "2024-02-01T00:00:00Z", "Changed"))],
+            WriterContracts.Ingestion(),
+            options,
+            CancellationToken.None));
+
+        exception.Phase.ShouldBe(FabricSilverWritePhase.Merge);
+        exception.MayHaveCommitted.ShouldBeTrue();
+        exception.InnerException.ShouldBeOfType<IOException>();
+        exception.VersionCheckException.ShouldNotBeNull();
+        exception.VersionCheckException.ShouldNotBeSameAs(exception.InnerException);
     }
 
     /// <summary>

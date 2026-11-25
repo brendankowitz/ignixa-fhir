@@ -9,8 +9,9 @@ namespace Ignixa.SqlOnFhir.Fabric.Delta;
 public enum FabricSilverWritePhase
 {
     /// <summary>
-    /// Loading or checking an existing table before anything is written: its log, its match with the contract, or
-    /// its size. No table has been changed.
+    /// Loading or checking an existing table before any merge: its log, its match with the contract, or its size. No
+    /// merge ran; an empty version 0 may have been created, for this table by a creator that won the race or for an
+    /// earlier table of the same call.
     /// </summary>
     Validate,
 

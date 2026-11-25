@@ -9,7 +9,7 @@ namespace Ignixa.SqlOnFhir.Fabric.Delta;
 
 /// <summary>
 /// A batch would cross one of the writer's fail-closed ceilings, or a ceiling could not be proven. Thrown before any
-/// table is created or changed.
+/// merge: no merge ran; an empty version 0 may have been created.
 /// </summary>
 /// <remarks>The message names the table path, the ceiling and the measured value; it never contains resource data.</remarks>
 [SuppressMessage(

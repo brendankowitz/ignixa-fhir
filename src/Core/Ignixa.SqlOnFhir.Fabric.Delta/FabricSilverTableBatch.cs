@@ -96,6 +96,7 @@ public sealed partial class FabricSilverTableBatch
 
     internal string MergeStatement { get; }
 
-    [GeneratedRegex("^[A-Za-z_][A-Za-z0-9_-]*$", RegexOptions.CultureInvariant)]
+    // \z, not $: $ also matches before a final newline, which would let a name ending in "\n" into the MERGE text.
+    [GeneratedRegex(@"^[A-Za-z_][A-Za-z0-9_-]*\z", RegexOptions.CultureInvariant)]
     private static partial Regex SqlSafeColumnName();
 }

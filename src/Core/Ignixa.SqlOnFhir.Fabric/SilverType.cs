@@ -77,7 +77,7 @@ internal sealed class SilverType
 
     public bool IsComplex => Kind is SilverTypeKind.Struct or SilverTypeKind.Array;
 
-    /// <summary>Parses the top-level columns of a contract whose schema Task 3's loader has already validated.</summary>
+    /// <summary>Parses the top-level columns of a contract whose schema the contract loader has already validated.</summary>
     /// <exception cref="InvalidDataException">A column uses a type the projection cannot produce.</exception>
     public static ReadOnlyCollection<SilverField> ParseColumns(IReadOnlyList<JsonElement> fields) =>
         Array.AsReadOnly(ParseFields(fields, "schema"));

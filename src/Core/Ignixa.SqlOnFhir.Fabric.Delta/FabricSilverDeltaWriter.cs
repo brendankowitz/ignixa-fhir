@@ -41,7 +41,8 @@ public static class FabricSilverDeltaWriter
     /// <see cref="FabricSilverWriterOptions.MaxSourceResourcesPerTable"/>, every resource projected (one that cannot
     /// be rejects the call), and every existing table matching its contract and within
     /// <see cref="FabricSilverWriterOptions.MaxTargetFiles"/> and <see cref="FabricSilverWriterOptions.MaxTargetRows"/>.
-    /// Tables without a Delta log are then created (an empty version 0 that a replay reuses).
+    /// Tables without a Delta log are then created (an empty version 0 that a replay reuses). A table whose creation
+    /// is lost to another creator is checked only then, so its failure can follow the creation of earlier tables.
     /// </para>
     /// <para>
     /// <b>Reduction.</b> Each table's batch is reduced to one row per Silver id: the greatest
@@ -63,10 +64,13 @@ public static class FabricSilverDeltaWriter
     /// </para>
     /// <para>
     /// <b>Cancellation</b> is observed before and between merges, never during one: a merge the engine has started
-    /// finishes and reports its true outcome. Before merging starts it propagates as a plain
-    /// <see cref="OperationCanceledException"/>; once merging has started it is a
+    /// finishes and reports its true outcome. Cancellation observed while the call projects resources, validates or
+    /// creates tables (that is, before the merge loop reaches its first table) propagates as a plain
+    /// <see cref="OperationCanceledException"/>. From the first table's merge on, including while it waits for another
+    /// merge in the process to finish or backs off between retries, it is a
     /// <see cref="FabricSilverWriteCanceledException"/> (also an <see cref="OperationCanceledException"/>) listing the
-    /// tables already committed. Either way a replay completes the rest.
+    /// tables already committed, which is empty when the first table had not committed. Either way a replay completes
+    /// the rest.
     /// </para>
     /// </remarks>
     /// <param name="batches">One batch per table; each table path at most once.</param>
@@ -76,7 +80,7 @@ public static class FabricSilverDeltaWriter
     /// <returns>One result per table, in batch order.</returns>
     /// <exception cref="ArgumentNullException">An argument or a batch is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">Two batches name the same table path (compared ignoring case).</exception>
-    /// <exception cref="FabricSilverLimitExceededException">A batch or a table is over a ceiling, or a table's size cannot be proven; nothing was written.</exception>
+    /// <exception cref="FabricSilverLimitExceededException">A batch or a table is over a ceiling, or a table's size cannot be proven; no merge ran, but tables created earlier in this call may hold an empty version 0.</exception>
     /// <exception cref="FabricSilverResourceRejectedException">A resource cannot be projected; nothing was written.</exception>
     /// <exception cref="FabricSilverWriteException">The engine or the file system failed; <see cref="FabricSilverWriteException.Phase"/> and <see cref="FabricSilverWriteException.MayHaveCommitted"/> state what was written.</exception>
     /// <exception cref="FabricSilverWriteCanceledException"><paramref name="cancellationToken"/> was canceled after merging started; it lists the committed tables.</exception>
@@ -285,8 +289,17 @@ public static class FabricSilverDeltaWriter
 
                     // A lost commit race committed nothing; any other failure after the engine started may have
                     // committed (the engine's post-commit steps run after the commit), so the table is read again.
-                    var mayHaveCommitted = engineMergeStarted && !conflict && await VersionAdvancedAsync(engine, batch, before);
-                    throw new FabricSilverWriteException(batch.TablePath, FabricSilverWritePhase.Merge, attempt, completed.ToArray(), exception, mayHaveCommitted);
+                    var (mayHaveCommitted, versionCheckFailure) = engineMergeStarted && !conflict
+                        ? await VersionAdvancedAsync(engine, batch, before)
+                        : (false, null);
+                    throw new FabricSilverWriteException(
+                        batch.TablePath,
+                        FabricSilverWritePhase.Merge,
+                        attempt,
+                        completed.ToArray(),
+                        exception,
+                        mayHaveCommitted,
+                        versionCheckFailure);
                 }
 
                 // A merge that changes no row commits nothing, so the loaded version stays put.
@@ -319,17 +332,21 @@ public static class FabricSilverDeltaWriter
     private static Task<ITable> LoadAsync(DeltaEngine engine, FabricSilverTableBatch batch, CancellationToken cancellationToken) =>
         engine.LoadTableAsync(new TableOptions { TableLocation = batch.TablePath }, cancellationToken);
 
-    // Unknown counts as advanced: claiming a table may hold the rows is safe, claiming it is unchanged is not.
-    private static async Task<bool> VersionAdvancedAsync(DeltaEngine engine, FabricSilverTableBatch batch, ulong? before)
+    // Unknown counts as advanced: claiming a table may hold the rows is safe, claiming it is unchanged is not. A failed
+    // read is returned, not dropped, so the caller can report why the version is unknown.
+    private static async Task<(bool Advanced, Exception? ReadFailure)> VersionAdvancedAsync(
+        DeltaEngine engine,
+        FabricSilverTableBatch batch,
+        ulong? before)
     {
         try
         {
             using var table = await LoadAsync(engine, batch, CancellationToken.None);
-            return before is null || table.Version() is not { } current || current > before;
+            return (before is null || table.Version() is not { } current || current > before, null);
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            return true;
+            return (true, exception);
         }
     }
 

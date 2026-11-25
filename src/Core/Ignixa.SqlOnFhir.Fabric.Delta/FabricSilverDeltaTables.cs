@@ -3,6 +3,7 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using DeltaLake.Interfaces;
 using DeltaLake.Table;
 
 namespace Ignixa.SqlOnFhir.Fabric.Delta;
@@ -36,9 +37,16 @@ public static class FabricSilverDeltaTables
     /// <para>
     /// <b>Directory states.</b> A missing directory, an empty one, or one whose only entry is an empty
     /// <c>_delta_log</c> (hidden <c>.*.tmp</c> temp files are ignored) has no table and is created. Any other entry in
-    /// <c>_delta_log</c> means a log exists and is validated; a log the engine cannot load fails with the engine's
-    /// error. A directory with other entries but no log is rejected as
-    /// <see cref="FabricSilverTableAspect.UnrecognizedContent"/>, so a table is never created on top of unknown files.
+    /// <c>_delta_log</c> means a log exists and is validated; a log the engine cannot load fails with an
+    /// <see cref="InvalidDataException"/> whose inner exception is the engine's error. A directory with other entries
+    /// but no log is rejected as <see cref="FabricSilverTableAspect.UnrecognizedContent"/>, so a table is never created
+    /// on top of unknown files.
+    /// </para>
+    /// <para>
+    /// <b>Crash and platform limits.</b> Staging <c>.*.tmp</c> files left in <c>_delta_log</c> by a creator that
+    /// crashed before publishing remain on disk and are ignored. On Unix version 0 is published through a hard link, so
+    /// on a file system without hard links creation fails closed with an <see cref="IOException"/> rather than falling
+    /// back to a rename that could replace an existing version 0.
     /// </para>
     /// <para>Each call starts and disposes its own Delta engine.</para>
     /// </remarks>
@@ -49,7 +57,7 @@ public static class FabricSilverDeltaTables
     /// <exception cref="ArgumentException"><paramref name="tablePath"/> is blank.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="contract"/> is <see langword="null"/>.</exception>
     /// <exception cref="FabricSilverTableMismatchException">The directory holds a table, or files, the contract cannot adopt.</exception>
-    /// <exception cref="DeltaLake.Errors.DeltaLakeException">The engine cannot load the existing log.</exception>
+    /// <exception cref="InvalidDataException">The engine cannot load the existing log; the engine's error is the inner exception.</exception>
     /// <exception cref="IOException">The directory or log cannot be read or written; nothing is retried.</exception>
     /// <exception cref="UnauthorizedAccessException">The directory is not accessible.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
@@ -107,8 +115,21 @@ public static class FabricSilverDeltaTables
         CancellationToken cancellationToken)
     {
         using var engine = new DeltaEngine(EngineOptions.Default);
-        using var table = await engine.LoadTableAsync(new TableOptions { TableLocation = tableDirectory }, cancellationToken);
+        using var table = await LoadAsync(engine, tableDirectory, cancellationToken);
         ExistingTableValidator.Validate(table.ProtocolVersions(), table.Metadata(), contract);
         return FabricSilverTableOutcome.Validated;
+    }
+
+    private static async Task<ITable> LoadAsync(DeltaEngine engine, string tableDirectory, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await engine.LoadTableAsync(new TableOptions { TableLocation = tableDirectory }, cancellationToken);
+        }
+        catch (Exception exception) when (exception is not (OperationCanceledException or OutOfMemoryException))
+        {
+            // The engine's exception types stay out of the public surface; the inner exception keeps the detail.
+            throw new InvalidDataException("The existing Delta log cannot be loaded by the engine.", exception);
+        }
     }
 }

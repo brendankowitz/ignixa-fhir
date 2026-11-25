@@ -13,6 +13,13 @@ namespace Ignixa.SqlOnFhir.Fabric.Delta;
 /// observed. A merge the engine had started is never abandoned: it finishes and is listed here if it committed.
 /// Replaying the same batch completes the rest.
 /// </summary>
+/// <remarks>
+/// Because it derives from <see cref="OperationCanceledException"/>, a task that fails with it ends
+/// <see cref="TaskStatus.Canceled"/>, not <see cref="TaskStatus.Faulted"/>: <see cref="Task.Exception"/> is
+/// <see langword="null"/>, and <c>ContinueWith</c> continuations and <see cref="Task.WhenAll(IEnumerable{Task})"/>
+/// see only a canceled task. <see cref="CompletedTables"/> is reachable only by awaiting the writer's task directly
+/// and catching this exception.
+/// </remarks>
 [SuppressMessage(
     "Design",
     "CA1032:Implement standard exception constructors",
