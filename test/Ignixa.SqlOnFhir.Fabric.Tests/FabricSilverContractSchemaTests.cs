@@ -293,6 +293,141 @@ public class FabricSilverContractSchemaTests
         await ShouldBeRejected(root);
     }
 
+    [Fact]
+    public async Task GivenFieldWithoutMetadata_WhenLoading_ThenContractIsRejectedAtTheFieldPosition()
+    {
+        using var root = new SyntheticSilverRoot();
+        var field = Field("a", "string");
+        field.Remove("metadata");
+        root.WriteSilverLog("Patient", ProtocolLine(), SchemaLine(SchemaOf(Field("first", "string"), field)));
+
+        var exception = await ShouldBeRejected(root);
+
+        exception.Message.ShouldContain("fields[1] has no metadata object");
+    }
+
+    [Fact]
+    public async Task GivenNestedFieldWithoutMetadata_WhenLoading_ThenContractIsRejected()
+    {
+        using var root = new SyntheticSilverRoot();
+        var inner = Field("x", "string");
+        inner.Remove("metadata");
+        root.WriteSilverLog("Patient", ProtocolLine(), SchemaLine(SchemaOf(Field("outer", SchemaOf(inner)))));
+
+        var exception = await ShouldBeRejected(root);
+
+        exception.Message.ShouldContain("schema.fields[0].type.fields[0] has no metadata object");
+    }
+
+    [Theory]
+    [InlineData("root", "schema", "struct type")]
+    [InlineData("field", "schema.fields[0]", "struct field")]
+    [InlineData("struct", "schema.fields[0].type", "struct type")]
+    [InlineData("array", "schema.fields[0].type", "array type")]
+    [InlineData("map", "schema.fields[0].type", "map type")]
+    [InlineData("nestedField", "schema.fields[0].type.elementType.fields[0]", "struct field")]
+    public async Task GivenObjectWithAMemberTheDeltaSerializationDoesNotDefine_WhenLoading_ThenContractIsRejectedByPositionWithoutEchoingIt(
+        string owner,
+        string position,
+        string kind)
+    {
+        using var root = new SyntheticSilverRoot();
+        var schema = SchemaWithExtraMember(owner);
+        root.WriteSilverLog("Patient", ProtocolLine(), SchemaLine(schema));
+
+        var exception = await ShouldBeRejected(root);
+
+        exception.Message.ShouldContain($"{position} has a member that a Delta {kind} does not define.");
+        exception.ToString().ShouldNotContain(Secret);
+    }
+
+    [Fact]
+    public async Task GivenFieldMetadataWithArbitraryEntries_WhenLoading_ThenSchemaIsAccepted()
+    {
+        using var root = new SyntheticSilverRoot();
+        var field = Field("a", "string");
+        field["metadata"] = new JsonObject { ["comment"] = "x", ["nested"] = new JsonObject { ["k"] = 1 } };
+        var schema = SchemaOf(field);
+        root.WriteSilverLog("Patient", ProtocolLine(), SchemaLine(schema));
+
+        var contract = await FabricSilverContract.LoadAsync(root.Path, "Patient", CancellationToken.None);
+
+        contract.SchemaString.ShouldBe(schema.ToJsonString());
+    }
+
+    [Fact]
+    public async Task GivenSchemaSerializedWithMembersInAnotherOrder_WhenLoading_ThenSchemaIsAccepted()
+    {
+        using var root = new SyntheticSilverRoot();
+        const string schemaString =
+            """{"fields":[{"metadata":{},"nullable":true,"type":{"valueContainsNull":true,"valueType":{"containsNull":false,"elementType":"long","type":"array"},"keyType":"string","type":"map"},"name":"a"}],"type":"struct"}""";
+        root.WriteSilverLog("Patient", ProtocolLine(), MetaDataLine(schemaString: schemaString));
+
+        var contract = await FabricSilverContract.LoadAsync(root.Path, "Patient", CancellationToken.None);
+
+        contract.SchemaString.ShouldBe(schemaString);
+    }
+
+    private static JsonObject SchemaWithExtraMember(string owner)
+    {
+        static void extra(JsonObject target) => target[Secret] = Secret;
+
+        switch (owner)
+        {
+            case "root":
+            {
+                var schema = SchemaOf(Field("a", "string"));
+                extra(schema);
+                return schema;
+            }
+
+            case "field":
+            {
+                var field = Field("a", "string");
+                extra(field);
+                return SchemaOf(field);
+            }
+
+            case "struct":
+            {
+                var nested = SchemaOf(Field("x", "string"));
+                extra(nested);
+                return SchemaOf(Field("a", nested));
+            }
+
+            case "array":
+            {
+                var array = new JsonObject { ["type"] = "array", ["elementType"] = "string", ["containsNull"] = true };
+                extra(array);
+                return SchemaOf(Field("a", array));
+            }
+
+            case "map":
+            {
+                var map = new JsonObject
+                {
+                    ["type"] = "map", ["keyType"] = "string", ["valueType"] = "long", ["valueContainsNull"] = true,
+                };
+                extra(map);
+                return SchemaOf(Field("a", map));
+            }
+
+            case "nestedField":
+            {
+                var inner = Field("x", "string");
+                extra(inner);
+                var array = new JsonObject
+                {
+                    ["type"] = "array", ["elementType"] = SchemaOf(inner), ["containsNull"] = true,
+                };
+                return SchemaOf(Field("a", array));
+            }
+
+            default:
+                throw new ArgumentOutOfRangeException(nameof(owner));
+        }
+    }
+
     private static async Task<InvalidDataException> ShouldBeRejected(SyntheticSilverRoot root) =>
         await Should.ThrowAsync<InvalidDataException>(
             FabricSilverContract.LoadAsync(root.Path, "Patient", CancellationToken.None));

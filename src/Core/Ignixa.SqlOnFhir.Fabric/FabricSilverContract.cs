@@ -125,7 +125,9 @@ public sealed class FabricSilverContract
     /// invalid string escapes), or is not the supported contract: protocol exactly reader 1 / writer 4 with no table
     /// feature lists, no table feature configuration, no column mapping or identity metadata, change data feed and
     /// V-Order enabled, non-partitioned Parquet, and a well-formed struct schema of types a 1/4 table can hold
-    /// (<c>timestamp_ntz</c> needs a newer protocol and is rejected). The message never contains log contents.
+    /// (<c>timestamp_ntz</c> needs a newer protocol and is rejected) whose field, struct, array and map objects carry
+    /// exactly the members the Delta schema serialization defines (a field's <c>metadata</c> included, nothing else).
+    /// The message never contains log contents.
     /// </exception>
     /// <exception cref="IOException">The log cannot be read; nothing is retried or substituted.</exception>
     /// <exception cref="UnauthorizedAccessException">The log location is not readable.</exception>

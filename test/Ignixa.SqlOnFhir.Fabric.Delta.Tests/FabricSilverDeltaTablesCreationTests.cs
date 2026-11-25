@@ -108,6 +108,29 @@ public sealed class FabricSilverDeltaTablesCreationTests : IDisposable
         Directory.GetFiles(Path.Combine(tablePath, "_delta_log")).Length.ShouldBe(1);
     }
 
+    // The loader only admits schemas whose objects carry exactly the Delta-defined members, so the shapes that could
+    // wedge a table (a field without metadata, an object with an extra member) never become a contract; contracts
+    // have no constructor but the loader. What remains to prove is that everything the loader admits survives the
+    // engine's re-serialization, so a table created from it validates against the same contract afterwards.
+    [Theory]
+    [InlineData("members in non-canonical order", """{"fields":[{"metadata":{},"nullable":true,"type":{"valueContainsNull":true,"valueType":{"containsNull":false,"elementType":{"fields":[{"nullable":false,"metadata":{},"type":"long","name":"x"}],"type":"struct"},"type":"array"},"keyType":"string","type":"map"},"name":"a"}],"type":"struct"}""")]
+    [InlineData("metadata values of every JSON kind", """{"type":"struct","fields":[{"name":"a","type":"string","nullable":true,"metadata":{"s":"x","i":7,"b":true,"f":1.5,"n":null,"o":{"k":[1,"two",false]},"e":[]}}]}""")]
+    [InlineData("insignificant whitespace", "{ \"type\" : \"struct\",\n \"fields\" : [ { \"name\" : \"a\", \"type\" : \"decimal(38,0)\", \"nullable\" : false, \"metadata\" : { } } ] }")]
+    public async Task GivenContractSchemaTheLoaderAccepts_WhenCreatedAndEnsuredAgain_ThenTheTableValidates(
+        string shape,
+        string schemaString)
+    {
+        _ = shape;
+        var contract = await SyntheticSilverTable.LoadContractAsync(schemaString: schemaString);
+        var tablePath = _directory.Combine("Patient");
+
+        var created = await FabricSilverDeltaTables.EnsureTableAsync(tablePath, contract, CancellationToken.None);
+        var ensured = await FabricSilverDeltaTables.EnsureTableAsync(tablePath, contract, CancellationToken.None);
+
+        created.ShouldBe(FabricSilverTableOutcome.Created);
+        ensured.ShouldBe(FabricSilverTableOutcome.Validated);
+    }
+
     [Theory]
     [InlineData("empty table directory")]
     [InlineData("empty log directory")]

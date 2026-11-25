@@ -49,8 +49,13 @@ internal static class SyntheticSilverTable
         return configuration;
     }
 
-    /// <summary>Loads a contract from an invented creation template, by default with <see cref="TemplateConfiguration"/>.</summary>
-    public static async Task<FabricSilverContract> LoadContractAsync(JsonObject? templateConfiguration = null)
+    /// <summary>
+    /// Loads a contract from an invented creation template, by default with <see cref="SchemaString"/> and
+    /// <see cref="TemplateConfiguration"/>.
+    /// </summary>
+    public static async Task<FabricSilverContract> LoadContractAsync(
+        JsonObject? templateConfiguration = null,
+        string? schemaString = null)
     {
         using var root = new TemporaryDirectory();
         WriteCommit(
@@ -58,7 +63,7 @@ internal static class SyntheticSilverTable
             0,
             CommitInfoLine(),
             ProtocolLine(),
-            MetaDataLine(configuration: templateConfiguration ?? TemplateConfiguration()));
+            MetaDataLine(schemaString, configuration: templateConfiguration ?? TemplateConfiguration()));
         return await FabricSilverContract.LoadAsync(root.Path, "Patient", CancellationToken.None);
     }
 

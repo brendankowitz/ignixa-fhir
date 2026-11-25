@@ -13,8 +13,11 @@ namespace Ignixa.SqlOnFhir.Fabric;
 
 /// <summary>
 /// Parses a Delta <c>schemaString</c> and checks it is a well-formed struct of the Delta schema serialization.
-/// Failure reasons identify nodes by their position in the schema (for example <c>fields[3].type</c>), never by
-/// name or value.
+/// Every field, struct, array and map object must carry exactly the members that serialization defines: the Delta
+/// engine refuses a log whose schema lacks one (for example a field's <c>metadata</c>) and drops any other, so a table
+/// created from a schema with a missing or extra member could not be loaded, or would not match its own contract,
+/// afterwards. Failure reasons identify nodes by their position in the schema (for example <c>fields[3].type</c>),
+/// never by name or value.
 /// </summary>
 internal static partial class DeltaSchemaReader
 {
@@ -22,6 +25,11 @@ internal static partial class DeltaSchemaReader
     {
         "string", "long", "integer", "short", "byte", "float", "double", "boolean", "binary", "date", "timestamp",
     }.ToFrozenSet(StringComparer.Ordinal);
+
+    private static readonly FrozenSet<string> FieldMembers = Members("name", "type", "nullable", "metadata");
+    private static readonly FrozenSet<string> StructMembers = Members("type", "fields");
+    private static readonly FrozenSet<string> ArrayMembers = Members("type", "elementType", "containsNull");
+    private static readonly FrozenSet<string> MapMembers = Members("type", "keyType", "valueType", "valueContainsNull");
 
     // Delta marks these as needing more than protocol 1/4 (column mapping is reader 2 / writer 5, identity columns are
     // writer 6), so a field carrying them cannot belong to a 1/4 table.
@@ -40,6 +48,7 @@ internal static partial class DeltaSchemaReader
     private static List<JsonElement> ReadStruct(JsonElement node, string path)
     {
         RequireTypeTag(node, "struct", path);
+        RequireOnlyDefinedMembers(node, StructMembers, "struct type", path);
         if (!node.TryGetProperty("fields", out var fieldsNode) || fieldsNode.ValueKind != JsonValueKind.Array)
         {
             throw ContractError.Because($"{path} has no fields array.");
@@ -70,6 +79,8 @@ internal static partial class DeltaSchemaReader
             throw ContractError.Because($"{path} is not an object.");
         }
 
+        RequireOnlyDefinedMembers(field, FieldMembers, "struct field", path);
+
         if (!field.TryGetProperty("name", out var name) ||
             name.ValueKind != JsonValueKind.String ||
             string.IsNullOrEmpty(name.GetString()))
@@ -88,10 +99,12 @@ internal static partial class DeltaSchemaReader
             throw ContractError.Because($"{path} has no boolean nullable flag.");
         }
 
-        if (field.TryGetProperty("metadata", out var metadata))
+        if (!field.TryGetProperty("metadata", out var metadata))
         {
-            RequireSupportedMetadata(metadata, $"{path}.metadata");
+            throw ContractError.Because($"{path} has no metadata object.");
         }
+
+        RequireSupportedMetadata(metadata, $"{path}.metadata");
 
         // An absent type leaves an Undefined element, which ValidateType rejects.
         field.TryGetProperty("type", out var type);
@@ -162,10 +175,12 @@ internal static partial class DeltaSchemaReader
                 ReadStruct(type, path);
                 break;
             case "array":
+                RequireOnlyDefinedMembers(type, ArrayMembers, "array type", path);
                 ValidateMember(type, "elementType", path);
                 RequireBoolean(type, "containsNull", path);
                 break;
             case "map":
+                RequireOnlyDefinedMembers(type, MapMembers, "map type", path);
                 ValidateMember(type, "keyType", path);
                 ValidateMember(type, "valueType", path);
                 RequireBoolean(type, "valueContainsNull", path);
@@ -189,6 +204,17 @@ internal static partial class DeltaSchemaReader
             throw ContractError.Because($"{path} has no boolean {member} flag.");
         }
     }
+
+    // Missing members are reported by the checks that read them; this rejects the members nothing reads.
+    private static void RequireOnlyDefinedMembers(JsonElement node, FrozenSet<string> members, string kind, string path)
+    {
+        if (node.EnumerateObject().Any(property => !members.Contains(property.Name)))
+        {
+            throw ContractError.Because($"{path} has a member that a Delta {kind} does not define.");
+        }
+    }
+
+    private static FrozenSet<string> Members(params string[] names) => names.ToFrozenSet(StringComparer.Ordinal);
 
     private static void RequireTypeTag(JsonElement node, string expected, string path)
     {
