@@ -168,8 +168,8 @@ raises the limit.
 How to read the table:
 
 - **Lifetime columns** are the process lifetime peak, including seeding.
-- **Seeding** uses the writer's engine settings, so it cannot set the peak. In every case the merge-window sample is
-  within 1.5% of the lifetime peak, so the merge sets it.
+- **Seeding** uses the writer's engine settings, so seeding is unlikely to set the peak; the merge-window sample is
+  within 2% of the lifetime peak in every case.
 - **Test wall** includes seeding; merge wall is the merge alone.
 - **Comparability:** these are single-host Windows measurements of a different workload and harness from the spike
   probe in section 4. The two sets of figures are not the same measurement and are not directly comparable.
