@@ -79,4 +79,10 @@ public sealed record FabricSilverWriterOptions
 
     /// <summary>Test seam: awaited with the table path just before the writer creates a table that had no Delta log.</summary>
     internal Func<string, Task>? BeforeCreateTable { get; init; }
+
+    /// <summary>Test seam: awaited once, just after the writer first checks which tables have a Delta log.</summary>
+    internal Func<Task>? AfterLogProbe { get; init; }
+
+    /// <summary>Test seam: the clock the retry backoff waits on.</summary>
+    internal TimeProvider BackoffClock { get; init; } = TimeProvider.System;
 }

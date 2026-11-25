@@ -19,7 +19,8 @@ internal sealed record MergeCommitMetrics(long InsertedRows, long UpdatedRows)
 
     /// <exception cref="InvalidDataException">
     /// The commit has no MERGE commit info with the row count metrics, or the metrics count more inserted and updated
-    /// rows than the <paramref name="sourceRows"/> the merge was given.
+    /// rows than the <paramref name="sourceRows"/> the merge was given (one source row updates every target row sharing
+    /// its id, so a target holding duplicate ids can cause this after a real commit).
     /// </exception>
     public static async Task<MergeCommitMetrics> ReadAsync(string tablePath, long version, long sourceRows, CancellationToken cancellationToken)
     {
@@ -39,9 +40,11 @@ internal sealed record MergeCommitMetrics(long InsertedRows, long UpdatedRows)
             if (action.RootElement.TryGetProperty("commitInfo", out var commitInfo))
             {
                 var metrics = FromCommitInfo(commitInfo, version);
-                return metrics.InsertedRows + metrics.UpdatedRows <= sourceRows
+
+                // Compared without adding, so counts near long.MaxValue cannot wrap past the bound.
+                return metrics.InsertedRows <= sourceRows && metrics.UpdatedRows <= sourceRows - metrics.InsertedRows
                     ? metrics
-                    : throw Missing(version, $"counts more inserted and updated rows than the {sourceRows} merged");
+                    : throw Missing(version, $"counts more inserted and updated rows than the {sourceRows} merged; the table may hold duplicate ids");
             }
         }
 

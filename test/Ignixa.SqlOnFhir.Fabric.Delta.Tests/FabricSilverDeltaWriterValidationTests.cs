@@ -302,6 +302,27 @@ public class FabricSilverDeltaWriterValidationTests
     }
 
     [Fact]
+    public async Task GivenATableCreatedAfterTheLogCheck_WhenWritten_ThenItIsValidatedAndMergedRatherThanRefusedAsUnknownContent()
+    {
+        using var root = new TemporaryDirectory();
+        var table = root.Combine("Patient");
+        var contract = await WriterContracts.PatientAsync();
+        var options = new FabricSilverWriterOptions
+        {
+            AfterLogProbe = async () => await SyntheticPatients.SeedAsync(table, SyntheticPatients.Patient("a", "2024-01-01T00:00:00Z")),
+        };
+
+        var result = await FabricSilverDeltaWriter.WriteBatchAsync(
+            [WriterContracts.Batch(table, contract, SyntheticPatients.Patient("a", "2024-02-01T00:00:00Z", "Changed"))],
+            WriterContracts.Ingestion(),
+            options,
+            CancellationToken.None);
+
+        var outcome = result.Tables.ShouldHaveSingleItem();
+        (outcome.Outcome, outcome.CommittedVersion, outcome.UpdatedRows).ShouldBe((FabricSilverTableOutcome.Validated, 2L, 1L));
+    }
+
+    [Fact]
     public async Task GivenACanceledToken_WhenWritten_ThenCancellationSurfacesAndNoTableIsCreated()
     {
         using var root = new TemporaryDirectory();

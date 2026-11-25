@@ -173,7 +173,12 @@ public static class FabricSilverDeltaWriter
         FabricSilverWriterOptions options,
         CancellationToken cancellationToken)
     {
-        var hasLog = batches.Select(batch => FabricSilverDeltaTables.HasLog(LogDirectory(batch))).ToArray();
+        var hasLog = batches.Select(batch => Probe(batch, FabricSilverDeltaTables.HasLog, LogDirectory(batch))).ToArray();
+        if (options.AfterLogProbe is { } afterLogProbe)
+        {
+            await afterLogProbe();
+        }
+
         var outcomes = new FabricSilverTableOutcome[batches.Count];
 
         for (var index = 0; index < batches.Count; index++)
@@ -183,10 +188,10 @@ public static class FabricSilverDeltaWriter
                 await InspectAsync(engine, batches[index], options, cancellationToken);
                 outcomes[index] = FabricSilverTableOutcome.Validated;
             }
-            else if (FabricSilverDeltaTables.HasEntriesOtherThanLog(batches[index].TablePath))
+            else if (Probe(batches[index], FabricSilverDeltaTables.HasEntriesOtherThanLog, batches[index].TablePath))
             {
                 // Another writer may have created the table since the log was first checked.
-                if (FabricSilverDeltaTables.HasLog(LogDirectory(batches[index])))
+                if (Probe(batches[index], FabricSilverDeltaTables.HasLog, LogDirectory(batches[index])))
                 {
                     hasLog[index] = true;
                     await InspectAsync(engine, batches[index], options, cancellationToken);
@@ -240,6 +245,19 @@ public static class FabricSilverDeltaWriter
         }
 
         return outcomes;
+    }
+
+    // A table directory that cannot be listed fails like a log that cannot be loaded.
+    private static bool Probe(FabricSilverTableBatch batch, Func<string, bool> probe, string path)
+    {
+        try
+        {
+            return probe(path);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            throw new FabricSilverWriteException(batch.TablePath, FabricSilverWritePhase.Validate, attempts: 0, completedTables: [], exception);
+        }
     }
 
     private static async Task InspectAsync(
@@ -305,7 +323,7 @@ public static class FabricSilverDeltaWriter
                     var conflict = MergeConflict.IsRetryable(exception);
                     if (conflict && attempt < options.MaxMergeAttempts)
                     {
-                        await Task.Delay(Backoff(attempt), cancellationToken);
+                        await Task.Delay(Backoff(attempt), options.BackoffClock, cancellationToken);
                         continue;
                     }
 

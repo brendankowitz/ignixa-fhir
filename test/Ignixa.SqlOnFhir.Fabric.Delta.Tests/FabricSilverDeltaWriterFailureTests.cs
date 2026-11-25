@@ -16,6 +16,8 @@ public class FabricSilverDeltaWriterFailureTests
 {
     private const string InvalidDate = "1500-02-29T10:00:00Z";
 
+    private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(60);
+
     [Fact]
     public async Task GivenAnInvalidNestedValueInTheSecondTablesBatch_WhenWritten_ThenNoTableChangesAndTheErrorNamesThePathButNotTheValue()
     {
@@ -365,11 +367,7 @@ public class FabricSilverDeltaWriterFailureTests
         var contract = await SyntheticPatients.SeedAsync(table, SyntheticPatients.Patient("a", "2024-01-01T00:00:00Z"));
         var options = new FabricSilverWriterOptions
         {
-            AfterEngineMerge = path =>
-            {
-                var commit = Path.Combine(LogDirectory(path), "00000000000000000002.json");
-                File.WriteAllText(commit, File.ReadAllText(commit).Replace("\"operation\":\"MERGE\"", "\"operation\":\"WRITE\"", StringComparison.Ordinal));
-            },
+            AfterEngineMerge = path => RewriteCommitOperation(Path.Combine(LogDirectory(path), "00000000000000000002.json"), "WRITE"),
         };
 
         var exception = await Should.ThrowAsync<FabricSilverWriteException>(() => FabricSilverDeltaWriter.WriteBatchAsync(
@@ -469,6 +467,10 @@ public class FabricSilverDeltaWriterFailureTests
         DeltaLogReader.Read(table).Version.ShouldBe(1);
     }
 
+    /// <summary>
+    /// The backoff waits on a clock that never fires, so the write can only end through the token canceled once that
+    /// wait has started.
+    /// </summary>
     [Fact]
     public async Task GivenCancellationDuringTheRetryBackoff_WhenWritten_ThenItIsAWriteCancellationAndTheTableIsUnchanged()
     {
@@ -476,25 +478,31 @@ public class FabricSilverDeltaWriterFailureTests
         var table = root.Combine("Patient");
         var contract = await SyntheticPatients.SeedAsync(table, SyntheticPatients.Patient("a", "2024-01-01T00:00:00Z"));
         using var cancellation = new CancellationTokenSource();
+        var clock = new StoppedClock();
         var tries = 0;
         var options = new FabricSilverWriterOptions
         {
+            BackoffClock = clock,
             BeforeEngineMerge = _ =>
             {
                 tries++;
-                cancellation.Cancel();
                 throw CommitConflict();
             },
         };
 
+        var write = FabricSilverDeltaWriter.WriteBatchAsync(
+            [WriterContracts.Batch(table, contract, SyntheticPatients.Patient("a", "2024-02-01T00:00:00Z", "Changed"))],
+            WriterContracts.Ingestion(),
+            options,
+            cancellation.Token);
+        await clock.TimerCreated.WaitAsync(TestTimeout);
+        await cancellation.CancelAsync();
+
+        // A canceled task loses its exception type through Should.ThrowAsync, so the await is caught directly.
         FabricSilverWriteCanceledException? exception = null;
         try
         {
-            await FabricSilverDeltaWriter.WriteBatchAsync(
-                [WriterContracts.Batch(table, contract, SyntheticPatients.Patient("a", "2024-02-01T00:00:00Z", "Changed"))],
-                WriterContracts.Ingestion(),
-                options,
-                cancellation.Token);
+            await write.WaitAsync(TestTimeout);
         }
         catch (FabricSilverWriteCanceledException caught)
         {
@@ -535,6 +543,7 @@ public class FabricSilverDeltaWriterFailureTests
             },
         };
 
+        // The gate stays held until the write returns, so the bounded wait is what fails the test if the token is ignored.
         FabricSilverWriteCanceledException? exception = null;
         try
         {
@@ -545,7 +554,7 @@ public class FabricSilverDeltaWriterFailureTests
                 ],
                 WriterContracts.Ingestion(),
                 options,
-                cancellation.Token);
+                cancellation.Token).WaitAsync(TestTimeout);
         }
         catch (FabricSilverWriteCanceledException caught)
         {
@@ -625,6 +634,16 @@ public class FabricSilverDeltaWriterFailureTests
         File.WriteAllText(
             Path.Combine(LogDirectory(table), version.ToString("D20", CultureInfo.InvariantCulture) + ".json"),
             action.ToJsonString() + "\n");
+    }
+
+    // Rewrites the commitInfo operation of a commit file, failing if the commit records no MERGE to rewrite.
+    private static void RewriteCommitOperation(string commit, string operation)
+    {
+        var actions = File.ReadAllLines(commit).Where(line => line.Length > 0).Select(line => JsonNode.Parse(line)!.AsObject()).ToList();
+        var commitInfo = actions.Single(action => action.ContainsKey("commitInfo"))["commitInfo"]!.AsObject();
+        ((string?)commitInfo["operation"]).ShouldBe("MERGE");
+        commitInfo["operation"] = operation;
+        File.WriteAllText(commit, string.Concat(actions.Select(action => action.ToJsonString() + "\n")));
     }
 
     private static async Task<(FabricSilverBatchResult Result, bool Replayed)> WriteOrReplayAsync(

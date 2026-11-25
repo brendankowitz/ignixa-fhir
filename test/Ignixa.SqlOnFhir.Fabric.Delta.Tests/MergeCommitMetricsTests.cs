@@ -55,6 +55,8 @@ public class MergeCommitMetricsTests
     [Theory]
     [InlineData(3, 3)]
     [InlineData(0, 5)]
+    [InlineData(long.MaxValue, 1)]
+    [InlineData(1, long.MaxValue)]
     public async Task GivenMetricsCountingMoreRowsThanTheMergeWasGiven_WhenRead_ThenTheyAreRefused(long inserted, long updated)
     {
         using var root = new TemporaryDirectory();
