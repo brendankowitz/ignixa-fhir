@@ -12,10 +12,10 @@ namespace Ignixa.SqlOnFhir.Fabric;
 /// </summary>
 /// <remarks>
 /// <para>
-/// A timestamp accepts the FHIR <c>date</c>, <c>dateTime</c> and <c>instant</c> forms. A partial value (year or
-/// year-month or a date without a time) becomes its first instant in UTC, and a time without an offset is read as UTC;
-/// both are deterministic policy, not verified Spark behaviour. Silver stores microseconds, so non-zero digits beyond
-/// the sixth fraction digit are rejected rather than silently truncated.
+/// A timestamp accepts the FHIR <c>date</c>, <c>dateTime</c> and <c>instant</c> forms; a time requires a complete
+/// date. A partial value (year or year-month or a date without a time) becomes its first instant in UTC, and a time
+/// without an offset is read as UTC; both are deterministic policy, not verified Spark behaviour. Silver stores
+/// microseconds, so non-zero digits beyond the sixth fraction digit are rejected rather than silently truncated.
 /// </para>
 /// <para>A date accepts only the date forms (<c>YYYY</c>, <c>YYYY-MM</c>, <c>YYYY-MM-DD</c>); a partial date becomes its
 /// first day.</para>
@@ -49,7 +49,7 @@ internal static class SilverTemporal
     {
         value = default;
         var reader = new Cursor(text);
-        if (!TryReadDate(ref reader, out var date))
+        if (!TryReadDate(ref reader, out var date, out var hasDay))
         {
             return false;
         }
@@ -60,7 +60,7 @@ internal static class SilverTemporal
             return true;
         }
 
-        if (!reader.Accept('T') || !TryReadTime(ref reader, out var ticksOfDay) || !TryReadOffset(ref reader, out var offset))
+        if (!hasDay || !reader.Accept('T') || !TryReadTime(ref reader, out var ticksOfDay) || !TryReadOffset(ref reader, out var offset))
         {
             return false;
         }
@@ -84,12 +84,13 @@ internal static class SilverTemporal
     public static bool TryParseDate(string text, out DateOnly value)
     {
         var reader = new Cursor(text);
-        return TryReadDate(ref reader, out value) && reader.AtEnd;
+        return TryReadDate(ref reader, out value, out _) && reader.AtEnd;
     }
 
-    private static bool TryReadDate(ref Cursor reader, out DateOnly date)
+    private static bool TryReadDate(ref Cursor reader, out DateOnly date, out bool hasDay)
     {
         date = default;
+        hasDay = false;
         if (!reader.TryReadDigits(4, out var year) || year < 1)
         {
             return false;
@@ -104,10 +105,14 @@ internal static class SilverTemporal
                 return false;
             }
 
-            if (reader.Accept('-') &&
-                (!reader.TryReadDigits(2, out day) || day < 1 || day > DateTime.DaysInMonth(year, month)))
+            if (reader.Accept('-'))
             {
-                return false;
+                if (!reader.TryReadDigits(2, out day) || day < 1 || day > DateTime.DaysInMonth(year, month))
+                {
+                    return false;
+                }
+
+                hasDay = true;
             }
         }
 

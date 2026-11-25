@@ -38,19 +38,28 @@ public class FabricDeltaDependencyIsolationGuardTests
     }
 
     [Fact]
-    public void GivenShippableProjects_WhenReferencingProjects_ThenNoneReferencesTheFabricDeltaProject()
+    public void GivenShippableProjects_WhenReferencingTheFabricDeltaLibrary_ThenNoneDoesByProjectOrPackage()
     {
         var violations = LoadBuildFiles()
             .Where(file => !file.RelativePath.StartsWith("test/", StringComparison.Ordinal))
-            .Where(file => file.Document.Descendants().Any(element =>
-                element.Name.LocalName == "ProjectReference" &&
-                string.Equals(ProjectName((string?)element.Attribute("Include")), DeltaProject, StringComparison.OrdinalIgnoreCase)))
+            .Where(file => file.Document.Descendants().Any(ReferencesFabricDeltaLibrary))
             .Select(file => file.RelativePath)
             .ToList();
 
         violations.ShouldBeEmpty(
             $"{DeltaProject} is experimental and carries {DeltaPackage}'s native binaries; " +
-            "shippable projects must not reference it (only test projects may).");
+            "shippable projects must not reference it as a project or a package (only test projects may).");
+    }
+
+    private static bool ReferencesFabricDeltaLibrary(XElement element)
+    {
+        var include = (string?)element.Attribute("Include");
+        return element.Name.LocalName switch
+        {
+            "ProjectReference" => string.Equals(ProjectName(include), DeltaProject, StringComparison.OrdinalIgnoreCase),
+            "PackageReference" => string.Equals(include, DeltaProject, StringComparison.OrdinalIgnoreCase),
+            _ => false,
+        };
     }
 
     private static List<BuildFile> LoadBuildFiles()

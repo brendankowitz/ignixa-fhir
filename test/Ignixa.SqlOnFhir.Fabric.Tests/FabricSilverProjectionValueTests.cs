@@ -168,6 +168,8 @@ public class FabricSilverProjectionValueTests
     [InlineData("timestamp", "\"2001-02-03T04:05:06+0200\"")]
     [InlineData("timestamp", "\"2001-02-03T04:05:06Zjunk\"")]
     [InlineData("timestamp", "\"2001-02-03 04:05:06Z\"")]
+    [InlineData("timestamp", "\"2001T04:05:06Z\"")]
+    [InlineData("timestamp", "\"2001-02T04:05:06Z\"")]
     [InlineData("timestamp", "\"0001-01-01T00:00:00+01:00\"")]
     [InlineData("timestamp", "\"9999-12-31T23:59:59-01:00\"")]
     [InlineData("timestamp", "1")]
