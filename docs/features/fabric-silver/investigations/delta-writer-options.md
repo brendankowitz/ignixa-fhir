@@ -23,7 +23,7 @@ The candidates were:
 |---|---|
 | (a) DeltaLake.Net alone | **Not sufficient.** It cannot create a table with the HDS table properties, because delta-rs rejects `delta.parquet.vorder.enabled`. It also silently disables CDF when the property value is HDS's literal `True` (capital T). |
 | (b) Managed writer over Parquet.Net | **Not chosen for Phase 1.** The estimate is roughly 27–45 engineer-days for the gaps beyond the managed v0 writer (see experiment 10). That is the largest correctness surface of any option, and (a) already passes it locally. |
-| (c) Hybrid | **Recommended for Phase 1, with two caveats.** Every local correctness experiment the hybrid depends on passed against DuckDB and the raw-log reader, and checkpoints passed. The managed part is about 100 lines of spike code. **Caveat 1, Spark read is PARTIAL (B4):** a real Spark 3.5 / Delta 3.2 reader reads every table, but under Spark's default rebase mode it fails on Patient's pre-1582 dates. **Caveat 2, scale is bounded (B3):** Phase 2 runs only under fail-closed ceilings of 50,000 target rows and 50,000 source resources per table. No measured configuration is safe above about 100k target rows. |
+| (c) Hybrid | **Recommended for Phase 1, with two caveats.** Every local correctness experiment the hybrid depends on passed against DuckDB and the raw-log reader, and checkpoints passed. The managed part is about 100 lines of spike code. **Caveat 1, Spark read is PARTIAL (B4):** a real Spark 3.5 / Delta 3.2 reader reads every table, but under Spark's default rebase mode it fails on Patient's pre-1582 dates. **Caveat 2, scale is bounded (B3):** Phase 2 runs only under fail-closed ceilings of 50,000 target rows, 50,000 source resources and 100 live files per table. The row limits were calibrated on narrow synthetic rows and may change once Task 7 measures realistic-width rows. No measured configuration is safe above about 100k target rows. |
 | (d) EngineeredWood | **Not evaluated.** It is a pre-1.0, Apache-2.0 managed library that claims MERGE, CDF and checkpoints. It was not run here. It is the cheapest candidate to try if B3 rules out delta-rs MERGE. |
 
 **Blocking decisions.** These need an owner decision; none of them is an engine bug to work around silently.
@@ -39,22 +39,40 @@ The candidates were:
 3. **B3: MERGE cost at HDS id distribution (new, measured).** HDS ids are lowercase hex SHA-256, which is uniformly spread. With such keys, min/max file pruning never applies:
    - every merge scans the whole table;
    - scattered updates rewrite the whole table.
-   - **Measured** on a 50k-row Observation table of 10.4 MB, merging 5k rows at a time:
-     - peak working set was 9–10.7 GB;
+   - **Units.** All memory figures in this document are binary: 1 MiB = 2^20 bytes and 1 GiB = 2^30 bytes. The harness divides byte counts by 1024 × 1024. Experiment 7's first tables report the OS peak working set; the follow-up probe reports sampled peak private bytes.
+   - **Measured** on a 50k-row Observation table holding 10.4 MiB of Parquet, merging 5k rows at a time:
+     - peak working set was 9,317–10,736 MiB (9.1–10.5 GiB);
      - each merge took 31–89 s;
      - insert merge time grew linearly with table size.
-   - **Clustered ids** at the same scale peaked at 1.39 GB, at about 2 s per merge.
-   - **Cause (measured: native; inferred: which operators).** The memory is native, inside delta-rs/DataFusion; the .NET heap stays under 100 MB. The DataFusion settings that bound it, and the route that did not, are in experiment 7.
+   - **Clustered ids** at the same scale peaked at 1,389 MiB (1.36 GiB), at about 2 s per merge.
+   - **Cause (measured: native; inferred: which operators).** The memory is native, inside delta-rs/DataFusion; the .NET GC heap never exceeded 93 MiB. The DataFusion settings that bound it, and the route that did not, are in experiment 7.
+   - **Fragmented tables are the expected steady state (measured).** Under MERGE only, nothing compacts a table:
+     - an insert merge adds a file and removes none: 5,000 new keys into a 10-file table removed 0 files and left 11;
+     - a small update rewrites only the files it touches: a 50-row update into a 100-file table removed 5 files and left 96;
+     - only a large scattered update collapses the table: a 5,000-row update rewrote 100 files into 1.
+
+     An ingest that is mostly new resources therefore grows the file count by one file per batch. The many-file layout is the normal case, not an edge case.
    - **Ceiling the Phase-2 sink enforces.** These are fail-closed limits:
      - **MERGE only.** Every upsert batch goes through MERGE, on a dedicated engine configured with `DataFusionExecutionTargetPartitions = 1` and `DataFusionExecutionBatchSize = 1024`.
      - **One MERGE at a time per process.**
      - **`MaxTargetRows = 50,000`** and **`MaxSourceResourcesPerTable = 50,000`.** Above either, the sink refuses the write instead of starting a merge that may exhaust memory. Both are configurable, and raising them is at the caller's risk.
-     - **An opt-in memory-budget test** asserts a 4.5 GB peak at `MaxTargetRows`. At 50k rows with 1 target partition, measured peaks were 2.8 GB (batch size 1024) and 3.5–3.6 GB (default batch size) on 10- and 100-file tables. **Exception:** a 50-row update into a 100-file table peaked at 4.6 GB at partitions 1 with the default batch size, above the budget. That layout was not measured with batch size 1024, so the budget is unproven for heavily fragmented tables.
-   - **No measured configuration is safe above about 100k target rows.** At 100k rows the best configuration measured 5.4 GB per merge, and memory grows with target rows. B3 therefore **remains a production blocker for large tables**. Lifting it needs one of the following:
+     - **`MaxTargetFiles = 100`.** The sink checks the table's live file count before writing. Above the limit it refuses the write, and the error tells the operator to compact the table. It is configurable at the caller's risk. Compaction itself (OPTIMIZE or an equivalent) is a follow-up for the ADR.
+     - **The row limits are calibrated only for synthetic rows.** Every B3 run used synthetic Observation rows of about 220 bytes of Parquet each (10.4 MiB for 50k rows). Real rows carry `*_string` companions and nested components and are likely several times wider; Patient was never measured. Task 7 recalibrates the limits with realistic-width Observation rows, and Patient rows if that is cheap. **The 50,000 defaults may change after that measurement.**
+     - **An opt-in memory-budget test** asserts that peak process private bytes stay within **4.5 GiB (4,831,838,208 bytes, 4,608 MiB)** at `MaxTargetRows`. The measured margins at 50k rows, all with 1 target partition, are in the table below.
+
+       | 50k-row layout | Source | Batch size | Peak private | Margin to 4,608 MiB |
+       |---|---|---|---:|---:|
+       | 10 files | 5,000-row scattered update | 1024 | 2,766 MiB (2.70 GiB) | 1,842 MiB (40%) |
+       | 10 files | 5,000-row scattered update | default | 3,537 MiB (3.45 GiB) | 1,071 MiB (23%) |
+       | 100 files | 5,000-row scattered update | default | 3,605 MiB (3.52 GiB) | 1,003 MiB (22%) |
+       | 100 files | 50-row update | default | 4,572 MiB (4.46 GiB) | **36 MiB (0.8%)** |
+
+       The fragmented case, which is the expected steady state, has effectively no margin. No 100-file layout was measured with batch size 1024, and no layout was measured with realistic-width rows. Task 7 measures the 10-file and 100-file layouts with batch size 1024 on realistic-width rows. Until then the budget is unproven for the layout the sink will normally see.
+   - **No measured configuration is safe above about 100k target rows.** At 100k rows, 1 target partition with the default batch size peaked at 5,358 MiB (5.23 GiB), 750 MiB over the budget. Batch size 1024 was not measured at 100k. Memory grows with target rows. B3 therefore **remains a production blocker for large tables**. Lifting it needs one of the following:
      - an update path that prunes files without min/max stats, for example a key-to-file index;
      - a fix for the memory amplification inside delta-rs;
      - a move to (b) or (d).
-   - **Deferred:** routing new keys to a blind append after an id-only pre-read. It was measured to cut new-key batches from about 10.7 GB to 179 MB, but it is only correct with a single writer per table. It waits until a per-table single-writer lease exists (Phase 3 / OneLake).
+   - **Deferred:** routing new keys to a blind append after an id-only pre-read. It was measured to cut a new-key batch from 10,722 MiB to 179 MiB, but it is only correct with a single writer per table. It waits until a per-table single-writer lease exists (Phase 3 / OneLake).
 4. **B4: Spark's default rebase mode fails on pre-1582 values (new, measured).** delta-rs writes dates and timestamps before 1582 without the Parquet key-value metadata Spark uses to identify the calendar. Under Spark's default `datetimeRebaseModeInRead=EXCEPTION` the read fails (experiment 5).
    - **Owner decision needed:** either the writer stamps rebase metadata into each Parquet file, or readers configure `CORRECTED` (or `LEGACY`).
    - **Must be confirmed on a Fabric runtime.** The local check used stock Spark 3.5.6 + Delta 3.2.1. The Fabric runtime's default for this setting is unverified.
@@ -64,7 +82,8 @@ The candidates were:
 - **Fabric itself:** the Fabric runtime reading these tables, and its `datetimeRebaseModeInRead` default. A stock Spark 3.5.6 + Delta 3.2.1 reader *was* run locally; see experiment 5. There is still no HDS-captured row oracle.
 - **OneLake:** authentication, token refresh, and whether OneLake honours the conditional create (`If-None-Match: *`). The paper evidence is in experiment 8.
 - **Platforms:** Linux and macOS native binaries. Only win-x64 was executed.
-- **Which DataFusion operators hold the MERGE memory (B3).** That the memory is native was measured. The operator breakdown is inferred from the delta-rs plan source and DataFusion's error text, not profiled. Only two target sizes were measured with the bounded settings (50k and 100k rows).
+- **Which DataFusion operators hold the MERGE memory (B3).** That the memory is native was measured. The operator breakdown is inferred from the delta-rs plan source and DataFusion's error text, not profiled. Only two target sizes were measured with 1 target partition (50k and 100k rows).
+- **MERGE memory with realistic rows or fragmented tables at batch size 1024 (B3).** Every B3 run used synthetic Observation rows of about 220 bytes of Parquet each. Patient was never measured. No 100-file table was measured with batch size 1024. Task 7 owns these measurements.
 - **Fallback effort:** the sizing of (b) is an estimate, not a measurement. (d) was not run.
 
 ## Results by experiment
@@ -87,7 +106,7 @@ The setup for every experiment:
 | 4 | Change data feed | **PASS** with `true`. **FAIL (silent, wrong in Spark)** with `True` | With `true`: the raw log, the library's kernel CDF read and Spark `readChangeFeed`/`table_changes` all agree, and copied rows are not reported. With `True`: delta-rs writes no CDF, and Spark reports updates as delete+insert, plus spurious delete+insert for copied rows. |
 | 5 | Interop reads | **PASS** with DuckDB. **PARTIAL** in local Spark 3.5/Delta 3.2 (B4). **UNVERIFIED** in Fabric | DuckDB and the raw reader agree on every column of every row. Spark reads all four hybrid tables, but under Spark's default `datetimeRebaseModeInRead=EXCEPTION` the full Patient read fails on a 0001-01-01 value. Only with the non-default `CORRECTED` does every column decode exactly. |
 | 6 | Concurrency and crash | **PASS** locally on Windows, including deterministic injection into the data-written/commit-not-written window. Linux and OneLake **UNVERIFIED** | Two writers, 3 runs, 86 conflicts: no lost or duplicate keys. Three fault injections in the commit window (denied commit, staged-commit litter, process frozen between data file and commit): every case left a contiguous log, readers saw only committed rows, and the next writer committed. |
-| 7 | Memory/scale | **Measured scale blocker (B3); bounded only under the Phase-2 ceilings** | Clustered ids: update-MERGE peaks at 1.39 GB. SHA-256 ids (as HDS uses): every merge scans every file, scattered updates rewrite the whole table, and default-setting peaks reach 9.3–11 GB per 5k-row merge into a 10 MB table. With 1 target partition: 2.8–3.6 GB at 50k rows (4.6 GB on a 100-file table), and 5.4 GB at 100k. |
+| 7 | Memory/scale | **Measured scale blocker (B3); bounded only under the Phase-2 ceilings** | Clustered ids: update-MERGE peak working set 1,389 MiB. SHA-256 ids (as HDS uses): every merge scans every file, scattered updates rewrite the whole table, and default-setting peaks reach 9.1–11.3 GiB per 5k-row merge into a 10.4 MiB table. With 1 target partition at 50k rows: 2,766 MiB (batch size 1024) to 4,572 MiB (100 files, default batch size), the last only 36 MiB under the 4.5 GiB budget. At 100k rows: 5,358 MiB. Synthetic rows only. |
 | 8 | OneLake/auth | **UNVERIFIED** (paper evidence below) | Azure support is compiled in. Credentials can be passed only as string storage options, with no .NET `TokenCredential` hook. OAuth flows refresh tokens; a static bearer token does not. The commit uses `If-None-Match: *`. |
 | 9 | Packaging/ops | **PARTIAL** | The package is 233 MB with natives for 5 RIDs (no musl, no win-arm64). The license mismatch is B2. The repo's Docker image is glibc (azurelinux3.0), but the linux-x64 natives were not run. |
 | 10 | Fallback sizing | **ESTIMATE** (judgment, not measured) | (b): about 27–45 engineer-days beyond the managed v0 writer. (d): characterised from its package and README only. |
@@ -280,24 +299,24 @@ Orphans from failed attempts need a VACUUM policy.
 
 ### 7. Memory and scale
 
-The tables were Observation tables with 89 columns, holding 50k rows written in 5k-row merges: an insert phase, then an update phase with newer timestamps. Each phase ran in its own process, and the per-commit metrics come from `operationMetrics`.
+The tables were Observation tables with 89 columns, holding 50k synthetic rows (about 220 bytes of Parquet per row) written in 5k-row merges: an insert phase, then an update phase with newer timestamps. Each phase ran in its own process, and the per-commit metrics come from `operationMetrics`. Memory is in binary units (MiB, GiB); the tables below report the OS peak working set.
 
 **Earlier workloads:**
 
 | Workload | Peak working set | Notes |
 |---|---|---|
-| Append, 300k narrow Patient rows, 50k per commit | 256 MB (flat after the second commit) | Managed heap ≤ 73 MB |
-| Single 1M-row append (crash harness) | 2.6 GB | Dominated by the harness's managed JSON rows, not by the engine |
+| Append, 300k narrow Patient rows, 50k per commit | 256 MiB (flat after the second commit) | Managed heap ≤ 73 MiB |
+| Single 1M-row append (crash harness) | About 2,600 MiB (raw value not retained) | Dominated by the harness's managed JSON rows, not by the engine |
 
 **Merge workloads by id distribution:**
 
 | Id distribution | Phase | Files scanned / skipped / removed per merge | Rows copied | Peak working set | Time per merge |
 |---|---|---|---|---|---|
-| Clustered (`s00000001`…) | Insert | 0 / k / 0 | 0 | 564 MB | 0.7–0.9 s |
-| Clustered | Update | 1 / 9 / 1 | 0 | 1.39 GB | 1.9–2.2 s |
-| SHA-256 hex | Insert | k / 0 / 0 (all files) | 0 | 0.4 → **9.3 GB**, growing with table size | 0.8 → **28 s**, growing with table size |
-| SHA-256 hex, each update batch equal to one insert batch | Update | 10 / 0 / 1 | 0 | **10.7 GB** | 31–89 s |
-| SHA-256 hex, scattered (each batch hits every file) | Update | first merge 10 / 0 / 10, then 1 / 0 / 1 | **45,000 per 5k-row merge** | **10.5 GB** | 35–56 s |
+| Clustered (`s00000001`…) | Insert | 0 / k / 0 | 0 | 564 MiB | 0.7–0.9 s |
+| Clustered | Update | 1 / 9 / 1 | 0 | 1,389 MiB | 1.9–2.2 s |
+| SHA-256 hex | Insert | k / 0 / 0 (all files) | 0 | 409 → **9,317 MiB**, growing with table size | 0.8 → **28 s**, growing with table size |
+| SHA-256 hex, each update batch equal to one insert batch | Update | 10 / 0 / 1 | 0 | **10,736 MiB** | 31–89 s |
+| SHA-256 hex, scattered (each batch hits every file) | Update | first merge 10 / 0 / 10, then 1 / 0 / 1 | **45,000 per 5k-row merge** | **10,493 MiB** | 35–56 s |
 
 (k is the number of files already in the table.)
 
@@ -306,7 +325,7 @@ The tables were Observation tables with 89 columns, holding 50k rows written in 
 - **HDS ids.** An HDS Silver `id` is the lowercase hex SHA-256 of the resource's namespace, type and id. Every data file therefore spans nearly the whole key range, so min/max statistics cannot skip any file.
 - **Inserts.** Even inserting new keys scans the whole table.
 - **Updates.** Any realistic update batch hits rows in every file, so copy-on-write rewrites the whole table on every merge. This part is inherent to copy-on-write without deletion vectors, whatever the engine.
-- **Engine-specific part.** About 10 GB of working set to merge into a table of 10.4 MB on disk (about 50k rows) is amplification beyond copy-on-write. Merge time and memory track table rows, not file count: the scattered case kept its cost after the table collapsed to one file.
+- **Engine-specific part.** About 10 GiB of working set to merge into a table of 10.4 MiB on disk (about 50k rows) is amplification beyond copy-on-write. At default settings, collapsing the table to one file did not reduce the cost: the scattered case kept it after the table became one file, and the follow-up probe measured 11,046 MiB on 1 file against 10,997 MiB on 10. File count is not neutral, though: the same update on 100 files ran out of memory (see the probe below).
 
 **Conclusion.** With HDS-like ids, delta-rs MERGE cost grows with table size on every merge. This is B3. The follow-up probe below measured what bounds it and what does not.
 
@@ -316,52 +335,54 @@ The tables were Observation tables with 89 columns, holding 50k rows written in 
 
 - **Target table:** an Observation table of 50,000 rows with SHA-256-hex ids, normally in 10 files.
 - **Source:** 5,000 rows unless stated otherwise. A batch holds existing keys spread across the whole table with a newer `meta_lastUpdated`, new keys, or half of each.
-- **Memory sampling:** every 25 ms, the process's private bytes and the .NET GC heap, cross-checked against the OS peak commit.
+- **Memory sampling:** every 25 ms, the process's private bytes and the .NET GC heap, cross-checked against the OS peak commit. Values are in MiB (2^20 bytes); the tables report sampled peak private bytes.
 - **Correctness check:** after each run, a SQL count of rows, distinct ids and newer rows. Every completed run gave the expected counts.
 
 **Where the memory is (Measured).** It is native, inside delta-rs/DataFusion:
 
-- private bytes peak at 10.5–11.5 GB, while the GC heap never exceeds 93 MB;
-- a 50-row source peaks at 10.5 GB, the same as a 5,000-row source, so source size does not matter.
+- across completed runs at default settings, private bytes peak at 9,990–11,537 MiB (9.8–11.3 GiB), while the GC heap never exceeds 93 MiB;
+- a 50-row source peaks at 10,552 MiB, close to the 10,997 MiB of a 5,000-row source on the same table, so source size barely matters.
 
 **Why (Inferred from the delta-rs 0.32.1 merge source and DataFusion's error text; not profiled).**
 
 - **No pruning.** The early file filter on a non-partition key is `target.id BETWEEN min(source.id) AND max(source.id)`. With random ids that range covers the whole table, and every run reported 0 files skipped.
-- **The whole decoded target goes through two window functions and a full join.** The plan numbers target rows per file with `row_number()`, full-outer-joins the source to the target, then ranks the joined rows per target row with a second `row_number()`. Each window hash-repartitions and sorts. DataFusion's own error names `ExternalSorter` and `RepartitionExec` as the consumers, at about 435 MB per partition. With 28 partitions (one per logical CPU on the test machine), that matches the 11 GB peak.
+- **The whole decoded target goes through two window functions and a full join.** The plan numbers target rows per file with `row_number()`, full-outer-joins the source to the target, then ranks the joined rows per target row with a second `row_number()`. Each window hash-repartitions and sorts. DataFusion's own error names `ExternalSorter` and `RepartitionExec` as the consumers, at about 435 MiB per partition (DataFusion reports binary units). With 28 partitions (one per logical CPU on the test machine), that is the same order as the roughly 11,000 MiB peak.
 - **Every touched file is rewritten.** Even a 50-row update rewrote 5 of 10 files. This part is inherent to copy-on-write on random keys without deletion vectors, whatever the engine.
 
 **Engine settings (Measured).** DeltaLake.Net 0.33.3 has no per-merge options; its merge never calls delta-rs's `with_streaming` or `with_writer_properties`. Only engine-wide `EngineOptions` apply. On the 50k-row, 10-file table with a 5,000-row update:
 
 | Setting | Peak private | Wall | Outcome |
 |---|---:|---:|---|
-| Defaults (28 target partitions) | 11.0 GB | 44 s | Completes |
-| `DataFusionExecutionTargetPartitions = 4` | 9.1 GB | 32 s | Completes; not enough on its own |
-| `DataFusionExecutionTargetPartitions = 1` | 3.5 GB | 23 s | Completes |
-| Partitions 1 + `DataFusionExecutionBatchSize = 1024` | **2.8 GB** | **18 s** | Completes |
-| `DataFusionRuntimeMaxSpillSize = 1024 MB` with a temp directory | — | — | **Merge fails** with "Resources exhausted … Failed to allocate additional 435.3 MB for ExternalSorter". The pool is a hard cap; the sort cannot spill below its reservation. |
+| Defaults (28 target partitions) | 10,997 MiB | 44 s | Completes |
+| `DataFusionExecutionTargetPartitions = 4` | 9,070 MiB | 32 s | Completes; not enough on its own |
+| `DataFusionExecutionTargetPartitions = 1` | 3,537 MiB | 23 s | Completes |
+| Partitions 1 + `DataFusionExecutionBatchSize = 1024` | **2,766 MiB** | **18 s** | Completes |
+| `DataFusionRuntimeMaxSpillSize = 1 GiB` with a temp directory | — | — | **Merge fails** with "Resources exhausted … Failed to allocate additional 435.3 MB for ExternalSorter". The pool is a hard cap; the sort cannot spill below its reservation. |
 
-delta-rs's own `with_streaming(true)` is not a lower-memory mode in this version: it only disables the early file filter, which prunes nothing with random ids anyway (Inferred from source). Spill pools other than 1 GB were not tried.
+delta-rs's own `with_streaming(true)` is not a lower-memory mode in this version: it only disables the early file filter, which prunes nothing with random ids anyway (Inferred from source). Spill pools other than 1 GiB were not tried.
 
 **File layout and target size (Measured).**
 
-| Target | Source | Defaults | Partitions 1 |
-|---|---:|---|---|
-| 50k rows, 1 file | 5,000 | 11.0 GB, 62 s | — |
-| 50k rows, 100 files | 5,000 | Process ran out of memory after about 16 min | 3.6 GB, 25 s |
-| 50k rows, 100 files | 50 | 10.0 GB, 1,013 s | 4.6 GB, 22 s |
-| 100k rows, 10 files | 5,000 | — | **5.4 GB**, 55 s |
+| Target | Source | Defaults | Partitions 1, default batch size | Files removed → live after (partitions 1) |
+|---|---:|---|---|---|
+| 50k rows, 1 file | 5,000 | 11,046 MiB, 62 s | — | — |
+| 50k rows, 100 files | 5,000 | Process ran out of memory after about 16 min | 3,605 MiB, 25 s | 100 → 1 |
+| 50k rows, 100 files | 50 | 9,990 MiB, 1,013 s | 4,572 MiB, 22 s | 5 → 96 |
+| 100k rows, 10 files | 5,000 | — | **5,358 MiB**, 55 s | 10 → 1 |
 
-With partitions 1, the file count stops mattering much, and memory grows with target rows. Only two sizes were measured, so the growth rate is not established; a straight line through them would put a 1M-row table near 40 GB (Inferred, unverified).
+- **File count's effect at partitions 1 is only partly established.** With the same 5,000-row scattered update, 10 and 100 files peaked at 3,537 and 3,605 MiB, so file count changed little in that case. A 50-row update on the same 100-file table peaked higher, at 4,572 MiB, while rewriting only 5 files and keeping 96. That run differs in both source size and rewrite pattern, so the gap is confounded and cannot be attributed to either. The highest 50k peak measured is therefore on the fragmented, small-update layout the sink will normally see. None of these layouts was measured with batch size 1024.
+- **The 100-file layout is the expected steady state.** Under MERGE only, inserts add a file per merge and remove none, and small updates rewrite only the files they touch (5 of 100 here). Only large scattered updates collapse the table. This is why the sink fails closed at `MaxTargetFiles` and the ADR must decide on compaction.
+- **Memory grows with target rows.** At partitions 1 and the default batch size, 50k → 100k rows went from 3,537 to 5,358 MiB. Only two sizes were measured, so the growth rate is not established; a straight line through them would put a 1M-row table near 37 GiB (Inferred, unverified).
 
 **Application-level routes (Measured).**
 
 | Route | Peak private | Wall | Notes |
 |---|---:|---:|---|
-| MERGE, 5,000 new keys | 10.7 GB | 28.5 s | Scans all 10 files to insert |
-| Id-only pre-read, then blind append of 5,000 new keys | **179 MB** | **0.7 s** | The pre-read of 50k `id` + `meta_lastUpdated` took 70–116 ms. The append commits as `WRITE` |
-| Pre-read, then MERGE of 5,000 newer existing keys | 11.0 GB | 46 s | No gain for updates |
-| Pre-read, append 2,500 + MERGE 2,500, partitions 1 | 3.6 GB | 23 s | — |
-| Source split into 2 × 2,500, defaults | 11.0 GB | **205 s** | **Worse.** Each merge pays the full target scan and rewrite, whatever its source size |
+| MERGE, 5,000 new keys | 10,722 MiB | 28.5 s | Scans all 10 files to insert; removes none, so the table grows to 11 files |
+| Id-only pre-read, then blind append of 5,000 new keys | **179 MiB** | **0.7 s** | The pre-read of 50k `id` + `meta_lastUpdated` took 70–116 ms. The append commits as `WRITE` |
+| Pre-read, then MERGE of 5,000 newer existing keys | 11,000 MiB | 46 s | No gain for updates |
+| Pre-read, append 2,500 + MERGE 2,500, partitions 1 | 3,581 MiB | 23 s | — |
+| Source split into 2 × 2,500, defaults | 11,016 MiB | **205 s** | **Worse.** Each merge pays the full target scan and rewrite, whatever its source size |
 
 - **The pre-read route is only correct with a single writer per table.** A blind append does not conflict with a concurrent append of the same key, so two writers could both insert it and break id uniqueness. Updates racing between the pre-read and the MERGE are still caught by MERGE's own predicate and conflict detection. The route is deferred until a per-table single-writer lease exists (Phase 3 / OneLake).
 - **Splitting a batch does not help.** Fewer, larger merges are cheaper than many small ones.
@@ -374,7 +395,7 @@ With partitions 1, the file count stops mattering much, and memory grows with ta
 - **Unconfirmed:** that early exit is the cause.
 - **Rule for the sink:** always fully drain or dispose binding query streams.
 
-**Resulting ceiling.** The Phase-2 sink enforces the B3 ceiling in the summary: MERGE only, with partitions 1 and batch size 1024, one MERGE at a time per process, and fail-closed limits of 50,000 target rows and 50,000 source resources per table. An opt-in test checks a 4.5 GB budget at that size; the one fragmented-table measurement at 4.6 GB means that test should include a many-small-files layout. No measured configuration is safe above about 100k target rows.
+**Resulting ceiling.** The Phase-2 sink enforces the B3 ceiling in the summary: MERGE only, with partitions 1 and batch size 1024, one MERGE at a time per process, and fail-closed limits of 50,000 target rows, 50,000 source resources and 100 live files per table. An opt-in test checks a 4.5 GiB (4,831,838,208-byte) budget at that size. The one measured 100-file case left only 36 MiB of margin, so Task 7 measures 10-file and 100-file layouts with batch size 1024 on realistic-width rows, and the row limits may change with that result. No measured configuration is safe above about 100k target rows.
 
 ### 8. OneLake and authentication (paper only)
 
@@ -479,7 +500,7 @@ A hybrid table (Ignixa v0 with the vorder property and CDF `true`) was driven to
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| MERGE cost with SHA-256 ids (B3) | Merges scan and rewrite the whole table. At default settings they use about 11 GB for a 10 MB table; with bounded settings memory still grows with target rows (5.4 GB at 100k). Out-of-memory at production size | Partitions 1 and batch size 1024; one MERGE at a time per process; fail-closed limits of 50,000 target rows and 50,000 source resources per table; opt-in 4.5 GB memory-budget test. Pre-read + append deferred until a single-writer lease exists. Evaluate (b) or (d), or key-based file pruning, before large tables |
+| MERGE cost with SHA-256 ids (B3) | Merges scan and rewrite the whole table. At default settings they use about 11 GiB for a 10.4 MiB table; with bounded settings memory still grows with target rows (5,358 MiB at 100k). Inserts add a file per merge and nothing compacts, so tables fragment. Calibrated only on narrow synthetic rows. Out-of-memory at production size | Partitions 1 and batch size 1024; one MERGE at a time per process; fail-closed limits of 50,000 target rows, 50,000 source resources and 100 live files per table (the file-limit error tells the operator to compact); opt-in 4.5 GiB memory-budget test. Task 7 recalibrates the row limits on realistic-width rows. Compaction policy goes to the ADR. Pre-read + append deferred until a single-writer lease exists. Evaluate (b) or (d), or key-based file pruning, before large tables |
 | CDF on `True` tables (B1) | Missing CDF in delta-rs, and phantom delete+insert changes in Spark | Ignixa-created tables write `true`; fail closed on any other value; startup check |
 | Spark ancient-timestamp rebase (B4) | Spark readers fail on pre-1582 dates under the default `datetimeRebaseModeInRead=EXCEPTION` | Owner decides between writer-stamped rebase metadata and reader `CORRECTED`/`LEGACY`; confirm on a Fabric runtime |
 | Fabric runtime unverified | Fabric-specific behaviour, such as V-Order or the rebase default, may differ from stock Spark | Manual or nightly Fabric job before GA |
@@ -496,7 +517,7 @@ A hybrid table (Ignixa v0 with the vorder property and CDF `true`) was driven to
 - **`SilverTableDefinition`** is an immutable value: name, ordered Delta schema JSON, and table properties. It is built from the loaded Silver contract and validates its invariants at construction.
 - **`ISilverDeltaTable`**, with one implementation per engine, has two operations:
   - `EnsureCreatedAsync(definition, ct)` is idempotent. If the table exists, it verifies protocol, configuration and schema against the definition, and fails closed on mismatch, including a CDF value other than lowercase `true`.
-  - `UpsertAsync(IAsyncEnumerable<RecordBatch> batches, ct)` applies the HDS upsert batch by batch. Each batch is reduced to the latest row per id, MERGEd as one commit, and retried with backoff on commit conflict. It returns per-commit metrics, taken from the commit's `operationMetrics`. Under B3 it is MERGE-only and fails closed before merging when the table exceeds `MaxTargetRows` (50,000) or the batch exceeds `MaxSourceResourcesPerTable` (50,000).
+  - `UpsertAsync(IAsyncEnumerable<RecordBatch> batches, ct)` applies the HDS upsert batch by batch. Each batch is reduced to the latest row per id, MERGEd as one commit, and retried with backoff on commit conflict. It returns per-commit metrics, taken from the commit's `operationMetrics`. Under B3 it is MERGE-only and fails closed before writing when the table exceeds `MaxTargetRows` (50,000) or `MaxTargetFiles` (100 live files; the error tells the operator to compact), or the batch exceeds `MaxSourceResourcesPerTable` (50,000).
 - **`DeltaCommitWriter`** is Ignixa-owned. It serialises version-0 and metaData commits and publishes through a storage port with create-if-absent semantics: `CreateNew` locally and `If-None-Match: *` on ADLS/OneLake.
 - **The engine adapter** (`DeltaLakeNetSilverTable`) is the only type that references `DeltaLake.*`. Its lifetime rules:
   - It owns one `DeltaEngine` per process, configured with `DataFusionExecutionTargetPartitions = 1` and `DataFusionExecutionBatchSize = 1024`. That engine is disposable, and its thread-safety is untested, so the adapter serialises calls per table and allows one MERGE at a time per process.
@@ -507,4 +528,4 @@ Swapping in a managed engine, (b) or (d), means replacing only the adapter, and 
 
 - the commit-window fault injection;
 - a checkpoint crossing;
-- a SHA-256-id scale case with a 4.5 GB memory budget at `MaxTargetRows` (opt-in).
+- a SHA-256-id scale case with a 4.5 GiB (4,831,838,208-byte) peak-private-bytes budget at `MaxTargetRows` (opt-in), run on 10-file and 100-file layouts with batch size 1024 and realistic-width rows.
