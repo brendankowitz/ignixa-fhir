@@ -28,13 +28,15 @@ public sealed class FabricSilverWriteException : Exception
         FabricSilverWritePhase phase,
         int attempts,
         IReadOnlyList<FabricSilverTableResult> completedTables,
-        Exception innerException)
+        Exception innerException,
+        bool mayHaveCommitted = false)
         : base(Describe(tablePath, phase, attempts), innerException)
     {
         TablePath = tablePath;
         Phase = phase;
         Attempts = attempts;
         CompletedTables = completedTables;
+        MayHaveCommitted = mayHaveCommitted || phase == FabricSilverWritePhase.ReadCommit;
     }
 
     /// <summary>The full path of the table that failed.</summary>
@@ -46,6 +48,16 @@ public sealed class FabricSilverWriteException : Exception
     /// <summary>The merge attempts made on the failed table; zero outside <see cref="FabricSilverWritePhase.Merge"/> and <see cref="FabricSilverWritePhase.ReadCommit"/>.</summary>
     public int Attempts { get; }
 
+    /// <summary>
+    /// Whether the failed table may hold this batch's rows. <see langword="false"/> means it is proven unchanged by
+    /// this call. In <see cref="FabricSilverWritePhase.Merge"/> it is <see langword="true"/> when the table's version
+    /// advanced during the failed merge (an engine step after the commit failed, or another writer committed) or the
+    /// version could not be read again; it is always <see langword="true"/> in
+    /// <see cref="FabricSilverWritePhase.ReadCommit"/>. A table that may have committed has no row counts, so it is
+    /// not in <see cref="CompletedTables"/>.
+    /// </summary>
+    public bool MayHaveCommitted { get; }
+
     /// <summary>The tables of the batch merged and committed before the failure, in batch order.</summary>
     public IReadOnlyList<FabricSilverTableResult> CompletedTables { get; }
 
@@ -53,7 +65,7 @@ public sealed class FabricSilverWriteException : Exception
     {
         FabricSilverWritePhase.Validate => $"Table '{tablePath}' could not be validated before writing; no table was changed.",
         FabricSilverWritePhase.Create => $"Table '{tablePath}' could not be created; no rows were written.",
-        FabricSilverWritePhase.Merge => $"The merge into table '{tablePath}' failed after {attempts} attempt(s); it is unchanged, earlier tables of the batch are committed.",
+        FabricSilverWritePhase.Merge => $"The merge into table '{tablePath}' failed after {attempts} attempt(s); the table may or may not be committed (see MayHaveCommitted) and earlier tables of the batch are committed. Replaying the batch is safe.",
         FabricSilverWritePhase.ReadCommit => $"The merge into table '{tablePath}' committed, but its commit could not be read back to report the result.",
         _ => throw new ArgumentOutOfRangeException(nameof(phase)),
     };

@@ -94,6 +94,7 @@ public class FabricSilverDeltaWriterFailureTests
 
             exception.TablePath.ShouldBe(second);
             exception.Phase.ShouldBe(FabricSilverWritePhase.Merge);
+            exception.MayHaveCommitted.ShouldBeFalse();
             exception.Message.ShouldContain(second);
             exception.Attempts.ShouldBe(1);
             exception.InnerException.ShouldNotBeNull();
@@ -137,6 +138,7 @@ public class FabricSilverDeltaWriterFailureTests
                 () => FabricSilverDeltaWriter.WriteBatchAsync(batches, WriterContracts.Ingestion(), CancellationToken.None));
 
             exception.Phase.ShouldBe(FabricSilverWritePhase.Merge);
+            exception.MayHaveCommitted.ShouldBeFalse();
             exception.CompletedTables.ShouldBeEmpty();
         }
 
@@ -155,6 +157,101 @@ public class FabricSilverDeltaWriterFailureTests
         orphans.ShouldBeSubsetOf(DataFiles(table));
         DeltaLogReader.Read(table).LiveFiles.Keys.ShouldNotContain(live => orphans.Contains(live));
         (await EngineTableReader.ReadIdsAsync(table)).Version.ShouldBe(2);
+        SyntheticPatients.FamilyOf(SyntheticPatients.RowOf(await DeltaParquetReader.ReadLiveRowsAsync(table), "a")).ShouldBe("Changed");
+    }
+
+    /// <summary>
+    /// The binding reports a canceled token as a cancellation even when the native merge committed, so a merge the
+    /// engine has started must run to the end and be reported. The cancellation is requested through the internal seam
+    /// at the last moment before the engine merge starts, which is as close to "in flight" as the binding allows.
+    /// </summary>
+    [Fact]
+    public async Task GivenCancellationOnceTheFirstTablesMergeHasStarted_WhenWritten_ThenThatMergeCommitsAndIsReportedAndTheSecondIsUntouched()
+    {
+        using var root = new TemporaryDirectory();
+        var first = root.Combine("First");
+        var second = root.Combine("Second");
+        var contract = await SyntheticPatients.SeedAsync(first, SyntheticPatients.Patient("a", "2024-01-01T00:00:00Z"));
+        await SyntheticPatients.SeedAsync(second, SyntheticPatients.Patient("a", "2024-01-01T00:00:00Z"));
+        using var cancellation = new CancellationTokenSource();
+        var options = new FabricSilverWriterOptions
+        {
+            BeforeEngineMerge = table =>
+            {
+                if (table == first)
+                {
+                    cancellation.Cancel();
+                }
+            },
+        };
+
+        // A plain await, as callers write it: an async method faulting with an OperationCanceledException ends Canceled,
+        // and await rethrows the stored exception, where Shouldly's continuation would only see TaskCanceledException.
+        FabricSilverWriteCanceledException? exception = null;
+        try
+        {
+            await FabricSilverDeltaWriter.WriteBatchAsync(
+                [
+                    WriterContracts.Batch(first, contract, SyntheticPatients.Patient("a", "2024-02-01T00:00:00Z", "Changed")),
+                    WriterContracts.Batch(second, contract, SyntheticPatients.Patient("a", "2024-02-01T00:00:00Z", "Changed")),
+                ],
+                WriterContracts.Ingestion(filePath: WriterContracts.SecondFile),
+                options,
+                cancellation.Token);
+        }
+        catch (FabricSilverWriteCanceledException caught)
+        {
+            exception = caught;
+        }
+
+        exception.ShouldNotBeNull();
+        exception.ShouldBeAssignableTo<OperationCanceledException>();
+        exception.CancellationToken.ShouldBe(cancellation.Token);
+        var committed = exception.CompletedTables.ShouldHaveSingleItem();
+        committed.TablePath.ShouldBe(first);
+        committed.CommittedVersion.ShouldBe(2);
+        committed.UpdatedRows.ShouldBe(1);
+        DeltaLogReader.Read(first).Version.ShouldBe(2);
+        SyntheticPatients.FamilyOf(SyntheticPatients.RowOf(await DeltaParquetReader.ReadLiveRowsAsync(first), "a")).ShouldBe("Changed");
+        DeltaLogReader.Read(second).Version.ShouldBe(1);
+    }
+
+    /// <summary>
+    /// An engine failure after the commit (the binding's post-commit checkpoint or log cleanup) cannot be provoked on
+    /// demand, so the internal seam throws as the engine merge returns; one thrown just before the engine starts is the
+    /// counterpart that provably committed nothing. A replay is safe either way.
+    /// </summary>
+    [Theory]
+    [InlineData(false, 1, false)]
+    [InlineData(true, 2, true)]
+    public async Task GivenAnEngineFailureBeforeOrAfterTheCommit_WhenWritten_ThenMayHaveCommittedFollowsTheTableVersionAndAReplayIsSafe(
+        bool afterCommit,
+        long versionAfterFailure,
+        bool replayFindsTheRowWritten)
+    {
+        using var root = new TemporaryDirectory();
+        var table = root.Combine("Patient");
+        var contract = await SyntheticPatients.SeedAsync(table, SyntheticPatients.Patient("a", "2024-01-01T00:00:00Z"));
+        FabricSilverTableBatch[] batches = [WriterContracts.Batch(table, contract, SyntheticPatients.Patient("a", "2024-02-01T00:00:00Z", "Changed"))];
+        Action<string> fail = _ => throw new IOException("Injected engine failure.");
+        var options = afterCommit ? new FabricSilverWriterOptions { AfterEngineMerge = fail } : new FabricSilverWriterOptions { BeforeEngineMerge = fail };
+
+        var exception = await Should.ThrowAsync<FabricSilverWriteException>(
+            () => FabricSilverDeltaWriter.WriteBatchAsync(batches, WriterContracts.Ingestion(), options, CancellationToken.None));
+
+        exception.Phase.ShouldBe(FabricSilverWritePhase.Merge);
+        exception.MayHaveCommitted.ShouldBe(afterCommit);
+        exception.Attempts.ShouldBe(1);
+        exception.CompletedTables.ShouldBeEmpty();
+        exception.InnerException.ShouldBeOfType<IOException>();
+        exception.Message.ShouldContain("may or may not be committed");
+        DeltaLogReader.Read(table).Version.ShouldBe(versionAfterFailure);
+
+        var replay = await FabricSilverDeltaWriter.WriteBatchAsync(batches, WriterContracts.Ingestion(), CancellationToken.None);
+
+        replay.Tables[0].CommittedVersion.ShouldBe(replayFindsTheRowWritten ? null : 2);
+        replay.Tables[0].UnchangedRows.ShouldBe(replayFindsTheRowWritten ? 1 : 0);
+        DeltaLogReader.Read(table).Version.ShouldBe(2);
         SyntheticPatients.FamilyOf(SyntheticPatients.RowOf(await DeltaParquetReader.ReadLiveRowsAsync(table), "a")).ShouldBe("Changed");
     }
 

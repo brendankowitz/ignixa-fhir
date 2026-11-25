@@ -23,8 +23,8 @@ public sealed record FabricSilverWriterOptions
 
     /// <summary>
     /// The most rows a target table may hold before a merge: the Phase-2 limit pending the fix of the MERGE memory
-    /// growth (B3). Default 50,000, the largest table measured to merge within the memory budget (about 2,800 to
-    /// 3,600 MiB at one partition; 100,000 rows took about 5,400 MiB); must be positive. A larger table fails with
+    /// growth (B3). Default 50,000, the largest table measured to merge within the memory budget (peak private bytes
+    /// about 2,800 to 3,600 MiB at one partition; 100,000 rows took about 5,400 MiB); must be positive. A larger table fails with
     /// <see cref="FabricSilverLimit.TargetRows"/>.
     /// </summary>
     /// <remarks>
@@ -67,4 +67,10 @@ public sealed record FabricSilverWriterOptions
     /// default; tests substitute a private gate to race two writers in one process.
     /// </summary>
     internal SemaphoreSlim MergeGate { get; init; } = ProcessMergeGate;
+
+    /// <summary>Test seam: runs with the table path just before the engine merge starts, after the last cancellation check.</summary>
+    internal Action<string>? BeforeEngineMerge { get; init; }
+
+    /// <summary>Test seam: runs with the table path as soon as the engine merge returns; a throw stands for a failure after the commit.</summary>
+    internal Action<string>? AfterEngineMerge { get; init; }
 }

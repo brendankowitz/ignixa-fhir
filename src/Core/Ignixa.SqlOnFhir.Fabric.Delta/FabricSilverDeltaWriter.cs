@@ -62,8 +62,11 @@ public static class FabricSilverDeltaWriter
     /// merges run one at a time, because one merge's peak memory is the whole budget.
     /// </para>
     /// <para>
-    /// <b>Cancellation</b> propagates as <see cref="OperationCanceledException"/>, unwrapped, at any point: tables
-    /// merged before it are committed and a replay completes the rest.
+    /// <b>Cancellation</b> is observed before and between merges, never during one: a merge the engine has started
+    /// finishes and reports its true outcome. Before merging starts it propagates as a plain
+    /// <see cref="OperationCanceledException"/>; once merging has started it is a
+    /// <see cref="FabricSilverWriteCanceledException"/> (also an <see cref="OperationCanceledException"/>) listing the
+    /// tables already committed. Either way a replay completes the rest.
     /// </para>
     /// </remarks>
     /// <param name="batches">One batch per table; each table path at most once.</param>
@@ -75,8 +78,9 @@ public static class FabricSilverDeltaWriter
     /// <exception cref="ArgumentException">Two batches name the same table path (compared ignoring case).</exception>
     /// <exception cref="FabricSilverLimitExceededException">A batch or a table is over a ceiling, or a table's size cannot be proven; nothing was written.</exception>
     /// <exception cref="FabricSilverResourceRejectedException">A resource cannot be projected; nothing was written.</exception>
-    /// <exception cref="FabricSilverWriteException">The engine or the file system failed; <see cref="FabricSilverWriteException.Phase"/> states what was written.</exception>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
+    /// <exception cref="FabricSilverWriteException">The engine or the file system failed; <see cref="FabricSilverWriteException.Phase"/> and <see cref="FabricSilverWriteException.MayHaveCommitted"/> state what was written.</exception>
+    /// <exception cref="FabricSilverWriteCanceledException"><paramref name="cancellationToken"/> was canceled after merging started; it lists the committed tables.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before merging started.</exception>
     public static async Task<FabricSilverBatchResult> WriteBatchAsync(
         IReadOnlyList<FabricSilverTableBatch> batches,
         FabricSilverIngestion ingestion,
@@ -116,7 +120,14 @@ public static class FabricSilverDeltaWriter
         var completed = new List<FabricSilverTableResult>(batches.Count);
         for (var index = 0; index < batches.Count; index++)
         {
-            completed.Add(await MergeAsync(engine, batches[index], reductions[index], outcomes[index], options, completed, cancellationToken));
+            try
+            {
+                completed.Add(await MergeAsync(engine, batches[index], reductions[index], outcomes[index], options, completed, cancellationToken));
+            }
+            catch (OperationCanceledException exception)
+            {
+                throw new FabricSilverWriteCanceledException(completed.ToArray(), exception, cancellationToken);
+            }
         }
 
         return new FabricSilverBatchResult(completed.AsReadOnly());
@@ -243,8 +254,10 @@ public static class FabricSilverDeltaWriter
         {
             for (var attempt = 1; ; attempt++)
             {
-                ulong? before;
+                cancellationToken.ThrowIfCancellationRequested();
+                ulong? before = null;
                 ulong? after;
+                var engineMergeStarted = false;
                 try
                 {
                     using var table = await LoadAsync(engine, batch, cancellationToken);
@@ -252,18 +265,28 @@ public static class FabricSilverDeltaWriter
 
                     // Each attempt exports its own record batch, so a retry never reuses one the engine has consumed.
                     using var source = SilverArrowConverter.Convert(batch.Columns, batch.ArrowSchema, reduction.Rows);
-                    await table.MergeAsync(batch.MergeStatement, [source], batch.ArrowSchema, cancellationToken);
+                    options.BeforeEngineMerge?.Invoke(batch.TablePath);
+                    engineMergeStarted = true;
+
+                    // Never canceled once started: the binding reports a canceled token as a cancellation even when the
+                    // native merge committed, which would hide the commit from the caller.
+                    await table.MergeAsync(batch.MergeStatement, [source], batch.ArrowSchema, CancellationToken.None);
+                    options.AfterEngineMerge?.Invoke(batch.TablePath);
                     after = table.Version();
                 }
-                catch (Exception exception) when (exception is not OperationCanceledException)
+                catch (Exception exception) when (engineMergeStarted || exception is not OperationCanceledException)
                 {
-                    if (MergeConflict.IsRetryable(exception) && attempt < options.MaxMergeAttempts)
+                    var conflict = MergeConflict.IsRetryable(exception);
+                    if (conflict && attempt < options.MaxMergeAttempts)
                     {
                         await Task.Delay(Backoff(attempt), cancellationToken);
                         continue;
                     }
 
-                    throw new FabricSilverWriteException(batch.TablePath, FabricSilverWritePhase.Merge, attempt, completed.ToArray(), exception);
+                    // A lost commit race committed nothing; any other failure after the engine started may have
+                    // committed (the engine's post-commit steps run after the commit), so the table is read again.
+                    var mayHaveCommitted = engineMergeStarted && !conflict && await VersionAdvancedAsync(engine, batch, before);
+                    throw new FabricSilverWriteException(batch.TablePath, FabricSilverWritePhase.Merge, attempt, completed.ToArray(), exception, mayHaveCommitted);
                 }
 
                 // A merge that changes no row commits nothing, so the loaded version stays put.
@@ -276,7 +299,8 @@ public static class FabricSilverDeltaWriter
                 MergeCommitMetrics metrics;
                 try
                 {
-                    metrics = await MergeCommitMetrics.ReadAsync(batch.TablePath, version, cancellationToken);
+                    // The merge is committed, so its result is read whatever the caller's token says.
+                    metrics = await MergeCommitMetrics.ReadAsync(batch.TablePath, version, CancellationToken.None);
                 }
                 catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or JsonException)
                 {
@@ -294,6 +318,20 @@ public static class FabricSilverDeltaWriter
 
     private static Task<ITable> LoadAsync(DeltaEngine engine, FabricSilverTableBatch batch, CancellationToken cancellationToken) =>
         engine.LoadTableAsync(new TableOptions { TableLocation = batch.TablePath }, cancellationToken);
+
+    // Unknown counts as advanced: claiming a table may hold the rows is safe, claiming it is unchanged is not.
+    private static async Task<bool> VersionAdvancedAsync(DeltaEngine engine, FabricSilverTableBatch batch, ulong? before)
+    {
+        try
+        {
+            using var table = await LoadAsync(engine, batch, CancellationToken.None);
+            return before is null || table.Version() is not { } current || current > before;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return true;
+        }
+    }
 
     // Exponential with equal jitter: half the window is fixed, half random, so racing writers spread out.
     [SuppressMessage("Security", "CA5394:Do not use insecure randomness", Justification = "Retry jitter only spreads racing writers; it guards nothing.")]

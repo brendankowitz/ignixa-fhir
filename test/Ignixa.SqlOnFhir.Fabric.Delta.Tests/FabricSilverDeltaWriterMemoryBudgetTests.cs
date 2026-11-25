@@ -19,11 +19,17 @@ namespace Ignixa.SqlOnFhir.Fabric.Delta.Tests;
 /// <remarks>
 /// <para>
 /// Opt-in through <c>IGNIXA_FABRIC_DELTA_MEMORY_TEST=1</c>, and each case must run on its own filter, so the test host
-/// holds nothing but that case. The assertion is on the operating system's peak working set for the whole process
-/// (<see cref="Process.PeakWorkingSet64"/>): it has no sampling gap and counts native DataFusion memory, the managed heap
-/// and the seeding together, so it can only overstate what the merge costs. A child process would isolate the merge
-/// further, but would need a second executable for a figure that is already an upper bound. The sampled private bytes
-/// and working set of the merge window are reported beside it.
+/// holds nothing but that case. The budget is on peak private bytes, the metric the probe measured, read from the
+/// operating system's peak commit charge of the process (<see cref="Process.PeakPagedMemorySize64"/>, which is
+/// PeakPagefileUsage on Windows); peak working set (<see cref="Process.PeakWorkingSet64"/>) is asserted as a second
+/// figure. The two are not ordered: committed but untouched pages (DataFusion and Arrow pre-allocate capacity) and
+/// trimmed pages count only in private bytes, shared image pages only in working set. Both are operating-system high-water
+/// marks with no sampling gap, but they cover the process lifetime, seeding included, and a garbage collection does not
+/// reset them; that is a conservative pass condition because seeding can only raise them. Seeding runs with the
+/// writer's engine settings so it does not set the peak on a many-core host. Isolating the merge in a child process
+/// would need a second executable, since the test assembly has no runnable entry point, so it is not done; the merge
+/// window's sampled private bytes and working set are reported beside the lifetime figures instead. Peak private bytes
+/// is read only on Windows: elsewhere no equivalent is defined, so the cases skip rather than assert another metric.
 /// </para>
 /// <para>
 /// The table is seeded with plain appends (one file each) rather than through the writer, because seeding a hundred
@@ -97,6 +103,9 @@ public sealed class FabricSilverDeltaWriterMemoryBudgetTests(ITestOutputHelper o
     private async Task MeasureAsync(string resourceType, JsonObject schema, Func<int, string, ResourceJsonNode> resource, int files)
     {
         Skip.IfNot(Environment.GetEnvironmentVariable(OptInVariable) == "1", $"{OptInVariable} is not 1; the memory-budget measurement is opt-in.");
+        Skip.IfNot(
+            OperatingSystem.IsWindows(),
+            "The budget is on peak private bytes, read from the Windows peak commit charge (Process.PeakPagedMemorySize64); no equivalent is defined on this operating system.");
 
         var options = new FabricSilverWriterOptions();
         var targetRows = checked((int)options.MaxTargetRows);
@@ -131,18 +140,20 @@ public sealed class FabricSilverDeltaWriterMemoryBudgetTests(ITestOutputHelper o
         merge.Stop();
         var window = sampler.Stop();
         process.Refresh();
+        var peakPrivateBytes = process.PeakPagedMemorySize64;
         var peakWorkingSet = process.PeakWorkingSet64;
 
         output.WriteLine(string.Create(CultureInfo.InvariantCulture, $"""
             {resourceType}: {targetRows:N0} rows in {files} files, {seededBytes / 1_048_576.0:F1} MiB on disk, {(double)seededBytes / targetRows:F0} bytes per row; seeded in {setup.Elapsed.TotalSeconds:F1} s
             merge of {SourceRows:N0} rows (inserted {result.Tables[0].InsertedRows:N0}, updated {result.Tables[0].UpdatedRows:N0}, attempts {result.Tables[0].Attempts}): {merge.Elapsed.TotalSeconds:F1} s
-            working set before merge {Mib(beforeWorkingSet)}; merge window peak private bytes {Mib(window.PeakPrivateBytes)}, peak working set {Mib(window.PeakWorkingSetBytes)}
-            process peak working set {Mib(peakWorkingSet)} ({peakWorkingSet / 1_073_741_824.0:F2} GiB) against a budget of {Mib(BudgetBytes)} ({BudgetBytes / 1_073_741_824.0:F2} GiB); process peak commit {Mib(process.PeakPagedMemorySize64)}
+            working set before merge {Mib(beforeWorkingSet)}; merge window (sampled) peak private bytes {Mib(window.PeakPrivateBytes)}, peak working set {Mib(window.PeakWorkingSetBytes)}
+            process lifetime peak, including seeding: private bytes {Gib(peakPrivateBytes)}, working set {Gib(peakWorkingSet)}; budget {Gib(BudgetBytes)} for each
             """));
 
         result.Tables[0].InsertedRows.ShouldBe(SourceRows / 2);
         result.Tables[0].UpdatedRows.ShouldBe(SourceRows / 2);
-        peakWorkingSet.ShouldBeLessThanOrEqualTo(BudgetBytes);
+        peakPrivateBytes.ShouldBeLessThanOrEqualTo(BudgetBytes, "peak private bytes");
+        peakWorkingSet.ShouldBeLessThanOrEqualTo(BudgetBytes, "peak working set");
     }
 
     // One plain append per file at version 1..files, every row from the first ingestion.
@@ -157,7 +168,11 @@ public sealed class FabricSilverDeltaWriterMemoryBudgetTests(ITestOutputHelper o
         var shape = WriterContracts.Batch(tablePath, contract);
         var projection = FabricSilverProjection.Create(contract, WriterContracts.R4);
         var rowsPerFile = targetRows / files;
-        using var engine = new DeltaEngine(EngineOptions.Default);
+        using var engine = new DeltaEngine(new EngineOptions
+        {
+            DataFusionExecutionTargetPartitions = MergeEngineSettings.TargetPartitions,
+            DataFusionExecutionBatchSize = MergeEngineSettings.BatchSize,
+        });
 
         for (var file = 0; file < files; file++)
         {
@@ -178,4 +193,6 @@ public sealed class FabricSilverDeltaWriterMemoryBudgetTests(ITestOutputHelper o
         Directory.EnumerateFiles(tablePath, "*.parquet", SearchOption.TopDirectoryOnly).Sum(file => new FileInfo(file).Length);
 
     private static string Mib(long bytes) => string.Create(CultureInfo.InvariantCulture, $"{bytes / 1_048_576.0:F0} MiB");
+
+    private static string Gib(long bytes) => string.Create(CultureInfo.InvariantCulture, $"{Mib(bytes)} ({bytes / 1_073_741_824.0:F2} GiB)");
 }

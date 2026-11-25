@@ -22,7 +22,8 @@ public enum FabricSilverWritePhase
 
     /// <summary>
     /// Merging a table's rows. Tables listed in <see cref="FabricSilverWriteException.CompletedTables"/> are
-    /// committed; the failed table and those after it are unchanged.
+    /// committed and the tables after the failed one are unchanged. The failed table is unchanged unless
+    /// <see cref="FabricSilverWriteException.MayHaveCommitted"/> is set; either way a replay is safe.
     /// </summary>
     Merge,
 
