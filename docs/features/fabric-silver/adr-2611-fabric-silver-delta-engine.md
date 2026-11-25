@@ -147,23 +147,41 @@ raises the limit.
 - One engine per batch call, then disposed. A fresh table handle per attempt. Every binding query stream is fully
   drained.
 
-**Measured memory (Phase 2).** An opt-in test, gated by environment variable, ran on a single Windows host
-(28 logical cores, 63.7 GiB RAM). These are single-host Windows measurements.
+**Measured memory (Phase 2).** An opt-in test, gated by an environment variable, ran on a single Windows host
+(28 logical cores, 63.7 GiB RAM).
 
-- **Budget:** 4.5 GiB (4,831,838,208 bytes), asserted on the test process's peak working set, including seeding.
+- **Budget:** 4.5 GiB (4,831,838,208 bytes). The test asserts two metrics against it:
+  - **peak private bytes**, the Windows peak commit charge (`Process.PeakPagedMemorySize64`);
+  - **peak working set** (`Process.PeakWorkingSet64`), as a second assertion.
+- **Non-Windows:** the cases skip, because no equivalent private-bytes metric is defined there.
 - **Workload:** each case merges 5,000 rows (half updates, half inserts) into a 50,000-row table, with
   1 partition and batch size 1024.
 - **Rows:** realistic width, with populated `*_string` companions and nested structs.
 
-| Case | Bytes per row (Parquet) | Peak | Wall time |
-|---|---:|---:|---:|
-| Observation, ~10 files | 846 | 2.30 GiB | 33.0 s |
-| Observation, ~100 files | 1,309 | 2.39 GiB | 36.0 s |
-| Patient, ~10 files | 525 | 1.73 GiB | 24.6 s |
-| Patient, ~100 files | 787 | 1.78 GiB | 29.7 s |
+| Case | Bytes per row (Parquet) | Merge wall | Lifetime peak private bytes | Lifetime peak working set | Merge-window sample, private / working set | Test wall, incl. seeding |
+|---|---:|---:|---:|---:|---:|---:|
+| Observation, 10 files | 846 | 9.9 s | 2,354 MiB (2.30 GiB) | 2,382 MiB (2.33 GiB) | 2,320 / 2,348 MiB | 32 s |
+| Observation, 100 files | 1,309 | 10.4 s | 2,431 MiB (2.37 GiB) | 2,467 MiB (2.41 GiB) | 2,427 / 2,463 MiB | 35 s |
+| Patient, 10 files | 525 | 7.0 s | 1,733 MiB (1.69 GiB) | 1,777 MiB (1.74 GiB) | 1,698 / 1,743 MiB | 24 s |
+| Patient, 100 files | 787 | 7.7 s | 1,772 MiB (1.73 GiB) | 1,814 MiB (1.77 GiB) | 1,772 / 1,814 MiB | 28 s |
 
-All four cases pass. The defaults stay at 50,000 rows and 100 files. These figures are peak working set; the spike
-probe's bounded-settings figures are peak private bytes. Both are reported in MiB/GiB.
+How to read the table:
+
+- **Lifetime columns** are the process lifetime peak, including seeding.
+- **Seeding** uses the writer's engine settings, so it cannot set the peak. In every case the merge-window sample is
+  within 1.5% of the lifetime peak, so the merge sets it.
+- **Test wall** includes seeding; merge wall is the merge alone.
+- **Comparability:** these are single-host Windows measurements of a different workload and harness from the spike
+  probe in section 4. The two sets of figures are not the same measurement and are not directly comparable.
+
+All four cases pass both assertions; the worst case, Observation in 100 files, leaves about 47% headroom. The
+defaults stay at 50,000 rows and 100 files. Figures are in MiB/GiB (2^20 bytes).
+
+**Measured envelope versus what the ceilings permit:**
+
+- **Measured:** a 50,000-row target plus a 5,000-row source, up to 100 files.
+- **Permitted, not measured:** a source of up to 50,000 resources per table, and a result of up to about 100,000
+  rows (a target at the row ceiling plus a full source).
 
 **Compaction gates any sustained Phase 2 use.**
 
@@ -211,9 +229,10 @@ seam:
 |---|---|---|
 | Projector input | Proposed (feature readme decision 1; be97f72b) | The projector walks the raw `ResourceJsonNode` against the target schema, not the element tree. Silver leaves follow Spark `from_json` token semantics, which the element tree normalizes away. |
 | Existing-table validation | Proposed, implemented (1ccb6426) | The schemaString is compared structurally, not byte-for-byte, because DeltaLake.Net re-serializes it. The contract loader requires exact Delta member sets, so every loadable contract can be created and later validated. There is no `format` check on existing tables. |
-| Batch reduction | Policy, implemented | A row with a null `meta.lastUpdated` is dropped. The latest row per Silver `id` wins. A tie keeps the **last occurrence in batch order**, because HDS is nondeterministic for ties. Reduction is mandatory: a duplicate source key either fails the MERGE or inserts twice (Measured). |
+| Batch reduction | Policy, implemented | A row with a null `meta.lastUpdated` is dropped. The latest row per Silver `id` wins. A tie keeps the **last occurrence in batch order**, because HDS is nondeterministic for ties. Reduction is mandatory: a duplicate source key would either fail the MERGE or, when unmatched, insert twice (Inferred from delta-rs MERGE semantics; the writer pre-reduces, so it is not exercised). |
 | Merge rule | Proposed, implemented | Strict newer-wins: `target.meta_lastUpdated < source.meta_lastUpdated`. An equal or older row changes nothing and writes no version. `msftCreatedDatetime` is preserved on update. |
-| Batch atomicity | Proposed, implemented | Atomicity across tables is impossible, because Delta commits are per table. Order: project everything, validate everything, create the missing v0s, then merge table by table. A partial failure raises a typed error listing which tables committed and at which version. Replaying the batch repairs the rest. An empty v0 left behind is acceptable. |
+| Batch atomicity | Proposed, implemented | Atomicity across tables is impossible, because Delta commits are per table. Order: project everything, validate everything, create the missing v0s, then merge table by table. A partial failure raises a typed error listing which tables committed and at which version. Replaying the batch is safe and repairs the rest. An empty v0 left behind is acceptable. |
+| Merge failure and cancellation | Proposed, implemented (7711fddf) | A started engine merge is never canceled: it runs with `CancellationToken.None`, because the binding reports cancellation even when the native merge committed. The caller's token is honoured before each attempt and during backoff. Cancellation once merging has started throws `FabricSilverWriteCanceledException` (an `OperationCanceledException`) carrying `CompletedTables`. A failed merge does **not** imply the table is unchanged. On a non-conflict failure after the engine started, `FabricSilverWriteException.MayHaveCommitted` is set when the reloaded version advanced or cannot be read. A conflict that exhausts its retries reports false. The message states the table may or may not be committed and that replaying is safe. Measured through test seams; a real post-commit hook failure (checkpoint or log cleanup) is untested, and its handling is Inferred. |
 | Conflict handling | Proposed, implemented; known fragility | Conflicts arrive only as an untyped `DeltaRuntimeException` and are classified by its message. They are retried with bounded jittered backoff (default 5 attempts) on a fresh handle. A wording change in the binding turns retries into failures, which fails safe. |
 
 ## Other Risks
@@ -242,8 +261,9 @@ seam:
 
 ### Negative
 
-- **Scale.** Phase 2 is bounded to 50,000 target rows and 100 files per table, and sustained use is gated on
-  compaction.
+- **Scale.** Memory is measured only up to a 50,000-row target, a 5,000-row source and 100 files per table. The
+  default ceilings permit up to a 50,000-resource source and a result of about 100,000 rows, which are unmeasured.
+  Sustained use is gated on compaction.
 - **Owned workarounds.** Ignixa owns a slice of the Delta protocol (live-file replay) and a message-text conflict
   classifier until the binding improves.
 - **Visible deviation.** Ignixa-created tables differ from HDS in one configuration value (B1).
@@ -275,4 +295,5 @@ seam:
 - [Feature readme](readme.md)
 - delta-io/delta-rs#2802 ("Large Memory Spike on Merge") and delta-io/delta-rs#3786 ("Lower memory usage during
   merge when streamed_exec=False").
-- Commits: be97f72b (raw-JSON projector), 1ccb6426 (strict contract member sets), 3cb585bb (Phase 2 MERGE sink).
+- Commits: be97f72b (raw-JSON projector), 1ccb6426 (strict contract member sets), 3cb585bb (Phase 2 MERGE sink), 7711fddf (possibly-committed merge reporting and the
+  private-bytes budget assertion).

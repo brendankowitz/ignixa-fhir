@@ -1,6 +1,6 @@
 # Feature: Fabric Silver Writer
 
-**Status**: Proposed
+**Status**: Partial Implementation (Phases 1–2 implemented; ADR 2611 Proposed, pending /accept-adr)
 **Created**: 2026-11-24
 
 ## Problem Statement
@@ -26,7 +26,8 @@ beyond these two resource types.
 | 2 | Delta library | Proposed ([ADR 2611](adr-2611-fabric-silver-delta-engine.md)) | Hybrid: Ignixa writes version 0; DeltaLake.Net owns data writes, MERGE, CDF and later commits, isolated in the alpha `Ignixa.SqlOnFhir.Fabric.Delta` package |
 | 3 | Batch atomicity | Proposed ([ADR 2611](adr-2611-fabric-silver-delta-engine.md)) | Not atomic across tables; project and validate everything, create missing version 0s, then merge table by table; a typed error lists committed tables and replay repairs the rest |
 | 4 | V-Order | Proposed | Set the table property; do not claim file-layout parity |
-| 5 | Provenance and licensing | Proposed | HDS contracts are read at runtime from a caller-supplied local path; no HDS schema text, data or code is committed. Clearance to redistribute HDS-derived material is still open |
+| 5a | Provenance: no redistribution | Proposed | The contract is loaded at runtime from a licensed local package at a caller-supplied path; no HDS schema text, data or code is committed |
+| 5b | Redistribution clearance | Open | Whether HDS-derived material may be redistributed is not cleared |
 | 6 | CDF property value (B1) | Proposed ([ADR 2611](adr-2611-fabric-silver-delta-engine.md)) | Ignixa-created tables write lowercase `"true"` (deviation from HDS `"True"`); existing tables with any other value fail closed |
 | 7 | Engine licence and footprint (B2) | Proposed ([ADR 2611](adr-2611-fabric-silver-delta-engine.md)) | Treat DeltaLake.Net as Apache-2.0; accept 113–142 MiB of natives per RID, contained by a repository isolation guard |
 | 8 | MERGE scale (B3) | Proposed ([ADR 2611](adr-2611-fabric-silver-delta-engine.md)) | Fail-closed ceilings (50,000 target rows, 100 files, 50,000 source resources per table); sustained use is gated on a tested compaction policy |
