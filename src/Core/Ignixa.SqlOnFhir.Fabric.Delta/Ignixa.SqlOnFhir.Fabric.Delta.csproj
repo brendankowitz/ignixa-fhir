@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- LibraryImport source generation for the POSIX link() call in ExclusiveFilePublisher. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <!-- NuGet Package Configuration -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageStability>alpha</PackageStability>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Description>Delta Lake tables for Microsoft Fabric healthcare data solutions Silver contracts (alpha). Creates and validates local Silver Delta tables; carries the DeltaLake.Net native engine. Experimental; the public API may change without notice.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Ignixa.SqlOnFhir.Fabric.Delta.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="DeltaLake.Net" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ignixa.SqlOnFhir.Fabric\Ignixa.SqlOnFhir.Fabric.csproj" />
+  </ItemGroup>
+
+</Project>
