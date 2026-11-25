@@ -27,7 +27,6 @@ public class FabricSilverContractSchemaTests
     [InlineData("binary")]
     [InlineData("date")]
     [InlineData("timestamp")]
-    [InlineData("timestamp_ntz")]
     public async Task GivenSupportedPrimitiveType_WhenLoading_ThenSchemaIsAccepted(string type)
     {
         using var root = new SyntheticSilverRoot();
@@ -40,6 +39,7 @@ public class FabricSilverContractSchemaTests
     }
 
     [Theory]
+    [InlineData("timestamp_ntz")]
     [InlineData("varchar(10)")]
     [InlineData("decimal")]
     [InlineData("decimal(0,0)")]

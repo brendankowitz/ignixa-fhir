@@ -21,30 +21,20 @@ internal static partial class DeltaSchemaReader
     private static readonly FrozenSet<string> Primitives = new[]
     {
         "string", "long", "integer", "short", "byte", "float", "double", "boolean", "binary", "date", "timestamp",
-        "timestamp_ntz",
     }.ToFrozenSet(StringComparer.Ordinal);
+
+    // Delta marks these as needing more than protocol 1/4 (column mapping is reader 2 / writer 5, identity columns are
+    // writer 6), so a field carrying them cannot belong to a 1/4 table.
+    private static readonly string[] UnsupportedFieldMetadataPrefixes = ["delta.columnMapping.", "delta.identity."];
 
     private const int MaxDecimalPrecision = 38;
 
     /// <summary>Returns the root struct's fields in schema order, as elements independent of the parsed document.</summary>
     public static ReadOnlyCollection<JsonElement> ReadFields(string schemaString)
     {
-        using var document = Parse(schemaString);
+        using var document = StrictJson.Parse(schemaString, "the schemaString");
         var fields = ReadStruct(document.RootElement, "schema");
         return Array.AsReadOnly(fields.Select(field => field.Clone()).ToArray());
-    }
-
-    private static JsonDocument Parse(string schemaString)
-    {
-        try
-        {
-            return JsonDocument.Parse(schemaString);
-        }
-        catch (JsonException)
-        {
-            // The parser's message can quote input characters, so it is deliberately not chained.
-            throw ContractError.Because("the schemaString is not valid JSON within the supported nesting depth.");
-        }
     }
 
     private static List<JsonElement> ReadStruct(JsonElement node, string path)
@@ -98,14 +88,30 @@ internal static partial class DeltaSchemaReader
             throw ContractError.Because($"{path} has no boolean nullable flag.");
         }
 
-        if (field.TryGetProperty("metadata", out var metadata) && metadata.ValueKind != JsonValueKind.Object)
+        if (field.TryGetProperty("metadata", out var metadata))
         {
-            throw ContractError.Because($"{path}.metadata is not an object.");
+            RequireSupportedMetadata(metadata, $"{path}.metadata");
         }
 
         // An absent type leaves an Undefined element, which ValidateType rejects.
         field.TryGetProperty("type", out var type);
         ValidateType(type, $"{path}.type");
+    }
+
+    private static void RequireSupportedMetadata(JsonElement metadata, string path)
+    {
+        if (metadata.ValueKind != JsonValueKind.Object)
+        {
+            throw ContractError.Because($"{path} is not an object.");
+        }
+
+        foreach (var property in metadata.EnumerateObject())
+        {
+            if (UnsupportedFieldMetadataPrefixes.Any(prefix => property.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+            {
+                throw ContractError.Because($"{path} carries a property that needs more than protocol 1/4.");
+            }
+        }
     }
 
     private static void ValidateType(JsonElement type, string path)
@@ -141,7 +147,7 @@ internal static partial class DeltaSchemaReader
             }
         }
 
-        throw ContractError.Because($"{path} is not a supported primitive type.");
+        throw ContractError.Because($"{path} is not a primitive type supported under protocol 1/4.");
     }
 
     private static void ValidateComplex(JsonElement type, string path)

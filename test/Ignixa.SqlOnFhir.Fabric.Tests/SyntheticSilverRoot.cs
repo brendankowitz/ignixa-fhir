@@ -3,6 +3,7 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -18,6 +19,9 @@ internal sealed class SyntheticSilverRoot : IDisposable
 
     private static readonly string[] PackageSilverSegments =
         ["HDS.SourceCode", "hds-build-artifacts", "healthcare-tables", "1.4.0", "Silver"];
+
+    /// <summary>Serializes non-ASCII text as itself, so files hold real multi-byte UTF-8 rather than escapes.</summary>
+    public static readonly JsonSerializerOptions RawText = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     public SyntheticSilverRoot()
     {
@@ -56,7 +60,7 @@ internal sealed class SyntheticSilverRoot : IDisposable
             ["partitionColumns"] = partitionColumns ?? new JsonArray(),
             ["configuration"] = configuration ?? ValidConfiguration(),
         };
-        return new JsonObject { ["metaData"] = metaData }.ToJsonString();
+        return new JsonObject { ["metaData"] = metaData }.ToJsonString(RawText);
     }
 
     public static JsonObject ValidConfiguration() => new()
@@ -96,6 +100,23 @@ internal sealed class SyntheticSilverRoot : IDisposable
 
     public string WritePackageLog(string resourceType, params string[] lines) =>
         WriteLog(System.IO.Path.Combine([Path, .. PackageSilverSegments, resourceType]), lines);
+
+    /// <summary>Writes the version 0 log as raw bytes, for encodings and malformed input that text APIs would repair.</summary>
+    public string WriteSilverLogBytes(string resourceType, byte[] content)
+    {
+        var logPath = System.IO.Path.Combine(Path, resourceType, "_delta_log", LogFileName);
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(logPath)!);
+        File.WriteAllBytes(logPath, content);
+        return logPath;
+    }
+
+    /// <summary>Writes another file (a later commit, a checkpoint) into the table's <c>_delta_log</c>.</summary>
+    public void WriteSilverLogFile(string resourceType, string fileName, params string[] lines)
+    {
+        var logDirectory = System.IO.Path.Combine(Path, resourceType, "_delta_log");
+        Directory.CreateDirectory(logDirectory);
+        File.WriteAllLines(System.IO.Path.Combine(logDirectory, fileName), lines);
+    }
 
     public void Dispose()
     {
