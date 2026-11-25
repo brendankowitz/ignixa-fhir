@@ -61,6 +61,8 @@ public class FabricSilverProjectionReferenceTests
     [InlineData("Organization/o1/_history/3")]
     [InlineData("relative/path/Organization/o1")]
     [InlineData("Patient?identifier=s|v/Organization/o1")]
+    [InlineData("http://a b/Organization/o1")]
+    [InlineData("http://xOrganization/o1")]
     public async Task GivenALiteralReferenceInTheSourceNamespace_WhenProjected_ThenItGetsTheSilverIdAndASourceIdIdentifier(string reference)
     {
         var cell = await ManagingOrganization($$"""{"reference":"{{reference}}","display":"Acme"}""");
@@ -85,16 +87,43 @@ public class FabricSilverProjectionReferenceTests
     }
 
     [Theory]
-    [InlineData("https://other.example.org/fhir/Organization/o1")]
-    [InlineData("http://other-host/Organization/o1")]
-    public async Task GivenALiteralReferenceWithAForeignBase_WhenProjected_ThenOnlyTheTypeIsResolved(string reference)
+    [InlineData("https://other.example.org/fhir/Organization/o1", "Organization")]
+    [InlineData("http://other-host/Organization/o1", "Organization")]
+    [InlineData("https://https://example.org/fhir/Organization/o1", "Organization")]
+    [InlineData("http://example.org/fhir/Organization/o1/Patient/p2", "Patient")]
+    public async Task GivenALiteralReferenceWithAForeignBase_WhenProjected_ThenOnlyTheTypeIsResolved(string reference, string type)
     {
         var cell = await ManagingOrganization($$"""{"reference":"{{reference}}"}""");
 
         cell.ShouldBeJson(ExpectedReference(
             ExpectedIdentifier(type: NullConcept),
             source: reference,
-            type: "Organization"));
+            type: type));
+    }
+
+    [Theory]
+    [InlineData("a", "/1", null)]
+    [InlineData("a/", "", null)]
+    [InlineData("https://", "Organization/o1", "Organization")]
+    [InlineData("http://a", "", null)]
+    [InlineData("http://a/", "Organization/o1", "Organization")]
+    [InlineData("Patient", "?identifier=s|v", "Patient")]
+    [InlineData("https://h/Patient", "", null)]
+    public async Task GivenAMegabyteReference_WhenProjected_ThenMatchingStaysLinear(string unit, string tail, string? type)
+    {
+        // Rescanning from every start position made these minutes long at 1 MB. The bound is ~10x the linear time
+        // measured on a developer machine and far below the quadratic time, so it is not timing-sensitive.
+        var reference = string.Concat(Enumerable.Repeat(unit, (1 << 20) / unit.Length)) + tail;
+        var projection = await References();
+        var json = $$$"""{"resourceType":"Patient","id":"p1","managingOrganization":{"reference":"{{{reference}}}"}}""";
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var cell = projection.Project(json)["managingOrganization"];
+        stopwatch.Stop();
+
+        cell.GetProperty("msftSourceReference").GetString().ShouldBe(reference);
+        cell.GetProperty("type").GetString().ShouldBe(type);
+        stopwatch.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(10));
     }
 
     [Fact]
@@ -196,6 +225,7 @@ public class FabricSilverProjectionReferenceTests
     [InlineData("Organization?identifier=a|b|c", "a|b", "c")]
     [InlineData("Organization?identifier=urn:sys|abc\nignored", "urn:sys", "abc")]
     [InlineData("Organization?identifier=urn:sys|", "urn:sys", "")]
+    [InlineData("http://a Organization?identifier=urn:sys|abc", "urn:sys", "abc")]
     public async Task GivenALogicalReferenceWithASystem_WhenProjected_ThenTheQueryFillsTheIdentifier(string reference, string system, string value)
     {
         var cell = await ManagingOrganization($$"""{"reference":{{Text(reference)}}}""");
@@ -244,6 +274,7 @@ public class FabricSilverProjectionReferenceTests
     [InlineData("DomainResource/x1")]
     [InlineData("Organization/")]
     [InlineData("Organization?name=x")]
+    [InlineData("http://example.org/fhir/")]
     public async Task GivenAnUnmatchedReference_WhenProjected_ThenOnlyTheSourceTextIsKept(string reference)
     {
         var cell = await ManagingOrganization($$"""{"id":"element-1","reference":"{{reference}}"}""");

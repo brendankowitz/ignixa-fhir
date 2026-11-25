@@ -61,6 +61,28 @@ public class FabricSilverProjectionIdentifierTests
     }
 
     [Fact]
+    public async Task GivenManyDistinctIdentifiers_WhenDeduplicated_ThenTheWorkStaysLinear()
+    {
+        // 131,072 identifiers with 65,536 distinct values. A pairwise comparison needed minutes at this size; the
+        // bound is ~10x the linear time measured on a developer machine and far below the quadratic time.
+        const int Count = 131_072;
+        const int Distinct = Count / 2;
+        var projection = await Identifiers();
+        var items = string.Join(',', Enumerable.Range(0, Count).Select(index => $$"""{"system":"s","value":"{{index % Distinct}}"}"""));
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var row = projection.Project($$"""{"resourceType":"Patient","id":"p1","identifier":[{{items}}]}""");
+        stopwatch.Stop();
+
+        var identifiers = row["identifier"];
+        identifiers.GetArrayLength().ShouldBe(Distinct + 1);
+        identifiers[0].GetProperty("value").GetString().ShouldBe("0");
+        identifiers[Distinct - 1].GetProperty("value").GetString().ShouldBe((Distinct - 1).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        identifiers[Distinct].GetProperty("value").GetString().ShouldBe("p1");
+        stopwatch.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(30));
+    }
+
+    [Fact]
     public async Task GivenIdentifiersDifferingOnlyInAnIgnoredProperty_WhenDeduplicated_ThenTheyAreEqual()
     {
         var row = (await Identifiers()).Project("""

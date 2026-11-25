@@ -22,7 +22,7 @@ beyond these two resource types.
 
 | # | Decision | Status | Current direction |
 |---|----------|--------|-------------------|
-| 1 | Native column derivation | Proposed | Option B: bypass ViewDefinitions and project columns from the element tree using `ISchema` and the target Delta schema |
+| 1 | Native column derivation | Proposed (awaiting user ratification) | Option B: bypass ViewDefinitions and do a target-schema-driven walk of the parsed `ResourceJsonNode`, with the R4 `ISchema` deciding reference type validity. This departs from the approved element-tree plan because Silver leaves follow Spark `from_json` token semantics (source number text, compact JSON text for `extension`/`contained`/string slots, wire names), which the element tree normalizes away. Contained and reversible: the walker is internal and the public input is `ResourceJsonNode` |
 | 2 | Delta library | Exploring | Spike DeltaLake.Net; fallback is a minimal managed log writer over Parquet.Net |
 | 3 | Batch atomicity | Proposed | Not atomic across tables; validate and stage all files first, replay repairs partial batches |
 | 4 | V-Order | Proposed | Set the table property; do not claim file-layout parity |

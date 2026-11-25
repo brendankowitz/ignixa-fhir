@@ -33,6 +33,10 @@ internal sealed class SilverReferencePattern
     private const string LogicalQuery = "?identifier=";
     private const int MaxIdLength = 64;
 
+    // Longer than any R4 resource type name, so capping the type scan here changes no result; it bounds the work done
+    // at each start position, which keeps matching linear in the reference length.
+    private const int MaxTypeLength = 64;
+
     private readonly ISchema _schema;
 
     public SilverReferencePattern(ISchema schema)
@@ -58,67 +62,123 @@ internal sealed class SilverReferencePattern
         return string.CompareOrdinal(text, start, "http://", 0, "http://".Length) == 0 ? "http://".Length : 0;
     }
 
-    /// <summary>Returns the positions just after each consecutive base segment's closing <c>/</c>.</summary>
-    private static List<int> SegmentEnds(string text, int start, int maxSegments)
+    /// <summary>The end of the 1 to <see cref="MaxTypeLength"/> ASCII letters at <paramref name="start"/>, or -1.</summary>
+    private static int TypeEnd(string text, int start)
     {
-        var ends = new List<int>();
-        var position = start;
-        while (ends.Count < maxSegments)
+        var end = start;
+        while (end < text.Length && end - start <= MaxTypeLength && char.IsAsciiLetter(text[end]))
         {
-            while (position < text.Length && IsBaseCharacter(text[position]))
-            {
-                position++;
-            }
-
-            if (position == text.Length || text[position] != '/')
-            {
-                break;
-            }
-
-            position++;
-            ends.Add(position);
+            end++;
         }
 
-        return ends;
+        return end == start || end - start > MaxTypeLength ? -1 : end;
+    }
+
+    /// <summary>The position just after the single base segment starting at <paramref name="start"/>, or -1.</summary>
+    private static int SegmentEnd(string text, int start)
+    {
+        var position = start;
+        while (position < text.Length && IsBaseCharacter(text[position]))
+        {
+            position++;
+        }
+
+        return position < text.Length && text[position] == '/' ? position + 1 : -1;
     }
 
     private SilverReferenceMatch? MatchLiteral(string text)
     {
+        int[]? furthestTypeAfterBase = null;
         for (var start = 0; start < text.Length; start++)
         {
             var scheme = SchemeLength(text, start);
             if (scheme > 0)
             {
-                var ends = SegmentEnds(text, start + scheme, int.MaxValue);
-                for (var index = ends.Count - 1; index >= 0; index--)
+                furthestTypeAfterBase ??= FurthestTypeAfterBase(text);
+                var typeStart = furthestTypeAfterBase[start + scheme];
+                if (typeStart >= 0)
                 {
-                    if (TryTypeAndId(text, ends[index], out var baseType, out var baseId))
-                    {
-                        return new SilverReferenceMatch(text[start..ends[index]], baseType, baseId, null, null);
-                    }
+                    TryTypeAndId(text, typeStart, out var baseSlash, out var baseIdEnd);
+                    return new SilverReferenceMatch(
+                        text[start..typeStart],
+                        text[typeStart..baseSlash],
+                        text[(baseSlash + 1)..baseIdEnd],
+                        null,
+                        null);
                 }
             }
 
-            if (TryTypeAndId(text, start, out var type, out var id))
+            if (TryTypeAndId(text, start, out var slash, out var idEnd))
             {
-                return new SilverReferenceMatch(null, type, id, null, null);
+                return new SilverReferenceMatch(null, text[start..slash], text[(slash + 1)..idEnd], null, null);
             }
         }
 
         return null;
     }
 
+    /// <summary>
+    /// For each position, the furthest position reached through one or more base segments (each a run of base
+    /// characters closed by <c>/</c>) at which a literal type and id begin, or -1. That is the longest base a scheme
+    /// ending at the position can take.
+    /// </summary>
+    /// <remarks>
+    /// A segment always ends at the first <c>/</c> after its base characters, so the segments from any position form
+    /// one fixed chain and chains from later positions are suffixes of it. One right-to-left pass therefore answers
+    /// every scheme in the text, instead of rescanning the chain at each repeated scheme.
+    /// </remarks>
+    private int[] FurthestTypeAfterBase(string text)
+    {
+        var furthest = new int[text.Length + 1];
+        furthest[text.Length] = -1;
+        var runEnd = text.Length;
+        for (var position = text.Length - 1; position >= 0; position--)
+        {
+            if (!IsBaseCharacter(text[position]))
+            {
+                runEnd = position;
+            }
+
+            if (runEnd == text.Length || text[runEnd] != '/')
+            {
+                furthest[position] = -1;
+                continue;
+            }
+
+            if (position < runEnd)
+            {
+                // Same run, same closing slash, same answer.
+                furthest[position] = furthest[position + 1];
+                continue;
+            }
+
+            var segmentEnd = position + 1;
+            if (furthest[segmentEnd] >= 0)
+            {
+                furthest[position] = furthest[segmentEnd];
+            }
+            else
+            {
+                furthest[position] = TryTypeAndId(text, segmentEnd, out _, out _) ? segmentEnd : -1;
+            }
+        }
+
+        return furthest;
+    }
+
     private SilverReferenceMatch? MatchLogical(string text)
     {
         for (var start = 0; start < text.Length; start++)
         {
+            // Segments scanned from different schemes never overlap, because a scheme's "//" closes any run before
+            // it, so these scans stay linear in total.
             var scheme = SchemeLength(text, start);
             if (scheme > 0)
             {
-                var ends = SegmentEnds(text, start + scheme, 1);
-                if (ends.Count == 1 && TryTypeAndQuery(text, ends[0], out var baseMatch))
+                var segmentEnd = SegmentEnd(text, start + scheme);
+                if (segmentEnd >= 0 && TryTypeAndQuery(text, segmentEnd, out var baseMatch))
                 {
-                    return baseMatch with { Base = text[start..ends[0]] };
+                    return baseMatch with { Base = text[start..segmentEnd] };
                 }
             }
 
@@ -131,12 +191,12 @@ internal sealed class SilverReferencePattern
         return null;
     }
 
-    private bool TryTypeAndId(string text, int start, out string type, out string id)
+    /// <summary>Whether a type, <c>/</c> and an id of 1 to <see cref="MaxIdLength"/> characters begin at <paramref name="start"/>.</summary>
+    private bool TryTypeAndId(string text, int start, out int slash, out int idEnd)
     {
-        type = string.Empty;
-        id = string.Empty;
-        var slash = text.IndexOf('/', start);
-        if (slash < 0 || !IsResourceType(text[start..slash]))
+        slash = TypeEnd(text, start);
+        idEnd = -1;
+        if (slash < 0 || slash == text.Length || text[slash] != '/')
         {
             return false;
         }
@@ -147,20 +207,19 @@ internal sealed class SilverReferencePattern
             end++;
         }
 
-        if (end == slash + 1)
+        if (end == slash + 1 || !IsResourceType(text[start..slash]))
         {
             return false;
         }
 
-        type = text[start..slash];
-        id = text[(slash + 1)..end];
+        idEnd = end;
         return true;
     }
 
     private bool TryTypeAndQuery(string text, int start, out SilverReferenceMatch match)
     {
         match = null!;
-        var query = text.IndexOf('?', start);
+        var query = TypeEnd(text, start);
         if (query < 0 ||
             string.CompareOrdinal(text, query, LogicalQuery, 0, LogicalQuery.Length) != 0 ||
             !IsResourceType(text[start..query]))
@@ -178,14 +237,9 @@ internal sealed class SilverReferencePattern
         return true;
     }
 
-    /// <summary>Whether the R4 schema defines <paramref name="candidate"/> as a concrete resource type (exact case).</summary>
+    /// <summary>Whether the R4 schema defines <paramref name="candidate"/> (ASCII letters only) as a concrete resource type.</summary>
     private bool IsResourceType(string candidate)
     {
-        if (candidate.Length == 0 || !candidate.All(char.IsAsciiLetter))
-        {
-            return false;
-        }
-
         var definition = _schema.GetTypeDefinition(candidate);
         return definition is not null &&
                definition.Info.Name == candidate &&

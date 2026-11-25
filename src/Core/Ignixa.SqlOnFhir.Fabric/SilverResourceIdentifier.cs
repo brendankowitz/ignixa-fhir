@@ -71,7 +71,7 @@ internal static class SilverResourceIdentifier
     {
         // Duplicates are judged on the source assigner, before reference normalization; no-op without an assigner.
         var keyType = elementType.WithFieldType("assigner", ShallowReference);
-        var keys = new List<JsonNode?>();
+        var keys = new HashSet<string>(StringComparer.Ordinal);
         var kept = new List<JsonObject>();
         for (var index = 0; index < identifiers.Count; index++)
         {
@@ -81,10 +81,10 @@ internal static class SilverResourceIdentifier
                 assigner["identifier"] = new JsonObject();
             }
 
-            var key = reader.Read(keySource, keyType, $"identifier[{index}]", SilverValueReader.ReadMode.Source);
-            if (!keys.Exists(existing => JsonNode.DeepEquals(existing, key)))
+            // The reader writes every field in schema order with canonical leaf text, so equal keys serialize equally.
+            var key = reader.Read(keySource, keyType, $"identifier[{index}]", SilverValueReader.ReadMode.Source)!;
+            if (keys.Add(key.ToJsonString()))
             {
-                keys.Add(key);
                 kept.Add(identifiers[index]);
             }
         }
