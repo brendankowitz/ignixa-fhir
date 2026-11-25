@@ -1,7 +1,7 @@
 # Investigation: Delta engine for the native Fabric Silver writer
 
 **Feature**: fabric-silver
-**Status**: Complete for local evidence, revised after review rounds 1 and 2. Fabric runtime, OneLake and Linux are unverified.
+**Status**: Complete for local evidence; synthesized into the proposed [ADR 2611](../adr-2611-fabric-silver-delta-engine.md). Fabric runtime, OneLake and Linux are unverified.
 **Created**: 2026-11-24
 
 ## Summary and recommendation

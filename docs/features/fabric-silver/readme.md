@@ -1,6 +1,6 @@
 # Feature: Fabric Silver Writer
 
-**Status**: Exploring
+**Status**: Proposed
 **Created**: 2026-11-24
 
 ## Problem Statement
@@ -23,24 +23,28 @@ beyond these two resource types.
 | # | Decision | Status | Current direction |
 |---|----------|--------|-------------------|
 | 1 | Native column derivation | Proposed (awaiting user ratification) | Option B: bypass ViewDefinitions and do a target-schema-driven walk of the parsed `ResourceJsonNode`, with the R4 `ISchema` deciding reference type validity. This departs from the approved element-tree plan because Silver leaves follow Spark `from_json` token semantics (source number text, compact JSON text for `extension`/`contained`/string slots, wire names), which the element tree normalizes away. Contained and reversible: the walker is internal and the public input is `ResourceJsonNode` |
-| 2 | Delta library | Exploring | Spike DeltaLake.Net; fallback is a minimal managed log writer over Parquet.Net |
-| 3 | Batch atomicity | Proposed | Not atomic across tables; validate and stage all files first, replay repairs partial batches |
+| 2 | Delta library | Proposed ([ADR 2611](adr-2611-fabric-silver-delta-engine.md)) | Hybrid: Ignixa writes version 0; DeltaLake.Net owns data writes, MERGE, CDF and later commits, isolated in the alpha `Ignixa.SqlOnFhir.Fabric.Delta` package |
+| 3 | Batch atomicity | Proposed ([ADR 2611](adr-2611-fabric-silver-delta-engine.md)) | Not atomic across tables; project and validate everything, create missing version 0s, then merge table by table; a typed error lists committed tables and replay repairs the rest |
 | 4 | V-Order | Proposed | Set the table property; do not claim file-layout parity |
-| 5 | Provenance and licensing | Open | HDS-derived material is not redistributable until cleared |
+| 5 | Provenance and licensing | Proposed | HDS contracts are read at runtime from a caller-supplied local path; no HDS schema text, data or code is committed. Clearance to redistribute HDS-derived material is still open |
+| 6 | CDF property value (B1) | Proposed ([ADR 2611](adr-2611-fabric-silver-delta-engine.md)) | Ignixa-created tables write lowercase `"true"` (deviation from HDS `"True"`); existing tables with any other value fail closed |
+| 7 | Engine licence and footprint (B2) | Proposed ([ADR 2611](adr-2611-fabric-silver-delta-engine.md)) | Treat DeltaLake.Net as Apache-2.0; accept 113–142 MiB of natives per RID, contained by a repository isolation guard |
+| 8 | MERGE scale (B3) | Proposed ([ADR 2611](adr-2611-fabric-silver-delta-engine.md)) | Fail-closed ceilings (50,000 target rows, 100 files, 50,000 source resources per table); sustained use is gated on a tested compaction policy |
 
 ## Investigations
 
 | Investigation | Status | Summary |
 |--------------|--------|---------|
 | [hds-silver-normalization](investigations/hds-silver-normalization.md) | Complete | Row semantics of HDS Silver for Patient/Observation, derived from source, with a cross-check of the depot session's claims |
-| [delta-writer-options](investigations/delta-writer-options.md) | In Progress | Delta writer library options (written separately) |
+| [delta-writer-options](investigations/delta-writer-options.md) | Complete | Delta engine options, the B1–B4 blockers and their local evidence; synthesized into ADR 2611 |
 
 ## Known Gaps
 
 - No HDS-captured oracle; residual questions that only a real HDS run can settle are listed in section J
   of the normalization investigation.
-- Licensing of HDS-derived artifacts is unresolved.
+- Licensing of HDS-derived artifacts is unresolved; the writer avoids redistribution by loading contracts at runtime.
+- The Fabric runtime has not been exercised (B4: Spark datetime rebase default), and Linux/macOS natives have not been run.
 
 ## Decision
 
-*No ADR yet - investigations in progress*
+[ADR 2611: Delta Engine for the Native Fabric Silver Writer](adr-2611-fabric-silver-delta-engine.md) (Proposed).
