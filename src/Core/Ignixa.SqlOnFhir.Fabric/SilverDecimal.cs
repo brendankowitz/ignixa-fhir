@@ -14,12 +14,15 @@ namespace Ignixa.SqlOnFhir.Fabric;
 /// that no digit passes through <see cref="decimal"/> or <see cref="double"/>.
 /// </summary>
 /// <remarks>
-/// A source value with non-zero digits beyond the column scale is rejected instead of rounded, and a value needing
-/// more than the column precision is rejected instead of becoming null; both are deterministic policy.
+/// A source value with non-zero digits beyond the column scale is rejected instead of rounded, a value needing more
+/// than the column precision is rejected instead of becoming null, and a non-zero value whose effective exponent
+/// (after the fraction digits are folded in) exceeds ±100 is rejected even when trailing zeros of the digits would
+/// cancel it; all three are deterministic policy.
 /// </remarks>
 internal readonly struct SilverDecimal
 {
-    // Any exponent beyond this moves a non-zero digit outside every decimal(38, s) column.
+    // Exponents beyond ±this are rejected (policy), even when trailing zeros would cancel them; the bound is far
+    // outside every decimal(38, s) column, so only such zero-padded spellings are affected.
     private const int MaxMeaningfulExponent = 100;
 
     private readonly BigInteger _unscaled;
@@ -52,7 +55,7 @@ internal readonly struct SilverDecimal
         }
 
         // digits × 10^exponent, rescaled to `scale` fraction digits.
-        var shift = exponent + scale;
+        var shift = (int)exponent + scale;
         if (shift < 0)
         {
             // digits starts with a non-zero digit, so dropping all of them always drops a non-zero digit.
@@ -124,7 +127,7 @@ internal readonly struct SilverDecimal
         return sign + mantissa + "E" + adjusted.ToString(CultureInfo.InvariantCulture);
     }
 
-    private static void Split(string text, out bool negative, out string digits, out int exponent)
+    private static void Split(string text, out bool negative, out string digits, out long exponent)
     {
         negative = text.StartsWith('-');
         var body = negative ? text[1..] : text;
@@ -139,11 +142,12 @@ internal readonly struct SilverDecimal
         exponent -= trimmedFraction.Length;
     }
 
-    private static int ReadExponent(string text)
+    private static long ReadExponent(string text)
     {
-        // A huge exponent is clamped; only a zero coefficient can still be represented, and TryParse checks that first.
+        // Saturation happens before the fraction length is subtracted, so the bound must exceed any text length
+        // (< 2^31) by far more than MaxMeaningfulExponent: a saturated exponent then stays out of range either way.
         var magnitude = text.TrimStart('+', '-').TrimStart('0');
-        var value = magnitude.Length > 6 ? 1_000_000 : int.Parse("0" + magnitude, NumberStyles.None, CultureInfo.InvariantCulture);
+        var value = magnitude.Length > 12 ? 1_000_000_000_000L : long.Parse("0" + magnitude, NumberStyles.None, CultureInfo.InvariantCulture);
         return text.StartsWith('-') ? -value : value;
     }
 }

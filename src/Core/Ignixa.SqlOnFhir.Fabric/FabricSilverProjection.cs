@@ -42,18 +42,27 @@ public sealed class FabricSilverProjection
     private readonly ColumnPlan[] _plans;
     private readonly ReadOnlyCollection<string> _columnNames;
     private readonly IReadOnlyDictionary<string, int> _indexes;
+    private readonly int[] _derivedOrder;
     private readonly SilverReferencePattern _pattern;
 
     private FabricSilverProjection(
-        string resourceType,
+        FabricSilverContract contract,
         ReadOnlyCollection<SilverField> columns,
         ColumnPlan[] plans,
         SilverReferencePattern pattern)
     {
-        ResourceType = resourceType;
+        Contract = contract;
+        ResourceType = contract.ResourceType;
         _columns = columns;
         _plans = plans;
         _pattern = pattern;
+
+        // A derived column's base name is a strict prefix of its own, so shorter names first puts every base
+        // (which may itself be derived) before its dependants, whatever the contract order.
+        _derivedOrder = Enumerable.Range(0, plans.Length)
+            .Where(index => plans[index].Role is ColumnRole.Companion or ColumnRole.Flattened)
+            .OrderBy(index => columns[index].Name.Length)
+            .ToArray();
         _columnNames = Array.AsReadOnly(columns.Select(column => column.Name).ToArray());
         _indexes = columns.Select((column, index) => (column.Name, index)).ToDictionary(StringComparer.Ordinal);
     }
@@ -70,12 +79,17 @@ public sealed class FabricSilverProjection
         Field,
     }
 
+    /// <summary>The contract the projection was created from.</summary>
+    public FabricSilverContract Contract { get; }
+
+    /// <summary>The FHIR resource type of the Silver table, as named by the contract.</summary>
     public string ResourceType { get; }
 
     /// <summary>The contract's column names in contract order.</summary>
     public IReadOnlyList<string> ColumnNames => _columnNames;
 
     /// <summary>Compiles the projection for a contract against the FHIR R4 schema.</summary>
+    /// <exception cref="ArgumentNullException"><paramref name="contract"/> or <paramref name="schema"/> is null.</exception>
     /// <exception cref="ArgumentException">The schema is not FHIR R4.</exception>
     /// <exception cref="InvalidDataException">The contract has a column the projection cannot fill.</exception>
     public static FabricSilverProjection Create(FabricSilverContract contract, ISchema schema)
@@ -103,12 +117,15 @@ public sealed class FabricSilverProjection
             }
         }
 
-        return new FabricSilverProjection(contract.ResourceType, columns, plans, pattern);
+        return new FabricSilverProjection(contract, columns, plans, pattern);
     }
 
     /// <summary>Projects one resource.</summary>
+    /// <exception cref="ArgumentNullException"><paramref name="resource"/> or <paramref name="ingestion"/> is null.</exception>
     /// <exception cref="FabricSilverProjectionException">
-    /// The resource is of another type, has no id, or holds a value the table's schema cannot store.
+    /// The resource is of another type, has no id, has a <c>meta.lastUpdated</c> that is not a FHIR date, dateTime or
+    /// instant with at most microsecond precision (checked even when the contract has no <c>meta</c> column), or holds
+    /// a value the table's schema cannot store.
     /// </exception>
     public FabricSilverRow Project(ResourceJsonNode resource, FabricSilverIngestion ingestion)
     {
@@ -155,17 +172,17 @@ public sealed class FabricSilverProjection
             };
         }
 
-        // Derived columns read the final values above, so they are filled in a second pass.
-        for (var index = 0; index < cells.Length; index++)
+        // Derived columns read the final values above, so they are filled in a second pass, bases first.
+        foreach (var index in _derivedOrder)
         {
             var plan = _plans[index];
-            cells[index] = plan.Role switch
-            {
-                ColumnRole.Companion => SilverJsonText.Companion(cells[plan.BaseIndex], _columns[plan.BaseIndex].Type),
-                ColumnRole.Flattened => cells[plan.BaseIndex]?[plan.ChildName!]?.DeepClone(),
-                _ => cells[index],
-            };
+            cells[index] = plan.Role == ColumnRole.Companion
+                ? SilverJsonText.Companion(cells[plan.BaseIndex], _columns[plan.BaseIndex].Type)
+                : cells[plan.BaseIndex]?[plan.ChildName!]?.DeepClone();
+        }
 
+        for (var index = 0; index < cells.Length; index++)
+        {
             if (cells[index] is null && !_columns[index].Nullable)
             {
                 throw SilverValueReader.Reject(_columns[index].Name, "is required by the Silver schema");
@@ -195,7 +212,7 @@ public sealed class FabricSilverProjection
         return lastUpdated.GetValueKind() == JsonValueKind.String &&
                SilverTemporal.TryParseTimestamp(lastUpdated.GetValue<string>(), out var instant)
             ? instant
-            : throw SilverValueReader.Reject(Path, "must be a FHIR instant with at most microsecond precision");
+            : throw SilverValueReader.Reject(Path, "must be a FHIR date, dateTime or instant with at most microsecond precision");
     }
 
     private static JsonElement[] ToElements(JsonNode?[] cells)

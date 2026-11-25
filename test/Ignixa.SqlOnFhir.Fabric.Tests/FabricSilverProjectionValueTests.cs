@@ -185,6 +185,81 @@ public class FabricSilverProjectionValueTests
     }
 
     [Fact]
+    public async Task GivenALongFractionAndAnExponentPastSixDigits_WhenProjected_ThenTheExactValueIsKept()
+    {
+        // 0.<999,999 zeros>1 × 10^1,000,001 is exactly 10.
+        var value = "0." + new string('0', 999_999) + "1e1000001";
+
+        var cell = await Cell("value", "decimal(36,18)", value);
+
+        cell.GetRawText().ShouldBe("10.000000000000000000");
+    }
+
+    [Fact]
+    public async Task GivenALongFractionAndANegativeExponentPastSixDigits_WhenProjected_ThenRejected()
+    {
+        // A negative exponent only moves the digit further right, so it stays below every column scale.
+        var projection = await CreateAsync("Patient", Field("value", "decimal(36,18)"));
+        var value = "0." + new string('0', 999_999) + "1e-1000001";
+
+        projection.Rejection($$"""{"resourceType":"Patient","id":"p1","value":{{value}}}""").Path.ShouldBe("value");
+    }
+
+    [Theory]
+    [InlineData("1e999999999999")]
+    [InlineData("1e1000000000000")]
+    [InlineData("1e99999999999999999999999999999999999999")]
+    [InlineData("1e-99999999999999999999999999999999999999")]
+    public async Task GivenAHugeExponent_WhenProjected_ThenRejected(string value)
+    {
+        var projection = await CreateAsync("Patient", Field("value", "decimal(36,18)"));
+
+        projection.Rejection($$"""{"resourceType":"Patient","id":"p1","value":{{value}}}""").Path.ShouldBe("value");
+    }
+
+    [Fact]
+    public async Task GivenALongFractionAndASaturatedExponent_WhenProjected_ThenRejected()
+    {
+        var projection = await CreateAsync("Patient", Field("value", "decimal(36,18)"));
+        var value = "0." + new string('0', 999_999) + "1e" + new string('9', 40);
+
+        projection.Rejection($$"""{"resourceType":"Patient","id":"p1","value":{{value}}}""").Path.ShouldBe("value");
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task GivenDerivedColumnsDeclaredBeforeOrAfterTheirBase_WhenProjected_ThenTheyHoldTheSameValues(bool baseFirst)
+    {
+        var concept = CodeableConcept();
+        JsonNode[] bases =
+        [
+            Field("maritalStatus", CodeableConcept()),
+            Field("x", Struct(Field("code", concept))),
+        ];
+        JsonNode[] derived =
+        [
+            Field("x_code_string", "string", nullable: false),
+            Field("maritalStatus_string", "string", nullable: false),
+            Field("x_code", concept.DeepClone(), nullable: false),
+        ];
+        var projection = await CreateAsync("Patient", baseFirst ? [.. bases, .. derived] : [.. derived, .. bases]);
+        const string Concept = """{"extension":null,"id":null,"coding":null,"text":"T"}""";
+
+        var row = projection.Project("""{"resourceType":"Patient","id":"p1","maritalStatus":{"text":"T"},"x":{"code":{"text":"T"}}}""");
+        JsonElement At(string name) => row.Cells[row.ColumnNames.ToList().IndexOf(name)];
+
+        projection.ColumnNames.Skip(5).Take(5).ShouldBe(
+            baseFirst
+                ? ["maritalStatus", "x", "x_code_string", "maritalStatus_string", "x_code"]
+                : ["x_code_string", "maritalStatus_string", "x_code", "maritalStatus", "x"]);
+        At("maritalStatus_string").GetString().ShouldBe(Concept);
+        At("x_code").ShouldBeJson(Concept);
+        At("x_code_string").GetString().ShouldBe(Concept);
+        At("maritalStatus").ShouldBeJson(Concept);
+    }
+
+    [Fact]
     public async Task GivenAnOrigColumn_WhenProjected_ThenItHoldsTheSourceValueAsText()
     {
         var projection = await CreateAsync(

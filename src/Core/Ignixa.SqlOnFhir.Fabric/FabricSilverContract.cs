@@ -26,8 +26,10 @@ namespace Ignixa.SqlOnFhir.Fabric;
 /// interpreted: a sink that writes the table must reproduce each of them faithfully or reject the contract, and must
 /// not silently drop them.
 /// </para>
+/// <para>
 /// Instances are immutable and valid by construction: <see cref="LoadAsync"/> is the only way to create one and it
 /// rejects any log that is not the supported contract.
+/// </para>
 /// </remarks>
 public sealed class FabricSilverContract
 {
@@ -97,7 +99,7 @@ public sealed class FabricSilverContract
 
     /// <summary>
     /// The table properties as logged, as a creation template. Always contains change data feed and V-Order set to
-    /// <c>true</c>; values are kept as logged (casing included). Any property other than those two is carried through
+    /// <c>true</c> in any casing; values are kept as logged. Any property other than those two is carried through
     /// uninterpreted, so the writer must honor it or reject the contract. The table is not partitioned.
     /// </summary>
     public IReadOnlyDictionary<string, string> Configuration { get; }

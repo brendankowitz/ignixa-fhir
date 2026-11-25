@@ -25,6 +25,17 @@ public class FabricSilverProjectionCreateTests
     }
 
     [Fact]
+    public async Task GivenAContract_WhenCreated_ThenTheProjectionRetainsIt()
+    {
+        var contract = await ContractAsync("Patient");
+
+        var projection = FabricSilverProjection.Create(contract, R4);
+
+        projection.Contract.ShouldBeSameAs(contract);
+        projection.ResourceType.ShouldBe(contract.ResourceType);
+    }
+
+    [Fact]
     public async Task GivenNullArguments_WhenCreated_ThenRejected()
     {
         var contract = await ContractAsync("Patient");

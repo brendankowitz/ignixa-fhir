@@ -69,7 +69,8 @@ internal static class SilverResourceIdentifier
 
     private static List<JsonObject> Deduplicate(List<JsonObject> identifiers, SilverType elementType, SilverValueReader reader)
     {
-        // Duplicates are judged on the source assigner, before reference normalization; no-op without an assigner.
+        // Duplicates are judged on the source assigner, before reference normalization; a no-op when the element
+        // type has no assigner field.
         var keyType = elementType.WithFieldType("assigner", ShallowReference);
         var keys = new HashSet<string>(StringComparer.Ordinal);
         var kept = new List<JsonObject>();

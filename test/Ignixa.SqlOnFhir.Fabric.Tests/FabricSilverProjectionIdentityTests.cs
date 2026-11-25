@@ -218,6 +218,17 @@ public class FabricSilverProjectionIdentityTests
         var error = projection.Rejection($$$"""{"resourceType":"Patient","id":"p1","meta":{"lastUpdated":{{{value}}}}}""");
 
         error.Path.ShouldBe("meta.lastUpdated");
+        error.Message.ShouldContain("must be a FHIR date, dateTime or instant");
+    }
+
+    [Fact]
+    public async Task GivenAPartialMetaLastUpdated_WhenProjected_ThenItIsItsFirstInstantInUtc()
+    {
+        var projection = await CreateAsync("Patient");
+
+        var row = projection.Project("""{"resourceType":"Patient","id":"p1","meta":{"lastUpdated":"2023-04"}}""");
+
+        row.MetaLastUpdated.ShouldBe(new DateTimeOffset(2023, 4, 1, 0, 0, 0, TimeSpan.Zero));
     }
 
     [Fact]

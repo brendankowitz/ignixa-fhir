@@ -162,7 +162,8 @@ internal sealed class SilverType
                     scale: int.Parse(arguments[1], CultureInfo.InvariantCulture));
             }
 
-            // Silver never uses these; projecting them would need JVM float formatting the companions cannot verify.
+            // Silver uses none of these: float/double would need JVM float formatting the companions cannot verify,
+            // and binary has no JSON transit form.
             throw ContractError.Because($"{path} is a {name} column, which the Silver projection does not support.");
         }
 

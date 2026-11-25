@@ -75,8 +75,8 @@ public sealed class FabricSilverRow
     public JsonElement this[string columnName] => _cells[_indexes[columnName]];
 
     /// <summary>
-    /// Returns a copy whose <c>msftCreatedDatetime</c> is the given instant, for a writer that keeps the creation time of
-    /// a row it updates.
+    /// Returns a copy whose <c>msftCreatedDatetime</c> is the given instant, for a sink that does not preserve the
+    /// creation time in its store. The Delta MERGE writer preserves it in the table and does not use this.
     /// </summary>
     /// <param name="createdDatetime">A UTC instant; finer than microsecond precision is truncated.</param>
     /// <exception cref="ArgumentException">The instant is not in UTC.</exception>
