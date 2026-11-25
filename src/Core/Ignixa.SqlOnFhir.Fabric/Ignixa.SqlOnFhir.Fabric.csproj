@@ -14,4 +14,9 @@
     <Description>Microsoft Fabric healthcare data solutions Silver table contracts for SQL on FHIR (alpha). Reads a caller-supplied Silver Delta creation log. Experimental; the public API may change without notice.</Description>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
+    <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+  </ItemGroup>
+
 </Project>

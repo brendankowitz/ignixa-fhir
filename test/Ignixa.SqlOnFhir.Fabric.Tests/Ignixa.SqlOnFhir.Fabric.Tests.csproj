@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Core\Ignixa.SqlOnFhir.Fabric\Ignixa.SqlOnFhir.Fabric.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
   </ItemGroup>
 
 </Project>
