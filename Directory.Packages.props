@@ -69,6 +69,8 @@
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.10" />
     <PackageVersion Include="Parquet.Net" Version="5.4.0" />
+    <!-- Delta Lake engine (Rust natives per RID). Referenced only by Ignixa.SqlOnFhir.Fabric.Delta (alpha). -->
+    <PackageVersion Include="DeltaLake.Net" Version="0.33.3" />
     <PackageVersion Include="Superpower" Version="3.1.0" />
     <PackageVersion Include="System.Collections.Immutable" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.10" />

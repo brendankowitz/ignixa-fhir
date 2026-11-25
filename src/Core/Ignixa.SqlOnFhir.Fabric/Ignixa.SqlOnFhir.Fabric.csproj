@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- NuGet Package Configuration -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageStability>alpha</PackageStability>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Description>Microsoft Fabric healthcare data solutions Silver table contracts for SQL on FHIR (alpha). Reads a caller-supplied Silver Delta creation log. Experimental; the public API may change without notice.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
+    <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+  </ItemGroup>
+
+</Project>
