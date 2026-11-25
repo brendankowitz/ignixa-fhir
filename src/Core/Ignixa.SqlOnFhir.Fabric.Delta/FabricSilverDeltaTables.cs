@@ -10,7 +10,7 @@ namespace Ignixa.SqlOnFhir.Fabric.Delta;
 /// <summary>Creates a local Silver Delta table from its contract, or proves an existing one still matches it.</summary>
 public static class FabricSilverDeltaTables
 {
-    private const string LogDirectoryName = "_delta_log";
+    internal const string LogDirectoryName = "_delta_log";
 
     /// <summary>
     /// Makes <paramref name="tablePath"/> a Delta table that matches <paramref name="contract"/>: creates it when it
@@ -91,12 +91,12 @@ public static class FabricSilverDeltaTables
             : await ValidateAsync(tableDirectory, contract, cancellationToken);
     }
 
-    private static bool HasLog(string logDirectory) =>
+    internal static bool HasLog(string logDirectory) =>
         Directory.Exists(logDirectory) &&
         Directory.EnumerateFileSystemEntries(logDirectory)
             .Any(entry => !ExclusiveFilePublisher.IsStagingFileName(Path.GetFileName(entry)));
 
-    private static bool HasEntriesOtherThanLog(string tableDirectory) =>
+    internal static bool HasEntriesOtherThanLog(string tableDirectory) =>
         Directory.Exists(tableDirectory) &&
         Directory.EnumerateFileSystemEntries(tableDirectory)
             .Any(entry => !string.Equals(Path.GetFileName(entry), LogDirectoryName, StringComparison.Ordinal));

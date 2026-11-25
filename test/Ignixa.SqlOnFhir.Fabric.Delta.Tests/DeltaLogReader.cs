@@ -16,7 +16,8 @@ namespace Ignixa.SqlOnFhir.Fabric.Delta.Tests;
 /// <remarks>
 /// Deliberately strict and small: commits must be contiguous from version 0, every line must be one action object,
 /// and checkpoints are not supported (a log that has one is rejected rather than half-read). Hidden temp files are
-/// ignored as Delta readers do. Data rows are out of scope; a Parquet reader can consume <see cref="DeltaLogSnapshot.LiveFiles"/>.
+/// ignored as Delta readers do. Commits must be UTF-8 without a byte order mark; deletion vectors, partition values and a
+/// <c>remove</c> of a file that is not live are rejected. Logged paths are URI-decoded. <see cref="DeltaParquetReader"/> reads the rows.
 /// </remarks>
 internal static class DeltaLogReader
 {
@@ -46,13 +47,20 @@ internal static class DeltaLogReader
                         metaData = action;
                         break;
                     case "add":
+                        RequireUnpartitionedWithoutDeletionVector(action);
                         liveFiles[PathOf(action)] = action;
                         break;
                     case "remove":
-                        liveFiles.Remove(PathOf(action));
+                        RequireUnpartitionedWithoutDeletionVector(action);
+                        if (!liveFiles.Remove(PathOf(action)))
+                        {
+                            throw new InvalidDataException("A remove action names a file that is not live.");
+                        }
+
                         removedFiles.Add(action);
                         break;
                     case "cdc":
+                        RequireUnpartitionedWithoutDeletionVector(action);
                         changeFiles.Add(new DeltaLogChangeFile(version, action));
                         break;
                 }
@@ -107,7 +115,7 @@ internal static class DeltaLogReader
 
     private static IEnumerable<(string Name, JsonElement Action)> ReadActions(string path)
     {
-        foreach (var line in File.ReadAllText(path, Encoding.UTF8).Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        foreach (var line in DecodeStrict(File.ReadAllBytes(path)).Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
             using var document = JsonDocument.Parse(line);
             var properties = document.RootElement.EnumerateObject().ToList();
@@ -120,5 +128,40 @@ internal static class DeltaLogReader
         }
     }
 
-    private static string PathOf(JsonElement action) => action.GetProperty("path").GetString()!;
+    /// <summary>A logged path is a URI-encoded path relative to the table root; this returns it decoded.</summary>
+    public static string PathOf(JsonElement action) => Uri.UnescapeDataString(action.GetProperty("path").GetString()!);
+
+    // Delta writes commits as UTF-8 without a byte order mark; anything else is not a log this oracle trusts.
+    private static string DecodeStrict(byte[] bytes)
+    {
+        if (bytes.AsSpan().StartsWith(Encoding.UTF8.Preamble))
+        {
+            throw new InvalidDataException("A commit starts with a byte order mark.");
+        }
+
+        try
+        {
+            return new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true).GetString(bytes);
+        }
+        catch (DecoderFallbackException exception)
+        {
+            throw new InvalidDataException("A commit is not valid UTF-8.", exception);
+        }
+    }
+
+    // This oracle reads whole data files; deletion vectors and partition values would change which rows a file holds.
+    private static void RequireUnpartitionedWithoutDeletionVector(JsonElement action)
+    {
+        if (action.TryGetProperty("deletionVector", out var deletionVector) && deletionVector.ValueKind != JsonValueKind.Null)
+        {
+            throw new NotSupportedException("A file action has a deletion vector; this reader does not apply them.");
+        }
+
+        if (action.TryGetProperty("partitionValues", out var partitionValues) &&
+            partitionValues.ValueKind == JsonValueKind.Object &&
+            partitionValues.EnumerateObject().Any())
+        {
+            throw new NotSupportedException("A file action has partition values; this reader supports unpartitioned tables only.");
+        }
+    }
 }

@@ -22,6 +22,8 @@
 
   <ItemGroup>
     <PackageReference Include="DeltaLake.Net" />
+    <!-- Reads Delta checkpoints to count live data files; see LiveDataFiles for why the binding's file list is not used. -->
+    <PackageReference Include="Parquet.Net" />
   </ItemGroup>
 
   <ItemGroup>

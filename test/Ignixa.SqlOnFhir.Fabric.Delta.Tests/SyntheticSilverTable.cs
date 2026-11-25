@@ -55,16 +55,17 @@ internal static class SyntheticSilverTable
     /// </summary>
     public static async Task<FabricSilverContract> LoadContractAsync(
         JsonObject? templateConfiguration = null,
-        string? schemaString = null)
+        string? schemaString = null,
+        string resourceType = "Patient")
     {
         using var root = new TemporaryDirectory();
         WriteCommit(
-            root.Combine("Patient"),
+            root.Combine(resourceType),
             0,
             CommitInfoLine(),
             ProtocolLine(),
             MetaDataLine(schemaString, configuration: templateConfiguration ?? TemplateConfiguration()));
-        return await FabricSilverContract.LoadAsync(root.Path, "Patient", CancellationToken.None);
+        return await FabricSilverContract.LoadAsync(root.Path, resourceType, CancellationToken.None);
     }
 
     public static string CommitInfoLine() => """{"commitInfo":{"timestamp":1700000000000,"operation":"CREATE TABLE"}}""";
