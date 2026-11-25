@@ -296,9 +296,10 @@ public class FabricSilverDeltaWriterFailureTests
     /// but certain, and the assertions hold whether or not each round collided.
     /// </summary>
     /// <remarks>
-    /// On a Windows local filesystem the engine occasionally fails a racing merge with a non-conflict I/O error while
-    /// opening the other writer's commit file. The writer fails closed on it, so the writer replays its own batch
-    /// once, as a caller would; newer-wins makes the replay commit nothing when the failed attempt had committed.
+    /// On a Windows local filesystem the engine occasionally fails a racing writer with a non-conflict I/O error while
+    /// opening the other writer's commit file, whether loading the table, reading its size or merging. The writer
+    /// fails closed on it in whichever phase it hit, so the writer replays its own batch once, as a caller would. Every
+    /// phase's replay is idempotent: newer-wins makes the replay commit nothing when the failed attempt had committed.
     /// </remarks>
     [Fact]
     public async Task GivenTwoWritersRacingOnOneFile_WhenEachUpdatesItsOwnRow_ThenNoUpdateIsLostAndConflictsAreRetried()
@@ -360,7 +361,7 @@ public class FabricSilverDeltaWriterFailureTests
         {
             return (await WriteAsync(table, contract, gate, resource), false);
         }
-        catch (FabricSilverWriteException exception) when (exception.Phase == FabricSilverWritePhase.Merge)
+        catch (FabricSilverWriteException)
         {
             return (await WriteAsync(table, contract, gate, resource), true);
         }

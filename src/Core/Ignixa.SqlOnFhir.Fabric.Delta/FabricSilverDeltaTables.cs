@@ -44,7 +44,8 @@ public static class FabricSilverDeltaTables
     /// </para>
     /// <para>
     /// <b>Crash and platform limits.</b> Staging <c>.*.tmp</c> files left in <c>_delta_log</c> by a creator that
-    /// crashed before publishing remain on disk and are ignored. On Unix version 0 is published through a hard link, so
+    /// crashed before deleting its staging file, whether before or after publishing version 0, remain on disk and are
+    /// ignored. On Unix version 0 is published through a hard link, so
     /// on a file system without hard links creation fails closed with an <see cref="IOException"/> rather than falling
     /// back to a rename that could replace an existing version 0.
     /// </para>
