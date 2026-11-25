@@ -411,6 +411,9 @@ Feed to the depot capture recipe (initial, replay, update events):
     `type = Organization`): confirm `id` hashes the existing type and the output `type`.
 13. **Foreign-base literal reference:** confirm `id`/`idOrig` null and identifier untouched.
 14. **Null source system** on a row with no references at all: confirm the task fails.
+15. **Text that is not valid Unicode** (a lone surrogate escape such as `\ud800`, in a mapped or unmapped
+    property value or name): Ignixa rejects the whole resource at that path, because .NET writers would
+    otherwise store U+FFFD silently. Whether Spark nulls the field, replaces the text or fails is **UNV**.
 
 ## Tradeoffs
 

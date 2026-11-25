@@ -19,6 +19,8 @@ namespace Ignixa.SqlOnFhir.Fabric;
 /// on: a string column takes any token (a non-string token becomes its compact JSON text), other primitives need the
 /// matching token, and structs and arrays need objects and arrays. A JSON null and a missing property both mean
 /// absent. Properties the schema does not name (including the <c>_x</c> primitive-extension shadows) are ignored.
+/// The source has already been checked by <see cref="SilverSourceText"/>, so every string and property name decodes
+/// to valid Unicode.
 /// </para>
 /// <para>
 /// In <see cref="ReadMode.Source"/>, two Silver rules apply on top of the same-name read: every Reference struct is

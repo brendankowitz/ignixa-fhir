@@ -123,9 +123,11 @@ public sealed class FabricSilverProjection
     /// <summary>Projects one resource.</summary>
     /// <exception cref="ArgumentNullException"><paramref name="resource"/> or <paramref name="ingestion"/> is null.</exception>
     /// <exception cref="FabricSilverProjectionException">
-    /// The resource is of another type, has no id, has a <c>meta.lastUpdated</c> that is not a FHIR date, dateTime or
-    /// instant with at most microsecond precision (checked even when the contract has no <c>meta</c> column), or holds
-    /// a value the table's schema cannot store.
+    /// The resource holds a string or property name that is not valid Unicode (anywhere, even where the table does not
+    /// read; a property name of the resource itself is reported at the table's resource type), is of another type, has
+    /// no id, has a <c>meta.lastUpdated</c> that is not a FHIR date, dateTime or instant with at most microsecond
+    /// precision (checked even when the contract has no <c>meta</c> column), or holds a value the table's schema cannot
+    /// store.
     /// </exception>
     public FabricSilverRow Project(ResourceJsonNode resource, FabricSilverIngestion ingestion)
     {
@@ -135,6 +137,7 @@ public sealed class FabricSilverProjection
         // The raw JSON is read rather than the element tree: Silver leaves follow JSON-token semantics (number text,
         // structured text for extensions) that the element tree normalizes away.
         var root = ((IMutableJsonNode)resource).MutableNode;
+        SilverSourceText.Validate(root, ResourceType);
         if (root["resourceType"] is not JsonValue type ||
             type.GetValueKind() != JsonValueKind.String ||
             type.GetValue<string>() != ResourceType)
@@ -144,12 +147,11 @@ public sealed class FabricSilverProjection
 
         if (root[IdColumn] is not JsonValue idValue ||
             idValue.GetValueKind() != JsonValueKind.String ||
-            idValue.GetValue<string>().Length == 0)
+            idValue.GetValue<string>() is not { Length: > 0 } sourceId)
         {
             throw SilverValueReader.Reject(IdColumn, "must be a non-empty string");
         }
 
-        var sourceId = idValue.GetValue<string>();
         var id = SilverIdHash.Compute(ingestion.StrippedNamespace, ResourceType, sourceId);
         var reader = new SilverValueReader(new SilverReferenceNormalizer(_pattern, ingestion));
         var cells = new JsonNode?[_columns.Count];

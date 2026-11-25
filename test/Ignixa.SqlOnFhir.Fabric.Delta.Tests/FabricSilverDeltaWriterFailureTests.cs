@@ -74,6 +74,52 @@ public class FabricSilverDeltaWriterFailureTests
         exception.Message.ShouldNotContain(sourceId);
     }
 
+    [Fact]
+    public async Task GivenTextThatIsNotValidUnicodeInTheBatch_WhenWritten_ThenNoTableChangesAndTheErrorNamesThePathButNotTheValue()
+    {
+        using var root = new TemporaryDirectory();
+        var table = root.Combine("Patient");
+        var contract = await SyntheticPatients.SeedAsync(table, SyntheticPatients.Patient("a", "2024-01-01T00:00:00Z"));
+        var files = DataFiles(table);
+        var invalid = ResourceJsonNode.Parse(
+            """{"resourceType":"Patient","id":"bad","meta":{"lastUpdated":"2024-02-01T00:00:00Z"},"name":[{"family":"invented-secret-marker\ud800"}]}""");
+
+        var exception = await Should.ThrowAsync<FabricSilverResourceRejectedException>(() => FabricSilverDeltaWriter.WriteBatchAsync(
+            [WriterContracts.Batch(table, contract, SyntheticPatients.Patient("a", "2024-02-01T00:00:00Z", "Changed"), invalid)],
+            WriterContracts.Ingestion(),
+            CancellationToken.None));
+
+        exception.TablePath.ShouldBe(table);
+        exception.Position.ShouldBe(1);
+        exception.ResourceType.ShouldBe("Patient");
+        exception.SourceId.ShouldBe("bad");
+        exception.FieldPath.ShouldBe("name[0].family");
+        exception.InnerException.ShouldBeOfType<FabricSilverProjectionException>();
+        exception.Message.ShouldNotContain("invented-secret-marker");
+        DeltaLogReader.Read(table).Version.ShouldBe(1);
+        DataFiles(table).ShouldBe(files);
+        SyntheticPatients.FamilyOf(SyntheticPatients.RowOf(await DeltaParquetReader.ReadLiveRowsAsync(table), "a")).ShouldBe("Doe");
+    }
+
+    // Neither id can be decoded: one is a lone surrogate, the other sits beside a resource property name that is one.
+    [Theory]
+    [InlineData("""{"resourceType":"Patient","id":"\ud800","meta":{"lastUpdated":"2024-02-01T00:00:00Z"}}""", "id")]
+    [InlineData("""{"resourceType":"Patient","id":"bad","\ud800":1,"meta":{"lastUpdated":"2024-02-01T00:00:00Z"}}""", "Patient")]
+    public async Task GivenAnIdThatCannotBeDecoded_WhenWritten_ThenRejectedWithoutASourceId(string json, string fieldPath)
+    {
+        using var root = new TemporaryDirectory();
+        var contract = await WriterContracts.PatientAsync();
+        var resource = new ResourceJsonNode(JsonNode.Parse(json)!.AsObject());
+
+        var exception = await Should.ThrowAsync<FabricSilverResourceRejectedException>(() => FabricSilverDeltaWriter.WriteBatchAsync(
+            [WriterContracts.Batch(root.Combine("Patient"), contract, resource)],
+            WriterContracts.Ingestion(),
+            CancellationToken.None));
+
+        exception.SourceId.ShouldBeNull();
+        exception.FieldPath.ShouldBe(fieldPath);
+    }
+
     [SkippableFact]
     public async Task GivenTheSecondTablesCommitFails_WhenWritten_ThenTheErrorListsTheFirstTablesVersionAndAReplayRepairsTheSecond()
     {

@@ -163,9 +163,20 @@ public static class FabricSilverDeltaWriter
         return reduction;
     }
 
-    // The typed getter throws for a non-string id, which is exactly the resource worth reporting.
-    private static string? RawId(ResourceJsonNode resource) =>
-        ((IMutableJsonNode)resource).MutableNode["id"] is JsonValue value && value.TryGetValue<string>(out var id) ? id : null;
+    // The typed getter throws for a non-string id, which is exactly the resource worth reporting. Decoding throws when
+    // the id, or a property name of the resource, is a lone surrogate escape; such an id is not reportable, and the
+    // projection error already names where the text is invalid.
+    private static string? RawId(ResourceJsonNode resource)
+    {
+        try
+        {
+            return ((IMutableJsonNode)resource).MutableNode["id"] is JsonValue value && value.TryGetValue<string>(out var id) ? id : null;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
 
     private static async Task<FabricSilverTableOutcome[]> PrepareTablesAsync(
         DeltaEngine engine,
