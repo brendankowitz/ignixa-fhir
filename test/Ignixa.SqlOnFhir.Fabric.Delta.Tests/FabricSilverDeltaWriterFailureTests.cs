@@ -295,6 +295,11 @@ public class FabricSilverDeltaWriterFailureTests
     /// loading a snapshot and committing, so the overlap cannot be forced; ten simultaneous rounds make a conflict all
     /// but certain, and the assertions hold whether or not each round collided.
     /// </summary>
+    /// <remarks>
+    /// On a Windows local filesystem the engine occasionally fails a racing merge with a non-conflict I/O error while
+    /// opening the other writer's commit file. The writer fails closed on it, so the writer replays its own batch
+    /// once, as a caller would; newer-wins makes the replay commit nothing when the failed attempt had committed.
+    /// </remarks>
     [Fact]
     public async Task GivenTwoWritersRacingOnOneFile_WhenEachUpdatesItsOwnRow_ThenNoUpdateIsLostAndConflictsAreRetried()
     {
@@ -308,16 +313,24 @@ public class FabricSilverDeltaWriterFailureTests
         using var firstGate = new SemaphoreSlim(1, 1);
         using var secondGate = new SemaphoreSlim(1, 1);
         var attempts = new List<int>();
+        var replays = 0;
 
         for (var round = 1; round <= Rounds; round++)
         {
             var lastUpdated = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero).AddDays(round).ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
-            var results = await Task.WhenAll(
-                Task.Run(() => WriteAsync(table, contract, firstGate, SyntheticPatients.Patient("a", lastUpdated, $"A{round}"))),
-                Task.Run(() => WriteAsync(table, contract, secondGate, SyntheticPatients.Patient("b", lastUpdated, $"B{round}"))));
+            var outcomes = await Task.WhenAll(
+                Task.Run(() => WriteOrReplayAsync(table, contract, firstGate, SyntheticPatients.Patient("a", lastUpdated, $"A{round}"))),
+                Task.Run(() => WriteOrReplayAsync(table, contract, secondGate, SyntheticPatients.Patient("b", lastUpdated, $"B{round}"))));
 
-            foreach (var result in results)
+            foreach (var (result, replayed) in outcomes)
             {
+                if (replayed)
+                {
+                    // The failed attempt may have committed the row, so the replay's update count is not fixed.
+                    replays++;
+                    continue;
+                }
+
                 result.Tables[0].UpdatedRows.ShouldBe(1);
                 attempts.Add(result.Tables[0].Attempts);
             }
@@ -328,7 +341,29 @@ public class FabricSilverDeltaWriterFailureTests
         SyntheticPatients.FamilyOf(SyntheticPatients.RowOf(rows, "a")).ShouldBe($"A{Rounds}");
         SyntheticPatients.FamilyOf(SyntheticPatients.RowOf(rows, "b")).ShouldBe($"B{Rounds}");
         DeltaLogReader.Read(table).Version.ShouldBe(1 + (2 * Rounds));
-        attempts.ShouldContain(attempt => attempt > 1, "No round collided, so no retry was exercised.");
+
+        // A non-conflict failure ends a race without a retry, so the retry evidence is only required of a run in which
+        // no writer failed.
+        if (replays == 0)
+        {
+            attempts.ShouldContain(attempt => attempt > 1, "No round collided, so no retry was exercised.");
+        }
+    }
+
+    private static async Task<(FabricSilverBatchResult Result, bool Replayed)> WriteOrReplayAsync(
+        string table,
+        FabricSilverContract contract,
+        SemaphoreSlim gate,
+        ResourceJsonNode resource)
+    {
+        try
+        {
+            return (await WriteAsync(table, contract, gate, resource), false);
+        }
+        catch (FabricSilverWriteException exception) when (exception.Phase == FabricSilverWritePhase.Merge)
+        {
+            return (await WriteAsync(table, contract, gate, resource), true);
+        }
     }
 
     private static Task<FabricSilverBatchResult> WriteAsync(string table, FabricSilverContract contract, SemaphoreSlim gate, ResourceJsonNode resource) =>

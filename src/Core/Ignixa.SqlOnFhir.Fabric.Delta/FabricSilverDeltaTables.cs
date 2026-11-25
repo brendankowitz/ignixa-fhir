@@ -57,7 +57,11 @@ public static class FabricSilverDeltaTables
     /// <exception cref="ArgumentException"><paramref name="tablePath"/> is blank.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="contract"/> is <see langword="null"/>.</exception>
     /// <exception cref="FabricSilverTableMismatchException">The directory holds a table, or files, the contract cannot adopt.</exception>
-    /// <exception cref="InvalidDataException">The engine cannot load the existing log; the engine's error is the inner exception.</exception>
+    /// <exception cref="InvalidDataException">
+    /// The engine cannot load the existing log; the engine's error is the inner exception. The engine does not separate
+    /// I/O errors from format errors, so a transient I/O failure while loading an existing log is reported here too;
+    /// inspect <see cref="Exception.InnerException"/> before deciding whether to retry.
+    /// </exception>
     /// <exception cref="IOException">The directory or log cannot be read or written; nothing is retried.</exception>
     /// <exception cref="UnauthorizedAccessException">The directory is not accessible.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
