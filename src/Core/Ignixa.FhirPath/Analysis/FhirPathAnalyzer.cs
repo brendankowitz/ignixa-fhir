@@ -434,6 +434,14 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
         var funcDef = _symbolTable.Get(functionName);
 
+        if (expression.Focus is not (null or ScopeExpression { ScopeName: "that" }) &&
+            functionName.Equals("list", StringComparison.Ordinal))
+        {
+            context.AddError(
+                "Function 'list()' cannot be invoked as a fluent function; use a.combine(list(b, c), true) instead.",
+                expression);
+        }
+
         var innerContext = context.PushTypeContext(focusTypes);
 
         if (funcDef?.TakesExpressionArguments == true)

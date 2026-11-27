@@ -146,6 +146,13 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             }
         }
 
+        if (expression.Focus is not (null or ScopeExpression { ScopeName: "that" }) &&
+            expression.FunctionName.Equals("list", StringComparison.Ordinal))
+        {
+            throw new FhirPathEvaluationException(
+                "list() cannot be invoked as a fluent function; use a.combine(list(b, c), true) instead");
+        }
+
         var focusElements = expression.Focus != null
             ? EvaluateExpression(context.Focus, expression.Focus, context)
             : context.Focus;
